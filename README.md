@@ -154,10 +154,20 @@ limux send --workspace "$LIMUX_WORKSPACE_ID" --surface "<peer-surface-id>" \
 ```
 
 See the auto-generated `LIMUX_AGENTS.md` (written into the shared cwd by
-default) for the full protocol spec, peer table, and editable Policies
-section. Use `--protocol-path <path>` to write the generated protocol
-elsewhere. `agent-team` no longer writes `AGENTS.md` by default, so existing
-repo instructions are not clobbered.
+default) for the full protocol spec, peer table, instruction-source pointers,
+and editable Policies section. Generated files include a stable marker and an
+`Instruction Sources` table for detected `AGENTS.md`, `CLAUDE.md`, and
+`GEMINI.md` files, including path, modified time, and deterministic content
+hash metadata. Limux points agents to read those files directly; it does not
+copy or merge their contents.
+
+Use `--protocol-path <path>` to write the generated protocol elsewhere.
+Existing unmarked protocol files are not overwritten by default; use
+`--force-protocol-overwrite` only when the target file is safe to replace.
+`agent-team` no longer writes `AGENTS.md` by default, so existing repo
+instructions are not clobbered. Put durable team policy notes that should
+survive regeneration in `LIMUX_AGENTS.local.md`; Limux documents that sidecar
+but does not create or overwrite it.
 
 Checked-in hook templates live in [`hooks/`](hooks/). They mirror
 `limux hooks setup` for Codex, Claude Code, and Gemini CLI; OpenCode is

@@ -1,10 +1,13 @@
 # Limux Session Handoff
 
-Last updated: 2026-05-29 14:38 EDT
+Last updated: 2026-05-29 17:00 EDT
 
 ## Immediate Next Action
 
-Implement the next scoped Limux improvement: **Phase 5A zero-friction protocol discovery** for `limux agent-team`.
+Phase 5A zero-friction protocol discovery for `limux agent-team` is implemented
+and locally verified. The next scoped code option is to fix GTK bridge
+`surface.send_text` readiness/failure semantics before attempting full
+automatic bootstrap.
 
 The operator requested an easier-to-read status/options artifact on
 2026-05-29. Use this packet if a decision needs to be confirmed before coding:
@@ -23,15 +26,15 @@ sed -n '210,285p' docs/limux-hcom-workflow.md
 rg -n "run_agent_team|build_agents_md|resolve_agent_team_protocol_path|LIMUX_AGENTS" rust/limux-cli/src/main.rs
 ```
 
-Then use TDD in `rust/limux-cli/src/main.rs` for Phase 5A:
+Phase 5A completed in `rust/limux-cli/src/main.rs`:
 
-1. Add a generated-file marker to `LIMUX_AGENTS.md`.
-2. Add an `Instruction Sources` section that detects repo instruction files such as `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`.
-3. Make the section reference those files directly instead of copying or merging their contents.
-4. Add file metadata for provenance, such as path, modified time, and hash, if cheap and deterministic.
-5. Preserve the rule: repo instruction files stay authoritative; `LIMUX_AGENTS.md` only adds runtime topology and messaging protocol.
-6. Add a no-overwrite guard for existing unmarked `LIMUX_AGENTS.md`; require an explicit force flag if replacement is needed.
-7. Add or document a durable local extension point such as `LIMUX_AGENTS.local.md` for human/team policy notes that survive regeneration.
+1. Added a generated-file marker to `LIMUX_AGENTS.md`.
+2. Added an `Instruction Sources` section that detects `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`.
+3. The section references those files directly instead of copying or merging their contents.
+4. Metadata includes path, modified time, and deterministic `fnv1a64` content hash for regular files.
+5. Repo instruction files stay authoritative; `LIMUX_AGENTS.md` only adds runtime topology and messaging protocol.
+6. Existing unmarked `LIMUX_AGENTS.md` files are refused by default; `--force-protocol-overwrite` is required to replace one.
+7. `LIMUX_AGENTS.local.md` is documented as the durable local policy sidecar; Limux does not create or overwrite it.
 
 Recommended acceptance tests:
 
@@ -56,19 +59,18 @@ Run `./scripts/check.sh` only after `libghostty.so` is present. The last full ga
 | 2026-05-29 01:40 EDT | Full quality gate | `./scripts/check.sh` failed only because `libghostty` was missing; build prerequisite: `cd ghostty && zig build -Dapp-runtime=none -Doptimize=ReleaseFast`. |
 | 2026-05-29 02:00 EDT | Subagent brainstorm | Five native subagents converged on reference-based instruction discovery, not silent inheritance/copying. |
 | 2026-05-29 02:06 EDT | Stop-point docs | Created this handoff and FYI entry; refreshed decision/workflow docs for morning resumption. |
+| 2026-05-29 17:00 EDT | Phase 5A implementation | Added generated marker, instruction-source metadata, no-overwrite guard, explicit force flag, local policy sidecar docs, and regression tests. |
+| 2026-05-29 17:00 EDT | Verification | `cargo test -p limux-cli agent_team`, `cargo test -p limux-cli`, `cargo fmt --check`, `cargo clippy -p limux-cli --all-targets -- -D warnings`, and `git diff --check` passed. |
+| 2026-05-29 17:00 EDT | Cross-family review attempt | Claude plugin read-only review timed out after 120 seconds without findings; do not treat it as a passed review. |
 
 ## Current State
 
 - Branch: `main`
 - Code commit pushed before this handoff: `cec067f fix(cli): protect agent-team protocol output`
-- Latest pushed status/report commit before the next implementation step:
-  `a1447e7 docs(security): add install dependency report`
-- Current untracked docs before this handoff work:
-  - `docs/limux-hcom-workflow.md`
-  - `docs/limux-hcom-workflow.html`
-  - `docs/limux-vs-multica-decision-guide.md`
-  - `docs/limux-vs-multica-decision-guide.html`
-- These docs are now intentionally part of the session record and should be committed with this handoff.
+- Latest implementation in this handoff: Phase 5A protocol discovery hardening.
+- Latest pushed status/report commit before Phase 5A implementation:
+  `1c12e97 docs(decision): add limux next steps packet`
+- Working tree should be clean after committing/pushing the Phase 5A implementation.
 
 ## Architectural Decisions Locked In
 
@@ -124,10 +126,10 @@ Phase ordering:
 - `./scripts/check.sh` needs `ghostty/zig-out/lib/libghostty.so`; build it before claiming the full workspace gate passes.
 - Full automatic bootstrap has a readiness race until `surface.send_text` reports failure correctly through the GTK bridge.
 - Shell-injected launch/bootstrap commands need tests for spaces, quotes, `$`, backticks, semicolons, and newlines before automation expands.
-- `LIMUX_AGENTS.md` is safer than `AGENTS.md`, but still needs generated-marker and no-overwrite semantics.
+- Instruction-source hashes are deterministic `fnv1a64` metadata for change detection, not cryptographic integrity claims.
 
 ## Morning Resume Prompt
 
 ```text
-Please resume the Limux work from HANDOFF.md. Start with Phase 5A zero-friction protocol discovery for `limux agent-team`: generated marker, Instruction Sources section, no-overwrite guard for unmarked `LIMUX_AGENTS.md`, and local policy extension point. Use TDD and keep repo `AGENTS.md` authoritative.
+Please resume the Limux work from HANDOFF.md. Phase 5A zero-friction protocol discovery for `limux agent-team` is implemented and verified locally. Start with the next scoped option: fix GTK bridge `surface.send_text` readiness/failure semantics before attempting full automatic bootstrap.
 ```

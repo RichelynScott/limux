@@ -18,6 +18,10 @@ mod agent_hooks;
 
 const CLI_STATE_LOCK_TIMEOUT: Duration = Duration::from_secs(2);
 const CLI_STATE_LOCK_RETRY: Duration = Duration::from_millis(25);
+const AGENT_TEAM_PROTOCOL_MARKER: &str = "<!-- limux-agent-team-protocol generated:v1 -->";
+const AGENT_TEAM_DEFAULT_PROTOCOL_FILE: &str = "LIMUX_AGENTS.md";
+const AGENT_TEAM_LOCAL_POLICY_FILE: &str = "LIMUX_AGENTS.local.md";
+const AGENT_TEAM_INSTRUCTION_FILES: &[&str] = &["AGENTS.md", "CLAUDE.md", "GEMINI.md"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum IdFormat {
@@ -199,7 +203,7 @@ fn parse_global_args() -> Result<GlobalOptions> {
 
 fn print_help() {
     println!(
-        "limux CLI\n\nUsage: limux [--socket <path>] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--cwd <path>] [--protocol-path <path>] [--no-launch] [--dry-run]\n      Splits the active workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, and writes LIMUX_AGENTS.md by default describing\n      the <agent-msg> XML protocol so peers can talk via\n      `limux send --surface <peer-surface-id> <envelope>`.\n"
+        "limux CLI\n\nUsage: limux [--socket <path>] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--cwd <path>] [--protocol-path <path>] [--force-protocol-overwrite] [--no-launch] [--dry-run]\n      Splits the active workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, and writes LIMUX_AGENTS.md by default describing\n      the <agent-msg> XML protocol so peers can talk via\n      `limux send --surface <peer-surface-id> <envelope>`.\n"
     );
 }
 
@@ -1970,8 +1974,9 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
 
     // Optional: skip launching the CLIs (useful when the user wants to open
     // the agents manually) — still splits the panes + writes the protocol file.
-    let no_launch = args.iter().any(|a| a == "--no-launch");
-    let dry_run = args.iter().any(|a| a == "--dry-run");
+    let no_launch = parse_flag(args, "--no-launch");
+    let dry_run = parse_flag(args, "--dry-run");
+    let force_protocol_overwrite = parse_flag(args, "--force-protocol-overwrite");
 
     // Resolve the agent list up front so --dry-run can build a deterministic
     // peer table without touching the host.
@@ -1991,6 +1996,8 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
     }
 
     let agents_md_path = resolve_agent_team_protocol_path(&cwd, args);
+    validate_agent_team_protocol_file(&agents_md_path, force_protocol_overwrite)?;
+    let instruction_sources = discover_instruction_sources(Path::new(&cwd));
 
     if dry_run {
         let peers: Vec<(String, String, String, String)> = resolved
@@ -2011,13 +2018,9 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
             "<active-workspace>",
             "<dry-run-workspace>",
             "<dry-run-orchestrator>",
+            &instruction_sources,
         );
-        if let Err(err) = write_agent_team_protocol_file(&agents_md_path, &body) {
-            eprintln!(
-                "agent-team: failed to write {}: {err}",
-                agents_md_path.display()
-            );
-        }
+        write_agent_team_protocol_file(&agents_md_path, &body, force_protocol_overwrite)?;
         return Ok(json!({
             "ok": true,
             "cwd": cwd,
@@ -2159,13 +2162,9 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
         &workspace_name,
         &workspace_id,
         &orchestrator_surface,
+        &instruction_sources,
     );
-    if let Err(err) = write_agent_team_protocol_file(&agents_md_path, &body) {
-        eprintln!(
-            "agent-team: failed to write {}: {err}",
-            agents_md_path.display()
-        );
-    }
+    write_agent_team_protocol_file(&agents_md_path, &body, force_protocol_overwrite)?;
 
     Ok(json!({
         "ok": true,
@@ -2203,17 +2202,182 @@ fn resolve_agent_team_protocol_path(cwd: &str, args: &[String]) -> PathBuf {
         };
     }
 
-    cwd_path.join("LIMUX_AGENTS.md")
+    cwd_path.join(AGENT_TEAM_DEFAULT_PROTOCOL_FILE)
 }
 
-fn write_agent_team_protocol_file(path: &Path, body: &str) -> Result<()> {
+fn validate_agent_team_protocol_file(path: &Path, force: bool) -> Result<()> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(err) => {
+            return Err(err).with_context(|| format!("failed to inspect {}", path.display()));
+        }
+    };
+
+    let file_type = metadata.file_type();
+    if file_type.is_symlink() {
+        bail!(
+            "refusing to write protocol path because it is a symlink: {}",
+            path.display()
+        );
+    }
+    if !file_type.is_file() {
+        bail!(
+            "refusing to write protocol path because it is not a regular file: {}",
+            path.display()
+        );
+    }
+    if force {
+        return Ok(());
+    }
+
+    let existing = fs::read_to_string(path).with_context(|| {
+        format!(
+            "failed to inspect existing protocol file {}",
+            path.display()
+        )
+    })?;
+    if !existing.contains(AGENT_TEAM_PROTOCOL_MARKER) {
+        bail!(
+            "refusing to overwrite existing unmarked protocol file {}; rerun with --force-protocol-overwrite only if this file is safe to replace",
+            path.display()
+        );
+    }
+
+    Ok(())
+}
+
+fn temporary_agent_team_protocol_path(path: &Path) -> Result<PathBuf> {
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| anyhow!("protocol path has no file name: {}", path.display()))?;
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let mut temp_name = file_name.to_os_string();
+    temp_name.push(format!(".limux-tmp-{}-{nonce}", std::process::id()));
+    Ok(path.with_file_name(temp_name))
+}
+
+fn write_agent_team_protocol_file(path: &Path, body: &str, force: bool) -> Result<()> {
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
             fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create {}", parent.display()))?;
         }
     }
-    fs::write(path, body).with_context(|| format!("failed to write {}", path.display()))
+    validate_agent_team_protocol_file(path, force)?;
+
+    let temp_path = temporary_agent_team_protocol_path(path)?;
+    fs::write(&temp_path, body)
+        .with_context(|| format!("failed to write {}", temp_path.display()))?;
+    validate_agent_team_protocol_file(path, force)?;
+    if let Err(err) = fs::rename(&temp_path, path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(err).with_context(|| {
+            format!(
+                "failed to move generated protocol from {} to {}",
+                temp_path.display(),
+                path.display()
+            )
+        });
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct InstructionSource {
+    name: &'static str,
+    display_path: String,
+    kind: String,
+    modified_unix: Option<u64>,
+    hash: Option<String>,
+    note: Option<String>,
+}
+
+fn discover_instruction_sources(cwd: &Path) -> Vec<InstructionSource> {
+    AGENT_TEAM_INSTRUCTION_FILES
+        .iter()
+        .filter_map(|name| inspect_instruction_source(cwd, name))
+        .collect()
+}
+
+fn inspect_instruction_source(cwd: &Path, name: &'static str) -> Option<InstructionSource> {
+    let path = cwd.join(name);
+    let display_path = format!("./{name}");
+    let metadata = match fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == ErrorKind::NotFound => return None,
+        Err(err) => {
+            return Some(InstructionSource {
+                name,
+                display_path,
+                kind: "unreadable".to_string(),
+                modified_unix: None,
+                hash: None,
+                note: Some(format!("metadata unavailable: {err}")),
+            });
+        }
+    };
+
+    let modified_unix = metadata.modified().ok().and_then(system_time_unix_seconds);
+    let file_type = metadata.file_type();
+
+    if file_type.is_symlink() {
+        return Some(InstructionSource {
+            name,
+            display_path,
+            kind: "symlink".to_string(),
+            modified_unix,
+            hash: None,
+            note: Some("not hashed; symlink target was not read".to_string()),
+        });
+    }
+
+    if !file_type.is_file() {
+        return Some(InstructionSource {
+            name,
+            display_path,
+            kind: "not a regular file".to_string(),
+            modified_unix,
+            hash: None,
+            note: Some("not hashed".to_string()),
+        });
+    }
+
+    let (hash, note) = match fs::read(&path) {
+        Ok(bytes) => (Some(fnv1a64_hash(&bytes)), None),
+        Err(err) => (None, Some(format!("not hashed: {err}"))),
+    };
+
+    Some(InstructionSource {
+        name,
+        display_path,
+        kind: "regular file".to_string(),
+        modified_unix,
+        hash,
+        note,
+    })
+}
+
+fn system_time_unix_seconds(time: SystemTime) -> Option<u64> {
+    time.duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_secs())
+}
+
+fn fnv1a64_hash(bytes: &[u8]) -> String {
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("fnv1a64:{hash:016x}")
+}
+
+fn markdown_table_cell(value: &str) -> String {
+    value.replace('\n', " ").replace('|', "\\|")
 }
 
 fn build_agents_md(
@@ -2222,8 +2386,11 @@ fn build_agents_md(
     workspace_name: &str,
     workspace_id: &str,
     orchestrator_surface: &str,
+    instruction_sources: &[InstructionSource],
 ) -> String {
     let mut out = String::new();
+    out.push_str(AGENT_TEAM_PROTOCOL_MARKER);
+    out.push('\n');
     out.push_str("# LIMUX_AGENTS.md — agent-to-agent message protocol\n\n");
     out.push_str(
         "This file is auto-generated by `limux agent-team`. It defines how the\n\
@@ -2231,6 +2398,48 @@ fn build_agents_md(
          the limux control socket. Humans should feel free to edit the\n\
          'Policies' section below; everything else is mechanical.\n\n",
     );
+
+    out.push_str("## Instruction Sources\n\n");
+    out.push_str(
+        "Project instruction files remain authoritative. Limux does not copy,\n\
+         merge, or reinterpret their contents; each agent should read these\n\
+         files directly before acting.\n\n",
+    );
+    if instruction_sources.is_empty() {
+        out.push_str(
+            "No `AGENTS.md`, `CLAUDE.md`, or `GEMINI.md` files were detected in\n\
+             the shared cwd at generation time.\n\n",
+        );
+    } else {
+        out.push_str("| Source | Path | Type | Modified (unix seconds) | Hash | Notes |\n");
+        out.push_str("|--------|------|------|-------------------------|------|-------|\n");
+        for source in instruction_sources {
+            let modified = source
+                .modified_unix
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            let hash = source.hash.as_deref().unwrap_or("not hashed");
+            let note = source.note.as_deref().unwrap_or("");
+            out.push_str(&format!(
+                "| `{}` | `{}` | `{}` | `{}` | `{}` | {} |\n",
+                markdown_table_cell(source.name),
+                markdown_table_cell(&source.display_path),
+                markdown_table_cell(&source.kind),
+                modified,
+                markdown_table_cell(hash),
+                markdown_table_cell(note)
+            ));
+        }
+        out.push('\n');
+    }
+
+    out.push_str("## Local Policy Extension\n\n");
+    out.push_str(&format!(
+        "Use `{}` for durable team policy notes that should survive\n\
+         regeneration. Limux does not create or overwrite it; if present,\n\
+         agents should read it after this generated runtime protocol.\n\n",
+        AGENT_TEAM_LOCAL_POLICY_FILE
+    ));
 
     out.push_str(&format!(
         "## Team workspace\n\n\
@@ -3985,6 +4194,7 @@ mod agent_team_tests {
             "active-ws",
             "ws-uuid-123",
             "9:terminal-orch",
+            &[],
         );
 
         // Header & generation marker
@@ -4109,6 +4319,147 @@ mod agent_team_tests {
         assert_eq!(
             payload.get("protocol_path").and_then(Value::as_str),
             Some(protocol_path.to_string_lossy().as_ref())
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_team_generated_protocol_includes_marker_and_local_policy_pointer() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let args = vec![
+            "--dry-run".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+        ];
+        let mut client = Client::new(cwd.join("unused.sock"));
+
+        run_agent_team(&mut client, &args)
+            .await
+            .expect("dry run should not contact host");
+
+        let md = std::fs::read_to_string(cwd.join("LIMUX_AGENTS.md")).expect("read protocol");
+        assert!(
+            md.starts_with("<!-- limux-agent-team-protocol generated:v1 -->\n# LIMUX_AGENTS.md"),
+            "generated protocol should start with a stable generated marker"
+        );
+        assert!(md.contains("LIMUX_AGENTS.local.md"));
+        assert!(md.contains("Limux does not create or overwrite it"));
+    }
+
+    #[tokio::test]
+    async fn agent_team_generated_protocol_lists_instruction_sources_without_copying() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        std::fs::write(
+            cwd.join("AGENTS.md"),
+            "AGENT_SOURCE_SECRET: repo instructions\n",
+        )
+        .expect("write AGENTS.md");
+        std::fs::write(
+            cwd.join("CLAUDE.md"),
+            "CLAUDE_SOURCE_SECRET: claude instructions\n",
+        )
+        .expect("write CLAUDE.md");
+
+        let args = vec![
+            "--dry-run".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+        ];
+        let mut client = Client::new(cwd.join("unused.sock"));
+
+        run_agent_team(&mut client, &args)
+            .await
+            .expect("dry run should not contact host");
+
+        let md = std::fs::read_to_string(cwd.join("LIMUX_AGENTS.md")).expect("read protocol");
+        assert!(md.contains("## Instruction Sources"));
+        assert!(md.contains("Project instruction files remain authoritative"));
+        assert!(md.contains("| `AGENTS.md` | `./AGENTS.md` | `regular file` |"));
+        assert!(md.contains("| `CLAUDE.md` | `./CLAUDE.md` | `regular file` |"));
+        assert!(md.contains("Modified (unix seconds)"));
+        assert!(md.contains("fnv1a64:"));
+        assert!(!md.contains("AGENT_SOURCE_SECRET"));
+        assert!(!md.contains("CLAUDE_SOURCE_SECRET"));
+    }
+
+    #[tokio::test]
+    async fn agent_team_dry_run_refuses_unmarked_existing_protocol_file() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let protocol_path = cwd.join("LIMUX_AGENTS.md");
+        std::fs::write(&protocol_path, "manual protocol\n").expect("write protocol");
+        let args = vec![
+            "--dry-run".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+        ];
+        let mut client = Client::new(cwd.join("unused.sock"));
+
+        let err = run_agent_team(&mut client, &args)
+            .await
+            .expect_err("dry run should refuse an unmarked protocol file");
+        assert!(
+            format!("{err:#}").contains("refusing to overwrite existing unmarked protocol file"),
+            "unexpected error: {err:#}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&protocol_path).expect("read protocol"),
+            "manual protocol\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_team_dry_run_force_overwrites_unmarked_protocol_file() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let protocol_path = cwd.join("LIMUX_AGENTS.md");
+        std::fs::write(&protocol_path, "manual protocol\n").expect("write protocol");
+        let args = vec![
+            "--dry-run".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+            "--force-protocol-overwrite".to_string(),
+        ];
+        let mut client = Client::new(cwd.join("unused.sock"));
+
+        run_agent_team(&mut client, &args)
+            .await
+            .expect("force should allow replacing an unmarked protocol file");
+
+        let md = std::fs::read_to_string(&protocol_path).expect("read protocol");
+        assert!(md.contains("<!-- limux-agent-team-protocol generated:v1 -->"));
+        assert!(!md.contains("manual protocol"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn agent_team_dry_run_refuses_protocol_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let target = cwd.join("target.md");
+        std::fs::write(&target, "target protocol\n").expect("write target");
+        symlink(&target, cwd.join("LIMUX_AGENTS.md")).expect("create protocol symlink");
+        let args = vec![
+            "--dry-run".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+            "--force-protocol-overwrite".to_string(),
+        ];
+        let mut client = Client::new(cwd.join("unused.sock"));
+
+        let err = run_agent_team(&mut client, &args)
+            .await
+            .expect_err("dry run should refuse symlink protocol path");
+        assert!(
+            format!("{err:#}").contains("refusing to write protocol path because it is a symlink"),
+            "unexpected error: {err:#}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&target).expect("read target"),
+            "target protocol\n"
         );
     }
 }

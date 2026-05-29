@@ -76,7 +76,8 @@ into a `notify` (and, where useful, an inline `send`). Drop-in for
 
 ### Phase 5 — `limux agent-team` + generated protocol file ✅
 `limux agent-team [--agents codex,claude[,opencode,gemini]] [--cwd <path>]
-[--protocol-path <path>] [--no-launch] [--dry-run]`:
+[--protocol-path <path>] [--force-protocol-overwrite] [--no-launch]
+[--dry-run]`:
 
 - Splits the active workspace into one terminal pane per agent and launches
   each agent CLI unless `--no-launch` is set.
@@ -85,13 +86,19 @@ into a `notify` (and, where useful, an inline `send`). Drop-in for
   still addresses peers by surface ID because agents share one workspace.
 - Writes `LIMUX_AGENTS.md` in the shared cwd by default, or the explicit
   `--protocol-path`, documenting:
+    - the generated-file marker,
+    - detected instruction sources (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`)
+      with path, modified time, and deterministic content hash metadata,
     - the peers table (agent → pane → surface → launch cmd),
     - the `<agent-msg from="…" to="…" id="…" reply-to="…" ts="…">` envelope,
     - the exact `limux send` invocation for sending and replying,
     - the `limux notify` escalation path for human input,
     - the `LIMUX_*` env contract every spawned terminal inherits,
+    - the optional `LIMUX_AGENTS.local.md` durable policy sidecar,
     - editable Policies section (timeouts, size limits, destructive-action gating).
-  Existing repo `AGENTS.md` files are not written by default.
+  Existing repo `AGENTS.md` files are not written by default. Existing unmarked
+  protocol files are not overwritten unless `--force-protocol-overwrite` is
+  explicitly passed. Symlink protocol paths are refused.
 
 **Shipped in `cec067f`:**
 
@@ -100,18 +107,18 @@ into a `notify` (and, where useful, an inline `send`). Drop-in for
 - Regression coverage preserves existing repo `AGENTS.md` files and verifies
   the default sidecar path.
 
-**Next scoped improvement: Phase 5A — zero-friction protocol discovery**
+**Shipped after `cec067f`: Phase 5A — zero-friction protocol discovery**
 
-- Add a generated-file marker to `LIMUX_AGENTS.md`.
-- Add an `Instruction Sources` section that detects repo instruction files
+- Added a generated-file marker to `LIMUX_AGENTS.md`.
+- Added an `Instruction Sources` section that detects repo instruction files
   such as `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` and points agents to read
   them directly.
-- Do not copy, merge, or reinterpret repo instruction files by default. Repo
+- Does not copy, merge, or reinterpret repo instruction files by default. Repo
   instruction files remain authoritative; the Limux sidecar only adds runtime
   topology and messaging protocol.
-- Add no-overwrite semantics for existing unmarked `LIMUX_AGENTS.md`, with an
-  explicit force path if replacement is required.
-- Add or document a durable local extension point such as
+- Added no-overwrite semantics for existing unmarked `LIMUX_AGENTS.md`, with
+  `--force-protocol-overwrite` if replacement is required.
+- Documented a durable local extension point,
   `LIMUX_AGENTS.local.md` for team-specific policy that survives regeneration.
 
 **Deferred: Phase 5B — automatic bootstrap**
