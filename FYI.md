@@ -129,3 +129,19 @@ No OS package mutation occurred. The apt prerequisite lane remains blocked from 
 
 ### Related:
 `docs/LIMUX_HOST_PREREQ_MUTATION_REVIEW_2026-05-29.md` | `HANDOFF.md`
+
+## 2026-05-29 - Host Prerequisites Installed, Ghostty Gate Reached
+### What:
+The operator manually ran the approved host prerequisite apt lane in a trusted terminal. `pkg-config`, `pkgconf`, `libgtk-4-dev`, `libadwaita-1-dev`, and `libwebkitgtk-6.0-dev` are now installed.
+
+### Why:
+The previous Codex execution context could not access cached sudo credentials, so the operator completed the bounded apt prerequisite install manually while preserving the reviewed package scope.
+
+### How:
+Verified post-install state with `dpkg-query` and `pkg-config --modversion gtk4 libadwaita-1 webkitgtk-6.0`. Versions are `pkg-config 1.8.1-2build1`, `pkgconf 1.8.1-2build1`, GTK `4.14.5`, libadwaita `1.5.0`, and WebKitGTK `2.52.3`.
+
+### Impact:
+The host test moved past the prior GTK/pkg-config sys-crate blocker and now fails at the expected next gate: `limux-ghostty-sys` cannot find `ghostty/zig-out/lib/libghostty.so`. The `ghostty/` submodule is still uninitialized and `zig` is still not on `PATH`. Zig acquisition, Ghostty submodule initialization, and Ghostty build remain a separate reviewed gate.
+
+### Related:
+`rust/limux-ghostty-sys/build.rs` | `HANDOFF.md`

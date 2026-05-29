@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-05-29 19:24 EDT
+Last updated: 2026-05-29 19:51 EDT
 
 ## Immediate Next Action
 
@@ -33,23 +33,31 @@ The operator approved the exact command block in that file on 2026-05-29.
 Artifact SHA256 at approval and pre-run verification:
 `de2a31ac73a1f85b9c559b479507b3a541871771a194b6c5f77a8a9e6150bbec`.
 
-Execution attempt status: `BLOCKED BEFORE MUTATION`. The pre-mutation evidence
+Initial Codex execution attempt status: `BLOCKED BEFORE MUTATION`. The pre-mutation evidence
 and apt simulation ran, then execution stopped at `sudo apt-get update` because
 sudo required a password. The run was cancelled instead of collecting or
 handling a password in chat. No apt package install occurred, and `pkg-config`
 is still absent.
 
-Second attempt status: `STILL BLOCKED BEFORE MUTATION`. After the operator ran
+Second Codex attempt status: `STILL BLOCKED BEFORE MUTATION`. After the operator ran
 `sudo -v` locally, Codex checked `sudo -n true` in its execution context. Sudo
 still returned `sudo: a password is required`, which indicates the local sudo
 cache did not carry into the Codex PTY/session. No package mutation occurred.
 
-Recommended continuation: have the operator make sudo credentials available
-to the same execution context or run the approved command block manually in a
-trusted terminal, then report the output. Re-verify the artifact SHA above
-before any resumed Codex execution. Do not widen the block: no Zig download,
-no submodule init/update, no Ghostty build, and no system-wide Limux install in
-this lane.
+Manual operator execution status: `APT PREREQUISITES INSTALLED`. The operator
+ran the approved apt lane manually in a trusted terminal. Post-install checks
+show `pkg-config`, `pkgconf`, `libgtk-4-dev`, `libadwaita-1-dev`, and
+`libwebkitgtk-6.0-dev` installed. `pkg-config --modversion gtk4 libadwaita-1
+webkitgtk-6.0` reports `4.14.5`, `1.5.0`, and `2.52.3`.
+
+Current blocker: the host test now reaches `limux-ghostty-sys` and fails
+because `ghostty/zig-out/lib/libghostty.so` is missing. The `ghostty/`
+submodule is still uninitialized and `zig` is still not on `PATH`.
+
+Recommended continuation: run a separate reviewed Ghostty/Zig gate. Do not
+bundle it into the already-completed apt prerequisite lane. Do not run ad hoc
+Zig downloads, submodule init/update, Ghostty build, or system-wide Limux
+install without the next explicit review/approval step.
 
 Start here:
 
@@ -106,6 +114,7 @@ For host-side GTK tests, this environment also needs `pkg-config` available on
 | 2026-05-29 17:44 EDT | Host prerequisite mutation review | Created draft-only mutation review for apt prerequisites. Decision is `WAIT` pending explicit approval. Zig/Ghostty remain separate gates. |
 | 2026-05-29 19:07 EDT | Approved prerequisite block attempt | Verified artifact SHA, ran the pre-mutation evidence and apt simulation, then stopped at the first sudo command because a password was required. No packages were installed. |
 | 2026-05-29 19:24 EDT | Sudo cache follow-up | Operator ran `sudo -v` locally, but `sudo -n true` inside Codex still required a password. No packages were installed. |
+| 2026-05-29 19:51 EDT | Manual apt prerequisite completion | Operator manually completed the approved apt prerequisite lane. GTK/WebKit pkg-config checks pass. Host test now fails at the separate Ghostty/Zig gate. |
 
 ## Current State
 
@@ -168,7 +177,8 @@ Phase ordering:
 ## Known Risks And Blockers
 
 - `./scripts/check.sh` needs `ghostty/zig-out/lib/libghostty.so`; build it before claiming the full workspace gate passes.
-- Host-crate tests currently need `pkg-config` on `PATH`; this environment still did not have it after the 2026-05-29 19:07 EDT sudo gate stop.
+- Host-crate tests moved past the prior `pkg-config` blocker after manual apt install; the active host-crate blocker is now missing `ghostty/zig-out/lib/libghostty.so`.
+- `zig` is not on `PATH`, and the `ghostty/` submodule is uninitialized. Review this as a separate supply-chain/build gate before fetching/building.
 - Shell-injected launch/bootstrap commands need tests for spaces, quotes, `$`, backticks, semicolons, and newlines before automation expands.
 - Instruction-source hashes are deterministic `fnv1a64` metadata for change detection, not cryptographic integrity claims.
 
