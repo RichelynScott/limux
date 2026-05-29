@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-05-29 19:08 EDT
+Last updated: 2026-05-29 19:24 EDT
 
 ## Immediate Next Action
 
@@ -39,11 +39,17 @@ sudo required a password. The run was cancelled instead of collecting or
 handling a password in chat. No apt package install occurred, and `pkg-config`
 is still absent.
 
+Second attempt status: `STILL BLOCKED BEFORE MUTATION`. After the operator ran
+`sudo -v` locally, Codex checked `sudo -n true` in its execution context. Sudo
+still returned `sudo: a password is required`, which indicates the local sudo
+cache did not carry into the Codex PTY/session. No package mutation occurred.
+
 Recommended continuation: have the operator make sudo credentials available
-outside chat, re-verify the artifact SHA above, then rerun the approved
-prerequisite block from the review file. Do not widen the block: no Zig
-download, no submodule init/update, no Ghostty build, and no system-wide Limux
-install in this lane.
+to the same execution context or run the approved command block manually in a
+trusted terminal, then report the output. Re-verify the artifact SHA above
+before any resumed Codex execution. Do not widen the block: no Zig download,
+no submodule init/update, no Ghostty build, and no system-wide Limux install in
+this lane.
 
 Start here:
 
@@ -99,6 +105,7 @@ For host-side GTK tests, this environment also needs `pkg-config` available on
 | 2026-05-29 17:29 EDT | Verification | `cargo test -p limux-cli`, `cargo fmt --check`, `cargo clippy -p limux-cli --all-targets -- -D warnings`, and `git diff --check` passed. `cargo test -p limux-host-linux surface_send_text_response` is blocked because `pkg-config` is missing. |
 | 2026-05-29 17:44 EDT | Host prerequisite mutation review | Created draft-only mutation review for apt prerequisites. Decision is `WAIT` pending explicit approval. Zig/Ghostty remain separate gates. |
 | 2026-05-29 19:07 EDT | Approved prerequisite block attempt | Verified artifact SHA, ran the pre-mutation evidence and apt simulation, then stopped at the first sudo command because a password was required. No packages were installed. |
+| 2026-05-29 19:24 EDT | Sudo cache follow-up | Operator ran `sudo -v` locally, but `sudo -n true` inside Codex still required a password. No packages were installed. |
 
 ## Current State
 

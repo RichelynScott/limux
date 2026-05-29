@@ -113,3 +113,19 @@ No apt package install occurred. `pkg-config`, `pkgconf`, `libgtk-4-dev`, `libad
 
 ### Related:
 `docs/LIMUX_HOST_PREREQ_MUTATION_REVIEW_2026-05-29.md` | `HANDOFF.md`
+
+## 2026-05-29 - Sudo Cache Did Not Carry Into Codex PTY
+### What:
+Retried the approved prerequisite lane after the operator ran `sudo -v` locally, but did not execute the apt install.
+
+### Why:
+Before rerunning the frozen apt block, the session checked whether cached sudo credentials were visible inside Codex with `sudo -n true`.
+
+### How:
+Verified the mutation review artifact SHA still matched `de2a31ac73a1f85b9c559b479507b3a541871771a194b6c5f77a8a9e6150bbec` and confirmed the repo was clean. `sudo -n true` returned `sudo: a password is required`, so the Codex execution context still cannot run privileged commands without prompting for a password.
+
+### Impact:
+No OS package mutation occurred. The apt prerequisite lane remains blocked from inside Codex unless sudo credentials are made available to the same execution context, or the operator runs the approved command block manually in their own terminal. The approved review artifact was not edited, preserving its SHA.
+
+### Related:
+`docs/LIMUX_HOST_PREREQ_MUTATION_REVIEW_2026-05-29.md` | `HANDOFF.md`
