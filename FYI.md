@@ -81,3 +81,19 @@ The next session can open `docs/LIMUX_INSTALL_POSTURE_DECISION_PACKET_2026-05-29
 
 ### Related:
 `docs/LIMUX_INSTALL_POSTURE_DECISION_PACKET_2026-05-29.html` | `docs/install-security-report-2026-05-29.md` | `d60d2a3` | `edd781e`
+
+## 2026-05-29 - Host Prerequisite Mutation Review
+### What:
+Prepared a draft-only mutation review for the bounded host prerequisite install/build lane.
+
+### Why:
+The operator selected a minimal host build/test prerequisite lane, with `$mutation-script-wave` before any `sudo apt install`, rather than a full Limux system install.
+
+### How:
+Ran read-only recon for OS, installed tools, package status, apt candidates, dependency simulation, Ghostty submodule/lib state, README prerequisites, `scripts/check.sh`, and the Xvfb smoke harness. Wrote the exact draft command block and review synthesis to `docs/LIMUX_HOST_PREREQ_MUTATION_REVIEW_2026-05-29.md`.
+
+### Impact:
+Mutation wave decision is `WAIT`: the apt prerequisite lane is bounded and reviewable, but it still needs explicit human approval before execution. Zig acquisition and Ghostty build remain a separate follow-up gate.
+
+### Related:
+`docs/LIMUX_HOST_PREREQ_MUTATION_REVIEW_2026-05-29.md` | SHA256 `de2a31ac73a1f85b9c559b479507b3a541871771a194b6c5f77a8a9e6150bbec`
