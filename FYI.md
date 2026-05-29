@@ -65,3 +65,19 @@ The GTK bridge now preserves the distinction between “surface found” and “
 
 ### Related:
 `rust/limux-host-linux/src/window.rs` | `rust/limux-host-linux/src/terminal.rs` | `docs/cmux-parity-plan.md` | `HANDOFF.md`
+
+## 2026-05-29 - Install Posture Decision Packet
+### What:
+Created a dark-mode decision packet for whether to allow a fuller normal install posture after Phase 5A and GTK send-text hardening.
+
+### Why:
+The operator is close to allowing a regular install, but the safer next step is a bounded host prerequisite install/build lane rather than a full system Limux install. The decision packet makes the tradeoff explicit and gives a paste-back response.
+
+### How:
+Used the `$html-decision-packet` pattern. The packet recommends installing only the host build/test prerequisites after a mutation-script review gate, then running host tests, `scripts/check.sh`, and the Xvfb smoke path before automatic bootstrap work.
+
+### Impact:
+The next session can open `docs/LIMUX_INSTALL_POSTURE_DECISION_PACKET_2026-05-29.html`, copy back the selected install posture, and proceed without reconstructing the package/security discussion.
+
+### Related:
+`docs/LIMUX_INSTALL_POSTURE_DECISION_PACKET_2026-05-29.html` | `docs/install-security-report-2026-05-29.md` | `d60d2a3` | `edd781e`

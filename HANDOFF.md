@@ -17,6 +17,12 @@ The operator requested an easier-to-read status/options artifact on
 docs/LIMUX_NEXT_STEPS_STATUS_DECISION_PACKET_2026-05-29.html
 ```
 
+For the current install-prerequisite decision, use:
+
+```text
+docs/LIMUX_INSTALL_POSTURE_DECISION_PACKET_2026-05-29.html
+```
+
 Start here:
 
 ```bash

@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Limux Install Posture Decision Packet</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0f12;
+      --panel: #141a20;
+      --panel-2: #19222a;
+      --line: #2c3843;
+      --line-strong: #465564;
+      --text: #edf3f7;
+      --muted: #a7b4bf;
+      --faint: #74828e;
+      --accent: #55b7a6;
+      --ok: #84bd73;
+      --warn: #d5a84d;
+      --danger: #df776f;
+      --code: #090c0f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      line-height: 1.5;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 250px minmax(0, 1fr);
+      gap: 20px;
+      width: min(1320px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 24px 0 48px;
+    }
+    aside, section, .meta, .copybox {
+      border: 1px solid var(--line);
+      background: rgba(20, 26, 32, .92);
+    }
+    aside {
+      position: sticky;
+      top: 16px;
+      align-self: start;
+      padding: 16px;
+    }
+    .step {
+      display: grid;
+      grid-template-columns: 18px 1fr;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+    .step:last-child { border-bottom: 0; }
+    .dot { width: 10px; height: 10px; margin-top: 6px; background: var(--faint); }
+    .done .dot { background: var(--ok); }
+    .current .dot { background: var(--accent); box-shadow: 0 0 0 4px rgba(85,183,166,.14); }
+    .gated .dot { background: var(--warn); }
+    .step strong { display: block; font-size: 12px; }
+    .step span { display: block; color: var(--muted); font-size: 11px; }
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(260px, 380px);
+      gap: 18px;
+      align-items: end;
+      padding: 18px 0 24px;
+      border-bottom: 1px solid var(--line-strong);
+    }
+    h1, h2, h3 { margin: 0; line-height: 1.12; letter-spacing: 0; }
+    h1 { font-size: clamp(28px, 5vw, 54px); }
+    h2 { font-size: 22px; margin-bottom: 14px; }
+    h3 { color: var(--warn); font-size: 14px; margin-bottom: 8px; text-transform: uppercase; }
+    p { margin: 0 0 12px; color: var(--muted); }
+    code { background: var(--code); padding: 1px 4px; border: 1px solid var(--line); }
+    .meta { padding: 14px; display: grid; gap: 8px; }
+    .meta div { display: flex; justify-content: space-between; gap: 14px; color: var(--muted); font-size: 12px; }
+    .meta strong { color: var(--text); text-align: right; overflow-wrap: anywhere; }
+    section { margin-top: 18px; padding: 20px; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .fact, .decision {
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      padding: 14px;
+    }
+    .fact .label { color: var(--faint); font-size: 11px; text-transform: uppercase; }
+    .fact .value { margin-top: 8px; overflow-wrap: anywhere; }
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .danger { color: var(--danger); }
+    .decision { margin-bottom: 12px; }
+    label.option {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr);
+      gap: 10px;
+      padding: 10px;
+      margin-top: 8px;
+      background: rgba(9,12,15,.45);
+      border: 1px solid transparent;
+      cursor: pointer;
+    }
+    label.option:has(input:checked) { border-color: var(--accent); background: rgba(85,183,166,.1); }
+    input, textarea {
+      accent-color: var(--accent);
+      background: var(--code);
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+    textarea {
+      width: 100%;
+      min-height: 86px;
+      padding: 10px;
+      resize: vertical;
+      font: inherit;
+    }
+    .skills {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 14px;
+    }
+    .skills label { color: var(--muted); font-size: 13px; }
+    .copybox { margin-top: 18px; padding: 20px; }
+    #payload {
+      width: 100%;
+      min-height: 260px;
+      white-space: pre-wrap;
+      margin: 0 0 12px;
+      padding: 14px;
+      overflow: auto;
+      background: var(--code);
+      border: 1px solid var(--line);
+      color: var(--text);
+    }
+    button {
+      border: 1px solid var(--accent);
+      background: rgba(85,183,166,.14);
+      color: var(--text);
+      padding: 10px 14px;
+      cursor: pointer;
+      font: inherit;
+    }
+    .source-list {
+      display: grid;
+      grid-template-columns: 190px minmax(0, 1fr);
+      gap: 8px 14px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .source-list strong { color: var(--text); }
+    @media (max-width: 860px) {
+      .layout { grid-template-columns: 1fr; }
+      aside { position: static; }
+      header, .grid, .skills, .source-list { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside>
+      <div class="step done"><div class="dot"></div><div><strong>Phase 5A</strong><span>Agent protocol sidecar hardened.</span></div></div>
+      <div class="step done"><div class="dot"></div><div><strong>Send Text</strong><span>Not-ready surfaces now fail.</span></div></div>
+      <div class="step current"><div class="dot"></div><div><strong>Install Posture</strong><span>Decide how much host install risk to accept.</span></div></div>
+      <div class="step gated"><div class="dot"></div><div><strong>Host Verify</strong><span>Needs pkg-config, GTK dev libs, Ghostty lib.</span></div></div>
+      <div class="step gated"><div class="dot"></div><div><strong>Bootstrap</strong><span>Wait for shell-quoting tests and smoke evidence.</span></div></div>
+    </aside>
+
+    <main>
+      <header>
+        <div>
+          <h1>Limux Install Posture</h1>
+          <p>Recommendation after Phase 5A and GTK send-text hardening: do a bounded prerequisite lane, not a full normal system install yet.</p>
+        </div>
+        <div class="meta">
+          <div><span>Date</span><strong>2026-05-29</strong></div>
+          <div><span>Time</span><strong>5:34 PM EDT</strong></div>
+          <div><span>Runtime</span><strong>Codex / tipi</strong></div>
+          <div><span>Repo</span><strong>/home/riche/MCPs/limux</strong></div>
+          <div><span>Latest Commit</span><strong>d60d2a3</strong></div>
+        </div>
+      </header>
+
+      <section>
+        <h2>Status</h2>
+        <div class="grid">
+          <div class="fact"><div class="label">Done</div><div class="value ok">Phase 5A sidecar protocol hardening is implemented and pushed.</div></div>
+          <div class="fact"><div class="label">Done</div><div class="value ok"><code>surface.send_text</code> now errors when a terminal is not ready.</div></div>
+          <div class="fact"><div class="label">Blocked</div><div class="value warn">Host-crate tests need <code>pkg-config</code>, GTK dev packages, and Ghostty lib.</div></div>
+          <div class="fact"><div class="label">Not Done</div><div class="value">No full system Limux install has been performed.</div></div>
+          <div class="fact"><div class="label">Risk</div><div class="value">A normal install may not include this fork's new behavior unless we package this fork.</div></div>
+          <div class="fact"><div class="label">Recommendation</div><div class="value ok">Use a bounded host prerequisite install/build lane first.</div></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Decision Queue</h2>
+
+        <div class="decision">
+          <h3>1. Main Install Path</h3>
+          <p><strong>Recommendation:</strong> Install only the build/test prerequisites needed to verify this fork. Do not install Limux system-wide yet.</p>
+          <label class="option"><input type="radio" name="mainPath" value="Bounded host prerequisite install/build lane. Do not full-install Limux yet." checked><span>Bounded prerequisite lane (Recommended)</span></label>
+          <label class="option"><input type="radio" name="mainPath" value="Proceed with a normal Limux package install after a mutation-script review."><span>Normal Limux package install</span></label>
+          <label class="option"><input type="radio" name="mainPath" value="No host installs. Stop until prerequisites can be provided another way."><span>No host installs</span></label>
+        </div>
+
+        <div class="decision">
+          <h3>2. Security Gate</h3>
+          <p><strong>Recommendation:</strong> Use the OS-install mutation-script review gate before any sudo package install. Keep the install list narrow and distro-sourced.</p>
+          <label class="option"><input type="radio" name="gate" value="Run mutation-script-wave before any sudo package install." checked><span>Mutation-script review first (Recommended)</span></label>
+          <label class="option"><input type="radio" name="gate" value="Prepare package list only; do not execute."><span>Prepare package list only</span></label>
+          <label class="option"><input type="radio" name="gate" value="Operator will handle OS package install manually."><span>Operator installs manually</span></label>
+        </div>
+
+        <div class="decision">
+          <h3>3. Scope Of Packages</h3>
+          <p><strong>Recommendation:</strong> Only install prerequisites needed for host build/test: <code>pkg-config</code>, GTK/libadwaita/WebKitGTK dev packages, build tooling, and Ghostty/Zig prerequisites if absent.</p>
+          <label class="option"><input type="radio" name="scope" value="Minimal host build/test prerequisites only." checked><span>Minimal build/test prerequisites (Recommended)</span></label>
+          <label class="option"><input type="radio" name="scope" value="Full source-build dependency set for packaging this fork."><span>Full source-build dependency set</span></label>
+          <label class="option"><input type="radio" name="scope" value="Runtime .deb dependencies only."><span>Runtime dependencies only</span></label>
+        </div>
+
+        <div class="decision">
+          <h3>4. Next Verification Target</h3>
+          <p><strong>Recommendation:</strong> After prerequisites, run host tests and the Xvfb smoke path, then revisit automatic bootstrap.</p>
+          <label class="option"><input type="radio" name="verify" value="Run host tests, scripts/check.sh, and Xvfb smoke after prerequisites." checked><span>Host tests + check + Xvfb smoke (Recommended)</span></label>
+          <label class="option"><input type="radio" name="verify" value="Run only the previously blocked host unit test first."><span>Blocked host unit test only</span></label>
+          <label class="option"><input type="radio" name="verify" value="Skip host verification and proceed to bootstrap planning."><span>Proceed to bootstrap planning</span></label>
+        </div>
+      </section>
+
+      <section>
+        <h2>Execution Mode</h2>
+        <label class="option"><input type="radio" name="execution" value="Current Codex session prepares mutation-script review, then executes only after explicit approval." checked><span>Current Codex session, gated by explicit approval (Recommended)</span></label>
+        <label class="option"><input type="radio" name="execution" value="Document only; no installs or commands."><span>Document only</span></label>
+        <label class="option"><input type="radio" name="execution" value="Use subagents for package/security review before execution."><span>Subagent package/security review first</span></label>
+      </section>
+
+      <section>
+        <h2>Skills</h2>
+        <div class="skills">
+          <label><input type="checkbox" checked value="$mutation-script-wave"> $mutation-script-wave</label>
+          <label><input type="checkbox" checked value="$methodical-modification-protocol"> $methodical-modification-protocol</label>
+          <label><input type="checkbox" checked value="$code-audit"> $code-audit</label>
+          <label><input type="checkbox" checked value="$systematic-debugging"> $systematic-debugging</label>
+          <label><input type="checkbox" value="$adversarial-assessment"> $adversarial-assessment</label>
+          <label><input type="checkbox" value="$html-decision-packet"> $html-decision-packet</label>
+        </div>
+        <p style="margin-top:12px;">Additional skills:</p>
+        <textarea id="extraSkills" placeholder="Optional extra skills..."></textarea>
+        <label class="option"><input type="checkbox" id="skillRanker"><span>Use a dedicated skill-ranking subagent before execution.</span></label>
+      </section>
+
+      <section>
+        <h2>Notes</h2>
+        <textarea id="notes" placeholder="Add any constraints, comfort level, or package-install boundaries..."></textarea>
+      </section>
+
+      <div class="copybox">
+        <h2>Copy-Back Payload</h2>
+        <pre id="payload"></pre>
+        <button id="copy">Copy Decisions</button>
+        <span id="copied" aria-live="polite" style="margin-left:12px;color:var(--ok);"></span>
+      </div>
+
+      <section>
+        <h2>Sources / Evidence</h2>
+        <div class="source-list">
+          <strong>Install report</strong><span><code>docs/install-security-report-2026-05-29.md</code></span>
+          <strong>Phase 5A commit</strong><span><code>edd781e fix(cli): harden agent-team protocol discovery</code></span>
+          <strong>GTK send-text commit</strong><span><code>d60d2a3 fix(host): report send-text readiness failures</code></span>
+          <strong>Handoff</strong><span><code>HANDOFF.md</code></span>
+          <strong>Roadmap</strong><span><code>docs/cmux-parity-plan.md</code></span>
+          <strong>Quality gate</strong><span><code>scripts/check.sh</code>; blocked until host prerequisites are available.</span>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const fields = ["mainPath", "gate", "scope", "verify", "execution"];
+    function checkedValue(name) {
+      const item = document.querySelector(`input[name="${name}"]:checked`);
+      return item ? item.value : "Not selected";
+    }
+    function checkedSkills() {
+      return Array.from(document.querySelectorAll(".skills input:checked")).map(input => input.value);
+    }
+    function updatePayload() {
+      const payload = `My decisions after reviewing the Limux install posture packet:
+
+1. Main install path:
+   - ${checkedValue("mainPath")}
+
+2. Security gate:
+   - ${checkedValue("gate")}
+
+3. Scope of packages:
+   - ${checkedValue("scope")}
+
+4. Next verification target:
+   - ${checkedValue("verify")}
+
+5. Execution mode:
+   - ${checkedValue("execution")}
+
+6. Skills:
+   - ${checkedSkills().join("\\n   - ") || "None selected"}
+
+7. Additional skills:
+   - ${document.getElementById("extraSkills").value.trim() || "None"}
+
+8. Skill-ranking subagent:
+   - ${document.getElementById("skillRanker").checked ? "Use one before execution." : "Do not use one for this scoped step."}
+
+9. Notes:
+   - ${document.getElementById("notes").value.trim() || "None"}
+
+Please proceed according to these selections.`;
+      document.getElementById("payload").textContent = payload;
+    }
+    document.addEventListener("input", updatePayload);
+    document.getElementById("copy").addEventListener("click", async () => {
+      updatePayload();
+      const text = document.getElementById("payload").textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        document.getElementById("copied").textContent = "Copied.";
+      } catch (error) {
+        document.getElementById("copied").textContent = "Select the payload and copy manually.";
+      }
+    });
+    updatePayload();
+  </script>
+</body>
+</html>
