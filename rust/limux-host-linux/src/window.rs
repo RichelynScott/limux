@@ -146,6 +146,26 @@ fn pane_create_response_payload(
     })
 }
 
+fn surface_send_text_response(
+    mut payload: serde_json::Value,
+    sent: bool,
+) -> Result<serde_json::Value, BridgeError> {
+    if !sent {
+        let surface_id = payload
+            .get("surface_id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("unknown");
+        return Err(BridgeError::conflict(format!(
+            "terminal surface {surface_id} is not ready for text input"
+        )));
+    }
+
+    if let Some(map) = payload.as_object_mut() {
+        map.insert("ok".to_string(), serde_json::Value::Bool(true));
+    }
+    Ok(payload)
+}
+
 fn send_pane_create_response_after_command(
     pane_widget: gtk::Widget,
     surface_id: String,
@@ -4324,11 +4344,7 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 return;
             };
 
-            handle.send_text(&text);
-            if let Some(map) = payload.as_object_mut() {
-                map.insert("ok".to_string(), serde_json::Value::Bool(true));
-            }
-            let _ = reply.send(Ok(payload));
+            let _ = reply.send(surface_send_text_response(payload, handle.send_text(&text)));
         }
         ControlCommand::ReadSurfaceText {
             target,
@@ -5882,13 +5898,13 @@ mod tests {
         resolved_system_prefers_dark, sanitize_background_opacity,
         shortcut_allowed_while_browser_find_active, shortcut_blocked_by_editable,
         shortcut_command_from_key_event, shortcut_dispatch_propagation,
-        should_emit_desktop_notification, tab_drag_workspace_seed, use_opaque_window_background,
-        validate_workspace_folder_input_with_dirs, workspace_drop_layout_path,
-        workspace_folder_path_from_input, workspace_notification_message, Direction,
-        EditableCaptureContext, NeighborScore, PaneBounds, PaneCreateDirection,
-        PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest,
-        WorkspaceSeedSource, BASE_CSS, HOST_ENTRY_CSS_CLASS, WORKSPACE_RENAME_ENTRY_CSS_CLASS,
-        WORKSPACE_RENAME_ENTRY_CSS_CLASSES,
+        should_emit_desktop_notification, surface_send_text_response, tab_drag_workspace_seed,
+        use_opaque_window_background, validate_workspace_folder_input_with_dirs,
+        workspace_drop_layout_path, workspace_folder_path_from_input,
+        workspace_notification_message, Direction, EditableCaptureContext, NeighborScore,
+        PaneBounds, PaneCreateDirection, PaneCreateTargetError, PortalColorSchemePreference,
+        SessionSaveAccess, SessionSaveRequest, WorkspaceSeedSource, BASE_CSS, HOST_ENTRY_CSS_CLASS,
+        WORKSPACE_RENAME_ENTRY_CSS_CLASS, WORKSPACE_RENAME_ENTRY_CSS_CLASSES,
     };
     use crate::layout_state::{LayoutNodeState, PaneState, SplitOrientation, SplitState};
     use crate::shortcut_config::{
@@ -5918,6 +5934,40 @@ mod tests {
     fn favorites_prefix_len_counts_only_leading_favorites() {
         let flags = [true, true, false, true, false];
         assert_eq!(favorites_prefix_len(&flags), 2);
+    }
+
+    #[test]
+    fn surface_send_text_response_marks_ok_when_writable() {
+        let payload = serde_json::json!({
+            "workspace_id": "workspace-a",
+            "workspace_ref": "workspace:workspace-a",
+            "surface_id": "7:tab-a",
+            "surface_ref": "surface:7:tab-a"
+        });
+
+        let result =
+            surface_send_text_response(payload, true).expect("writable send should succeed");
+
+        assert_eq!(result["ok"], true);
+        assert_eq!(result["surface_id"], "7:tab-a");
+    }
+
+    #[test]
+    fn surface_send_text_response_conflicts_when_terminal_is_not_writable() {
+        let payload = serde_json::json!({
+            "workspace_id": "workspace-a",
+            "workspace_ref": "workspace:workspace-a",
+            "surface_id": "7:tab-a",
+            "surface_ref": "surface:7:tab-a"
+        });
+
+        let err = surface_send_text_response(payload, false)
+            .expect_err("unwritable terminal should fail");
+
+        assert_eq!(
+            err,
+            super::BridgeError::conflict("terminal surface 7:tab-a is not ready for text input")
+        );
     }
 
     #[test]

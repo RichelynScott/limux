@@ -121,13 +121,20 @@ into a `notify` (and, where useful, an inline `send`). Drop-in for
 - Documented a durable local extension point,
   `LIMUX_AGENTS.local.md` for team-specific policy that survives regeneration.
 
+**Shipped after Phase 5A: GTK `surface.send_text` failure reporting**
+
+- The live GTK bridge now checks `TerminalHandle::send_text` and returns a
+  conflict error when a resolved terminal surface is not ready for text input
+  instead of reporting `ok: true`.
+- The existing `pane.create --command` path already retries until the new
+  pane's terminal surface is writable before returning success.
+
 **Deferred: Phase 5B — automatic bootstrap**
 
-Full two-phase launch/bootstrap should wait until the GTK bridge reports
-`surface.send_text` readiness failures correctly and shell-quoted launch
-commands have regression tests. The current `pane.create --command` path has
-readiness retry behavior; a future blank-pane-then-send bootstrap must not
-bypass that safety.
+Full two-phase launch/bootstrap should wait until shell-quoted launch commands
+have regression tests and the live GTK/Xvfb smoke path can be run in an
+environment with the required GTK/pkg-config/Ghostty prerequisites. A future
+blank-pane-then-send bootstrap must not bypass the readiness safety.
 
 ### Phase 6 — (deferred) `limux progress`, `limux log`, `limux markdown`
 Nice polish, not blockers.

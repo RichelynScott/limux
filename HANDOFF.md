@@ -1,13 +1,14 @@
 # Limux Session Handoff
 
-Last updated: 2026-05-29 17:00 EDT
+Last updated: 2026-05-29 17:29 EDT
 
 ## Immediate Next Action
 
 Phase 5A zero-friction protocol discovery for `limux agent-team` is implemented
-and locally verified. The next scoped code option is to fix GTK bridge
-`surface.send_text` readiness/failure semantics before attempting full
-automatic bootstrap.
+and locally verified. GTK bridge `surface.send_text` now reports not-ready
+terminal surfaces as a conflict instead of returning `ok: true`. The next
+scoped code option is shell-quoting/test coverage for future automatic
+bootstrap, after host GTK/pkg-config/Ghostty prerequisites are available.
 
 The operator requested an easier-to-read status/options artifact on
 2026-05-29. Use this packet if a decision needs to be confirmed before coding:
@@ -47,6 +48,10 @@ git diff --check
 
 Run `./scripts/check.sh` only after `libghostty.so` is present. The last full gate attempt failed because `libghostty` was missing, not because of the CLI changes.
 
+For host-side GTK tests, this environment also needs `pkg-config` available on
+`PATH`; otherwise `gio-sys`, `glib-sys`, `gobject-sys`, `cairo-sys-rs`, and
+`gdk-pixbuf-sys` fail before Rust test compilation starts.
+
 ## Completed This Session
 
 | Time | Item | Result |
@@ -62,12 +67,14 @@ Run `./scripts/check.sh` only after `libghostty.so` is present. The last full ga
 | 2026-05-29 17:00 EDT | Phase 5A implementation | Added generated marker, instruction-source metadata, no-overwrite guard, explicit force flag, local policy sidecar docs, and regression tests. |
 | 2026-05-29 17:00 EDT | Verification | `cargo test -p limux-cli agent_team`, `cargo test -p limux-cli`, `cargo fmt --check`, `cargo clippy -p limux-cli --all-targets -- -D warnings`, and `git diff --check` passed. |
 | 2026-05-29 17:00 EDT | Cross-family review attempt | Claude plugin read-only review timed out after 120 seconds without findings; do not treat it as a passed review. |
+| 2026-05-29 17:29 EDT | GTK send-text readiness fix | Updated the live GTK `surface.send_text` handler to convert `TerminalHandle::send_text == false` into a conflict error. Added focused unit tests for the response helper. |
+| 2026-05-29 17:29 EDT | Verification | `cargo test -p limux-cli`, `cargo fmt --check`, `cargo clippy -p limux-cli --all-targets -- -D warnings`, and `git diff --check` passed. `cargo test -p limux-host-linux surface_send_text_response` is blocked because `pkg-config` is missing. |
 
 ## Current State
 
 - Branch: `main`
 - Code commit pushed before this handoff: `cec067f fix(cli): protect agent-team protocol output`
-- Latest implementation in this handoff: Phase 5A protocol discovery hardening.
+- Latest implementation in this handoff: GTK `surface.send_text` readiness/failure hardening.
 - Latest pushed status/report commit before Phase 5A implementation:
   `1c12e97 docs(decision): add limux next steps packet`
 - Working tree should be clean after committing/pushing the Phase 5A implementation.
@@ -78,7 +85,7 @@ Run `./scripts/check.sh` only after `libghostty.so` is present. The last full ga
 2. **Authority split.** Repo files such as `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` remain authoritative project instructions.
 3. **Runtime sidecar.** `LIMUX_AGENTS.md` is generated Limux runtime context: peers, surfaces, messaging, human notification, and routing.
 4. **Zero-friction path.** Reduce friction through automated discovery, explicit pointers, environment variables, and later bootstrap/adapters, not hidden prompt composition.
-5. **Launch automation waits.** Full two-phase automatic launch/bootstrap should wait until host send readiness is fixed and shell quoting is hardened.
+5. **Launch automation waits.** Full two-phase automatic launch/bootstrap should wait until shell quoting is hardened and the live GTK/Xvfb path can be verified with host prerequisites installed.
 
 ## Subagent Brainstorm Synthesis
 
@@ -93,9 +100,9 @@ LIMUX_AGENTS.local.md            = optional durable local team policy
 
 Phase ordering:
 
-1. **GO now:** Improve generated `LIMUX_AGENTS.md` with instruction-source detection, generated marker, no-overwrite guard, and local-policy extension point.
-2. **GO next:** Fix `surface.send_text` readiness/failure semantics in the GTK host bridge.
-3. **WAIT:** Implement two-phase agent bootstrap only after readiness and shell-quoting tests exist.
+1. **Done:** Improve generated `LIMUX_AGENTS.md` with instruction-source detection, generated marker, no-overwrite guard, and local-policy extension point.
+2. **Done, pending host-crate build prerequisite verification:** Fix `surface.send_text` readiness/failure semantics in the GTK host bridge.
+3. **WAIT:** Implement two-phase agent bootstrap only after shell-quoting tests and host smoke verification exist.
 4. **Optional later:** Add runtime-specific `.limux/` adapters for Codex, Claude Code, Gemini, and OpenCode.
 
 ## Key Files For Context
@@ -103,7 +110,7 @@ Phase ordering:
 | File | Purpose |
 |---|---|
 | `/home/riche/MCPs/limux/rust/limux-cli/src/main.rs` | `agent-team`, protocol generation, hook setup, tests. |
-| `/home/riche/MCPs/limux/rust/limux-host-linux/src/window.rs` | GTK bridge command handling; `surface.send_text` currently ignores the boolean return from terminal injection. |
+| `/home/riche/MCPs/limux/rust/limux-host-linux/src/window.rs` | GTK bridge command handling; `surface.send_text` now errors if terminal injection reports not-ready. |
 | `/home/riche/MCPs/limux/rust/limux-host-linux/src/terminal.rs` | `TerminalHandle::send_text` returns `false` when the Ghostty surface is not realized. |
 | `/home/riche/MCPs/limux/docs/cmux-parity-plan.md` | Roadmap and current open bridge/protocol work. |
 | `/home/riche/MCPs/limux/docs/limux-hcom-workflow.md` | Operator workflow for Limux plus hcom. |
@@ -124,12 +131,12 @@ Phase ordering:
 ## Known Risks And Blockers
 
 - `./scripts/check.sh` needs `ghostty/zig-out/lib/libghostty.so`; build it before claiming the full workspace gate passes.
-- Full automatic bootstrap has a readiness race until `surface.send_text` reports failure correctly through the GTK bridge.
+- Host-crate tests currently need `pkg-config` on `PATH`; this environment did not have it at 2026-05-29 17:29 EDT.
 - Shell-injected launch/bootstrap commands need tests for spaces, quotes, `$`, backticks, semicolons, and newlines before automation expands.
 - Instruction-source hashes are deterministic `fnv1a64` metadata for change detection, not cryptographic integrity claims.
 
 ## Morning Resume Prompt
 
 ```text
-Please resume the Limux work from HANDOFF.md. Phase 5A zero-friction protocol discovery for `limux agent-team` is implemented and verified locally. Start with the next scoped option: fix GTK bridge `surface.send_text` readiness/failure semantics before attempting full automatic bootstrap.
+Please resume the Limux work from HANDOFF.md. Phase 5A zero-friction protocol discovery is implemented and GTK `surface.send_text` now returns a conflict when the terminal is not ready. Before automatic bootstrap, install/verify host prerequisites (`pkg-config`, GTK dev libraries, Ghostty lib), run host/Xvfb checks, then add shell-quoting tests for launch/bootstrap commands.
 ```
