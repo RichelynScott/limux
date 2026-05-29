@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Limux + hcom Workflow Guide</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --paper: #100f0c;
+      --ink: #f2ead8;
+      --muted: #b7ad99;
+      --line: #3f3527;
+      --panel: #191610;
+      --panel-strong: #221b12;
+      --teal: #52c8b8;
+      --rust: #ff7348;
+      --gold: #e2b64d;
+      --charcoal: #080907;
+      --code: #080a08;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(90deg, rgba(226, 182, 77, 0.055) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(226, 182, 77, 0.045) 1px, transparent 1px),
+        var(--paper);
+      background-size: 32px 32px;
+      color: var(--ink);
+      font-family: "Aptos", "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    a {
+      color: var(--teal);
+      text-decoration-thickness: 2px;
+      text-underline-offset: 3px;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: minmax(210px, 270px) minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    nav {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 28px 22px;
+      border-right: 1px solid var(--line);
+      background: rgba(14, 13, 10, 0.92);
+      backdrop-filter: blur(10px);
+      overflow: auto;
+    }
+
+    nav .mark {
+      display: inline-block;
+      margin-bottom: 28px;
+      padding: 4px 7px;
+      border: 2px solid var(--ink);
+      background: var(--panel-strong);
+      color: var(--ink);
+      font-family: "Georgia", serif;
+      font-weight: 700;
+      letter-spacing: 0;
+      box-shadow: 4px 4px 0 var(--gold);
+    }
+
+    nav a {
+      display: block;
+      padding: 7px 0;
+      color: var(--muted);
+      font-size: 0.94rem;
+      text-decoration: none;
+    }
+
+    nav a:hover {
+      color: var(--rust);
+    }
+
+    main {
+      max-width: 1120px;
+      padding: 48px min(7vw, 80px) 80px;
+    }
+
+    header {
+      margin-bottom: 40px;
+      padding-bottom: 28px;
+      border-bottom: 3px solid var(--ink);
+    }
+
+    .eyebrow {
+      color: var(--rust);
+      font-family: "Consolas", "Menlo", monospace;
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      font-family: "Georgia", "Times New Roman", serif;
+      letter-spacing: 0;
+      line-height: 1.08;
+    }
+
+    h1 {
+      max-width: 860px;
+      margin-top: 10px;
+      font-size: 5.4rem;
+    }
+
+    h2 {
+      margin-top: 52px;
+      margin-bottom: 14px;
+      padding-top: 8px;
+      border-top: 1px solid var(--line);
+      font-size: 2.3rem;
+    }
+
+    h3 {
+      margin-top: 28px;
+      margin-bottom: 10px;
+      font-size: 1.2rem;
+    }
+
+    p {
+      max-width: 780px;
+      margin: 0 0 16px;
+    }
+
+    .lede {
+      max-width: 880px;
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 1.32rem;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 22px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 4px 9px;
+      border: 1px solid var(--line);
+      background: var(--panel-strong);
+      color: var(--ink);
+      font-family: "Consolas", "Menlo", monospace;
+      font-size: 0.82rem;
+      box-shadow: 2px 2px 0 var(--ink);
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      margin: 24px 0;
+    }
+
+    .callout,
+    .warning,
+    .note {
+      max-width: 920px;
+      padding: 18px 20px;
+      border: 2px solid var(--ink);
+      background: var(--panel);
+      box-shadow: 6px 6px 0 var(--teal);
+    }
+
+    .warning {
+      box-shadow-color: var(--rust);
+    }
+
+    .note {
+      box-shadow-color: var(--gold);
+    }
+
+    .callout strong,
+    .warning strong,
+    .note strong {
+      display: block;
+      margin-bottom: 6px;
+      font-family: "Consolas", "Menlo", monospace;
+      font-size: 0.84rem;
+      text-transform: uppercase;
+    }
+
+    table {
+      width: 100%;
+      margin: 18px 0 26px;
+      border-collapse: collapse;
+      background: rgba(25, 22, 16, 0.82);
+    }
+
+    th,
+    td {
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--panel-strong);
+      color: var(--gold);
+      font-family: "Consolas", "Menlo", monospace;
+      font-size: 0.82rem;
+      text-transform: uppercase;
+    }
+
+    code,
+    pre {
+      font-family: "Consolas", "Menlo", monospace;
+    }
+
+    code {
+      padding: 0.1em 0.28em;
+      background: rgba(82, 200, 184, 0.13);
+      color: #8ee6da;
+    }
+
+    pre {
+      max-width: 940px;
+      margin: 16px 0 24px;
+      padding: 16px;
+      border-left: 5px solid var(--rust);
+      background: var(--code);
+      color: #f5eddd;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+    }
+
+    ul,
+    ol {
+      max-width: 820px;
+      padding-left: 1.25rem;
+    }
+
+    li {
+      margin: 7px 0;
+    }
+
+    .flow {
+      max-width: 940px;
+      margin: 18px 0 26px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      background: rgba(25, 22, 16, 0.82);
+    }
+
+    .flow-row {
+      display: grid;
+      grid-template-columns: 150px 1fr;
+      gap: 14px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .flow-row:last-child {
+      border-bottom: 0;
+    }
+
+    .flow-label {
+      color: var(--rust);
+      font-family: "Consolas", "Menlo", monospace;
+      font-weight: 700;
+    }
+
+    footer {
+      margin-top: 60px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    @media (max-width: 860px) {
+      .shell {
+        display: block;
+      }
+
+      nav {
+        position: relative;
+        height: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      nav a {
+        display: inline-block;
+        margin-right: 14px;
+      }
+
+      main {
+        padding: 34px 20px 60px;
+      }
+
+      h1 {
+        font-size: 3rem;
+      }
+
+      h2 {
+        font-size: 1.75rem;
+      }
+
+      .lede {
+        font-size: 1.08rem;
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+      }
+
+      .split,
+      .flow-row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <nav aria-label="Page sections">
+      <span class="mark">Limux / hcom</span>
+      <a href="#summary">Summary</a>
+      <a href="#what-limux-is">What Limux Is</a>
+      <a href="#model">Mental Model</a>
+      <a href="#layout">Project Layout</a>
+      <a href="#same-project">Same-Project Commands</a>
+      <a href="#cross-project">Cross-Project hcom</a>
+      <a href="#reviews">Reviews</a>
+      <a href="#safety">Safety</a>
+      <a href="#caveat">Important Caveat</a>
+      <a href="#cadence">Cadence</a>
+      <a href="#improvements">Improvements</a>
+      <a href="#snapshot">Prime Snapshot</a>
+    </nav>
+
+    <main>
+      <header>
+        <div class="eyebrow">Workflow guide</div>
+        <h1>Limux + hcom for multi-project agent teams</h1>
+        <p class="lede">
+          Use Limux as the local live workspace layer. Use hcom as the
+          cross-session and cross-project coordination bus. Keep durable files
+          as the source of truth.
+        </p>
+        <div class="meta" aria-label="Review metadata">
+          <span class="pill">Reviewed 2026-05-29</span>
+          <span class="pill">Branch main</span>
+          <span class="pill">Code commit cec067f</span>
+        </div>
+      </header>
+
+      <section id="summary">
+        <h2>Executive Summary</h2>
+        <div class="split">
+          <div class="callout">
+            <strong>Limux handles local work</strong>
+            Panes, surfaces, workspace layout, same-project message injection,
+            screen reads, and GUI notifications.
+          </div>
+          <div class="note">
+            <strong>hcom handles team routing</strong>
+            Named agent discovery, direct messages across tools, event history,
+            threads, and messages to teams outside the current workspace.
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Need</th>
+              <th>Use</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Codex asks Claude in the same project to review a diff</td>
+              <td><code>limux send --surface ...</code></td>
+            </tr>
+            <tr>
+              <td>Parent checks whether a child pane is stuck</td>
+              <td><code>limux read-screen --surface ... --lines 80</code></td>
+            </tr>
+            <tr>
+              <td>Spawn a short-lived reviewer beside the current pane</td>
+              <td><code>limux new-pane --direction right --command 'codex "..."'</code></td>
+            </tr>
+            <tr>
+              <td>Get human attention inside the GUI</td>
+              <td><code>limux notify ...</code></td>
+            </tr>
+            <tr>
+              <td>Tell another project team about a relevant change</td>
+              <td><code>uvx hcom send @agent --intent inform --thread ...</code></td>
+            </tr>
+            <tr>
+              <td>Preserve decisions, plans, reviews, or handoffs</td>
+              <td>Write a durable file, then send a Limux or hcom pointer</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="what-limux-is">
+        <h2>What Limux Is</h2>
+        <p>
+          Limux is a Linux terminal workspace manager built with GTK4,
+          libadwaita, and embedded Ghostty rendering. The important workflow
+          feature is its Unix socket control layer. Agents running inside Limux
+          terminals inherit environment variables that let them identify and
+          control their own workspace without extra configuration.
+        </p>
+        <pre><code>LIMUX_WORKSPACE_ID
+LIMUX_SURFACE_ID
+LIMUX_PANE_ID
+LIMUX_TAB_ID
+LIMUX_SOCKET</code></pre>
+        <p>
+          With those values, an agent can split its own pane, launch another
+          agent CLI, send structured text to a peer terminal, read peer output,
+          and raise GUI notifications.
+        </p>
+      </section>
+
+      <section id="model">
+        <h2>Mental Model</h2>
+        <div class="flow">
+          <div class="flow-row">
+            <div class="flow-label">Human</div>
+            <div>Receives GUI attention, makes decisions, and reviews synthesis.</div>
+          </div>
+          <div class="flow-row">
+            <div class="flow-label">Limux</div>
+            <div>One visual workspace per project, with panes for Codex, Claude, and temporary reviewers.</div>
+          </div>
+          <div class="flow-row">
+            <div class="flow-label">Agents</div>
+            <div>Coordinate through same-project stdin messages, screen reads, and short callbacks.</div>
+          </div>
+          <div class="flow-row">
+            <div class="flow-label">hcom</div>
+            <div>Routes cross-project notices, named-agent requests, and inter-team threads.</div>
+          </div>
+          <div class="flow-row">
+            <div class="flow-label">Files</div>
+            <div>Store plans, decisions, review reports, handoffs, and consensus summaries.</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="layout">
+        <h2>Recommended Project Layout</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Scope</th>
+              <th>Recommendation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>One project</td>
+              <td>One Limux workspace rooted at that repo</td>
+            </tr>
+            <tr>
+              <td>Core pair</td>
+              <td>At least one Codex pane and one Claude Code pane</td>
+            </tr>
+            <tr>
+              <td>Orchestrator</td>
+              <td>One visible lead pane that owns synthesis and user updates</td>
+            </tr>
+            <tr>
+              <td>Reviewers</td>
+              <td>Temporary panes or hcom-launched agents with narrow prompts</td>
+            </tr>
+            <tr>
+              <td>Durable state</td>
+              <td>Repo files such as <code>docs/</code>, <code>reviews/</code>, <code>HANDOFF.md</code>, or <code>FYI.md</code></td>
+            </tr>
+            <tr>
+              <td>Cross-team signal</td>
+              <td>hcom threads with short pointers to durable files</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="same-project">
+        <h2>Same-Project Commands</h2>
+        <p>Run these from inside a Limux terminal.</p>
+
+        <h3>Identify the current pane</h3>
+        <pre><code>limux identify --json</code></pre>
+
+        <h3>Launch Claude beside the current pane</h3>
+        <pre><code>limux new-pane --direction right --command 'claude'</code></pre>
+
+        <h3>Launch a focused Codex reviewer</h3>
+        <pre><code>limux new-pane --direction down --command 'codex "Review the current diff for correctness, regressions, and missing tests. Leave findings visible in this pane."'</code></pre>
+
+        <h3>Read a child pane</h3>
+        <pre><code>limux read-screen --surface "$child_surface" --lines 80</code></pre>
+
+        <h3>Send a structured peer message</h3>
+        <pre><code>limux send --surface "$peer_surface" $'&lt;agent-msg from="codex" to="claude" id="'"$(uuidgen)"'" ts="'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"&gt;\n&lt;request&gt;Review the latest diff and report blocking issues only.&lt;/request&gt;\n&lt;/agent-msg&gt;\n'
+limux send-key --surface "$peer_surface" enter</code></pre>
+
+        <h3>Notify the human</h3>
+        <pre><code>limux notify \
+  --subtitle "review needed" \
+  --body "Consensus conflict in project X" \
+  "Input needed"</code></pre>
+      </section>
+
+      <section id="cross-project">
+        <h2>Cross-Project hcom Pattern</h2>
+        <p>Use hcom when a message needs to leave the current Limux workspace.</p>
+
+        <h3>List available sessions</h3>
+        <pre><code>uvx hcom list --name tipi</code></pre>
+
+        <h3>Send a non-blocking update</h3>
+        <pre><code>uvx hcom send @target \
+  --intent inform \
+  --thread project-x-auth \
+  --name tipi \
+  -- "Project X changed shared auth assumptions. See docs/decisions/auth-2026-05-28.md."</code></pre>
+
+        <h3>Ask for a reply</h3>
+        <pre><code>uvx hcom send @target \
+  --intent request \
+  --thread shared-release-risk \
+  --name tipi \
+  -- "Please check whether this release assumption affects your project. Details: reviews/release-risk-2026-05-28.md"</code></pre>
+
+        <div class="note">
+          <strong>Keep messages compact</strong>
+          Put long findings, review reports, plans, and handoffs in files first.
+          Send hcom pointers instead of raw reports.
+        </div>
+      </section>
+
+      <section id="reviews">
+        <h2>Subagent And Review Pattern</h2>
+        <ol>
+          <li>The project orchestrator writes or identifies the artifact under review.</li>
+          <li>Spawn reviewers as Limux panes if they only need the current repo.</li>
+          <li>Use hcom if the reviewer lives in another runtime, project, or machine.</li>
+          <li>Require reviewers to write file-backed findings or leave clear pane output.</li>
+          <li>The orchestrator reads outputs, resolves conflicts, and writes a synthesis.</li>
+          <li>If another project is affected, send only the synthesis pointer through hcom.</li>
+        </ol>
+
+        <h3>Reviewer prompt shape</h3>
+        <pre><code>Review this artifact for blocking issues only.
+
+Scope:
+- Files: &lt;paths&gt;
+- Question: &lt;specific decision&gt;
+- Output: findings with file:line references, or PASS
+
+Do not rewrite code unless asked.
+Leave the final answer visible in your pane.
+Parent surface if blocked: &lt;surface-id&gt;.</code></pre>
+      </section>
+
+      <section id="safety">
+        <h2>Safety Rules</h2>
+        <ul>
+          <li>Limux messages are for short same-project coordination.</li>
+          <li>hcom messages are for named cross-session coordination.</li>
+          <li>Durable files are the source of truth for plans, decisions, handoffs, and reviews.</li>
+          <li>Never rely on terminal scrollback as the only record of a decision.</li>
+          <li>Do not send more than about 200 lines through <code>limux send</code>; write a file and send the path.</li>
+          <li>Do not broadcast raw reviewer output across projects; synthesize first.</li>
+          <li>Ask before destructive operations, infrastructure changes, production data access, or security-sensitive changes.</li>
+        </ul>
+      </section>
+
+      <section id="caveat">
+        <h2>Important Limux Caveat</h2>
+        <div class="warning">
+          <strong>Protect repo instructions</strong>
+          <code>limux agent-team --cwd "$PWD"</code> now writes generated runtime
+          protocol to <code>LIMUX_AGENTS.md</code> by default instead of
+          <code>AGENTS.md</code>. Repo instructions remain protected from the
+          previous default clobber path.
+        </div>
+
+        <p>
+          Do not treat <code>LIMUX_AGENTS.md</code> as an inherited or merged
+          copy of <code>AGENTS.md</code>. Repo instruction files such as
+          <code>AGENTS.md</code>, <code>CLAUDE.md</code>, and
+          <code>GEMINI.md</code> remain authoritative. The generated sidecar
+          should describe Limux runtime topology, peer routing, messaging, and
+          human-notification rules.
+        </p>
+        <p>
+          The next friction-reduction step is to add an
+          <code>Instruction Sources</code> section, generated-marker, and
+          no-overwrite semantics for existing unmarked
+          <code>LIMUX_AGENTS.md</code> files. Use
+          <code>--protocol-path &lt;path&gt;</code> when the generated protocol
+          should live somewhere other than the shared cwd.
+        </p>
+      </section>
+
+      <section id="cadence">
+        <h2>Suggested Operating Cadence</h2>
+        <h3>Start of project session</h3>
+        <ol>
+          <li>Open the repo in its own Limux workspace.</li>
+          <li>Start one lead Codex or Claude pane.</li>
+          <li>Start the paired peer pane.</li>
+          <li>Run <code>uvx hcom list --name tipi</code> to see active cross-project peers.</li>
+          <li>Record any project-specific coordination file paths.</li>
+        </ol>
+
+        <h3>During execution</h3>
+        <ol>
+          <li>Use Limux for local peer messages and pane observation.</li>
+          <li>Use temporary panes for focused review or implementation tasks.</li>
+          <li>Use hcom only for cross-project dependencies or explicit external review.</li>
+          <li>Write durable summaries before notifying other teams.</li>
+        </ol>
+
+        <h3>End of task</h3>
+        <ol>
+          <li>Run the repo quality gate.</li>
+          <li>Write or update the handoff/review summary.</li>
+          <li>Send hcom pointers only to teams that need the information.</li>
+          <li>Use <code>limux notify</code> for human attention when a decision is needed.</li>
+        </ol>
+      </section>
+
+      <section id="improvements">
+        <h2>Best Next Improvements</h2>
+        <ol>
+          <li>Add <code>LIMUX_AGENTS.md</code> instruction-source discovery, generated-marker, and no-overwrite semantics.</li>
+          <li>Fix <code>surface.send_text</code> readiness/failure reporting before automatic bootstrap work.</li>
+          <li>Add a compact project roster file mapping project names to Limux workspaces, surface IDs, hcom names, and durable coordination files.</li>
+          <li>Add a wrapper command for "spawn reviewer, capture surface, read result".</li>
+          <li>Add documented conventions for consensus reports and cross-team broadcasts.</li>
+        </ol>
+      </section>
+
+      <section id="snapshot">
+        <h2>Current Prime Snapshot</h2>
+        <ul>
+          <li><code>agent-team</code> writes <code>LIMUX_AGENTS.md</code> by default and supports <code>--protocol-path</code>.</li>
+          <li>Existing repo <code>AGENTS.md</code> files are not written by default.</li>
+          <li>Code state before this handoff is pushed at <code>cec067f</code>.</li>
+          <li>Latest tag is <code>v0.1.19</code>.</li>
+          <li>Full <code>./scripts/check.sh</code> still requires a built <code>ghostty/zig-out/lib/libghostty.so</code>.</li>
+          <li>The morning resume path is captured in <a href="../HANDOFF.md">HANDOFF.md</a>.</li>
+        </ul>
+      </section>
+
+      <footer>
+        Source files: <a href="limux-hcom-workflow.md">Markdown guide</a>,
+        <a href="../HANDOFF.md">handoff</a>,
+        <a href="../AGENTS.md">repo AGENTS.md</a>,
+        <a href="cmux-parity-plan.md">cmux parity plan</a>,
+        and <a href="../skills/limux-a2a/SKILL.md">Limux A2A skill</a>.
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

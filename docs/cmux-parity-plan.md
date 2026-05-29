@@ -93,6 +93,35 @@ into a `notify` (and, where useful, an inline `send`). Drop-in for
     - editable Policies section (timeouts, size limits, destructive-action gating).
   Existing repo `AGENTS.md` files are not written by default.
 
+**Shipped in `cec067f`:**
+
+- Default protocol output changed from `AGENTS.md` to `LIMUX_AGENTS.md`.
+- `--protocol-path <path>` allows an explicit protocol file location.
+- Regression coverage preserves existing repo `AGENTS.md` files and verifies
+  the default sidecar path.
+
+**Next scoped improvement: Phase 5A — zero-friction protocol discovery**
+
+- Add a generated-file marker to `LIMUX_AGENTS.md`.
+- Add an `Instruction Sources` section that detects repo instruction files
+  such as `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` and points agents to read
+  them directly.
+- Do not copy, merge, or reinterpret repo instruction files by default. Repo
+  instruction files remain authoritative; the Limux sidecar only adds runtime
+  topology and messaging protocol.
+- Add no-overwrite semantics for existing unmarked `LIMUX_AGENTS.md`, with an
+  explicit force path if replacement is required.
+- Add or document a durable local extension point such as
+  `LIMUX_AGENTS.local.md` for team-specific policy that survives regeneration.
+
+**Deferred: Phase 5B — automatic bootstrap**
+
+Full two-phase launch/bootstrap should wait until the GTK bridge reports
+`surface.send_text` readiness failures correctly and shell-quoted launch
+commands have regression tests. The current `pane.create --command` path has
+readiness retry behavior; a future blank-pane-then-send bootstrap must not
+bypass that safety.
+
 ### Phase 6 — (deferred) `limux progress`, `limux log`, `limux markdown`
 Nice polish, not blockers.
 

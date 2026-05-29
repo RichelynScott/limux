@@ -1,0 +1,1273 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Limux vs Multica Decision Guide</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080a0d;
+      --bg-2: #101419;
+      --panel: #151a20;
+      --panel-2: #1c2229;
+      --line: #303943;
+      --line-strong: #46515c;
+      --text: #edf0f2;
+      --muted: #aeb7c0;
+      --faint: #77818b;
+      --green: #68d391;
+      --cyan: #69d2e7;
+      --amber: #f2bd5c;
+      --red: #ff7b72;
+      --ink: #071014;
+      --shadow: 0 24px 60px rgba(0, 0, 0, 0.38);
+      --radius: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(180deg, rgba(105, 210, 231, 0.05), transparent 320px),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.018) 0, rgba(255,255,255,0.018) 1px, transparent 1px, transparent 88px),
+        var(--bg);
+      color: var(--text);
+      font-family: Aptos, "Segoe UI", "Helvetica Neue", sans-serif;
+      line-height: 1.55;
+    }
+
+    a {
+      color: var(--cyan);
+      text-decoration-color: rgba(105, 210, 231, 0.55);
+      text-underline-offset: 3px;
+    }
+
+    a:hover {
+      color: #9de7f4;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: rgba(8, 10, 13, 0.86);
+      backdrop-filter: blur(18px);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+
+    .topbar {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 16px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .brand strong {
+      font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      font-size: clamp(18px, 2vw, 26px);
+      font-weight: 700;
+      letter-spacing: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .brand span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .quick-nav {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .quick-nav a,
+    .ghost-button,
+    .copy-button {
+      border: 1px solid var(--line-strong);
+      background: #11171d;
+      color: var(--text);
+      border-radius: 6px;
+      padding: 8px 11px;
+      font-size: 13px;
+      line-height: 1;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .quick-nav a:hover,
+    .ghost-button:hover {
+      border-color: var(--cyan);
+      background: #162027;
+    }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 34px 0 56px;
+      display: grid;
+      grid-template-columns: 236px minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .packet-main {
+      min-width: 0;
+    }
+
+    .packet-roadmap {
+      position: sticky;
+      top: 86px;
+      border: 1px solid var(--line);
+      background: rgba(21, 26, 32, 0.94);
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .packet-roadmap h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+
+    .road-step {
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr);
+      gap: 9px;
+      padding: 10px 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .road-step:first-of-type {
+      border-top: 0;
+    }
+
+    .road-dot {
+      width: 10px;
+      height: 10px;
+      margin-top: 6px;
+      border-radius: 50%;
+      background: var(--faint);
+    }
+
+    .road-step.done .road-dot {
+      background: var(--green);
+    }
+
+    .road-step.current .road-dot {
+      background: var(--cyan);
+      box-shadow: 0 0 0 4px rgba(105, 210, 231, 0.12);
+    }
+
+    .road-step.gated .road-dot {
+      background: var(--amber);
+    }
+
+    .road-step.blocked .road-dot {
+      background: var(--red);
+    }
+
+    .road-step strong {
+      display: block;
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .road-step span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .packet-meta {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .meta-item {
+      border: 1px solid var(--line);
+      background: rgba(7, 16, 20, 0.46);
+      border-radius: 6px;
+      padding: 9px 10px;
+      min-width: 0;
+    }
+
+    .meta-item span {
+      display: block;
+      color: var(--faint);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 3px;
+    }
+
+    .meta-item strong {
+      display: block;
+      color: var(--text);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .status-card {
+      border: 1px solid var(--line);
+      background: #121820;
+      border-radius: var(--radius);
+      padding: 13px;
+      min-width: 0;
+    }
+
+    .status-card strong {
+      display: block;
+      color: var(--text);
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    .status-card span {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+      gap: 18px;
+      align-items: stretch;
+      margin-bottom: 18px;
+    }
+
+    .hero-copy {
+      padding: 30px;
+      border: 1px solid var(--line);
+      background: linear-gradient(135deg, rgba(28, 34, 41, 0.96), rgba(12, 15, 18, 0.96));
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      min-width: 0;
+    }
+
+    .eyebrow {
+      color: var(--amber);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin: 0 0 10px;
+      font-weight: 700;
+    }
+
+    h1,
+    h2,
+    h3 {
+      font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      letter-spacing: 0;
+      line-height: 1.1;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(34px, 5vw, 64px);
+      max-width: 920px;
+    }
+
+    .lead {
+      color: #d6dce1;
+      font-size: clamp(16px, 2vw, 20px);
+      max-width: 760px;
+      margin: 18px 0 0;
+    }
+
+    .recommendation {
+      border: 1px solid rgba(104, 211, 145, 0.42);
+      background: linear-gradient(180deg, rgba(104, 211, 145, 0.14), rgba(104, 211, 145, 0.035));
+      border-radius: var(--radius);
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 18px;
+      min-width: 0;
+    }
+
+    .recommendation h2 {
+      margin: 0;
+      font-size: 24px;
+    }
+
+    .recommendation p {
+      margin: 0;
+      color: #d7f6e2;
+    }
+
+    .stack {
+      display: grid;
+      gap: 8px;
+      font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+      font-size: 13px;
+    }
+
+    .stack div {
+      border: 1px solid rgba(104, 211, 145, 0.28);
+      background: rgba(7, 16, 20, 0.55);
+      padding: 10px 12px;
+      border-radius: 6px;
+      overflow-wrap: anywhere;
+    }
+
+    .section {
+      margin-top: 18px;
+      border: 1px solid var(--line);
+      background: rgba(21, 26, 32, 0.94);
+      border-radius: var(--radius);
+      overflow: clip;
+    }
+
+    .section-header {
+      padding: 20px 22px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.025);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .section-header h2 {
+      margin: 0;
+      font-size: 28px;
+    }
+
+    .section-header p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      max-width: 760px;
+    }
+
+    .section-body {
+      padding: 22px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .two-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      border-radius: var(--radius);
+      padding: 16px;
+      min-width: 0;
+    }
+
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 19px;
+    }
+
+    .card p,
+    .card li {
+      color: var(--muted);
+    }
+
+    .card p {
+      margin: 0;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 4px 8px;
+      border-radius: 5px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .tag.green {
+      color: #9ef0bc;
+      background: rgba(104, 211, 145, 0.12);
+      border: 1px solid rgba(104, 211, 145, 0.32);
+    }
+
+    .tag.amber {
+      color: #ffd891;
+      background: rgba(242, 189, 92, 0.12);
+      border: 1px solid rgba(242, 189, 92, 0.36);
+    }
+
+    .tag.red {
+      color: #ffafa8;
+      background: rgba(255, 123, 114, 0.12);
+      border: 1px solid rgba(255, 123, 114, 0.36);
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 760px;
+    }
+
+    th,
+    td {
+      text-align: left;
+      vertical-align: top;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    th {
+      color: #dfe8ef;
+      background: #11171d;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    td {
+      color: var(--muted);
+    }
+
+    td strong {
+      color: var(--text);
+    }
+
+    .choice-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .choice,
+    .check {
+      display: grid;
+      grid-template-columns: 20px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+      padding: 13px;
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      background: #121820;
+      cursor: pointer;
+    }
+
+    .choice:hover,
+    .check:hover {
+      border-color: var(--cyan);
+      background: #162027;
+    }
+
+    input[type="radio"],
+    input[type="checkbox"] {
+      margin-top: 3px;
+      accent-color: var(--cyan);
+    }
+
+    .choice strong,
+    .check strong {
+      display: block;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+
+    .choice span,
+    .check span {
+      display: block;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .notes {
+      margin-top: 14px;
+      display: grid;
+      gap: 8px;
+    }
+
+    label.note-label {
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .text-field {
+      display: grid;
+      gap: 8px;
+    }
+
+    .text-field label {
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 120px;
+      resize: vertical;
+      border-radius: var(--radius);
+      border: 1px solid var(--line-strong);
+      background: #0c1116;
+      color: var(--text);
+      padding: 12px 13px;
+      font: 14px/1.5 "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+    }
+
+    textarea:focus,
+    button:focus-visible,
+    a:focus-visible,
+    .choice:focus-within,
+    .check:focus-within {
+      outline: 2px solid var(--cyan);
+      outline-offset: 2px;
+    }
+
+    .decision-output {
+      min-height: 310px;
+      white-space: pre-wrap;
+    }
+
+    .copy-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .copy-button {
+      color: var(--ink);
+      background: var(--cyan);
+      border-color: var(--cyan);
+      font-weight: 800;
+    }
+
+    .copy-button:hover {
+      background: #9de7f4;
+      border-color: #9de7f4;
+    }
+
+    .status {
+      color: var(--green);
+      min-height: 20px;
+      font-size: 14px;
+    }
+
+    .source-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 18px;
+      padding-left: 18px;
+      margin: 0;
+    }
+
+    .source-list li {
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+
+    .small {
+      color: var(--faint);
+      font-size: 13px;
+    }
+
+    @media (max-width: 900px) {
+      main,
+      .hero,
+      .grid,
+      .two-grid,
+      .choice-grid,
+      .source-list,
+      .status-grid,
+      .packet-meta,
+      .field-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .packet-roadmap {
+        position: static;
+      }
+
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .quick-nav {
+        justify-content: flex-start;
+      }
+
+      .hero-copy,
+      .section-body,
+      .section-header {
+        padding: 18px;
+      }
+
+      .section-header {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <div class="brand">
+        <strong>Limux vs Multica Decision Guide</strong>
+        <span>Dark-mode decision packet updated on 2026-05-29 at 2:06 AM EDT</span>
+      </div>
+      <nav class="quick-nav" aria-label="Page sections">
+        <a href="#summary">Summary</a>
+        <a href="#compare">Compare</a>
+        <a href="#risks">Risks</a>
+        <a href="#decisions">Decide</a>
+        <a href="#copy">Copy</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <aside class="packet-roadmap" aria-label="Decision packet roadmap">
+      <h2>Roadmap</h2>
+      <div class="road-step done"><i class="road-dot"></i><div><strong>Context</strong><span>Limux and Multica compared.</span></div></div>
+      <div class="road-step done"><i class="road-dot"></i><div><strong>Decision</strong><span>Limux + hcom primary; Multica deferred.</span></div></div>
+      <div class="road-step current"><i class="road-dot"></i><div><strong>Execution</strong><span>Next: protocol discovery Phase 5A.</span></div></div>
+      <div class="road-step done"><i class="road-dot"></i><div><strong>Canonical template</strong><span>Kazu completed global pattern update.</span></div></div>
+      <div class="road-step current"><i class="road-dot"></i><div><strong>Closeout</strong><span>Handoff docs ready for morning.</span></div></div>
+    </aside>
+
+    <div class="packet-main">
+    <section class="hero" id="summary">
+      <div class="hero-copy">
+        <p class="eyebrow">Bottom line</p>
+        <h1>Keep Limux + hcom primary.</h1>
+        <p class="lead">Multica stays deferred. The next Limux step is making `LIMUX_AGENTS.md` discover repo instructions without silently copying or merging them.</p>
+        <div class="packet-meta" aria-label="Packet metadata">
+          <div class="meta-item"><span>Scope</span><strong>/home/riche/MCPs/limux</strong></div>
+          <div class="meta-item"><span>Runtime/session</span><strong>Codex / tipi</strong></div>
+          <div class="meta-item"><span>Date</span><strong>2026-05-29</strong></div>
+          <div class="meta-item"><span>Time</span><strong>2:06 AM EDT</strong></div>
+          <div class="meta-item"><span>Pattern</span><strong>$html-decision-packet</strong></div>
+          <div class="meta-item"><span>Canonical owner</span><strong>@kazu completed global template request</strong></div>
+        </div>
+      </div>
+      <aside class="recommendation" aria-label="Recommended architecture">
+        <div>
+          <h2>Recommended default</h2>
+          <p>The subagents converged on explicit instruction-source pointers, not hidden inheritance.</p>
+        </div>
+        <div class="stack">
+          <div>Limux = live operator cockpit</div>
+          <div>hcom + durable files = cross-project messaging</div>
+          <div>Multica = deferred until Limux fixes land</div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="section" id="status">
+      <div class="section-header">
+        <div>
+          <h2>Completion Status</h2>
+          <p>What is done, verified, gated, blocked, and explicitly not done.</p>
+        </div>
+      </div>
+      <div class="section-body status-grid">
+        <div class="status-card"><strong>Done</strong><span>User selected Limux + hcom primary and no Multica pilot for now.</span></div>
+        <div class="status-card"><strong>Done</strong><span>Commit `cec067f` moved generated protocol output to `LIMUX_AGENTS.md` and added `--protocol-path`.</span></div>
+        <div class="status-card"><strong>Verified</strong><span>`cargo test -p limux-cli`, fmt, clippy for limux-cli, and diff whitespace checks passed after the code fix.</span></div>
+        <div class="status-card"><strong>Gated</strong><span>Full automatic bootstrap waits on send-readiness and shell-quoting hardening.</span></div>
+        <div class="status-card"><strong>Blocked</strong><span>Full `./scripts/check.sh` needs `ghostty/zig-out/lib/libghostty.so` built first.</span></div>
+        <div class="status-card"><strong>Not done</strong><span>Did not clone, install, build, or run Multica. Did not edit global templates directly.</span></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Decisions Received</h2>
+          <p>These selections are now the working path.</p>
+        </div>
+      </div>
+      <div class="section-body grid">
+        <article class="card">
+          <span class="tag green">Selected</span>
+          <h3>Main path</h3>
+          <p>Keep Limux + hcom primary. Pilot Multica only later, in a fenced repo, after Limux fixes land.</p>
+        </article>
+        <article class="card">
+          <span class="tag amber">Next</span>
+          <h3>Limux Phase 5A</h3>
+          <p>Add `LIMUX_AGENTS.md` instruction-source discovery, generated-marker, no-overwrite semantics, and a local policy extension point.</p>
+        </article>
+        <article class="card">
+          <span class="tag amber">Deferred</span>
+          <h3>Automatic bootstrap</h3>
+          <p>Wait until `surface.send_text` readiness/failure reporting and shell quoting have regression coverage.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Decision Options</h2>
+          <p>These are the practical choices from the analysis.</p>
+        </div>
+      </div>
+      <div class="section-body grid">
+        <article class="card">
+          <span class="tag green">Recommended</span>
+          <h3>Keep Limux + hcom primary</h3>
+          <p><strong>Context:</strong> Your current workflow depends on live panes and direct operator intervention. <strong>Why:</strong> This preserves that while testing Multica's ledger value. <strong>Risk:</strong> Multica's value remains unproven until a pilot.</p>
+        </article>
+        <article class="card">
+          <span class="tag amber">Possible</span>
+          <h3>Use Multica as async layer</h3>
+          <p><strong>Context:</strong> Multica's strongest surface is issues, comments, runs, and squads. <strong>Why:</strong> It avoids replacing Limux. <strong>Risk:</strong> Adds ops burden.</p>
+        </article>
+        <article class="card">
+          <span class="tag amber">Conservative</span>
+          <h3>Stay Limux-only for now</h3>
+          <p><strong>Context:</strong> You can copy Multica ideas without adopting the stack. <strong>Why:</strong> Lowest external-tool risk. <strong>Risk:</strong> Requires Limux/hcom feature work.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="compare">
+      <div class="section-header">
+        <div>
+          <h2>Comparison</h2>
+          <p>Multica wins on async task management. Limux wins on live control.</p>
+        </div>
+      </div>
+      <div class="section-body">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Need</th>
+                <th>Limux</th>
+                <th>Multica</th>
+                <th>Winner</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Live Codex/Claude sessions</strong></td>
+                <td>Visible terminal panes, direct send/read/notify.</td>
+                <td>Daemon-dispatched tasks with logs/comments.</td>
+                <td><strong>Limux</strong></td>
+              </tr>
+              <tr>
+                <td><strong>4+ projects</strong></td>
+                <td>Workspaces can map to projects, routing is manual.</td>
+                <td>Workspaces, projects, issues, agents, and runs are native.</td>
+                <td><strong>Multica</strong></td>
+              </tr>
+              <tr>
+                <td><strong>Codex + Claude per project</strong></td>
+                <td>Simple as terminal panes.</td>
+                <td>Supported as runtimes, but Codex has limitations.</td>
+                <td><strong>Limux for live work</strong></td>
+              </tr>
+              <tr>
+                <td><strong>Subagent teams</strong></td>
+                <td>Can host subagents, orchestration is convention.</td>
+                <td>Squads route through a leader, but this is not full consensus orchestration.</td>
+                <td><strong>Multica partially</strong></td>
+              </tr>
+              <tr>
+                <td><strong>Adversarial review</strong></td>
+                <td>Use skills, hcom, and files.</td>
+                <td>Use issues, comments, labels, and reviewer agents.</td>
+                <td><strong>Neither native</strong></td>
+              </tr>
+              <tr>
+                <td><strong>Security/ops burden</strong></td>
+                <td>Local Rust/GTK app with narrower surface.</td>
+                <td>Server, DB, Docker/Helm, daemon, installers, auth, skills.</td>
+                <td><strong>Limux</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="risks">
+      <div class="section-header">
+        <div>
+          <h2>Risks That Matter</h2>
+          <p>These are the blockers to resolve before using Multica for serious work.</p>
+        </div>
+      </div>
+      <div class="section-body two-grid">
+        <article class="card">
+          <span class="tag red">Multica blockers</span>
+          <h3>Do not ignore these</h3>
+          <ul>
+            <li>Codex subagents are disabled by default because child output can be dropped.</li>
+            <li>Codex session resumption is documented as unusable.</li>
+            <li>No native quorum, vote, approval gate, or consensus primitive was found.</li>
+            <li>Installer, Docker, desktop, daemon, and third-party skill surfaces need review.</li>
+            <li>Local-directory execution can mutate real repos in place.</li>
+            <li>The license is not plain Apache-2.0 and needs review for external service use.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <span class="tag amber">Limux fixes</span>
+          <h3>Make Limux safer</h3>
+          <ul>
+            <li>Shipped: `agent-team` no longer writes `AGENTS.md` by default.</li>
+            <li>Shipped: `--protocol-path` allows explicit sidecar location.</li>
+            <li>Next: add `Instruction Sources` to `LIMUX_AGENTS.md` without copying repo instruction files.</li>
+            <li>Next: add generated-marker and no-overwrite behavior for existing unmarked sidecars.</li>
+            <li>Add a project/team roster for 4+ project coordination.</li>
+            <li>Add a durable review and consensus ledger.</li>
+            <li>Improve transcript capture beyond visible viewport reads.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>HCOM Updates From The Thread</h2>
+          <p>These shipped while the conversation was happening and strengthen the communication layer.</p>
+        </div>
+      </div>
+      <div class="section-body">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Update</th>
+                <th>Usefulness</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>`hcom r` / `hcom f` picker</strong></td>
+                <td>Interactive resume/fork menu with name, tool, status, cwd, age, tag, and resumable state.</td>
+              </tr>
+              <tr>
+                <td><strong>Ack-on-inform allowed</strong></td>
+                <td>Receipt can be recorded for inform messages.</td>
+              </tr>
+              <tr>
+                <td><strong>`HCOM_NAME` sticky send identity</strong></td>
+                <td>Less repeated `--name` typing for sends.</td>
+              </tr>
+              <tr>
+                <td><strong>`hcom list --compact` and `--no-inbox`</strong></td>
+                <td>Cleaner roster output and less inbox noise.</td>
+              </tr>
+              <tr>
+                <td><strong>Collision warning improvements</strong></td>
+                <td>Fewer false positives and better partner state/repo context.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="decisions">
+      <div class="section-header">
+        <div>
+          <h2>Make Selections</h2>
+          <p>Your choices below build the copy-ready response at the bottom.</p>
+        </div>
+      </div>
+      <div class="section-body">
+        <form id="decisionForm">
+          <div class="card">
+            <h3>Main path</h3>
+            <div class="choice-grid" role="radiogroup" aria-label="Main path">
+              <label class="choice">
+                <input type="radio" name="mainPath" value="Keep Limux + hcom primary, and pilot Multica only in a fenced repo." checked>
+                <span><strong>Keep Limux + hcom primary</strong><span>Pilot Multica only. This is the recommended default.</span></span>
+              </label>
+              <label class="choice">
+                <input type="radio" name="mainPath" value="Use Multica as an async layer only, not as a Limux replacement.">
+                <span><strong>Multica async layer only</strong><span>Use tasks/issues/runs, keep live panes in Limux.</span></span>
+              </label>
+              <label class="choice">
+                <input type="radio" name="mainPath" value="Stay Limux-only for now and copy useful Multica ideas into Limux/hcom.">
+                <span><strong>Stay Limux-only</strong><span>Avoid Multica ops burden for now.</span></span>
+              </label>
+              <label class="choice">
+                <input type="radio" name="mainPath" value="Switch fully to Multica, despite the current recommendation against doing that.">
+                <span><strong>Switch fully to Multica</strong><span>Not recommended until blockers are proven resolved.</span></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Multica pilot</h3>
+            <div class="choice-grid" role="radiogroup" aria-label="Multica pilot">
+              <label class="choice">
+                <input type="radio" name="pilot" value="Yes, run a fenced Multica pilot.">
+                <span><strong>Yes, pilot</strong><span>Use non-sensitive code and a controlled install path.</span></span>
+              </label>
+              <label class="choice">
+                <input type="radio" name="pilot" value="Not now. Revisit after Limux fixes." checked>
+                <span><strong>Not now</strong><span>Focus on Limux safety and hcom workflow first.</span></span>
+              </label>
+              <label class="choice">
+                <input type="radio" name="pilot" value="Defer the Multica decision until after a more detailed security review.">
+                <span><strong>Defer for security review</strong><span>Decide only after installer, license, and runtime review.</span></span>
+              </label>
+              <label class="choice">
+                <input type="radio" name="pilot" value="Pilot only if it can run in a disposable VM with no real secrets.">
+                <span><strong>VM-only pilot</strong><span>Maximum containment for first test.</span></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Multica security requirements</h3>
+            <div class="choice-grid">
+              <label class="check">
+                <input type="checkbox" name="security" value="Use a disposable VM or throwaway repo.">
+                <span><strong>Disposable VM/repo</strong><span>No sensitive production checkout.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="security" value="Do not use curl-pipe-shell installers.">
+                <span><strong>No curl-pipe-shell</strong><span>Manual pinned install only.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="security" value="Pin release, commit, or image digest.">
+                <span><strong>Pin artifacts</strong><span>No mutable latest tags.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="security" value="Verify checksums before install.">
+                <span><strong>Verify checksums</strong><span>Require artifact integrity checks.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="security" value="Do not use real secrets during the pilot.">
+                <span><strong>No real secrets</strong><span>Use throwaway credentials only.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="security" value="Disable or tightly control auto-update behavior.">
+                <span><strong>Control updates</strong><span>Avoid silent runtime drift.</span></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Limux priorities</h3>
+            <div class="choice-grid">
+              <label class="check">
+                <input type="checkbox" name="limux" value="Keep the shipped `agent-team` AGENTS.md clobber fix." checked>
+                <span><strong>Keep AGENTS.md protection</strong><span>Already shipped in `cec067f`.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="limux" value="Add `LIMUX_AGENTS.md` instruction-source discovery." checked>
+                <span><strong>Instruction Sources</strong><span>Point agents to repo instructions directly.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="limux" value="Add generated-marker and no-overwrite semantics for unmarked `LIMUX_AGENTS.md` files." checked>
+                <span><strong>Sidecar no-overwrite</strong><span>Protect hand-edited protocol files.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="limux" value="Add a project/team roster for workspaces, sessions, owners, and related teams." checked>
+                <span><strong>Project/team roster</strong><span>Better 4+ project control.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="limux" value="Add a durable review and consensus ledger." checked>
+                <span><strong>Review ledger</strong><span>Make adversarial review decisions durable.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="limux" value="Improve read-screen/transcript capture beyond visible viewport text.">
+                <span><strong>Transcript capture</strong><span>Better long-running worker visibility.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="limux" value="Keep browser bridge parity separate until the terminal workflow is safer.">
+                <span><strong>Defer browser parity</strong><span>Focus on terminal coordination first.</span></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>HCOM posture</h3>
+            <div class="choice-grid">
+              <label class="check">
+                <input type="checkbox" name="hcom" value="Use hcom for cross-project and cross-team communication." checked>
+                <span><strong>Use hcom for cross-project comms</strong><span>Keep Limux local and hcom cross-session.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="hcom" value="Use the new hcom resume/fork picker and compact list improvements." checked>
+                <span><strong>Use picker/compact list</strong><span>Reduce session selection friction.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="hcom" value="Keep long instructions in durable files and send hcom pointers." checked>
+                <span><strong>File-first long messages</strong><span>Avoid huge bus messages.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="hcom" value="Use relevance labels/topics when hcom supports them.">
+                <span><strong>Relevance labels later</strong><span>Reduce broad broadcasts.</span></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Execution mode</h3>
+            <div class="choice-grid" role="radiogroup" aria-label="Execution mode">
+              <label class="choice">
+                <input type="radio" name="execMode" value="Current session should handle the next scoped step." checked>
+                <span><strong>Current session</strong><span>Best for small local edits, docs, or a concrete next-step plan.</span></span>
+              </label>
+              <label class="choice">
+                <input type="radio" name="execMode" value="Use native subagents for independent analysis or disjoint work slices.">
+                <span><strong>Native subagents</strong><span>Best for parallel read-only review or independent implementation slices.</span></span>
+              </label>
+              <label class="choice">
+                <input type="radio" name="execMode" value="Use buffered subagents for broad multi-wave work.">
+                <span><strong>Buffered subagents</strong><span>Best for large PRD/review waves.</span></span>
+              </label>
+              <label class="choice">
+                <input type="radio" name="execMode" value="Use an hcom-managed worker only if a persistent cross-tool owner is required.">
+                <span><strong>hcom-managed worker</strong><span>Use only when persistent cross-tool ownership is needed.</span></span>
+              </label>
+              <label class="choice">
+                <input type="radio" name="execMode" value="Defer and document only.">
+                <span><strong>Defer/document only</strong><span>No execution until later approval.</span></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Skill checklist</h3>
+            <div class="choice-grid">
+              <label class="check">
+                <input type="checkbox" name="skills" value="$html-decision-packet" checked>
+                <span><strong>$html-decision-packet</strong><span>Use for dark-mode packet updates.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="skills" value="$evaluate-repo" checked>
+                <span><strong>$evaluate-repo</strong><span>Use for Multica adoption review.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="skills" value="$agent-orchestration" checked>
+                <span><strong>$agent-orchestration</strong><span>Use when subagents are requested.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="skills" value="$hcom" checked>
+                <span><strong>$hcom</strong><span>Use for Kazu/global template routing and cross-session messages.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="skills" value="$methodical-modification-protocol" checked>
+                <span><strong>$methodical-modification-protocol</strong><span>Use before Limux behavior changes.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="skills" value="$adversarial-assessment or $adversarial-review" checked>
+                <span><strong>$adversarial-assessment / $adversarial-review</strong><span>Use before adoption or template policy changes.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="skillRanker" value="Use a dedicated skill-ranking subagent before complex execution." checked>
+                <span><strong>Skill-ranking subagent</strong><span>Dedicated subagent ranks relevant skills before complex execution.</span></span>
+              </label>
+            </div>
+            <div class="field-grid">
+              <div class="text-field">
+                <label for="additionalSkills">Additional skills</label>
+                <textarea id="additionalSkills" placeholder="$browser-automation, $prd, $secure-repo, or anything else you want considered."></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="notes">
+            <label class="note-label" for="freeNotes">Extra notes or decisions</label>
+            <textarea id="freeNotes" placeholder="Add anything you want me to account for next. Example: I want to fix Limux agent-team first, then run a Multica pilot in a disposable VM."></textarea>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="section" id="copy">
+      <div class="section-header">
+        <div>
+          <h2>Copy Resume Response</h2>
+          <p>This text updates from your selections. Copy it and paste it back into chat when resuming.</p>
+        </div>
+      </div>
+      <div class="section-body">
+        <textarea id="decisionOutput" class="decision-output" readonly></textarea>
+        <div class="copy-row">
+          <button class="copy-button" type="button" id="copyButton">Copy Resume Response</button>
+          <span class="status" id="copyStatus" aria-live="polite"></span>
+        </div>
+        <p class="small">The copy button uses your browser clipboard API. If the browser blocks it, select the text box manually and copy.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Sources / Evidence</h2>
+          <p>Primary references and evidence used for the summary. Future decision packets should include this section when applicable.</p>
+        </div>
+      </div>
+      <div class="section-body">
+        <ul class="source-list">
+          <li><a href="../README.md">Local Limux README</a></li>
+          <li><a href="../AGENTS.md">Local Limux AGENTS.md</a></li>
+          <li><a href="../HANDOFF.md">Morning handoff</a></li>
+          <li><a href="../FYI.md">Session journal</a></li>
+          <li><a href="cmux-parity-plan.md">Limux cmux parity plan</a></li>
+          <li><a href="../rust/limux-cli/src/main.rs">Limux CLI source</a></li>
+          <li><a href="../rust/limux-host-linux/src/control_bridge.rs">Limux control bridge</a></li>
+          <li><a href="https://github.com/multica-ai/multica">Multica GitHub repo</a></li>
+          <li><a href="https://github.com/multica-ai/multica/blob/main/CLI_AND_DAEMON.md">Multica CLI and daemon docs</a></li>
+          <li><a href="https://github.com/multica-ai/multica/blob/main/SELF_HOSTING.md">Multica self-hosting docs</a></li>
+          <li><a href="https://github.com/multica-ai/multica/releases/tag/v0.3.11">Multica v0.3.11 release</a></li>
+          <li><a href="https://github.com/multica-ai/multica/blob/main/LICENSE">Multica license</a></li>
+        </ul>
+      </div>
+    </section>
+    </div>
+  </main>
+
+  <script>
+    const form = document.getElementById('decisionForm');
+    const output = document.getElementById('decisionOutput');
+    const notes = document.getElementById('freeNotes');
+    const copyButton = document.getElementById('copyButton');
+    const copyStatus = document.getElementById('copyStatus');
+
+    function selectedRadio(name) {
+      const node = form.querySelector(`input[name="${name}"]:checked`);
+      return node ? node.value : 'No selection.';
+    }
+
+    function selectedChecks(name) {
+      return Array.from(form.querySelectorAll(`input[name="${name}"]:checked`)).map((node) => node.value);
+    }
+
+    function bulletList(items) {
+      if (!items.length) {
+        return '   - None selected.';
+      }
+      return items.map((item) => `   - ${item}`).join('\n');
+    }
+
+    function buildResponse() {
+      const lines = [
+        'My decisions after reviewing the Limux vs Multica guide:',
+        '',
+        '1. Main path:',
+        `   - ${selectedRadio('mainPath')}`,
+        '',
+        '2. Multica pilot:',
+        `   - ${selectedRadio('pilot')}`,
+        '',
+        '3. Multica install/security posture:',
+        bulletList(selectedChecks('security')),
+        '',
+        '4. Limux priorities:',
+        bulletList(selectedChecks('limux')),
+        '',
+        '5. hcom posture:',
+        bulletList(selectedChecks('hcom')),
+        '',
+        '6. Execution mode:',
+        `   - ${selectedRadio('execMode')}`,
+        '',
+        '7. Skills:',
+        bulletList(selectedChecks('skills')),
+        '',
+        '8. Additional skills:',
+        document.getElementById('additionalSkills').value.trim() ? `   - ${document.getElementById('additionalSkills').value.trim().replace(/\n/g, '\n   - ')}` : '   - None.',
+        '',
+        '9. Skill-ranking subagent:',
+        bulletList(selectedChecks('skillRanker')),
+        '',
+        '10. Extra notes:',
+        notes.value.trim() ? `   - ${notes.value.trim().replace(/\n/g, '\n   - ')}` : '   - None.',
+        '',
+        'Please use these decisions to proceed with Phase 5A from HANDOFF.md: generated marker, Instruction Sources, no-overwrite behavior for unmarked LIMUX_AGENTS.md, and local policy extension support.'
+      ];
+
+      output.value = lines.join('\n');
+    }
+
+    async function copyResponse() {
+      buildResponse();
+      try {
+        await navigator.clipboard.writeText(output.value);
+        copyStatus.textContent = 'Copied.';
+      } catch (error) {
+        output.focus();
+        output.select();
+        copyStatus.textContent = 'Clipboard blocked. Text selected for manual copy.';
+      }
+      window.setTimeout(() => {
+        copyStatus.textContent = '';
+      }, 2800);
+    }
+
+    form.addEventListener('input', buildResponse);
+    copyButton.addEventListener('click', copyResponse);
+    buildResponse();
+  </script>
+</body>
+</html>
