@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-05-29 17:29 EDT
+Last updated: 2026-05-29 19:08 EDT
 
 ## Immediate Next Action
 
@@ -23,16 +23,27 @@ For the current install-prerequisite decision, use:
 docs/LIMUX_INSTALL_POSTURE_DECISION_PACKET_2026-05-29.html
 ```
 
-The draft-only mutation review for the selected bounded host prerequisite lane
-is:
+The mutation review for the selected bounded host prerequisite lane is:
 
 ```text
 docs/LIMUX_HOST_PREREQ_MUTATION_REVIEW_2026-05-29.md
 ```
 
-Current review decision: `WAIT` until the operator explicitly approves the
-exact command block in that file. Artifact SHA256:
+The operator approved the exact command block in that file on 2026-05-29.
+Artifact SHA256 at approval and pre-run verification:
 `de2a31ac73a1f85b9c559b479507b3a541871771a194b6c5f77a8a9e6150bbec`.
+
+Execution attempt status: `BLOCKED BEFORE MUTATION`. The pre-mutation evidence
+and apt simulation ran, then execution stopped at `sudo apt-get update` because
+sudo required a password. The run was cancelled instead of collecting or
+handling a password in chat. No apt package install occurred, and `pkg-config`
+is still absent.
+
+Recommended continuation: have the operator make sudo credentials available
+outside chat, re-verify the artifact SHA above, then rerun the approved
+prerequisite block from the review file. Do not widen the block: no Zig
+download, no submodule init/update, no Ghostty build, and no system-wide Limux
+install in this lane.
 
 Start here:
 
@@ -87,6 +98,7 @@ For host-side GTK tests, this environment also needs `pkg-config` available on
 | 2026-05-29 17:29 EDT | GTK send-text readiness fix | Updated the live GTK `surface.send_text` handler to convert `TerminalHandle::send_text == false` into a conflict error. Added focused unit tests for the response helper. |
 | 2026-05-29 17:29 EDT | Verification | `cargo test -p limux-cli`, `cargo fmt --check`, `cargo clippy -p limux-cli --all-targets -- -D warnings`, and `git diff --check` passed. `cargo test -p limux-host-linux surface_send_text_response` is blocked because `pkg-config` is missing. |
 | 2026-05-29 17:44 EDT | Host prerequisite mutation review | Created draft-only mutation review for apt prerequisites. Decision is `WAIT` pending explicit approval. Zig/Ghostty remain separate gates. |
+| 2026-05-29 19:07 EDT | Approved prerequisite block attempt | Verified artifact SHA, ran the pre-mutation evidence and apt simulation, then stopped at the first sudo command because a password was required. No packages were installed. |
 
 ## Current State
 
@@ -149,7 +161,7 @@ Phase ordering:
 ## Known Risks And Blockers
 
 - `./scripts/check.sh` needs `ghostty/zig-out/lib/libghostty.so`; build it before claiming the full workspace gate passes.
-- Host-crate tests currently need `pkg-config` on `PATH`; this environment did not have it at 2026-05-29 17:29 EDT.
+- Host-crate tests currently need `pkg-config` on `PATH`; this environment still did not have it after the 2026-05-29 19:07 EDT sudo gate stop.
 - Shell-injected launch/bootstrap commands need tests for spaces, quotes, `$`, backticks, semicolons, and newlines before automation expands.
 - Instruction-source hashes are deterministic `fnv1a64` metadata for change detection, not cryptographic integrity claims.
 

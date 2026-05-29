@@ -97,3 +97,19 @@ Mutation wave decision is `WAIT`: the apt prerequisite lane is bounded and revie
 
 ### Related:
 `docs/LIMUX_HOST_PREREQ_MUTATION_REVIEW_2026-05-29.md` | SHA256 `de2a31ac73a1f85b9c559b479507b3a541871771a194b6c5f77a8a9e6150bbec`
+
+## 2026-05-29 - Host Prerequisite Execution Gate Stop
+### What:
+Attempted to execute the approved bounded host prerequisite command block from `docs/LIMUX_HOST_PREREQ_MUTATION_REVIEW_2026-05-29.md`.
+
+### Why:
+The operator explicitly approved the exact apt prerequisite command block with SHA256 `de2a31ac73a1f85b9c559b479507b3a541871771a194b6c5f77a8a9e6150bbec` so the previously blocked host GTK test could move past the missing `pkg-config` prerequisite.
+
+### How:
+Recomputed the SHA256 and confirmed it matched. Ran the frozen block until the first privileged mutation command. The pre-mutation evidence and apt simulation ran; the transaction remained the reviewed `2 upgraded, 160 newly installed, 0 to remove and 94 not upgraded` lane. Execution then stopped at `sudo apt-get update` because sudo required a password. The run was cancelled instead of collecting or handling a password in chat.
+
+### Impact:
+No apt package install occurred. `pkg-config`, `pkgconf`, `libgtk-4-dev`, `libadwaita-1-dev`, and `libwebkitgtk-6.0-dev` remain absent. The next continuation point is to make sudo credentials available outside chat, re-verify the same review artifact SHA, and rerun the approved prerequisite block. Zig acquisition, Ghostty submodule initialization, and Ghostty build remain separate gates.
+
+### Related:
+`docs/LIMUX_HOST_PREREQ_MUTATION_REVIEW_2026-05-29.md` | `HANDOFF.md`
