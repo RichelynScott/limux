@@ -17,3 +17,19 @@ Existing repo `AGENTS.md` files are protected from default `agent-team` protocol
 
 ### Related:
 `cec067f` | `HANDOFF.md` | `docs/cmux-parity-plan.md` | `docs/limux-hcom-workflow.md` | `docs/limux-vs-multica-decision-guide.md`
+
+## 2026-05-29 - Next Steps Decision Packet
+### What:
+Created a dark-mode HTML decision packet for the operator to review current Limux status, next-step options, execution mode, skills, and acceptance criteria.
+
+### Why:
+The operator asked for an easier-to-read status update with selectable choices and a copy-back response before continuing implementation.
+
+### How:
+Used the `$html-decision-packet` pattern and current repo evidence from `HANDOFF.md`, `docs/cmux-parity-plan.md`, recent commits, and the install/security report. The packet defaults to the recommended path: implement Phase 5A zero-friction protocol discovery in the current session.
+
+### Impact:
+The next session can ask the operator to open `docs/LIMUX_NEXT_STEPS_STATUS_DECISION_PACKET_2026-05-29.html`, copy selections back, and proceed without reconstructing the prior discussion.
+
+### Related:
+`docs/LIMUX_NEXT_STEPS_STATUS_DECISION_PACKET_2026-05-29.html` | `a1447e7` | `HANDOFF.md`

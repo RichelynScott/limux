@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Limux Next Steps Status Decision Packet</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0a0d11;
+      --panel: #141a21;
+      --panel-2: #1b232c;
+      --line: #303b47;
+      --line-strong: #4a5968;
+      --text: #edf3f7;
+      --muted: #adbac7;
+      --faint: #748292;
+      --accent: #58c9bd;
+      --ok: #7bd88f;
+      --warn: #f0bc5e;
+      --danger: #ff7d75;
+      --code: #080b0f;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(180deg, rgba(88, 201, 189, 0.08), transparent 340px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+        var(--bg);
+      background-size: auto, 46px 46px, 46px 46px, auto;
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      line-height: 1.5;
+    }
+
+    a { color: var(--accent); text-underline-offset: 3px; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 250px minmax(0, 1fr);
+      gap: 20px;
+      width: min(1360px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 24px 0 56px;
+    }
+
+    aside.roadmap {
+      position: sticky;
+      top: 16px;
+      align-self: start;
+      border: 1px solid var(--line);
+      background: rgba(20, 26, 33, 0.92);
+      padding: 16px;
+      border-radius: 8px;
+    }
+
+    .road-title {
+      margin: 0 0 12px;
+      font-size: 15px;
+      color: var(--text);
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr);
+      gap: 10px;
+      padding: 11px 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .step:first-of-type { border-top: 0; }
+    .dot { width: 10px; height: 10px; margin-top: 6px; background: var(--faint); border-radius: 50%; }
+    .step.done .dot { background: var(--ok); }
+    .step.current .dot { background: var(--accent); box-shadow: 0 0 0 4px rgba(88, 201, 189, 0.14); }
+    .step.gated .dot { background: var(--warn); }
+    .step.blocked .dot { background: var(--danger); }
+    .step strong { display: block; font-size: 12px; }
+    .step span { display: block; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 390px);
+      gap: 18px;
+      align-items: end;
+      padding: 18px 0 24px;
+      border-bottom: 1px solid var(--line-strong);
+    }
+
+    h1, h2, h3 { margin: 0; line-height: 1.12; letter-spacing: 0; }
+    h1 { font-size: clamp(30px, 5vw, 56px); }
+    h2 { margin-bottom: 14px; font-size: 22px; }
+    h3 { margin-bottom: 8px; color: var(--warn); font-size: 13px; text-transform: uppercase; }
+    p { margin: 0 0 12px; color: var(--muted); }
+
+    .eyebrow {
+      margin-bottom: 8px;
+      color: var(--accent);
+      font-size: 12px;
+      text-transform: uppercase;
+      font-weight: 800;
+    }
+
+    .meta, section, .copybox {
+      border: 1px solid var(--line);
+      background: rgba(20, 26, 33, 0.9);
+      border-radius: 8px;
+    }
+
+    .meta { display: grid; gap: 8px; padding: 14px; }
+    .meta div { display: flex; justify-content: space-between; gap: 14px; color: var(--muted); font-size: 12px; }
+    .meta strong { color: var(--text); text-align: right; overflow-wrap: anywhere; }
+
+    section { margin-top: 18px; padding: 20px; }
+
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .two-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+
+    .fact, .card, .decision {
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      border-radius: 8px;
+      padding: 14px;
+      min-width: 0;
+    }
+
+    .fact .label { color: var(--faint); font-size: 11px; text-transform: uppercase; }
+    .fact .value { margin-top: 8px; overflow-wrap: anywhere; }
+    .fact .value.ok { color: var(--ok); }
+    .fact .value.warn { color: var(--warn); }
+    .fact .value.bad { color: var(--danger); }
+
+    .card p, .decision p { font-size: 13px; }
+    .card ul { margin: 8px 0 0; padding-left: 18px; color: var(--muted); }
+    .card li { margin: 5px 0; }
+
+    .decision-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(330px, 430px);
+      gap: 18px;
+      align-items: start;
+    }
+
+    label.option {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr);
+      gap: 10px;
+      padding: 10px;
+      margin-top: 8px;
+      background: rgba(8, 11, 15, 0.5);
+      border: 1px solid transparent;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    label.option:hover { border-color: var(--line-strong); }
+    input[type="radio"], input[type="checkbox"] { accent-color: var(--accent); margin-top: 3px; }
+    .option-title { display: block; color: var(--text); font-weight: 800; font-size: 13px; }
+    .option-detail { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .rec { color: var(--accent); font-size: 11px; text-transform: uppercase; margin-left: 6px; }
+
+    .copybox {
+      position: sticky;
+      top: 16px;
+      padding: 16px;
+    }
+
+    textarea, input[type="text"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: var(--code);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 12px;
+      font: inherit;
+    }
+
+    textarea { min-height: 120px; resize: vertical; }
+    #payload { min-height: 470px; }
+
+    .field { margin-top: 12px; }
+    .field label { display: block; margin-bottom: 6px; color: var(--text); font-size: 12px; font-weight: 800; }
+    .field small { display: block; margin-top: 5px; color: var(--faint); }
+
+    button {
+      width: 100%;
+      margin-top: 10px;
+      border: 1px solid var(--line-strong);
+      background: var(--accent);
+      color: #04100e;
+      border-radius: 6px;
+      padding: 12px;
+      font: inherit;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    button.secondary { background: transparent; color: var(--text); }
+    .status { display: block; min-height: 22px; margin-top: 8px; color: var(--ok); font-size: 12px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      background: var(--panel-2);
+      font-size: 13px;
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th { background: #202a35; color: var(--text); }
+    td { color: var(--muted); }
+    code { background: var(--code); border: 1px solid #202832; border-radius: 4px; padding: 2px 5px; overflow-wrap: anywhere; }
+
+    .source-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 18px;
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .source-list li { color: var(--muted); overflow-wrap: anywhere; }
+
+    @media (max-width: 980px) {
+      .layout, header, .grid, .two-grid, .decision-layout, .source-list { grid-template-columns: 1fr; }
+      aside.roadmap, .copybox { position: static; }
+    }
+  </style>
+</head>
+<body>
+  <main class="layout">
+    <aside class="roadmap" aria-label="Roadmap">
+      <h2 class="road-title">Roadmap</h2>
+      <div class="step done"><i class="dot"></i><div><strong>Safety fix</strong><span><code>AGENTS.md</code> clobber fixed in <code>cec067f</code>.</span></div></div>
+      <div class="step done"><i class="dot"></i><div><strong>Handoff</strong><span>Morning resume docs committed in <code>0fe6984</code>.</span></div></div>
+      <div class="step done"><i class="dot"></i><div><strong>Install security</strong><span>Dependency/security report committed in <code>a1447e7</code>.</span></div></div>
+      <div class="step current"><i class="dot"></i><div><strong>Decision</strong><span>Choose next implementation lane.</span></div></div>
+      <div class="step gated"><i class="dot"></i><div><strong>Execution</strong><span>Phase 5A or selected alternative.</span></div></div>
+      <div class="step blocked"><i class="dot"></i><div><strong>Full gate</strong><span>Needs <code>libghostty.so</code> before <code>./scripts/check.sh</code>.</span></div></div>
+    </aside>
+
+    <div>
+      <header>
+        <div>
+          <p class="eyebrow">Status and decision packet</p>
+          <h1>Limux Next Steps</h1>
+          <p>This packet turns the current Limux state into selectable next steps you can copy back into chat.</p>
+        </div>
+        <div class="meta">
+          <div><span>Date</span><strong>2026-05-29</strong></div>
+          <div><span>Time</span><strong>2:38 PM</strong></div>
+          <div><span>Author</span><strong>Codex / tipi</strong></div>
+          <div><span>Runtime</span><strong>Codex</strong></div>
+          <div><span>Scope</span><strong>/home/riche/MCPs/limux</strong></div>
+          <div><span>Status base</span><strong>a1447e7</strong></div>
+        </div>
+      </header>
+
+      <section id="status">
+        <h2>Current Status</h2>
+        <div class="grid">
+          <div class="fact"><div class="label">Done</div><div class="value ok">Protocol output moved to <code>LIMUX_AGENTS.md</code>; repo <code>AGENTS.md</code> is no longer written by default.</div></div>
+          <div class="fact"><div class="label">Verified</div><div class="value ok">Previous code fix passed <code>cargo test -p limux-cli</code>, fmt, limux-cli clippy, and whitespace checks.</div></div>
+          <div class="fact"><div class="label">Gated</div><div class="value warn">Full <code>./scripts/check.sh</code> still needs Ghostty library build first.</div></div>
+          <div class="fact"><div class="label">Blocked</div><div class="value bad">Automatic bootstrap is blocked by <code>surface.send_text</code> readiness/failure semantics.</div></div>
+          <div class="fact"><div class="label">Not done</div><div class="value">Phase 5A, project/team roster, review ledger, and bootstrap adapters are not implemented yet.</div></div>
+          <div class="fact"><div class="label">Upstream</div><div class="value ok">Fork is ahead of <code>upstream/main</code> and behind by 0. No upstream-main merge is needed.</div></div>
+        </div>
+      </section>
+
+      <section id="recommendation">
+        <h2>Recommendation</h2>
+        <div class="two-grid">
+          <div class="card">
+            <h3>Recommended next lane</h3>
+            <p>Proceed with <strong>Phase 5A zero-friction protocol discovery</strong> in the current session.</p>
+            <ul>
+              <li>Add generated marker to <code>LIMUX_AGENTS.md</code>.</li>
+              <li>Add <code>Instruction Sources</code> pointing to repo instruction files.</li>
+              <li>Refuse to overwrite existing unmarked <code>LIMUX_AGENTS.md</code> unless forced.</li>
+              <li>Add or document <code>LIMUX_AGENTS.local.md</code>.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Why this first</h3>
+            <p>It reduces friction for Codex/Claude/Gemini/OpenCode teams without hidden prompt inheritance and without touching the fragile launch/readiness path.</p>
+            <ul>
+              <li>Low blast radius: mostly CLI protocol generation and tests.</li>
+              <li>Directly supports the 4+ project operator workflow.</li>
+              <li>Sets up later bootstrap safely.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="options">
+        <h2>Options To Choose From</h2>
+        <div class="decision-layout">
+          <form id="decisionForm">
+            <div class="decision">
+              <h3>1. Main next step</h3>
+              <p>Choose what I should do next in this repo.</p>
+              <label class="option">
+                <input type="radio" name="mainPath" value="Proceed with Phase 5A zero-friction protocol discovery for `limux agent-team`." checked>
+                <span><span class="option-title">Proceed with Phase 5A <span class="rec">Recommended</span></span><span class="option-detail">Generated marker, Instruction Sources, no-overwrite guard, and local policy extension.</span></span>
+              </label>
+              <label class="option">
+                <input type="radio" name="mainPath" value="First fix `surface.send_text` readiness/failure semantics before Phase 5A.">
+                <span><span class="option-title">Fix send readiness first</span><span class="option-detail">Lower bootstrap risk, but delays the protocol discovery improvement.</span></span>
+              </label>
+              <label class="option">
+                <input type="radio" name="mainPath" value="Review upstream `fix/render-throttling` before any Limux feature work.">
+                <span><span class="option-title">Review render-throttling branch</span><span class="option-detail">Only needed if UI freeze/render behavior is the priority.</span></span>
+              </label>
+              <label class="option">
+                <input type="radio" name="mainPath" value="Pause implementation and only maintain docs/status for now.">
+                <span><span class="option-title">Defer implementation</span><span class="option-detail">Keeps state stable and avoids coding until you decide later.</span></span>
+              </label>
+            </div>
+
+            <div class="decision">
+              <h3>2. Phase 5A scope</h3>
+              <p>Recommended scope if Phase 5A is selected.</p>
+              <label class="option"><input type="checkbox" name="phase5a" value="Add a generated-file marker to `LIMUX_AGENTS.md`." checked><span><span class="option-title">Generated marker</span><span class="option-detail">Lets Limux safely distinguish generated files from human-owned files.</span></span></label>
+              <label class="option"><input type="checkbox" name="phase5a" value="Add an `Instruction Sources` section that points to `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` when present." checked><span><span class="option-title">Instruction Sources</span><span class="option-detail">Explicit references, no copied or merged prompt content.</span></span></label>
+              <label class="option"><input type="checkbox" name="phase5a" value="Add no-overwrite behavior for existing unmarked `LIMUX_AGENTS.md` files." checked><span><span class="option-title">No-overwrite guard</span><span class="option-detail">Avoids clobbering hand-written sidecar files.</span></span></label>
+              <label class="option"><input type="checkbox" name="phase5a" value="Add or document `LIMUX_AGENTS.local.md` for durable team policy notes." checked><span><span class="option-title">Local policy extension</span><span class="option-detail">Gives humans a stable place for edits that survive regeneration.</span></span></label>
+              <label class="option"><input type="checkbox" name="phase5a" value="Include path, mtime, and hash metadata for detected instruction files."><span><span class="option-title">Instruction metadata</span><span class="option-detail">Useful provenance, but only if cheap and deterministic.</span></span></label>
+            </div>
+
+            <div class="decision">
+              <h3>3. Security/tooling posture</h3>
+              <p>Choose how aggressive to be about dependency/security tooling right now.</p>
+              <label class="option"><input type="radio" name="securityPosture" value="Use the existing install/security report for now; do not install new scanners yet." checked><span><span class="option-title">No scanner install now <span class="rec">Recommended</span></span><span class="option-detail">OSV report is done; avoid adding package execution before implementation.</span></span></label>
+              <label class="option"><input type="radio" name="securityPosture" value="After Phase 5A, ask for approval to install/run `cargo-audit` and `cargo-deny`."><span><span class="option-title">Approve scanners later</span><span class="option-detail">Better release confidence, with explicit approval gate.</span></span></label>
+              <label class="option"><input type="radio" name="securityPosture" value="Do a deeper security review before any implementation."><span><span class="option-title">Security review first</span><span class="option-detail">Higher assurance, slower progress.</span></span></label>
+            </div>
+
+            <div class="decision">
+              <h3>4. Upstream posture</h3>
+              <p>Current fetch shows no upstream-main merge is needed.</p>
+              <label class="option"><input type="radio" name="upstreamPosture" value="Do not merge upstream now; upstream/main is already behind this fork." checked><span><span class="option-title">No upstream merge <span class="rec">Recommended</span></span><span class="option-detail">Avoids unnecessary churn.</span></span></label>
+              <label class="option"><input type="radio" name="upstreamPosture" value="Review `upstream/fix/render-throttling` in a separate branch before deciding."><span><span class="option-title">Review render-throttling separately</span><span class="option-detail">Only if render freeze behavior matters now.</span></span></label>
+            </div>
+
+            <div class="decision">
+              <h3>5. Execution mode</h3>
+              <label class="option"><input type="radio" name="execMode" value="Current session should implement the selected scoped step." checked><span><span class="option-title">Current session <span class="rec">Recommended</span></span><span class="option-detail">Best for Phase 5A: small, local, testable.</span></span></label>
+              <label class="option"><input type="radio" name="execMode" value="Use native subagents for pre-review and/or implementation review."><span><span class="option-title">Native subagents</span><span class="option-detail">Good for pre-exec or post-exec review without persistent workers.</span></span></label>
+              <label class="option"><input type="radio" name="execMode" value="Use buffered subagents for broader multi-wave work."><span><span class="option-title">Buffered subagents</span><span class="option-detail">Use only if scope expands to roster/ledger/bootstrap together.</span></span></label>
+              <label class="option"><input type="radio" name="execMode" value="Use an hcom-managed worker only if persistent cross-tool ownership is needed."><span><span class="option-title">hcom-managed worker</span><span class="option-detail">Not recommended for bounded local repo edits.</span></span></label>
+              <label class="option"><input type="radio" name="execMode" value="Defer/document only."><span><span class="option-title">Defer/document only</span><span class="option-detail">No implementation this turn.</span></span></label>
+            </div>
+
+            <div class="decision">
+              <h3>6. Skills</h3>
+              <label class="option"><input type="checkbox" name="skills" value="$methodical-modification-protocol" checked><span><span class="option-title">$methodical-modification-protocol</span><span class="option-detail">Scoped behavior change with rollback-safe edits.</span></span></label>
+              <label class="option"><input type="checkbox" name="skills" value="$test-driven-development" checked><span><span class="option-title">$test-driven-development</span><span class="option-detail">Write/adjust tests before implementation.</span></span></label>
+              <label class="option"><input type="checkbox" name="skills" value="$agent-orchestration" checked><span><span class="option-title">$agent-orchestration</span><span class="option-detail">Use only if subagents are requested or review is needed.</span></span></label>
+              <label class="option"><input type="checkbox" name="skills" value="$adversarial-assessment or $adversarial-review"><span><span class="option-title">$adversarial-assessment / $adversarial-review</span><span class="option-detail">Useful before/after Phase 5A if you want pressure testing.</span></span></label>
+              <label class="option"><input type="checkbox" name="skills" value="$code-audit"><span><span class="option-title">$code-audit</span><span class="option-detail">Use if security posture becomes the active lane.</span></span></label>
+              <div class="field">
+                <label for="extraSkills">Additional skills</label>
+                <textarea id="extraSkills" placeholder="$hcom, $fork-sync, $browser-automation, or anything else you want included."></textarea>
+              </div>
+            </div>
+
+            <div class="decision">
+              <h3>7. Skill-ranking subagent</h3>
+              <label class="option"><input type="radio" name="skillRanker" value="Use a dedicated skill-ranking subagent before complex execution."><span><span class="option-title">Use one</span><span class="option-detail">Good if you expand beyond Phase 5A.</span></span></label>
+              <label class="option"><input type="radio" name="skillRanker" value="Do not use a dedicated skill-ranking subagent for this scoped Phase 5A task." checked><span><span class="option-title">Skip for Phase 5A <span class="rec">Recommended</span></span><span class="option-detail">Scope is already clear and local.</span></span></label>
+            </div>
+
+            <div class="decision">
+              <h3>8. Task draft</h3>
+              <div class="field">
+                <label for="taskTitle">Proposed task title</label>
+                <input id="taskTitle" type="text" value="Implement Limux agent-team protocol discovery Phase 5A">
+              </div>
+              <div class="field">
+                <label for="acceptance">Acceptance criteria</label>
+                <textarea id="acceptance">- Existing repo AGENTS.md is never written by default.
+- Generated LIMUX_AGENTS.md includes a generated marker.
+- Generated LIMUX_AGENTS.md includes Instruction Sources that point to repo instruction files directly.
+- Existing unmarked LIMUX_AGENTS.md is not overwritten without an explicit force path.
+- Tests cover dry-run/default path, existing AGENTS.md preservation, and unmarked sidecar protection.
+- cargo test -p limux-cli agent_team, cargo fmt --check, cargo clippy -p limux-cli --all-targets -- -D warnings, and git diff --check pass.</textarea>
+              </div>
+            </div>
+
+            <div class="decision">
+              <h3>9. Notes</h3>
+              <textarea id="notes" placeholder="Add anything you want me to account for before proceeding."></textarea>
+            </div>
+          </form>
+
+          <aside class="copybox">
+            <h2>Copy Back</h2>
+            <p>Use this text to tell me exactly how to proceed.</p>
+            <textarea id="payload" readonly></textarea>
+            <button type="button" id="copyBtn">Copy Response</button>
+            <button class="secondary" type="button" id="selectBtn">Select Text</button>
+            <span class="status" id="copyStatus" aria-live="polite"></span>
+          </aside>
+        </div>
+      </section>
+
+      <section id="details">
+        <h2>Why The Recommendation Is Phase 5A</h2>
+        <table>
+          <thead><tr><th>Candidate</th><th>Value</th><th>Risk</th><th>Recommendation</th></tr></thead>
+          <tbody>
+            <tr><td>Phase 5A protocol discovery</td><td>Immediate friction reduction for generated team instructions.</td><td>Low; mostly CLI generation/tests.</td><td>Do now.</td></tr>
+            <tr><td><code>surface.send_text</code> readiness</td><td>Needed before robust automatic bootstrap.</td><td>Medium; touches GTK bridge semantics.</td><td>Next after Phase 5A.</td></tr>
+            <tr><td>Render-throttling upstream branch</td><td>Could matter for UI freeze/performance.</td><td>Unclear; divergent branch from older base.</td><td>Separate review only.</td></tr>
+            <tr><td>Security scanners</td><td>Better release assurance.</td><td>Installing scanners is package execution.</td><td>Approval-gated later.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="sources">
+        <h2>Sources / Evidence</h2>
+        <ul class="source-list">
+          <li><a href="../HANDOFF.md">HANDOFF.md</a></li>
+          <li><a href="../FYI.md">FYI.md</a></li>
+          <li><a href="cmux-parity-plan.md">docs/cmux-parity-plan.md</a></li>
+          <li><a href="install-security-report-2026-05-29.md">docs/install-security-report-2026-05-29.md</a></li>
+          <li><a href="limux-hcom-workflow.md">docs/limux-hcom-workflow.md</a></li>
+          <li><a href="limux-vs-multica-decision-guide.md">docs/limux-vs-multica-decision-guide.md</a></li>
+          <li><a href="../rust/limux-cli/src/main.rs">rust/limux-cli/src/main.rs</a></li>
+          <li><a href="../rust/limux-host-linux/src/window.rs">rust/limux-host-linux/src/window.rs</a></li>
+          <li><a href="../rust/limux-host-linux/src/terminal.rs">rust/limux-host-linux/src/terminal.rs</a></li>
+          <li><code>cec067f</code> - protect agent-team protocol output</li>
+          <li><code>0fe6984</code> - morning resume handoff docs</li>
+          <li><code>a1447e7</code> - install dependency/security report</li>
+        </ul>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const form = document.getElementById('decisionForm');
+    const payload = document.getElementById('payload');
+    const copyBtn = document.getElementById('copyBtn');
+    const selectBtn = document.getElementById('selectBtn');
+    const copyStatus = document.getElementById('copyStatus');
+
+    function radio(name) {
+      const selected = form.querySelector(`input[name="${name}"]:checked`);
+      return selected ? selected.value : 'No selection.';
+    }
+
+    function checks(name) {
+      return Array.from(form.querySelectorAll(`input[name="${name}"]:checked`)).map((node) => node.value);
+    }
+
+    function bullets(items) {
+      if (!items.length) return '   - None selected.';
+      return items.map((item) => `   - ${item}`).join('\n');
+    }
+
+    function field(id) {
+      return document.getElementById(id).value.trim();
+    }
+
+    function buildPayload() {
+      const lines = [
+        'My decisions after reviewing the Limux next-steps status packet:',
+        '',
+        '1. Main next step:',
+        `   - ${radio('mainPath')}`,
+        '',
+        '2. Phase 5A scope:',
+        bullets(checks('phase5a')),
+        '',
+        '3. Security/tooling posture:',
+        `   - ${radio('securityPosture')}`,
+        '',
+        '4. Upstream posture:',
+        `   - ${radio('upstreamPosture')}`,
+        '',
+        '5. Execution mode:',
+        `   - ${radio('execMode')}`,
+        '',
+        '6. Skills:',
+        bullets(checks('skills')),
+        '',
+        '7. Additional skills:',
+        field('extraSkills') ? `   - ${field('extraSkills').replace(/\n/g, '\n   - ')}` : '   - None.',
+        '',
+        '8. Skill-ranking subagent:',
+        `   - ${radio('skillRanker')}`,
+        '',
+        '9. Proposed task title:',
+        `   - ${field('taskTitle') || 'None.'}`,
+        '',
+        '10. Acceptance criteria:',
+        field('acceptance') ? field('acceptance').split('\n').map((line) => `   ${line}`).join('\n') : '   - None.',
+        '',
+        '11. Notes:',
+        field('notes') ? `   - ${field('notes').replace(/\n/g, '\n   - ')}` : '   - None.',
+        '',
+        'Please proceed according to these selections.'
+      ];
+      payload.value = lines.join('\n');
+    }
+
+    async function copyPayload() {
+      buildPayload();
+      try {
+        await navigator.clipboard.writeText(payload.value);
+        copyStatus.textContent = 'Copied.';
+      } catch (error) {
+        payload.focus();
+        payload.select();
+        copyStatus.textContent = 'Clipboard blocked. Text selected.';
+      }
+      window.setTimeout(() => { copyStatus.textContent = ''; }, 2600);
+    }
+
+    function selectPayload() {
+      buildPayload();
+      payload.focus();
+      payload.select();
+      copyStatus.textContent = 'Selected.';
+      window.setTimeout(() => { copyStatus.textContent = ''; }, 2200);
+    }
+
+    form.addEventListener('input', buildPayload);
+    copyBtn.addEventListener('click', copyPayload);
+    selectBtn.addEventListener('click', selectPayload);
+    buildPayload();
+  </script>
+</body>
+</html>

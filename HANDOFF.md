@@ -1,10 +1,17 @@
 # Limux Session Handoff
 
-Last updated: 2026-05-29 02:06 EDT
+Last updated: 2026-05-29 14:38 EDT
 
 ## Immediate Next Action
 
 Implement the next scoped Limux improvement: **Phase 5A zero-friction protocol discovery** for `limux agent-team`.
+
+The operator requested an easier-to-read status/options artifact on
+2026-05-29. Use this packet if a decision needs to be confirmed before coding:
+
+```text
+docs/LIMUX_NEXT_STEPS_STATUS_DECISION_PACKET_2026-05-29.html
+```
 
 Start here:
 
@@ -54,6 +61,8 @@ Run `./scripts/check.sh` only after `libghostty.so` is present. The last full ga
 
 - Branch: `main`
 - Code commit pushed before this handoff: `cec067f fix(cli): protect agent-team protocol output`
+- Latest pushed status/report commit before the next implementation step:
+  `a1447e7 docs(security): add install dependency report`
 - Current untracked docs before this handoff work:
   - `docs/limux-hcom-workflow.md`
   - `docs/limux-hcom-workflow.html`
@@ -97,6 +106,7 @@ Phase ordering:
 | `/home/riche/MCPs/limux/docs/cmux-parity-plan.md` | Roadmap and current open bridge/protocol work. |
 | `/home/riche/MCPs/limux/docs/limux-hcom-workflow.md` | Operator workflow for Limux plus hcom. |
 | `/home/riche/MCPs/limux/docs/limux-vs-multica-decision-guide.md` | Decision record for Limux vs Multica and selected path. |
+| `/home/riche/MCPs/limux/docs/LIMUX_NEXT_STEPS_STATUS_DECISION_PACKET_2026-05-29.html` | Dark-mode copy-back packet for selecting the next implementation path. |
 | `/home/riche/MCPs/limux/FYI.md` | Append-only session journal. |
 
 ## Critical Behavior Rules
