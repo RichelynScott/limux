@@ -145,3 +145,19 @@ The host test moved past the prior GTK/pkg-config sys-crate blocker and now fail
 
 ### Related:
 `rust/limux-ghostty-sys/build.rs` | `HANDOFF.md`
+
+## 2026-05-29 - Ghostty/Zig Mutation Review Prepared
+### What:
+Prepared a draft-only mutation review for the next Ghostty/Zig build gate.
+
+### Why:
+The apt prerequisite lane is complete, and the active host-test blocker is now missing `ghostty/zig-out/lib/libghostty.so`. Resolving that requires fetching the pinned Ghostty submodule and acquiring/building with Zig, which is a separate external-code and native-build supply-chain lane.
+
+### How:
+Reviewed README build instructions, `.gitmodules`, current submodule state, `scripts/package.sh`, the pinned Ghostty `build.zig.zon`, official Zig release metadata, and local package/tool availability. Wrote an exact draft command block that uses a project-scoped Zig `0.15.2` tarball from `ziglang.org`, verifies SHA256 `02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239`, initializes only the pinned `ghostty` submodule, builds `libghostty.so`, and reruns the host readiness test.
+
+### Impact:
+Mutation wave decision is `WAIT`: the next lane is bounded and reviewable, but it still needs explicit human approval before execution. No Ghostty/Zig commands were executed.
+
+### Related:
+`docs/LIMUX_GHOSTTY_ZIG_MUTATION_REVIEW_2026-05-29.md`

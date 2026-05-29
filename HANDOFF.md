@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-05-29 19:51 EDT
+Last updated: 2026-05-29 20:10 EDT
 
 ## Immediate Next Action
 
@@ -59,6 +59,19 @@ bundle it into the already-completed apt prerequisite lane. Do not run ad hoc
 Zig downloads, submodule init/update, Ghostty build, or system-wide Limux
 install without the next explicit review/approval step.
 
+The draft-only Ghostty/Zig mutation review for that next gate is:
+
+```text
+docs/LIMUX_GHOSTTY_ZIG_MUTATION_REVIEW_2026-05-29.md
+```
+
+Current review decision: `WAIT` until the operator explicitly approves the
+exact command block in that file. It recommends project-scoped Zig `0.15.2`
+from official Zig metadata, SHA256
+`02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239`, the pinned
+Ghostty submodule commit `81ab8ffa90185221782baf785e85387321e16f8d`, and then
+`cargo test -p limux-host-linux surface_send_text_response`.
+
 Start here:
 
 ```bash
@@ -115,6 +128,7 @@ For host-side GTK tests, this environment also needs `pkg-config` available on
 | 2026-05-29 19:07 EDT | Approved prerequisite block attempt | Verified artifact SHA, ran the pre-mutation evidence and apt simulation, then stopped at the first sudo command because a password was required. No packages were installed. |
 | 2026-05-29 19:24 EDT | Sudo cache follow-up | Operator ran `sudo -v` locally, but `sudo -n true` inside Codex still required a password. No packages were installed. |
 | 2026-05-29 19:51 EDT | Manual apt prerequisite completion | Operator manually completed the approved apt prerequisite lane. GTK/WebKit pkg-config checks pass. Host test now fails at the separate Ghostty/Zig gate. |
+| 2026-05-29 20:10 EDT | Ghostty/Zig mutation review | Created draft-only review for project-scoped Zig 0.15.2 download, pinned Ghostty submodule initialization, `libghostty.so` build, and host test verification. Decision is `WAIT` pending explicit approval. |
 
 ## Current State
 
