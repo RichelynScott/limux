@@ -199,7 +199,7 @@ fn parse_global_args() -> Result<GlobalOptions> {
 
 fn print_help() {
     println!(
-        "limux CLI\n\nUsage: limux [--socket <path>] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--cwd <path>] [--no-launch] [--dry-run]\n      Splits the active workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, and writes AGENTS.md describing the <agent-msg>\n      XML protocol so peers can talk via\n      `limux send --surface <peer-surface-id> <envelope>`.\n"
+        "limux CLI\n\nUsage: limux [--socket <path>] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--cwd <path>] [--protocol-path <path>] [--no-launch] [--dry-run]\n      Splits the active workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, and writes LIMUX_AGENTS.md by default describing\n      the <agent-msg> XML protocol so peers can talk via\n      `limux send --surface <peer-surface-id> <envelope>`.\n"
     );
 }
 
@@ -1921,11 +1921,11 @@ async fn run_new_workspace(client: &mut Client, args: &[String]) -> Result<Value
 //
 // Creates ONE workspace and one pane per requested agent (codex / claude /
 // opencode / gemini), launches each agent's CLI in its pane, captures the
-// pane/surface IDs, and seeds an AGENTS.md in the shared cwd describing the
-// XML-tagged message protocol and the peer directory so agents can message
-// each other.
+// pane/surface IDs, and writes LIMUX_AGENTS.md by default in the shared cwd
+// describing the XML-tagged message protocol and the peer directory so agents
+// can message each other. Use --protocol-path to choose a different output.
 //
-// The protocol (codified in AGENTS.md):
+// The protocol file codifies:
 //   To send a message to a peer, run from any terminal:
 //     limux send --surface <peer-surface-id> \\
 //       $'<agent-msg from="<me>" to="<peer>" ts="<iso-8601>">\\n...\\n</agent-msg>\\n'
@@ -1969,7 +1969,7 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
         .ok_or_else(|| anyhow!("agent-team: could not resolve --cwd"))?;
 
     // Optional: skip launching the CLIs (useful when the user wants to open
-    // the agents manually) — still splits the panes + writes AGENTS.md.
+    // the agents manually) — still splits the panes + writes the protocol file.
     let no_launch = args.iter().any(|a| a == "--no-launch");
     let dry_run = args.iter().any(|a| a == "--dry-run");
 
@@ -1990,7 +1990,7 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
         bail!("agent-team: no valid agents spawned");
     }
 
-    let agents_md_path = std::path::Path::new(&cwd).join("AGENTS.md");
+    let agents_md_path = resolve_agent_team_protocol_path(&cwd, args);
 
     if dry_run {
         let peers: Vec<(String, String, String, String)> = resolved
@@ -2012,7 +2012,7 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
             "<dry-run-workspace>",
             "<dry-run-orchestrator>",
         );
-        if let Err(err) = std::fs::write(&agents_md_path, body) {
+        if let Err(err) = write_agent_team_protocol_file(&agents_md_path, &body) {
             eprintln!(
                 "agent-team: failed to write {}: {err}",
                 agents_md_path.display()
@@ -2025,6 +2025,7 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
             "workspace_id": Value::Null,
             "orchestrator_surface_id": Value::Null,
             "agents_md": agents_md_path.to_string_lossy(),
+            "protocol_path": agents_md_path.to_string_lossy(),
             "dry_run": true,
             "no_launch": no_launch,
             "peers": peers
@@ -2095,7 +2096,7 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
             .unwrap_or_default()
     });
 
-    // 3. Workspace name (for AGENTS.md header) — best-effort lookup.
+    // 3. Workspace name (for the protocol header) — best-effort lookup.
     let workspace_name = client
         .call("workspace.list", json!({}))
         .await
@@ -2150,7 +2151,8 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
         peers.push((name.to_string(), pane_id, surface_id, launch.clone()));
     }
 
-    // 5. Write AGENTS.md into the shared cwd, clobbering any existing file.
+    // 5. Write the generated protocol. Existing repo AGENTS.md files are
+    //    preserved by default; pass --protocol-path to choose an explicit path.
     let body = build_agents_md(
         &peers,
         &cwd,
@@ -2158,7 +2160,7 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
         &workspace_id,
         &orchestrator_surface,
     );
-    if let Err(err) = std::fs::write(&agents_md_path, body) {
+    if let Err(err) = write_agent_team_protocol_file(&agents_md_path, &body) {
         eprintln!(
             "agent-team: failed to write {}: {err}",
             agents_md_path.display()
@@ -2173,6 +2175,7 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
         "orchestrator_pane_id": orchestrator_pane,
         "orchestrator_surface_id": orchestrator_surface,
         "agents_md": agents_md_path.to_string_lossy(),
+        "protocol_path": agents_md_path.to_string_lossy(),
         "dry_run": false,
         "no_launch": no_launch,
         "peers": peers
@@ -2189,6 +2192,30 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
     }))
 }
 
+fn resolve_agent_team_protocol_path(cwd: &str, args: &[String]) -> PathBuf {
+    let cwd_path = Path::new(cwd);
+    if let Some(raw_path) = parse_opt(args, "--protocol-path") {
+        let path = PathBuf::from(raw_path);
+        return if path.is_absolute() {
+            path
+        } else {
+            cwd_path.join(path)
+        };
+    }
+
+    cwd_path.join("LIMUX_AGENTS.md")
+}
+
+fn write_agent_team_protocol_file(path: &Path, body: &str) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+    }
+    fs::write(path, body).with_context(|| format!("failed to write {}", path.display()))
+}
+
 fn build_agents_md(
     peers: &[(String, String, String, String)],
     cwd: &str,
@@ -2197,7 +2224,7 @@ fn build_agents_md(
     orchestrator_surface: &str,
 ) -> String {
     let mut out = String::new();
-    out.push_str("# AGENTS.md — agent-to-agent message protocol\n\n");
+    out.push_str("# LIMUX_AGENTS.md — agent-to-agent message protocol\n\n");
     out.push_str(
         "This file is auto-generated by `limux agent-team`. It defines how the\n\
          agents running in this workspace team communicate with each other via\n\
@@ -3465,7 +3492,7 @@ async fn execute_command(client: &mut Client, opts: &GlobalOptions) -> Result<Co
                 let agents_md = payload
                     .get("agents_md")
                     .and_then(|v| v.as_str())
-                    .unwrap_or("AGENTS.md");
+                    .unwrap_or("LIMUX_AGENTS.md");
                 let workspace = payload
                     .get("workspace_name")
                     .and_then(|v| v.as_str())
@@ -3961,7 +3988,7 @@ mod agent_team_tests {
         );
 
         // Header & generation marker
-        assert!(md.contains("AGENTS.md — agent-to-agent message protocol"));
+        assert!(md.contains("LIMUX_AGENTS.md — agent-to-agent message protocol"));
         assert!(md.contains("Generated by `limux agent-team`"));
 
         // Team workspace block
@@ -3986,6 +4013,103 @@ mod agent_team_tests {
         assert!(md.contains("LIMUX_SURFACE_ID"));
         assert!(md.contains("limux new-pane --direction right --command bash"));
         assert!(md.contains("Live GTK self-spawn currently supports terminal"));
+    }
+
+    #[tokio::test]
+    async fn agent_team_dry_run_preserves_existing_agents_md() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let existing_agents_md = cwd.join("AGENTS.md");
+        std::fs::write(&existing_agents_md, "repo instructions\n").expect("write AGENTS.md");
+
+        let args = vec![
+            "--dry-run".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+        ];
+        let mut client = Client::new(cwd.join("unused.sock"));
+
+        let payload = run_agent_team(&mut client, &args)
+            .await
+            .expect("dry run should not contact host");
+
+        assert_eq!(
+            std::fs::read_to_string(&existing_agents_md).expect("read AGENTS.md"),
+            "repo instructions\n"
+        );
+
+        let protocol_path = cwd.join("LIMUX_AGENTS.md");
+        assert!(
+            protocol_path.exists(),
+            "expected generated protocol at {}",
+            protocol_path.display()
+        );
+        assert_eq!(
+            payload.get("agents_md").and_then(Value::as_str),
+            Some(protocol_path.to_string_lossy().as_ref())
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_team_dry_run_uses_sidecar_protocol_path_by_default() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let args = vec![
+            "--dry-run".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+        ];
+        let mut client = Client::new(cwd.join("unused.sock"));
+
+        let payload = run_agent_team(&mut client, &args)
+            .await
+            .expect("dry run should not contact host");
+
+        assert!(!cwd.join("AGENTS.md").exists());
+
+        let protocol_path = cwd.join("LIMUX_AGENTS.md");
+        assert!(
+            protocol_path.exists(),
+            "expected generated protocol at {}",
+            protocol_path.display()
+        );
+        assert_eq!(
+            payload.get("protocol_path").and_then(Value::as_str),
+            Some(protocol_path.to_string_lossy().as_ref())
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_team_dry_run_honors_relative_protocol_path() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let args = vec![
+            "--dry-run".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+            "--protocol-path".to_string(),
+            ".limux/team-protocol.md".to_string(),
+        ];
+        let mut client = Client::new(cwd.join("unused.sock"));
+
+        let payload = run_agent_team(&mut client, &args)
+            .await
+            .expect("dry run should not contact host");
+
+        let protocol_path = cwd.join(".limux/team-protocol.md");
+        assert!(
+            protocol_path.exists(),
+            "expected generated protocol at {}",
+            protocol_path.display()
+        );
+        assert_eq!(
+            payload.get("agents_md").and_then(Value::as_str),
+            Some(protocol_path.to_string_lossy().as_ref())
+        );
+        assert_eq!(
+            payload.get("protocol_path").and_then(Value::as_str),
+            Some(protocol_path.to_string_lossy().as_ref())
+        );
     }
 }
 

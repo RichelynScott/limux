@@ -129,12 +129,13 @@ limux hooks setup
 echo '{"event":"stop"}' | limux claude-hook --event stop
 echo '{"event":"finished"}' | limux gemini-hook --event finished
 
-# Spin up a multi-agent collaboration team — one workspace per agent,
-# launches each agent's CLI, and writes AGENTS.md describing the
-# <agent-msg> XML protocol so peers can talk to each other:
+# Spin up a multi-agent collaboration team in the active workspace,
+# launches each agent's CLI, and writes LIMUX_AGENTS.md describing
+# the <agent-msg> XML protocol so peers can talk to each other:
 limux agent-team --agents codex,claude --cwd "$PWD"
 # → Codex and Claude can now do:
-#   limux send --workspace claude $'<agent-msg from="codex" to="claude" id="…" ts="…">…</agent-msg>\n'
+#   limux send --surface "<peer-surface-id>" \
+#     $'<agent-msg from="codex" to="claude" id="…" ts="…">…</agent-msg>\n'
 
 # Or split the current agent's pane and launch another terminal agent.
 # Inside Limux, workspace/surface/pane default from LIMUX_*:
@@ -152,8 +153,11 @@ limux send --workspace "$LIMUX_WORKSPACE_ID" --surface "<peer-surface-id>" \
   $'<agent-msg from="codex" to="claude" id="…" ts="…">…</agent-msg>\n'
 ```
 
-See the auto-generated `AGENTS.md` (written into the shared cwd) for
-the full protocol spec, peer table, and editable Policies section.
+See the auto-generated `LIMUX_AGENTS.md` (written into the shared cwd by
+default) for the full protocol spec, peer table, and editable Policies
+section. Use `--protocol-path <path>` to write the generated protocol
+elsewhere. `agent-team` no longer writes `AGENTS.md` by default, so existing
+repo instructions are not clobbered.
 
 Checked-in hook templates live in [`hooks/`](hooks/). They mirror
 `limux hooks setup` for Codex, Claude Code, and Gemini CLI; OpenCode is

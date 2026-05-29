@@ -45,9 +45,9 @@ dispatcher parity.
 **Shipped so far (in 6b8eb1a and follow-up bridge work):**
 
 - `surface.send_text` and `notification.create` now pass `allow_name=true`
-  to `parse_optional_workspace_target`, so peers can address each other
-  by workspace name (`--workspace claude`) without juggling runtime
-  UUIDs. This is what made phase 5 practical.
+  to `parse_optional_workspace_target` for workspace-name targets. The current
+  generated team protocol uses surface IDs because `agent-team` splits peers
+  inside one workspace.
 - `pane.list`, `pane.surfaces`, and `surface.list` now route on the live
   GTK bridge, so agents can discover peer panes/surfaces in a running
   Limux window.
@@ -74,23 +74,24 @@ Reads hook JSON from stdin, translates the agent-specific event vocabulary
 into a `notify` (and, where useful, an inline `send`). Drop-in for
 `~/.claude/settings.json` hooks blocks.
 
-### Phase 5 — `limux agent-team` + `AGENTS.md` template ✅
+### Phase 5 — `limux agent-team` + generated protocol file ✅
 `limux agent-team [--agents codex,claude[,opencode,gemini]] [--cwd <path>]
-[--no-launch] [--dry-run]`:
+[--protocol-path <path>] [--no-launch] [--dry-run]`:
 
-- Calls `workspace.create` once per agent with `name=<agent>`, `cwd=<shared>`,
-  `command=<agent CLI>` so each workspace launches the agent automatically.
-- Bridge now passes `allow_name=true` to `parse_optional_workspace_target`
-  for `surface.send_text` and `notification.create`, so peers address each
-  other by workspace name (`limux send --workspace claude …`) instead of
-  needing to swap UUIDs.
-- Writes `AGENTS.md` in the shared cwd documenting:
-    - the peers table (agent → workspace name → workspace ID → launch cmd),
+- Splits the active workspace into one terminal pane per agent and launches
+  each agent CLI unless `--no-launch` is set.
+- Bridge passes `allow_name=true` to `parse_optional_workspace_target` for
+  `surface.send_text` and `notification.create`; the generated team protocol
+  still addresses peers by surface ID because agents share one workspace.
+- Writes `LIMUX_AGENTS.md` in the shared cwd by default, or the explicit
+  `--protocol-path`, documenting:
+    - the peers table (agent → pane → surface → launch cmd),
     - the `<agent-msg from="…" to="…" id="…" reply-to="…" ts="…">` envelope,
     - the exact `limux send` invocation for sending and replying,
     - the `limux notify` escalation path for human input,
     - the `LIMUX_*` env contract every spawned terminal inherits,
     - editable Policies section (timeouts, size limits, destructive-action gating).
+  Existing repo `AGENTS.md` files are not written by default.
 
 ### Phase 6 — (deferred) `limux progress`, `limux log`, `limux markdown`
 Nice polish, not blockers.

@@ -171,7 +171,7 @@ done
 echo
 echo "== stage 2: agent-team against live host (--no-launch) =="
 # --no-launch keeps the workspace commands from actually spawning codex/
-# claude binaries (which may not be installed in CI); the bridge + AGENTS.md
+# claude binaries (which may not be installed in CI); the bridge + LIMUX_AGENTS.md
 # + allow_name=true path are still fully exercised.
 "$LIMUX_CLI" --id-format both agent-team \
   --agents codex,claude \
@@ -181,45 +181,55 @@ echo "== stage 2: agent-team against live host (--no-launch) =="
 
 grep -q "peers=\[codex, claude\]" "$LOG_DIR/stage2.txt" \
   || { echo "FAIL: live agent-team did not create peers"; exit 1; }
-[ -f "$DEMO_DIR/AGENTS.md" ] \
-  || { echo "FAIL: AGENTS.md not written to $DEMO_DIR"; exit 1; }
+[ -f "$DEMO_DIR/LIMUX_AGENTS.md" ] \
+  || { echo "FAIL: LIMUX_AGENTS.md not written to $DEMO_DIR"; exit 1; }
 
-# Assert the runtime AGENTS.md has the protocol envelope + both peers.
-grep -q "<agent-msg"  "$DEMO_DIR/AGENTS.md" || { echo "FAIL: AGENTS.md missing <agent-msg>"; exit 1; }
-grep -q "\bcodex\b"   "$DEMO_DIR/AGENTS.md" || { echo "FAIL: AGENTS.md missing codex peer"; exit 1; }
-grep -q "\bclaude\b"  "$DEMO_DIR/AGENTS.md" || { echo "FAIL: AGENTS.md missing claude peer"; exit 1; }
-echo "stage 2: OK (AGENTS.md + 2 workspaces + allow_name bridge path)"
+# Assert the runtime protocol file has the envelope + both peers.
+grep -q "<agent-msg"  "$DEMO_DIR/LIMUX_AGENTS.md" || { echo "FAIL: LIMUX_AGENTS.md missing <agent-msg>"; exit 1; }
+grep -q "\bcodex\b"   "$DEMO_DIR/LIMUX_AGENTS.md" || { echo "FAIL: LIMUX_AGENTS.md missing codex peer"; exit 1; }
+grep -q "\bclaude\b"  "$DEMO_DIR/LIMUX_AGENTS.md" || { echo "FAIL: LIMUX_AGENTS.md missing claude peer"; exit 1; }
+echo "stage 2: OK (LIMUX_AGENTS.md + 2 peers + bridge send path)"
+
+# Extract the generated team targets for the remaining live bridge checks.
+TEAM_WORKSPACE="$(
+  sed -n 's/^- Workspace ID: `\([^`]*\)`/\1/p' "$DEMO_DIR/LIMUX_AGENTS.md" | head -1
+)"
+CLAUDE_SURFACE="$(
+  awk -F'|' '/`claude`/ { gsub(/[`[:space:]]/, "", $4); print $4; exit }' "$DEMO_DIR/LIMUX_AGENTS.md"
+)"
+[ -n "$TEAM_WORKSPACE" ] \
+  || { echo "FAIL: LIMUX_AGENTS.md missing team workspace id"; exit 1; }
+[ -n "$CLAUDE_SURFACE" ] \
+  || { echo "FAIL: LIMUX_AGENTS.md missing claude surface"; exit 1; }
 
 # --- 6. Stage 3: list-workspaces sanity -----------------------------------
 echo
-echo "== stage 3: list-workspaces sees both peers =="
-"$LIMUX_CLI" list-workspaces 2>&1 | tee "$LOG_DIR/stage3.txt"
-grep -q codex  "$LOG_DIR/stage3.txt" || { echo "FAIL: list-workspaces missing codex"; exit 1; }
-grep -q claude "$LOG_DIR/stage3.txt" || { echo "FAIL: list-workspaces missing claude"; exit 1; }
+echo "== stage 3: list-workspaces sees team workspace =="
+"$LIMUX_CLI" --id-format both list-workspaces 2>&1 | tee "$LOG_DIR/stage3.txt"
+grep -q "$TEAM_WORKSPACE" "$LOG_DIR/stage3.txt" \
+  || { echo "FAIL: list-workspaces missing team workspace $TEAM_WORKSPACE"; exit 1; }
 echo "stage 3: OK"
 
-# --- 7. Stage 4: by-name send (the phase-5 allow_name=true unlock) --------
-# This is the single most important assertion in the whole harness —
-# it proves that `limux send --workspace <name>` resolves to the right
-# workspace via the bridge. Without allow_name=true this errors out.
+# --- 7. Stage 4: generated peer surface send ------------------------------
 echo
-echo "== stage 4: surface.send_text by workspace name =="
+echo "== stage 4: surface.send_text to generated peer surface =="
 ENVELOPE=$'<agent-msg from="codex" to="claude" id="smoke-1" ts="2026-04-19T23:59:00Z"><request>smoke test ping</request></agent-msg>\n'
-if "$LIMUX_CLI" send --workspace claude "$ENVELOPE" 2>&1 | tee "$LOG_DIR/stage4.txt"; then
-  echo "stage 4: OK (by-name send accepted)"
+if "$LIMUX_CLI" send --workspace "$TEAM_WORKSPACE" --surface "$CLAUDE_SURFACE" "$ENVELOPE" \
+     2>&1 | tee "$LOG_DIR/stage4.txt"; then
+  echo "stage 4: OK (surface send accepted)"
 else
-  echo "FAIL: by-name send to 'claude' failed — allow_name=true may be regressed"
+  echo "FAIL: send to generated claude surface failed"
   exit 1
 fi
 
-# --- 8. Stage 5: by-name notify -------------------------------------------
+# --- 8. Stage 5: workspace notify -----------------------------------------
 echo
-echo "== stage 5: notification.create by workspace name =="
-if "$LIMUX_CLI" notify --workspace claude --subtitle "smoke" --body "all good" "Smoke test" \
+echo "== stage 5: notification.create by team workspace id =="
+if "$LIMUX_CLI" notify --workspace "$TEAM_WORKSPACE" --subtitle "smoke" --body "all good" "Smoke test" \
      2>&1 | tee "$LOG_DIR/stage5.txt"; then
-  echo "stage 5: OK (by-name notify accepted)"
+  echo "stage 5: OK (workspace notify accepted)"
 else
-  echo "FAIL: by-name notify failed — allow_name=true on notification.create may be regressed"
+  echo "FAIL: workspace notify failed"
   exit 1
 fi
 
@@ -231,7 +241,8 @@ SELF_SPLIT_ENV="$DEMO_DIR/self-split-env"
 SELF_SPLIT_CMD="printf split-ok > '$SELF_SPLIT_PROOF'; printf '%s\n%s\n%s\n' \"\$LIMUX_WORKSPACE_ID\" \"\$LIMUX_PANE_ID\" \"\$LIMUX_SURFACE_ID\" > '$SELF_SPLIT_ENV'"
 
 "$LIMUX_CLI" --json new-pane \
-  --workspace claude \
+  --workspace "$TEAM_WORKSPACE" \
+  --surface "$CLAUDE_SURFACE" \
   --direction right \
   --command "$SELF_SPLIT_CMD" \
   2>&1 | tee "$LOG_DIR/stage6.json"
