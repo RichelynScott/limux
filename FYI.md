@@ -344,3 +344,24 @@ and expanded refusal-branch tests before commit.
 `rust/limux-cli/src/main.rs` | `README.md` | `docs/cmux-parity-plan.md` |
 `docs/limux-hcom-workflow.md` | `docs/limux-hcom-workflow.html` |
 `HANDOFF.md`
+
+## 2026-05-30 - End-Of-Night Limux Closeout
+### What:
+Closed the session after Phase 5D1 by confirming the implementation commit was
+pushed and updating `HANDOFF.md` with the exact resume lane.
+
+### Why:
+The operator is stopping for the night and needs a zero-context successor to
+resume without reconstructing the previous discussion or redoing completed work.
+
+### How:
+Recorded the pushed commit `e4ce6fd feat(cli): add review prepare scaffold`,
+clean working-tree status at closeout, and the next scoped recommendation:
+Phase 5D2 reviewer spawn/capture wrapper.
+
+### Impact:
+The next session should start from `HANDOFF.md`, treat Phase 5D1 as complete,
+and proceed only with the Phase 5D2 wrapper unless a regression is discovered.
+
+### Related:
+`HANDOFF.md` | `e4ce6fd`

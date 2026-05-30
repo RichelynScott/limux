@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-05-30 00:20 EDT
+Last updated: 2026-05-30 02:19 EDT
 
 ## Immediate Next Action
 
@@ -33,6 +33,11 @@ Recommended next scoped action: **Phase 5D2 Reviewer Spawn/Capture Wrapper**.
 This should start a reviewer pane, send the Phase 5D1 prompt after readiness,
 capture or point to reviewer evidence, update the existing ledger entry without
 rewriting unrelated content, and keep hcom output to short durable pointers.
+
+End-of-night closeout status: Phase 5D1 is committed and pushed as
+`e4ce6fd feat(cli): add review prepare scaffold`. The working tree was clean at
+closeout. Resume from this handoff; do not re-run Phase 5D1 unless a regression
+is found.
 
 Historical next-step packet that selected Phase 5D1:
 
@@ -285,13 +290,15 @@ explicit `LD_LIBRARY_PATH` prefix.
 | 2026-05-29 22:31 EDT | Phase 5B automatic bootstrap | Added post-launch `agent-team` bootstrap prompts, `--no-bootstrap`, protocol-write-before-send behavior, stricter generated-prompt validation, explicit Enter submission, command-launch Enter fixes, fake-agent Xvfb proof, and refreshed workflow/decision/handoff docs. |
 | 2026-05-29 23:23 EDT | Phase 5C durable roster and review ledger | Added `LIMUX_TEAM_ROSTER.md` and `LIMUX_REVIEW_LEDGER.md` seeding, `--roster-path`, `--ledger-path`, `--force-roster-overwrite`, no-overwrite ledger preservation, marked-roster force replacement, symlink/nonregular/overlapping path refusal, bootstrap pointers, CLI tests, Xvfb fake-agent file-visibility proof, and refreshed workflow/decision/handoff docs. |
 | 2026-05-30 00:20 EDT | Phase 5D1 reviewer workflow scaffold | Added `limux review prepare` with durable request-file creation, append-only pending ledger entries, dry-run planning, reviewer/lens validation, leaf symlink/nonregular/overlapping target refusal, control-character prompt-field rejection, README/roadmap/workflow updates, focused CLI tests, full workspace check, release Xvfb smoke proof, and Claude adversarial review follow-up fixes. |
+| 2026-05-30 02:19 EDT | End-of-night closeout | Confirmed Phase 5D1 commit `e4ce6fd` is pushed to `main`, working tree is clean, and the next resume lane is Phase 5D2 reviewer spawn/capture wrapper. |
 
 ## Current State
 
 - Branch: `main`
 - Phase 5B baseline commit: `0d2597b feat(cli): bootstrap agent-team peers after launch`
+- Latest pushed commit: `e4ce6fd feat(cli): add review prepare scaffold`
 - Latest implementation in this handoff: Phase 5D1 `limux review prepare` scaffold after Phase 5C durable roster/review-ledger seeding.
-- Working tree should be clean after committing/pushing Phase 5D1.
+- Working tree was clean at end-of-night closeout on 2026-05-30 02:19 EDT.
 
 ## Architectural Decisions Locked In
 
