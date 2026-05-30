@@ -1,14 +1,29 @@
 # Limux Session Handoff
 
-Last updated: 2026-05-29 20:15 EDT
+Last updated: 2026-05-29 20:32 EDT
 
 ## Immediate Next Action
 
 Phase 5A zero-friction protocol discovery for `limux agent-team` is implemented
 and locally verified. GTK bridge `surface.send_text` now reports not-ready
-terminal surfaces as a conflict instead of returning `ok: true`. The next
-scoped code option is shell-quoting/test coverage for future automatic
-bootstrap, after host GTK/pkg-config/Ghostty prerequisites are available.
+terminal surfaces as a conflict instead of returning `ok: true`. Host
+GTK/pkg-config prerequisites are installed, and the approved Ghostty/Zig v2 gate
+has built local `ghostty/zig-out/lib/libghostty.so`.
+
+Recommended next scoped action: remove the `unused_mut` warning reported by the
+focused host test in `rust/limux-host-linux/src/window.rs`, then run the
+workspace gates that were previously blocked by missing Ghostty:
+
+```bash
+cargo fmt --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+git diff --check
+```
+
+Run `./scripts/check.sh` after the warning is fixed. Run the Xvfb smoke harness
+as a separate explicit verification lane if the operator wants live GUI/socket
+coverage next.
 
 The operator requested an easier-to-read status/options artifact on
 2026-05-29. Use this packet if a decision needs to be confirmed before coding:
@@ -37,7 +52,7 @@ Initial Codex execution attempt status: `BLOCKED BEFORE MUTATION`. The pre-mutat
 and apt simulation ran, then execution stopped at `sudo apt-get update` because
 sudo required a password. The run was cancelled instead of collecting or
 handling a password in chat. No apt package install occurred, and `pkg-config`
-is still absent.
+was still absent at that point.
 
 Second Codex attempt status: `STILL BLOCKED BEFORE MUTATION`. After the operator ran
 `sudo -v` locally, Codex checked `sudo -n true` in its execution context. Sudo
@@ -50,14 +65,11 @@ show `pkg-config`, `pkgconf`, `libgtk-4-dev`, `libadwaita-1-dev`, and
 `libwebkitgtk-6.0-dev` installed. `pkg-config --modversion gtk4 libadwaita-1
 webkitgtk-6.0` reports `4.14.5`, `1.5.0`, and `2.52.3`.
 
-Current blocker: the host test now reaches `limux-ghostty-sys` and fails
-because `ghostty/zig-out/lib/libghostty.so` is missing. The `ghostty/`
-submodule is still uninitialized and `zig` is still not on `PATH`.
-
-Recommended continuation: run a separate reviewed Ghostty/Zig gate. Do not
-bundle it into the already-completed apt prerequisite lane. Do not run ad hoc
-Zig downloads, submodule init/update, Ghostty build, or system-wide Limux
-install without the next explicit review/approval step.
+Previous blocker resolved: the host test now finds
+`ghostty/zig-out/lib/libghostty.so`. The `ghostty/` submodule is initialized at
+the pinned commit, and project-scoped Zig `0.15.2` was used from
+`$HOME/.cache/limux-tools`. Zig is still not installed system-wide and is not
+expected on `PATH`.
 
 The draft-only Ghostty/Zig mutation review for that next gate is:
 
@@ -65,25 +77,46 @@ The draft-only Ghostty/Zig mutation review for that next gate is:
 docs/LIMUX_GHOSTTY_ZIG_MUTATION_REVIEW_2026-05-29.md
 ```
 
-Current review decision: `WAIT` until the operator explicitly approves the
-exact v2 command block in that file. Current v2 artifact SHA256:
+The operator approved the exact v2 command block on 2026-05-29. Current v2
+artifact SHA256:
 `dddf26db51d3d4a3f16ce9414f33497597ab2014c14a142b83ca4a3a1e7837e5`.
 
-Consensus gate result: `GO for explicit operator approval; WAIT for execution`.
-Reviewers `niru`, `zori`, `kazu`, and the local Claude plugin cleared v2 for
-approval consideration. Execution still requires the operator to approve the
-exact v2 SHA. The consensus report is:
+Consensus gate result was `GO for explicit operator approval; WAIT for
+execution`. Reviewers `niru`, `zori`, `kazu`, and the local Claude plugin
+cleared v2 for approval consideration. The consensus report is:
 
 ```text
 docs/LIMUX_GHOSTTY_ZIG_CONSENSUS_GATE_2026-05-29.md
 ```
 
-The v2 lane recommends project-scoped Zig `0.15.2` from official Zig metadata,
-SHA256 `02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239`, the
-pinned `am-will/ghostty` submodule commit
-`81ab8ffa90185221782baf785e85387321e16f8d`, build evidence under
-`docs/evidence/`, and then `CARGO_NET_OFFLINE=true cargo test --locked -p
-limux-host-linux surface_send_text_response`.
+Execution result: `COMPLETE WITH WRAPPER DEVIATION DOCUMENTED`. The v2 lane used
+project-scoped Zig `0.15.2` from official Zig metadata, SHA256
+`02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239`, the pinned
+`am-will/ghostty` submodule commit
+`81ab8ffa90185221782baf785e85387321e16f8d`, and evidence under:
+
+```text
+docs/evidence/limux-ghostty-zig-20260530T002418Z-18756/
+```
+
+Focused host verification passed:
+
+```bash
+CARGO_NET_OFFLINE=true LD_LIBRARY_PATH="$PWD/ghostty/zig-out/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" cargo test --locked -p limux-host-linux surface_send_text_response
+```
+
+Result: `2 passed; 0 failed; 186 filtered out`. The test emitted an
+`unused_mut` warning at `rust/limux-host-linux/src/window.rs:4340`, which should
+be fixed before claiming the full clippy/workspace gate.
+
+Execution wrapper deviation: the command extraction wrapper captured all
+`bash` fences in the review doc, so it first ran the README illustrative block:
+`git submodule update --init --recursive` and
+`(cd ghostty && zig build -Dapp-runtime=none -Doptimize=ReleaseFast)`. The build
+failed immediately because `zig` was not on `PATH`; the approved v2 block then
+ran successfully. Follow-up inspection found `ghostty` at the pinned commit,
+`ghostty/.gitmodules` absent/non-empty check passed, and
+`git -C ghostty submodule status --recursive` returned no nested submodules.
 
 Start here:
 
@@ -114,11 +147,9 @@ cargo clippy -p limux-cli --all-targets -- -D warnings
 git diff --check
 ```
 
-Run `./scripts/check.sh` only after `libghostty.so` is present. The last full gate attempt failed because `libghostty` was missing, not because of the CLI changes.
-
-For host-side GTK tests, this environment also needs `pkg-config` available on
-`PATH`; otherwise `gio-sys`, `glib-sys`, `gobject-sys`, `cairo-sys-rs`, and
-`gdk-pixbuf-sys` fail before Rust test compilation starts.
+`libghostty.so` and host GTK/pkg-config prerequisites are now present locally.
+The next expected full-gate issue is the focused host-test `unused_mut` warning,
+which should be fixed before `clippy -D warnings` or `./scripts/check.sh`.
 
 ## Completed This Session
 
@@ -142,7 +173,8 @@ For host-side GTK tests, this environment also needs `pkg-config` available on
 | 2026-05-29 19:24 EDT | Sudo cache follow-up | Operator ran `sudo -v` locally, but `sudo -n true` inside Codex still required a password. No packages were installed. |
 | 2026-05-29 19:51 EDT | Manual apt prerequisite completion | Operator manually completed the approved apt prerequisite lane. GTK/WebKit pkg-config checks pass. Host test now fails at the separate Ghostty/Zig gate. |
 | 2026-05-29 20:10 EDT | Ghostty/Zig mutation review | Created draft-only review for project-scoped Zig 0.15.2 download, pinned Ghostty submodule initialization, `libghostty.so` build, and host test verification. Decision is `WAIT` pending explicit approval. |
-| 2026-05-29 20:15 EDT | Ghostty/Zig consensus gate | `niru`, `zori`, `kazu`, and Claude plugin reviewed v1, returned `WAIT`, v2 was patched, then v2 re-review returned GO for operator approval. Execution remains WAIT until exact v2 SHA approval. |
+| 2026-05-29 20:15 EDT | Ghostty/Zig consensus gate | `niru`, `zori`, `kazu`, and Claude plugin reviewed v1, returned `WAIT`, v2 was patched, then v2 re-review returned GO for operator approval. |
+| 2026-05-29 20:32 EDT | Approved Ghostty/Zig execution | Verified v2 SHA, built `ghostty/zig-out/lib/libghostty.so`, captured evidence logs, and passed the locked offline host send-text test. Wrapper deviation documented: an earlier README bash fence initialized the top-level `ghostty` submodule before the approved v2 block; no nested submodules or system mutation were found. |
 
 ## Current State
 
@@ -151,7 +183,7 @@ For host-side GTK tests, this environment also needs `pkg-config` available on
 - Latest implementation in this handoff: GTK `surface.send_text` readiness/failure hardening.
 - Latest pushed status/report commit before Phase 5A implementation:
   `1c12e97 docs(decision): add limux next steps packet`
-- Working tree should be clean after committing/pushing the Phase 5A implementation.
+- Working tree should be clean after committing/pushing the Ghostty/Zig evidence update.
 
 ## Architectural Decisions Locked In
 
@@ -204,14 +236,14 @@ Phase ordering:
 
 ## Known Risks And Blockers
 
-- `./scripts/check.sh` needs `ghostty/zig-out/lib/libghostty.so`; build it before claiming the full workspace gate passes.
-- Host-crate tests moved past the prior `pkg-config` blocker after manual apt install; the active host-crate blocker is now missing `ghostty/zig-out/lib/libghostty.so`.
-- `zig` is not on `PATH`, and the `ghostty/` submodule is uninitialized. Review this as a separate supply-chain/build gate before fetching/building.
+- `ghostty/zig-out/lib/libghostty.so` exists locally after the approved build gate, but it is a generated artifact. Fresh clones or cleaned worktrees must rebuild it through the reviewed lane before host/workspace checks.
+- Host-crate tests moved past the prior `pkg-config` and `libghostty` blockers. The focused host test now exposes an `unused_mut` warning at `rust/limux-host-linux/src/window.rs:4340`; full `clippy -D warnings` should fix that first.
+- `zig` is intentionally not on `PATH`; the reviewed lane used project-scoped Zig under `$HOME/.cache/limux-tools`.
 - Shell-injected launch/bootstrap commands need tests for spaces, quotes, `$`, backticks, semicolons, and newlines before automation expands.
 - Instruction-source hashes are deterministic `fnv1a64` metadata for change detection, not cryptographic integrity claims.
 
 ## Morning Resume Prompt
 
 ```text
-Please resume the Limux work from HANDOFF.md. Phase 5A zero-friction protocol discovery is implemented and GTK `surface.send_text` now returns a conflict when the terminal is not ready. Before automatic bootstrap, install/verify host prerequisites (`pkg-config`, GTK dev libraries, Ghostty lib), run host/Xvfb checks, then add shell-quoting tests for launch/bootstrap commands.
+Please resume the Limux work from HANDOFF.md. Phase 5A zero-friction protocol discovery is implemented, GTK `surface.send_text` now returns a conflict when the terminal is not ready, host prerequisites are installed, and the approved Ghostty/Zig gate built `ghostty/zig-out/lib/libghostty.so`. Next fix the `unused_mut` warning at `rust/limux-host-linux/src/window.rs:4340`, run the full workspace gates, then decide whether to run Xvfb smoke and add shell-quoting tests for launch/bootstrap commands.
 ```

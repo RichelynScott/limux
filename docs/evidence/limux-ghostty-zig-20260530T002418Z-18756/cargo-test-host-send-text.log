@@ -1,0 +1,44 @@
+   Compiling glib v0.22.3
+   Compiling gdk-pixbuf-sys v0.22.0
+   Compiling soup3-sys v0.9.0
+   Compiling limux-ghostty-sys v0.1.19 (/home/riche/MCPs/limux/rust/limux-ghostty-sys)
+   Compiling limux-core v0.1.19 (/home/riche/MCPs/limux/rust/limux-core)
+   Compiling gdk4-sys v0.11.1
+   Compiling gsk4-sys v0.11.1
+   Compiling gtk4-sys v0.11.1
+   Compiling webkit6-sys v0.6.0
+   Compiling libadwaita-sys v0.9.1
+   Compiling limux-control v0.1.19 (/home/riche/MCPs/limux/rust/limux-control)
+   Compiling gio v0.22.2
+   Compiling cairo-rs v0.22.0
+   Compiling graphene-rs v0.22.0
+   Compiling javascriptcore6 v0.6.0
+   Compiling gdk-pixbuf v0.22.0
+   Compiling pango v0.22.0
+   Compiling soup3 v0.9.0
+   Compiling gdk4 v0.11.1
+   Compiling gsk4 v0.11.1
+   Compiling gdk4-wayland v0.11.0
+   Compiling gtk4 v0.11.1
+   Compiling libadwaita v0.9.1
+   Compiling webkit6 v0.6.1
+   Compiling limux-host-linux v0.1.19 (/home/riche/MCPs/limux/rust/limux-host-linux)
+warning: variable does not need to be mutable
+    --> rust/limux-host-linux/src/window.rs:4340:23
+     |
+4340 |             let Some((mut payload, handle)) = target else {
+     |                       ----^^^^^^^
+     |                       |
+     |                       help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `limux-host-linux` (bin "limux" test) generated 1 warning (run `cargo fix --bin "limux" -p limux-host-linux --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 06s
+     Running unittests src/main.rs (target/debug/deps/limux-7d3b15d1e46a9359)
+
+running 2 tests
+test window::tests::surface_send_text_response_marks_ok_when_writable ... ok
+test window::tests::surface_send_text_response_conflicts_when_terminal_is_not_writable ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 186 filtered out; finished in 0.00s

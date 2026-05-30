@@ -177,3 +177,21 @@ Consensus result is `GO for explicit operator approval; WAIT for execution`. The
 
 ### Related:
 `docs/LIMUX_GHOSTTY_ZIG_MUTATION_REVIEW_2026-05-29.md` | `docs/LIMUX_GHOSTTY_ZIG_CONSENSUS_GATE_2026-05-29.md` | hcom thread `limux-ghostty-zig-gate`
+
+## 2026-05-29 - Approved Ghostty/Zig Build Gate Executed
+### What:
+Executed the approved Ghostty/Zig v2 build gate after verifying artifact SHA256 `dddf26db51d3d4a3f16ce9414f33497597ab2014c14a142b83ca4a3a1e7837e5`.
+
+### Why:
+The host GTK test was blocked because `limux-ghostty-sys` could not find `ghostty/zig-out/lib/libghostty.so`.
+
+### How:
+Verified the frozen review artifact hash, command syntax, repo status, Zig metadata from official `index.json`, Zig archive SHA256 and byte size, archive containment, pinned Ghostty commit `81ab8ffa90185221782baf785e85387321e16f8d`, and absence of nested Ghostty submodules. Built `libghostty.so` with project-scoped Zig `0.15.2`, captured dynamic-link evidence, and ran `CARGO_NET_OFFLINE=true cargo test --locked -p limux-host-linux surface_send_text_response`.
+
+Execution wrapper note: the shell extraction command accidentally captured an earlier illustrative README bash fence before the approved v2 block. That first fence initialized the top-level `ghostty` submodule and attempted `zig build`, which failed immediately because `zig` was not on `PATH`; the approved v2 block then executed successfully. Follow-up inspection found the submodule at the pinned commit, no nested submodules, and no extra system mutation.
+
+### Impact:
+`ghostty/zig-out/lib/libghostty.so` now exists locally, and the focused host test passed offline with 2 tests passing. Evidence is stored under `docs/evidence/limux-ghostty-zig-20260530T002418Z-18756/`. The focused host test exposed an existing `unused_mut` warning in `rust/limux-host-linux/src/window.rs`; full clippy/check work should address that before claiming the complete workspace gate.
+
+### Related:
+`docs/evidence/limux-ghostty-zig-20260530T002418Z-18756/` | `docs/LIMUX_GHOSTTY_ZIG_MUTATION_REVIEW_2026-05-29.md` | `HANDOFF.md`
