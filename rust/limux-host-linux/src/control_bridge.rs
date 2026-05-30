@@ -12,7 +12,9 @@ use gtk4 as gtk;
 use limux_control::auth::{self, SocketControlMode};
 use limux_control::request_io::{self, read_request_frame};
 use limux_control::socket_path::{bind_listener, resolve_socket_path, SocketMode};
-use limux_protocol::{parse_v1_command_envelope, V2Request, V2Response};
+use limux_protocol::{
+    parse_v1_command_envelope, validate_terminal_text_payload, V2Request, V2Response,
+};
 use serde_json::{json, Map, Value};
 
 const METHODS: &[&str] = &[
@@ -274,6 +276,23 @@ fn optional_string(params: &Map<String, Value>, keys: &[&str]) -> Option<String>
     })
 }
 
+fn validate_terminal_text_param(label: &str, text: &str) -> Result<(), BridgeError> {
+    validate_terminal_text_payload(label, text)
+        .map_err(|error| BridgeError::invalid_params(error.to_string()))
+}
+
+fn optional_terminal_text(
+    params: &Map<String, Value>,
+    keys: &[&str],
+    label: &str,
+) -> Result<Option<String>, BridgeError> {
+    let value = optional_string(params, keys);
+    if let Some(value) = value.as_ref() {
+        validate_terminal_text_param(label, value)?;
+    }
+    Ok(value)
+}
+
 fn optional_handle(
     params: &Map<String, Value>,
     keys: &[&str],
@@ -416,7 +435,7 @@ fn parse_create_pane_request(
         source_surface_id: optional_ref_handle(params, &["surface_id"], "surface:")?,
         direction,
         pane_type,
-        command: optional_string(params, &["command"]),
+        command: optional_terminal_text(params, &["command"], "pane.create command")?,
     })
 }
 
@@ -549,12 +568,17 @@ fn handle_method(
             )
         }
         "workspace.create" | "new-workspace" => {
+            let command =
+                match optional_terminal_text(params, &["command"], "workspace.create command") {
+                    Ok(command) => command,
+                    Err(error) => return error_response(id, error),
+                };
             let (reply, rx) = mpsc::channel();
             (
                 ControlCommand::CreateWorkspace {
                     name: optional_string(params, &["name", "title"]),
                     cwd: optional_string(params, &["cwd"]),
-                    command: optional_string(params, &["command"]),
+                    command,
                     reply,
                 },
                 rx,
@@ -604,6 +628,9 @@ fn handle_method(
                     BridgeError::invalid_params("surface.send_text requires text"),
                 );
             };
+            if let Err(error) = validate_terminal_text_param("surface.send_text text", &text) {
+                return error_response(id, error);
+            }
             // allow_name = true: lets agent-team peers address each other by
             // workspace name (e.g. `--workspace codex`) instead of UUID.
             let target = match parse_optional_workspace_target(params, true) {
@@ -934,6 +961,17 @@ mod tests {
     }
 
     #[test]
+    fn pane_create_contract_rejects_disallowed_terminal_control_command() {
+        let bad = json!({ "command": "codex\u{1b}[31m" });
+        let error = parse_create_pane_request(bad.as_object().expect("object params"))
+            .expect_err("terminal control command should fail");
+
+        assert_eq!(error.code, INVALID_PARAMS_CODE);
+        assert!(error.message.contains("pane.create command"));
+        assert!(error.message.contains("U+001B"));
+    }
+
+    #[test]
     fn pane_create_route_queues_create_pane_command() {
         let response = dispatch_request(
             r#"{"id":1,"method":"pane.create","params":{"name":"claude","surface_id":"surface:4:tab","direction":"down","command":"codex"}}"#,
@@ -997,6 +1035,32 @@ mod tests {
     }
 
     #[test]
+    fn surface_send_text_route_rejects_disallowed_terminal_control_before_dispatch() {
+        let request = json!({
+            "id": 1,
+            "method": "surface.send_text",
+            "params": { "surface_id": "surface:9:tab", "text": "hello\u{1b}[31m" }
+        })
+        .to_string();
+
+        let response = dispatch_request(&request, &|command| {
+            panic!("invalid surface.send_text should not dispatch: {command:?}")
+        });
+
+        assert_eq!(response.result, None);
+        assert_eq!(
+            response.error.as_ref().map(|error| error.code),
+            Some(INVALID_PARAMS_CODE)
+        );
+        assert!(response
+            .error
+            .as_ref()
+            .expect("error")
+            .message
+            .contains("surface.send_text text"));
+    }
+
+    #[test]
     fn read_text_route_accepts_capture_alias_and_surface_refs() {
         let response = dispatch_request(
             r#"{"id":1,"method":"capture-pane","params":{"surface_id":"surface:9:tab"}}"#,
@@ -1016,5 +1080,31 @@ mod tests {
 
         assert_eq!(response.error, None);
         assert_eq!(response.result.expect("result")["text"], "ready");
+    }
+
+    #[test]
+    fn workspace_create_route_rejects_disallowed_terminal_control_command_before_dispatch() {
+        let request = json!({
+            "id": 1,
+            "method": "workspace.create",
+            "params": { "command": "claude\u{7}" }
+        })
+        .to_string();
+
+        let response = dispatch_request(&request, &|command| {
+            panic!("invalid workspace.create should not dispatch: {command:?}")
+        });
+
+        assert_eq!(response.result, None);
+        assert_eq!(
+            response.error.as_ref().map(|error| error.code),
+            Some(INVALID_PARAMS_CODE)
+        );
+        assert!(response
+            .error
+            .as_ref()
+            .expect("error")
+            .message
+            .contains("workspace.create command"));
     }
 }

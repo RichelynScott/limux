@@ -2,7 +2,7 @@
 
 Date: 2026-05-29
 
-Last updated: 2026-05-29 02:06 EDT
+Last updated: 2026-05-29 21:36 EDT
 
 Authoring runtime/session: Codex / tipi
 
@@ -18,7 +18,7 @@ Updated with the `$html-decision-packet` pattern: explicit packet metadata, road
 |---|---|---|
 | Context | Done | Limux and Multica were compared through local source inspection, public repo/docs review, and subagent reports. |
 | Decision | Done | User chose Limux + hcom primary, no Multica pilot yet, and Limux fixes first. |
-| Execution | Current | `agent-team` no longer writes `AGENTS.md` by default; next step is zero-friction protocol discovery. |
+| Execution | Current | `agent-team` no longer writes `AGENTS.md` by default; zero-friction protocol discovery, launch-snippet hardening, and typed-PTY control-character guards are implemented. |
 | Canonical template update | Done | Kazu updated the global decision-packet pattern/template/skill with a bottom Sources / Evidence section when applicable. |
 | Closeout | Current | Handoff docs now capture the morning resume path. |
 
@@ -29,8 +29,9 @@ Updated with the `$html-decision-packet` pattern: explicit packet metadata, road
 | Done | Created the readable Markdown guide and dark-mode HTML decision sheet; user filled it out and selected the Limux-first path. |
 | Done | Commit `cec067f` moved `agent-team` protocol output to `LIMUX_AGENTS.md` by default and added `--protocol-path`. |
 | Done | Ran a five-subagent brainstorm on near-zero-friction Limux agent-team workflow. |
+| Done | Added shared typed-PTY text validation for CLI, bridge/core, and host sink paths; terminal controls now use `send-key` instead of text injection. |
 | Verified | `cargo test -p limux-cli`, `cargo fmt --check`, `cargo clippy -p limux-cli --all-targets -- -D warnings`, `git diff --check`, full `./scripts/check.sh`, and Xvfb smoke pass locally with the built Ghostty library on `LD_LIBRARY_PATH`. |
-| Gated | Multica adoption and install remain deferred. Full automatic Limux bootstrap is gated on two-phase launch/send hardening and live metacharacter smoke coverage. |
+| Gated | Multica adoption and install remain deferred. Full automatic Limux bootstrap is now gated on implementing the two-phase launch/readiness/send flow, not on the typed-PTY control-character policy. |
 | Local prerequisite | Fresh clones or cleaned worktrees still need the reviewed Ghostty/Zig build lane before host checks. |
 | Explicitly not done | Did not clone, install, build, or execute Multica. Did not edit global Codex/Claude templates directly from this Limux session. |
 
@@ -176,9 +177,9 @@ friction. The consensus was:
   regeneration.
 - Defer two-phase automatic bootstrap until generated launch commands start
   only the agent binary, wait for pane readiness, then send arbitrary prompt
-  text with `limux send` and live metacharacter smoke coverage.
+  text through the guarded `limux send` path.
 
-Recommended next implementation: Phase 5A in
+Recommended next implementation: Phase 5B two-phase bootstrap in
 [`cmux-parity-plan.md`](cmux-parity-plan.md).
 
 ## HCOM Updates From The Thread
@@ -281,10 +282,10 @@ If you choose to pilot Multica:
 Use this to continue:
 
 ```text
-Resume from HANDOFF.md and implement Phase 5A for `limux agent-team`:
-generated marker, Instruction Sources section, no-overwrite semantics for
-unmarked `LIMUX_AGENTS.md`, and a durable local policy extension point. Keep
-repo `AGENTS.md` authoritative; do not implement hidden inheritance.
+Resume from HANDOFF.md. Phase 5A protocol discovery, generated launch-snippet
+hardening, and typed-PTY control-character guards are implemented and verified.
+Next implement Phase 5B two-phase automatic bootstrap: launch the agent binary,
+wait for pane readiness, then send prompt text through guarded `limux send`.
 ```
 
 ## Original Decisions Template

@@ -129,14 +129,25 @@ into a `notify` (and, where useful, an inline `send`). Drop-in for
 - The existing `pane.create --command` path already retries until the new
   pane's terminal surface is writable before returning success.
 
+**Shipped before Phase 5B: typed-PTY control-character guard**
+
+- Text typed into terminal panes through `surface.send_text`, `paste-buffer`,
+  `respawn-pane`, `pane.create --command`, and `workspace.create --command`
+  now rejects terminal control characters other than tab, LF, and CR.
+- The guard is enforced in the CLI for fast feedback and again in the live GTK
+  bridge / standalone core dispatcher for direct socket callers.
+- `surface.send_key` remains the explicit route for control keys such as
+  Ctrl-C, and OSC/output parsing remains separate from typed input.
+
 **Deferred: Phase 5B — automatic bootstrap**
 
 Caller-shell quoting for generated `new-pane --command` snippets now has
-regression coverage, and the live GTK/Xvfb smoke path is runnable with the
-documented host prerequisites. Full two-phase launch/bootstrap is still
-deferred until arbitrary prompt text is sent after pane readiness instead of
-embedded inside `--command`, and the live smoke path proves metacharacter
-payloads cannot trigger shell side effects.
+regression coverage, typed-PTY control-character payloads are rejected, and the
+live GTK/Xvfb smoke path is runnable with the documented host prerequisites.
+Full two-phase launch/bootstrap is still deferred until Limux launches the
+agent binary first, waits for pane readiness, and sends arbitrary prompt text
+through the guarded `surface.send_text` path instead of embedding it inside
+`--command`.
 
 ### Phase 6 — (deferred) `limux progress`, `limux log`, `limux markdown`
 Nice polish, not blockers.

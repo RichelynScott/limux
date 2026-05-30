@@ -128,6 +128,17 @@ text with `limux send --surface ...` instead of embedding that text inside
 `--command`. This keeps prompts containing quotes, `$`, backticks, semicolons,
 or newlines out of the child pane's launch shell.
 
+Typed-PTY safety policy:
+
+- `limux send`, `paste-buffer`, `respawn-pane`, `new-pane --command`, and
+  `new-workspace --command` reject terminal control characters except tab, LF,
+  and CR.
+- Multiline `<agent-msg>` envelopes are allowed because they rely on LF.
+- Use `limux send-key` for intentional control keys such as Ctrl-C instead of
+  embedding ESC, BEL, CSI, NUL, or other control bytes in text.
+- Do not use these text paths for ANSI styling, OSC control sequences, binary
+  payloads, or terminal escape experiments.
+
 Read a child pane:
 
 ```bash
@@ -278,7 +289,8 @@ The highest-leverage Limux improvements for this workflow are:
 1. Add `LIMUX_AGENTS.md` instruction-source discovery, generated-marker, and
    no-overwrite semantics.
 2. Add two-phase automatic bootstrap that launches the agent binary first, waits
-   for pane readiness, then sends arbitrary prompt text over `limux send`.
+   for pane readiness, then sends prompt text over the guarded `limux send`
+   path.
 3. Add a compact project roster file mapping project names to Limux workspaces,
    surface IDs, hcom names, and durable coordination files.
 4. Add a wrapper command for "spawn reviewer, capture surface, read result".
@@ -293,9 +305,12 @@ As of this review:
 - Existing repo `AGENTS.md` files are not written by default.
 - Generated `new-pane --command` examples quote launch commands and avoid
   nested arbitrary prompt text.
+- Typed terminal text now rejects ESC/BEL/C1/control payloads except tab, LF,
+  and CR across CLI, bridge/core, and host send-sink paths.
 - Latest tag is `v0.1.19`.
 - Full `./scripts/check.sh` and `./scripts/xvfb-smoke-test.sh` pass locally
   with `ghostty/zig-out/lib/libghostty.so` on `LD_LIBRARY_PATH`.
-- The next recommended implementation is typed-PTY control-character/newline
-  policy work before automatic bootstrap, tracked from
+- The next recommended implementation is two-phase automatic bootstrap:
+  launch the agent binary, wait for pane readiness, then send prompt text
+  through guarded `limux send`, tracked from
   [`cmux-parity-plan.md`](cmux-parity-plan.md).

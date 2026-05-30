@@ -214,7 +214,7 @@ echo "stage 3: OK"
 # --- 7. Stage 4: generated peer surface send ------------------------------
 echo
 echo "== stage 4: surface.send_text to generated peer surface =="
-ENVELOPE=$'<agent-msg from="codex" to="claude" id="smoke-1" ts="2026-04-19T23:59:00Z"><request>smoke test ping</request></agent-msg>\n'
+ENVELOPE=$'<agent-msg from="codex" to="claude" id="smoke-1" ts="2026-04-19T23:59:00Z">\n\t<request>smoke test ping π</request>\n</agent-msg>\n'
 if "$LIMUX_CLI" send --workspace "$TEAM_WORKSPACE" --surface "$CLAUDE_SURFACE" "$ENVELOPE" \
      2>&1 | tee "$LOG_DIR/stage4.txt"; then
   echo "stage 4: OK (surface send accepted)"
@@ -298,17 +298,65 @@ ENV_SURFACE="$(sed -n '3p' "$SELF_SPLIT_ENV")"
 }
 echo "stage 6: OK (self-split command ran with fresh LIMUX_* env)"
 
-# --- 10. Stage 7: hook translators end-to-end -----------------------------
+# --- 10. Stage 7: typed-PTY control-character guard -----------------------
 echo
-echo "== stage 7: claude-hook event translation =="
+echo "== stage 7: typed-PTY control-character guard =="
+BAD_ESC=$'bad\x1b[31m'
+BAD_BEL=$'bad\x07'
+BAD_CSI="$(printf 'bad\302\23331m')"
+
+expect_control_reject() {
+  local label="$1"
+  local codepoint="$2"
+  shift 2
+  if "$@" > "$LOG_DIR/$label.txt" 2>&1; then
+    cat "$LOG_DIR/$label.txt"
+    echo "FAIL: $label accepted disallowed terminal control character"
+    exit 1
+  fi
+  if ! grep -q "disallowed terminal control character $codepoint" "$LOG_DIR/$label.txt"; then
+    cat "$LOG_DIR/$label.txt"
+    echo "FAIL: $label did not report $codepoint"
+    exit 1
+  fi
+}
+
+expect_control_reject stage7-send-esc U+001B \
+  "$LIMUX_CLI" send --workspace "$TEAM_WORKSPACE" --surface "$CLAUDE_SURFACE" "$BAD_ESC"
+
+expect_control_reject stage7-send-c1 U+009B \
+  "$LIMUX_CLI" send --workspace "$TEAM_WORKSPACE" --surface "$CLAUDE_SURFACE" "$BAD_CSI"
+
+expect_control_reject stage7-new-pane-bel U+0007 \
+  "$LIMUX_CLI" new-pane --workspace "$TEAM_WORKSPACE" --surface "$CLAUDE_SURFACE" \
+    --command "$BAD_BEL"
+
+expect_control_reject stage7-respawn-esc U+001B \
+  "$LIMUX_CLI" respawn-pane --workspace "$TEAM_WORKSPACE" --surface "$CLAUDE_SURFACE" \
+    --command "$BAD_ESC"
+
+"$LIMUX_CLI" set-buffer --name bad-control "$BAD_ESC" \
+  > "$LOG_DIR/stage7-set-buffer.txt" 2>&1
+expect_control_reject stage7-paste-buffer-esc U+001B \
+  "$LIMUX_CLI" paste-buffer --workspace "$TEAM_WORKSPACE" --surface "$CLAUDE_SURFACE" \
+    --name bad-control
+
+expect_control_reject stage7-new-workspace-bel U+0007 \
+  "$LIMUX_CLI" new-workspace --command "$BAD_BEL"
+
+echo "stage 7: OK (typed-PTY control payloads rejected)"
+
+# --- 11. Stage 8: hook translators end-to-end -----------------------------
+echo
+echo "== stage 8: claude-hook event translation =="
 if echo '{"hook_event_name":"Notification","message":"hello from smoke"}' \
   | LIMUX_WORKSPACE_ID="" "$LIMUX_CLI" claude-hook 2>&1 \
-  | tee "$LOG_DIR/stage7.txt"; then
-  echo "stage 7: OK (claude-hook accepted JSON on stdin)"
+  | tee "$LOG_DIR/stage8.txt"; then
+  echo "stage 8: OK (claude-hook accepted JSON on stdin)"
 else
   # claude-hook legitimately errors without a workspace target — that's
   # a pass-through error, not a bridge regression. Surface the output.
-  echo "stage 7: claude-hook returned non-zero (check output)"
+  echo "stage 8: claude-hook returned non-zero (check output)"
 fi
 
 echo

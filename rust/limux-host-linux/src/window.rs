@@ -10,6 +10,7 @@ use gtk::glib;
 use gtk::glib::variant::ToVariant;
 use gtk4 as gtk;
 use libadwaita as adw;
+use limux_protocol::validate_terminal_text_payload;
 
 use crate::app_config;
 use crate::control_bridge::{
@@ -166,6 +167,11 @@ fn surface_send_text_response(
     Ok(payload)
 }
 
+fn validate_typed_terminal_text(label: &str, text: &str) -> Result<(), BridgeError> {
+    validate_terminal_text_payload(label, text)
+        .map_err(|error| BridgeError::invalid_params(error.to_string()))
+}
+
 fn send_pane_create_response_after_command(
     pane_widget: gtk::Widget,
     surface_id: String,
@@ -173,6 +179,11 @@ fn send_pane_create_response_after_command(
     response: serde_json::Value,
     reply: std::sync::mpsc::Sender<Result<serde_json::Value, BridgeError>>,
 ) {
+    if let Err(error) = validate_typed_terminal_text("pane.create command", &command) {
+        let _ = reply.send(Err(error));
+        return;
+    }
+
     let mut attempts = 0;
     let mut reply = Some(reply);
     let command = format!("{command}\n");
@@ -4065,6 +4076,13 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 return;
             };
 
+            if let Some(command) = request.command.as_deref() {
+                if let Err(error) = validate_typed_terminal_text("pane.create command", command) {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
+            }
+
             let new_pane = split_pane(
                 state,
                 &resolved.workspace_id,
@@ -4152,6 +4170,15 @@ fn handle_control_command(state: &State, command: ControlCommand) {
             command,
             reply,
         } => {
+            if let Some(command) = command.as_deref() {
+                if let Err(error) =
+                    validate_typed_terminal_text("workspace.create command", command)
+                {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
+            }
+
             let home = dirs::home_dir()
                 .map(|path| path.to_string_lossy().to_string())
                 .unwrap_or_default();
@@ -4303,6 +4330,11 @@ fn handle_control_command(state: &State, command: ControlCommand) {
             text,
             reply,
         } => {
+            if let Err(error) = validate_typed_terminal_text("surface.send_text text", &text) {
+                let _ = reply.send(Err(error));
+                return;
+            }
+
             let resolved = {
                 let app_state = state.borrow();
                 workspace_index_for_target(&app_state, &target)
@@ -5899,12 +5931,13 @@ mod tests {
         shortcut_allowed_while_browser_find_active, shortcut_blocked_by_editable,
         shortcut_command_from_key_event, shortcut_dispatch_propagation,
         should_emit_desktop_notification, surface_send_text_response, tab_drag_workspace_seed,
-        use_opaque_window_background, validate_workspace_folder_input_with_dirs,
-        workspace_drop_layout_path, workspace_folder_path_from_input,
-        workspace_notification_message, Direction, EditableCaptureContext, NeighborScore,
-        PaneBounds, PaneCreateDirection, PaneCreateTargetError, PortalColorSchemePreference,
-        SessionSaveAccess, SessionSaveRequest, WorkspaceSeedSource, BASE_CSS, HOST_ENTRY_CSS_CLASS,
-        WORKSPACE_RENAME_ENTRY_CSS_CLASS, WORKSPACE_RENAME_ENTRY_CSS_CLASSES,
+        use_opaque_window_background, validate_typed_terminal_text,
+        validate_workspace_folder_input_with_dirs, workspace_drop_layout_path,
+        workspace_folder_path_from_input, workspace_notification_message, Direction,
+        EditableCaptureContext, NeighborScore, PaneBounds, PaneCreateDirection,
+        PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest,
+        WorkspaceSeedSource, BASE_CSS, HOST_ENTRY_CSS_CLASS, WORKSPACE_RENAME_ENTRY_CSS_CLASS,
+        WORKSPACE_RENAME_ENTRY_CSS_CLASSES,
     };
     use crate::layout_state::{LayoutNodeState, PaneState, SplitOrientation, SplitState};
     use crate::shortcut_config::{
@@ -5967,6 +6000,27 @@ mod tests {
         assert_eq!(
             err,
             super::BridgeError::conflict("terminal surface 7:tab-a is not ready for text input")
+        );
+    }
+
+    #[test]
+    fn validate_typed_terminal_text_allows_multiline_agent_messages() {
+        validate_typed_terminal_text("surface.send_text text", "hello\tworld\nnext\rsubmit")
+            .expect("tab, LF, and CR should remain allowed");
+        validate_typed_terminal_text("surface.send_text text", "unicode ok: lambda π")
+            .expect("printable unicode should remain allowed");
+    }
+
+    #[test]
+    fn validate_typed_terminal_text_rejects_terminal_control_sequences() {
+        let err = validate_typed_terminal_text("surface.send_text text", "bad\u{1b}[31m")
+            .expect_err("ESC should be rejected before host terminal send");
+
+        assert_eq!(
+            err,
+            super::BridgeError::invalid_params(
+                "surface.send_text text contains disallowed terminal control character U+001B at byte 3; allowed control characters are tab, LF, and CR"
+            )
         );
     }
 

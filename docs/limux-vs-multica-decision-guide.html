@@ -688,7 +688,7 @@
       <h2>Roadmap</h2>
       <div class="road-step done"><i class="road-dot"></i><div><strong>Context</strong><span>Limux and Multica compared.</span></div></div>
       <div class="road-step done"><i class="road-dot"></i><div><strong>Decision</strong><span>Limux + hcom primary; Multica deferred.</span></div></div>
-      <div class="road-step current"><i class="road-dot"></i><div><strong>Execution</strong><span>Next: protocol discovery Phase 5A.</span></div></div>
+      <div class="road-step current"><i class="road-dot"></i><div><strong>Execution</strong><span>Next: two-phase bootstrap Phase 5B.</span></div></div>
       <div class="road-step done"><i class="road-dot"></i><div><strong>Canonical template</strong><span>Kazu completed global pattern update.</span></div></div>
       <div class="road-step current"><i class="road-dot"></i><div><strong>Closeout</strong><span>Handoff docs ready for morning.</span></div></div>
     </aside>
@@ -731,8 +731,9 @@
       <div class="section-body status-grid">
         <div class="status-card"><strong>Done</strong><span>User selected Limux + hcom primary and no Multica pilot for now.</span></div>
         <div class="status-card"><strong>Done</strong><span>Commit `cec067f` moved generated protocol output to `LIMUX_AGENTS.md` and added `--protocol-path`.</span></div>
+        <div class="status-card"><strong>Done</strong><span>Typed terminal text now rejects ESC/BEL/C1/control payloads except tab, LF, and CR across CLI, bridge/core, and host send-sink paths.</span></div>
         <div class="status-card"><strong>Verified</strong><span>`cargo test -p limux-cli`, fmt, clippy, diff whitespace, full `./scripts/check.sh`, and Xvfb smoke pass locally with the built Ghostty library on `LD_LIBRARY_PATH`.</span></div>
-        <div class="status-card"><strong>Gated</strong><span>Full automatic bootstrap waits on two-phase launch/send hardening and live metacharacter smoke coverage.</span></div>
+        <div class="status-card"><strong>Gated</strong><span>Full automatic bootstrap now waits on implementing the two-phase launch/readiness/send flow.</span></div>
         <div class="status-card"><strong>Local prerequisite</strong><span>Fresh clones or cleaned worktrees still need the reviewed Ghostty/Zig build lane before host checks.</span></div>
         <div class="status-card"><strong>Not done</strong><span>Did not clone, install, build, or run Multica. Did not edit global templates directly.</span></div>
       </div>
@@ -753,13 +754,13 @@
         </article>
         <article class="card">
           <span class="tag amber">Next</span>
-          <h3>Limux Phase 5A</h3>
-          <p>Add `LIMUX_AGENTS.md` instruction-source discovery, generated-marker, no-overwrite semantics, and a local policy extension point.</p>
+          <h3>Limux Phase 5B</h3>
+          <p>Implement two-phase automatic bootstrap: launch the agent binary, wait for pane readiness, then send prompt text through guarded `limux send`.</p>
         </article>
         <article class="card">
           <span class="tag amber">Deferred</span>
           <h3>Automatic bootstrap</h3>
-          <p>Wait until generated launch commands start only the agent binary, wait for pane readiness, then send arbitrary prompt text with `limux send` and live metacharacter smoke coverage.</p>
+          <p>Do not embed arbitrary prompts inside `--command`; prompt text belongs in the guarded post-readiness send phase.</p>
         </article>
       </div>
     </section>
@@ -1244,7 +1245,7 @@
         '10. Extra notes:',
         notes.value.trim() ? `   - ${notes.value.trim().replace(/\n/g, '\n   - ')}` : '   - None.',
         '',
-        'Please use these decisions to proceed with Phase 5A from HANDOFF.md: generated marker, Instruction Sources, no-overwrite behavior for unmarked LIMUX_AGENTS.md, and local policy extension support.'
+        'Please use these decisions to proceed with Phase 5B from HANDOFF.md: implement two-phase automatic bootstrap by launching the agent binary first, waiting for pane readiness, then sending prompt text through guarded limux send.'
       ];
 
       output.value = lines.join('\n');

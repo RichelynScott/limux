@@ -230,3 +230,22 @@ The current manual/generated-snippet path is green. Full automatic bootstrap rem
 
 ### Related:
 `rust/limux-cli/src/main.rs` | `docs/cmux-parity-plan.md` | `docs/limux-hcom-workflow.md` | hcom thread `limux-shell-quoting`
+
+## 2026-05-29 - Typed-PTY Control-Character Guard
+### What:
+Added a shared typed-terminal-text safety policy for Limux control paths that inject text into terminal panes.
+
+### Why:
+Automatic agent bootstrap should send arbitrary prompt text only after pane readiness, and that typed-text route needs a clear boundary between printable/multiline messages and terminal control sequences. ESC, BEL, C1 CSI/OSC, NUL, DEL, and similar controls should not be injectable through `limux send`, paste, respawn, or host-spawn text paths.
+
+### How:
+Added `validate_terminal_text_payload` in `limux-protocol`, allowing printable Unicode plus tab, LF, and CR while rejecting other `char::is_control()` values with byte offset and codepoint diagnostics. Enforced it in `limux-cli`, `limux-core`, `limux-host-linux` control parsing, and the GTK host send sink before `TerminalHandle::send_text`. Kept `limux send-key` / `surface.send_key` as the explicit route for control keys, and left OSC/output parsing separate from typed input. Expanded the Xvfb smoke harness to reject ESC/BEL/C1 payloads across `send`, `new-pane --command`, `respawn-pane`, `paste-buffer`, and `new-workspace --command`.
+
+### Impact:
+The typed-PTY safety gate is complete for the current control surface. Full automatic bootstrap can now proceed as a two-phase implementation: launch the agent binary first, wait for surface readiness, then send prompt text through the guarded `limux send` path. Residual policy choices are explicit: CR remains allowed, and printable Unicode controls such as bidi/zero-width characters are not blocked by this guard.
+
+### Verification:
+Red tests were observed before implementation for protocol, CLI, core, and host bridge behavior. After implementation, `cargo test -p limux-protocol terminal_text_policy`, `cargo test -p limux-cli terminal_control`, `cargo test -p limux-core terminal_control`, `LD_LIBRARY_PATH="$PWD/ghostty/zig-out/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" cargo test -p limux-host-linux terminal_control`, `cargo fmt --check`, `git diff --check`, `bash -n scripts/xvfb-smoke-test.sh`, `LD_LIBRARY_PATH="$PWD/ghostty/zig-out/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" cargo test -p limux-cli`, `LD_LIBRARY_PATH="$PWD/ghostty/zig-out/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./scripts/check.sh`, and `LD_LIBRARY_PATH="$PWD/ghostty/zig-out/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./scripts/xvfb-smoke-test.sh` passed. Claude plugin adversarial review timed out after 240 seconds and is not counted as a passed plugin review; hcom reviewers `niru`, `zori`, and `kazu` had already converged on the shared-validator / CLI+host+core enforcement shape.
+
+### Related:
+`rust/limux-protocol/src/lib.rs` | `rust/limux-cli/src/main.rs` | `rust/limux-core/src/lib.rs` | `rust/limux-host-linux/src/control_bridge.rs` | `rust/limux-host-linux/src/window.rs` | `scripts/xvfb-smoke-test.sh` | `HANDOFF.md` | hcom thread `limux-typed-pty-policy`

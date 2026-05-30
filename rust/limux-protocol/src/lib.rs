@@ -108,6 +108,50 @@ pub enum ProtocolError {
     InvalidParams,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Error)]
+#[error(
+    "{label} contains disallowed terminal control character {codepoint_name} at byte {byte_offset}; allowed control characters are tab, LF, and CR"
+)]
+pub struct TerminalTextError {
+    label: String,
+    byte_offset: usize,
+    codepoint: u32,
+    codepoint_name: String,
+}
+
+impl TerminalTextError {
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    pub fn byte_offset(&self) -> usize {
+        self.byte_offset
+    }
+
+    pub fn codepoint(&self) -> u32 {
+        self.codepoint
+    }
+}
+
+pub fn validate_terminal_text_payload(
+    label: impl Into<String>,
+    text: &str,
+) -> Result<(), TerminalTextError> {
+    let label = label.into();
+    for (byte_offset, ch) in text.char_indices() {
+        if ch.is_control() && !matches!(ch, '\t' | '\n' | '\r') {
+            let codepoint = ch as u32;
+            return Err(TerminalTextError {
+                label,
+                byte_offset,
+                codepoint,
+                codepoint_name: format!("U+{codepoint:04X}"),
+            });
+        }
+    }
+    Ok(())
+}
+
 pub fn parse_v1_command_envelope(input: &str) -> Result<V1CommandEnvelope, ProtocolError> {
     let value: Value = serde_json::from_str(input)?;
     parse_v1_command_envelope_value(value)
@@ -202,5 +246,43 @@ mod tests {
             .expect_err("params must be an object");
 
         assert!(matches!(err, ProtocolError::InvalidParams));
+    }
+
+    #[test]
+    fn terminal_text_policy_allows_printable_multiline_messages() {
+        validate_terminal_text_payload("surface.send_text text", "hello\tworld\nnext\rsubmit")
+            .expect("tabs and line endings are intentional terminal input");
+        validate_terminal_text_payload("surface.send_text text", "unicode ok: λ 🚀")
+            .expect("printable unicode should be accepted");
+        validate_terminal_text_payload("surface.send_text text", "nbsp\u{a0}boundary")
+            .expect("U+00A0 is printable and above the C1 control range");
+    }
+
+    #[test]
+    fn terminal_text_policy_rejects_terminal_control_sequences() {
+        for (name, ch, codepoint) in [
+            ("NUL", '\u{0}', 0x00),
+            ("BEL", '\u{7}', 0x07),
+            ("ESC", '\u{1b}', 0x1b),
+            ("unit separator", '\u{1f}', 0x1f),
+            ("DEL", '\u{7f}', 0x7f),
+            ("C1 start", '\u{80}', 0x80),
+            ("C1 CSI", '\u{9b}', 0x9b),
+            ("C1 OSC", '\u{9d}', 0x9d),
+            ("C1 end", '\u{9f}', 0x9f),
+        ] {
+            let err = match validate_terminal_text_payload(
+                "surface.send_text text",
+                &format!("a{ch}b"),
+            ) {
+                Ok(()) => panic!("{name} should be rejected"),
+                Err(error) => error,
+            };
+
+            assert_eq!(err.label(), "surface.send_text text");
+            assert_eq!(err.codepoint(), codepoint);
+            assert!(err.to_string().contains(&format!("U+{codepoint:04X}")));
+            assert!(err.to_string().contains("tab, LF, and CR"));
+        }
     }
 }

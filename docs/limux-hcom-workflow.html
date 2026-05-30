@@ -528,6 +528,14 @@ LIMUX_SOCKET</code></pre>
 
         <p>After the pane is created and you have its surface id, send arbitrary prompt text with <code>limux send --surface ...</code> instead of embedding that text inside <code>--command</code>. This keeps prompts containing quotes, <code>$</code>, backticks, semicolons, or newlines out of the child pane's launch shell.</p>
 
+        <h3>Typed-PTY safety policy</h3>
+        <ul>
+          <li><code>limux send</code>, <code>paste-buffer</code>, <code>respawn-pane</code>, <code>new-pane --command</code>, and <code>new-workspace --command</code> reject terminal control characters except tab, LF, and CR.</li>
+          <li>Multiline <code>&lt;agent-msg&gt;</code> envelopes are allowed because they rely on LF.</li>
+          <li>Use <code>limux send-key</code> for intentional control keys such as Ctrl-C instead of embedding ESC, BEL, CSI, NUL, or other control bytes in text.</li>
+          <li>Do not use these text paths for ANSI styling, OSC control sequences, binary payloads, or terminal escape experiments.</li>
+        </ul>
+
         <h3>Read a child pane</h3>
         <pre><code>limux read-screen --surface "$child_surface" --lines 80</code></pre>
 
@@ -667,7 +675,7 @@ Parent surface if blocked: &lt;surface-id&gt;.</code></pre>
         <h2>Best Next Improvements</h2>
         <ol>
           <li>Add <code>LIMUX_AGENTS.md</code> instruction-source discovery, generated-marker, and no-overwrite semantics.</li>
-          <li>Add two-phase automatic bootstrap that launches the agent binary first, waits for pane readiness, then sends arbitrary prompt text over <code>limux send</code>.</li>
+          <li>Add two-phase automatic bootstrap that launches the agent binary first, waits for pane readiness, then sends prompt text over the guarded <code>limux send</code> path.</li>
           <li>Add a compact project roster file mapping project names to Limux workspaces, surface IDs, hcom names, and durable coordination files.</li>
           <li>Add a wrapper command for "spawn reviewer, capture surface, read result".</li>
           <li>Add documented conventions for consensus reports and cross-team broadcasts.</li>
@@ -680,9 +688,10 @@ Parent surface if blocked: &lt;surface-id&gt;.</code></pre>
           <li><code>agent-team</code> writes <code>LIMUX_AGENTS.md</code> by default and supports <code>--protocol-path</code>.</li>
           <li>Existing repo <code>AGENTS.md</code> files are not written by default.</li>
           <li>Generated <code>new-pane --command</code> examples quote launch commands and avoid nested arbitrary prompt text.</li>
+          <li>Typed terminal text now rejects ESC/BEL/C1/control payloads except tab, LF, and CR across CLI, bridge/core, and host send-sink paths.</li>
           <li>Latest tag is <code>v0.1.19</code>.</li>
           <li>Full <code>./scripts/check.sh</code> and <code>./scripts/xvfb-smoke-test.sh</code> pass locally with <code>ghostty/zig-out/lib/libghostty.so</code> on <code>LD_LIBRARY_PATH</code>.</li>
-          <li>The morning resume path is captured in <a href="../HANDOFF.md">HANDOFF.md</a>.</li>
+          <li>Next: two-phase automatic bootstrap that launches the agent binary, waits for pane readiness, then sends prompt text through guarded <code>limux send</code>.</li>
         </ul>
       </section>
 

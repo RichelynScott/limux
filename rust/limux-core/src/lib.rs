@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
-use limux_protocol::{V2Request, V2Response};
+use limux_protocol::{validate_terminal_text_payload, V2Request, V2Response};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
@@ -2882,6 +2882,23 @@ fn required_string_param(params: &Map<String, Value>, key: &str) -> Result<Strin
     })
 }
 
+fn validate_terminal_text_param(label: &str, text: &str) -> Result<(), CommandError> {
+    validate_terminal_text_payload(label, text)
+        .map_err(|error| CommandError::invalid_params(error.to_string()))
+}
+
+fn optional_terminal_text_param(
+    params: &Map<String, Value>,
+    key: &str,
+    label: &str,
+) -> Result<Option<String>, CommandError> {
+    let value = optional_string_param(params, key)?;
+    if let Some(value) = value.as_ref() {
+        validate_terminal_text_param(label, value)?;
+    }
+    Ok(value)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct PaneCreateContract {
     workspace_id: Option<u64>,
@@ -2919,7 +2936,7 @@ fn parse_pane_create_contract(
         direction,
         pane_type,
         url: optional_string_param(params, "url")?,
-        command: optional_string_param(params, "command")?,
+        command: optional_terminal_text_param(params, "command", "pane.create command")?,
     })
 }
 
@@ -4893,7 +4910,8 @@ fn handle_command(
                 .or_else(|| optional_string_param(params, "title").ok().flatten());
             let window_id = optional_u64_param_any(params, &["window_id"])?;
             let cwd = optional_string_param(params, "cwd")?;
-            let command = optional_string_param(params, "command")?;
+            let command =
+                optional_terminal_text_param(params, "command", "workspace.create command")?;
             let workspace = state.create_workspace(name, window_id);
             if cwd.is_some() {
                 let _ = state.set_workspace_cwd(workspace.id, cwd.clone());
@@ -5573,6 +5591,7 @@ fn handle_command(
             let workspace_id = optional_u64_param_any(params, &["workspace_id"])?;
             let surface_hint = optional_u64_param_any(params, &["surface_id", "id"])?;
             let text = required_string_param(params, "text")?;
+            validate_terminal_text_param("surface.send_text text", &text)?;
             let (workspace_id, surface_id) =
                 resolve_surface_target(state, workspace_id, surface_hint)?;
             let surface = apply_surface_text_input(state, workspace_id, surface_id, &text)?;
@@ -6267,6 +6286,66 @@ mod tests {
         assert!(sent.result.is_some(), "send_text should succeed");
         assert!(marker.exists(), "touch command should create marker file");
         let _ = std::fs::remove_file(marker);
+    }
+
+    #[tokio::test]
+    async fn dispatcher_surface_send_text_rejects_terminal_control_bytes() {
+        let dispatcher = Dispatcher::new();
+
+        let sent = dispatcher
+            .dispatch(request(
+                "surface.send_text",
+                json!({ "text": "hello\u{1b}[31m" }),
+            ))
+            .await;
+
+        let error = sent.error.expect("escape should be rejected");
+        assert_eq!(error.code, -32602);
+        assert!(error.message.contains("surface.send_text text"));
+        assert!(error.message.contains("U+001B"));
+    }
+
+    #[tokio::test]
+    async fn dispatcher_surface_send_text_allows_multiline_agent_messages() {
+        let dispatcher = Dispatcher::new();
+        let text = "<agent-msg>\n\t<request>ok</request>\r\n</agent-msg>\n";
+
+        let sent = dispatcher
+            .dispatch(request("surface.send_text", json!({ "text": text })))
+            .await;
+
+        assert!(sent.error.is_none(), "multiline message should be accepted");
+        assert!(sent.result.is_some(), "send_text should succeed");
+    }
+
+    #[tokio::test]
+    async fn dispatcher_pane_create_rejects_terminal_control_command() {
+        let dispatcher = Dispatcher::new();
+
+        let created = dispatcher
+            .dispatch(request("pane.create", json!({ "command": "codex\u{7}" })))
+            .await;
+
+        let error = created.error.expect("BEL should be rejected");
+        assert_eq!(error.code, -32602);
+        assert!(error.message.contains("pane.create command"));
+    }
+
+    #[tokio::test]
+    async fn dispatcher_workspace_create_rejects_terminal_control_command() {
+        let dispatcher = Dispatcher::new();
+
+        let created = dispatcher
+            .dispatch(request(
+                "workspace.create",
+                json!({ "command": "claude\u{9b}0m" }),
+            ))
+            .await;
+
+        let error = created.error.expect("C1 control should be rejected");
+        assert_eq!(error.code, -32602);
+        assert!(error.message.contains("workspace.create command"));
+        assert!(error.message.contains("U+009B"));
     }
 
     #[tokio::test]

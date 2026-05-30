@@ -9,7 +9,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, bail, Context, Result};
 use limux_control::socket_path::{resolve_socket_path, SocketMode};
-use limux_protocol::{V2Request, V2Response};
+use limux_protocol::{validate_terminal_text_payload, V2Request, V2Response};
 use serde_json::{json, Map, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
@@ -435,6 +435,10 @@ fn trailing_title(args: &[String]) -> Option<String> {
     }
 }
 
+fn validate_terminal_text_arg(label: &str, text: &str) -> Result<()> {
+    validate_terminal_text_payload(label, text).map_err(anyhow::Error::from)
+}
+
 fn wait_signal_path(name: &str) -> PathBuf {
     let sanitized: String = name
         .chars()
@@ -771,6 +775,7 @@ async fn run_send(client: &mut Client, args: &[String]) -> Result<Value> {
     let surface = parse_opt(args, "--surface").filter(|s| !s.is_empty());
 
     let text = trailing_title(args).ok_or_else(|| anyhow!("send requires text"))?;
+    validate_terminal_text_arg("surface.send_text text", &text)?;
 
     let mut params = Map::new();
     params.insert("text".to_string(), Value::String(text));
@@ -1932,6 +1937,9 @@ export default limuxSessionRestore;
 async fn run_new_workspace(client: &mut Client, args: &[String]) -> Result<Value> {
     let cwd = parse_opt(args, "--cwd");
     let command = parse_opt(args, "--command");
+    if let Some(command) = command.as_ref() {
+        validate_terminal_text_arg("workspace.create command", command)?;
+    }
     let original = resolve_current_workspace(client).await?;
 
     let mut params = Map::new();
@@ -2740,6 +2748,9 @@ async fn run_new_pane(client: &mut Client, args: &[String]) -> Result<Value> {
             "new-pane received unexpected positional argument(s): {}. Quote multi-word launch commands, for example: --command 'codex --ask-for-approval never'. Send arbitrary prompts later with limux send.",
             unexpected.join(", ")
         );
+    }
+    if let Some(command) = parse_opt(args, "--command") {
+        validate_terminal_text_arg("pane.create command", &command)?;
     }
     let (workspace, params) = build_new_pane_request(args, env_opt);
     call_in_workspace_scope(client, workspace, "pane.create", params).await
@@ -3650,6 +3661,7 @@ async fn run_tmux_compat(client: &mut Client, command: &str, args: &[String]) ->
             let text = with_locked_json_map(&client.socket, "buffers", |buffers, _path| {
                 Ok(buffers.get(&name).cloned().unwrap_or_default())
             })?;
+            validate_terminal_text_arg("paste-buffer text", &text)?;
             let mut p = Map::new();
             if let Some(surface) = surface {
                 p.insert("surface_id".to_string(), Value::String(surface));
@@ -3661,6 +3673,7 @@ async fn run_tmux_compat(client: &mut Client, command: &str, args: &[String]) ->
             let workspace = parse_opt(args, "--workspace");
             let surface = parse_opt(args, "--surface");
             let command = parse_opt(args, "--command").unwrap_or_default();
+            validate_terminal_text_arg("respawn-pane command", &command)?;
             let mut p = Map::new();
             if let Some(surface) = surface {
                 p.insert("surface_id".to_string(), Value::String(surface));
@@ -3995,6 +4008,114 @@ mod cli_arg_tests {
         let dev = Path::new("/repo/target/debug/limux-cli");
         let candidates = host_binary_candidates(dev);
         assert!(candidates.contains(&PathBuf::from("/repo/target/debug/limux")));
+    }
+
+    #[tokio::test]
+    async fn send_rejects_disallowed_terminal_control_before_socket_contact() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut client = Client::new(tmp.path().join("unused.sock"));
+
+        let err = run_send(&mut client, &args(&["hello\u{1b}[31m"]))
+            .await
+            .expect_err("escape should fail before socket contact");
+
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("surface.send_text text"),
+            "unexpected error: {msg}"
+        );
+        assert!(msg.contains("U+001B"), "unexpected error: {msg}");
+    }
+
+    #[tokio::test]
+    async fn send_allows_multiline_agent_messages() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut client = Client::new(tmp.path().join("unused.sock"));
+        let err = run_send(
+            &mut client,
+            &args(&["<agent-msg>\n\t<request>ok</request>\r\n</agent-msg>\n"]),
+        )
+        .await
+        .expect_err("valid text should reach the socket layer");
+
+        assert!(
+            format!("{err:#}").contains("failed to connect"),
+            "unexpected error: {err:#}"
+        );
+    }
+
+    #[tokio::test]
+    async fn new_workspace_rejects_disallowed_terminal_control_command_before_socket_contact() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut client = Client::new(tmp.path().join("unused.sock"));
+
+        let err = run_new_workspace(&mut client, &args(&["--command", "claude\u{7}"]))
+            .await
+            .expect_err("BEL should fail before socket contact");
+
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("workspace.create command"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn new_pane_rejects_disallowed_terminal_control_command_before_socket_contact() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut client = Client::new(tmp.path().join("unused.sock"));
+
+        let err = run_new_pane(&mut client, &args(&["--command", "codex\u{9b}0m"]))
+            .await
+            .expect_err("C1 control should fail before socket contact");
+
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("pane.create command"),
+            "unexpected error: {msg}"
+        );
+        assert!(msg.contains("U+009B"), "unexpected error: {msg}");
+    }
+
+    #[tokio::test]
+    async fn respawn_pane_rejects_disallowed_terminal_control_command_before_socket_contact() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut client = Client::new(tmp.path().join("unused.sock"));
+
+        let err = run_tmux_compat(
+            &mut client,
+            "respawn-pane",
+            &args(&["--command", "echo bad\u{1b}"]),
+        )
+        .await
+        .expect_err("ESC should fail before socket contact");
+
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("respawn-pane command"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn paste_buffer_rejects_stored_disallowed_terminal_control_before_socket_contact() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut client = Client::new(tmp.path().join("limux.sock"));
+
+        run_tmux_compat(
+            &mut client,
+            "set-buffer",
+            &args(&["--name", "bad", "hello\u{1b}[31m"]),
+        )
+        .await
+        .expect("set-buffer should store text without terminal injection");
+
+        let err = run_tmux_compat(&mut client, "paste-buffer", &args(&["--name", "bad"]))
+            .await
+            .expect_err("stored ESC should fail before socket contact");
+
+        let msg = format!("{err:#}");
+        assert!(msg.contains("paste-buffer text"), "unexpected error: {msg}");
     }
 
     #[test]

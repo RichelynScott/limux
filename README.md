@@ -136,6 +136,8 @@ limux agent-team --agents codex,claude --cwd "$PWD"
 # → Codex and Claude can now do:
 #   limux send --surface "<peer-surface-id>" \
 #     $'<agent-msg from="codex" to="claude" id="…" ts="…">…</agent-msg>\n'
+# Text typed into terminal panes allows printable Unicode plus tab/LF/CR.
+# Use send-key for control keys; send/new-pane command text rejects ESC/BEL/CSI.
 
 # Or split the current agent's pane and launch another terminal agent.
 # Inside Limux, workspace/surface/pane default from LIMUX_*:
