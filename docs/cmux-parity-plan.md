@@ -138,6 +138,10 @@ into a `notify` (and, where useful, an inline `send`). Drop-in for
   bridge / standalone core dispatcher for direct socket callers.
 - `surface.send_key` remains the explicit route for control keys such as
   Ctrl-C, and OSC/output parsing remains separate from typed input.
+- Accepted/deferred display-spoofing risks for the Phase 5B threat model:
+  bare CR remains allowed, and Unicode format / zero-width characters are not
+  caught by the control-character guard. Revisit those before untrusted
+  generated prompt text flows through automatic bootstrap.
 
 **Deferred: Phase 5B — automatic bootstrap**
 

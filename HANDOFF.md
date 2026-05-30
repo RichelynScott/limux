@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-05-29 21:36 EDT
+Last updated: 2026-05-29 21:41 EDT
 
 ## Immediate Next Action
 
@@ -254,7 +254,7 @@ Phase ordering:
 - `zig` is intentionally not on `PATH`; the reviewed lane used project-scoped Zig under `$HOME/.cache/limux-tools`.
 - Caller-shell generated snippet tests now cover spaces, quotes, `$`, command substitution, backticks, semicolons, control characters, newlines, exact JSON preservation, and side-effect inertness.
 - Typed-PTY control characters are now rejected everywhere the current control surface can inject typed terminal text. Intentional control keys must use `surface.send_key` / `limux send-key`.
-- Residual policy choices: CR is allowed by design alongside tab and LF for terminal text; printable Unicode such as bidi controls and zero-width characters remains outside this guard unless a later UX/security decision narrows printable text further.
+- Bootstrap threat-model carry-forward from Kazu's typed-PTY closeout: CR is allowed by design alongside tab and LF, so bare carriage-return line-overwrite display spoofing remains an accepted/deferred display risk. Unicode format characters such as bidi controls (`U+200E`, `U+200F`, `U+202A`-`U+202E`, `U+2066`-`U+2069`) and zero-width characters such as `U+200B` also remain outside this `is_control()` guard. Treat both as display-spoofing risks, not execution risks, and revisit them explicitly before untrusted generated text flows through Phase 5B automatic bootstrap.
 - Instruction-source hashes are deterministic `fnv1a64` metadata for change detection, not cryptographic integrity claims.
 - Claude plugin adversarial review did not complete for the shell-quoting lane: normal mode timed out after 180 seconds, and `--bare` mode failed because Claude was not logged in under bare mode. hcom reviewer `kazu` provided the Claude-family shell-safety lens instead. For the typed-PTY lane, the normal plugin review timed out after 240 seconds and is not counted as passed.
 
