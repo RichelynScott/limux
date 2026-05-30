@@ -161,3 +161,19 @@ Mutation wave decision is `WAIT`: the next lane is bounded and reviewable, but i
 
 ### Related:
 `docs/LIMUX_GHOSTTY_ZIG_MUTATION_REVIEW_2026-05-29.md`
+
+## 2026-05-29 - Ghostty/Zig Security Consensus Gate
+### What:
+Ran a multi-session security consensus gate on the Ghostty/Zig mutation review using `kazu`, `zori`, `niru`, and the local Claude plugin adversarial review.
+
+### Why:
+The next Limux blocker requires downloading Zig, initializing the pinned Ghostty submodule, and building native external code. The operator asked for a consensus security gate before proceeding.
+
+### How:
+Sent a durable hcom review brief to the named reviewers, collected v1 `WAIT` findings, patched the mutation review to v2, and ran a narrow v2 re-review. V2 added execution-time Zig metadata cross-checks, fresh per-run extraction, archive containment checks, non-recursive submodule init, explicit `am-will/ghostty` trust-anchor documentation, offline locked Cargo test, and durable evidence logs.
+
+### Impact:
+Consensus result is `GO for explicit operator approval; WAIT for execution`. The frozen v2 artifact SHA is `dddf26db51d3d4a3f16ce9414f33497597ab2014c14a142b83ca4a3a1e7837e5`. No Ghostty/Zig command block was executed.
+
+### Related:
+`docs/LIMUX_GHOSTTY_ZIG_MUTATION_REVIEW_2026-05-29.md` | `docs/LIMUX_GHOSTTY_ZIG_CONSENSUS_GATE_2026-05-29.md` | hcom thread `limux-ghostty-zig-gate`

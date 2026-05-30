@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-05-29 20:10 EDT
+Last updated: 2026-05-29 20:15 EDT
 
 ## Immediate Next Action
 
@@ -66,11 +66,24 @@ docs/LIMUX_GHOSTTY_ZIG_MUTATION_REVIEW_2026-05-29.md
 ```
 
 Current review decision: `WAIT` until the operator explicitly approves the
-exact command block in that file. It recommends project-scoped Zig `0.15.2`
-from official Zig metadata, SHA256
-`02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239`, the pinned
-Ghostty submodule commit `81ab8ffa90185221782baf785e85387321e16f8d`, and then
-`cargo test -p limux-host-linux surface_send_text_response`.
+exact v2 command block in that file. Current v2 artifact SHA256:
+`dddf26db51d3d4a3f16ce9414f33497597ab2014c14a142b83ca4a3a1e7837e5`.
+
+Consensus gate result: `GO for explicit operator approval; WAIT for execution`.
+Reviewers `niru`, `zori`, `kazu`, and the local Claude plugin cleared v2 for
+approval consideration. Execution still requires the operator to approve the
+exact v2 SHA. The consensus report is:
+
+```text
+docs/LIMUX_GHOSTTY_ZIG_CONSENSUS_GATE_2026-05-29.md
+```
+
+The v2 lane recommends project-scoped Zig `0.15.2` from official Zig metadata,
+SHA256 `02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239`, the
+pinned `am-will/ghostty` submodule commit
+`81ab8ffa90185221782baf785e85387321e16f8d`, build evidence under
+`docs/evidence/`, and then `CARGO_NET_OFFLINE=true cargo test --locked -p
+limux-host-linux surface_send_text_response`.
 
 Start here:
 
@@ -129,6 +142,7 @@ For host-side GTK tests, this environment also needs `pkg-config` available on
 | 2026-05-29 19:24 EDT | Sudo cache follow-up | Operator ran `sudo -v` locally, but `sudo -n true` inside Codex still required a password. No packages were installed. |
 | 2026-05-29 19:51 EDT | Manual apt prerequisite completion | Operator manually completed the approved apt prerequisite lane. GTK/WebKit pkg-config checks pass. Host test now fails at the separate Ghostty/Zig gate. |
 | 2026-05-29 20:10 EDT | Ghostty/Zig mutation review | Created draft-only review for project-scoped Zig 0.15.2 download, pinned Ghostty submodule initialization, `libghostty.so` build, and host test verification. Decision is `WAIT` pending explicit approval. |
+| 2026-05-29 20:15 EDT | Ghostty/Zig consensus gate | `niru`, `zori`, `kazu`, and Claude plugin reviewed v1, returned `WAIT`, v2 was patched, then v2 re-review returned GO for operator approval. Execution remains WAIT until exact v2 SHA approval. |
 
 ## Current State
 
