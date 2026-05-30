@@ -284,3 +284,19 @@ Added `--roster-path`, `--ledger-path`, and `--force-roster-overwrite`; created 
 
 ### Related:
 `rust/limux-cli/src/main.rs` | `scripts/xvfb-smoke-test.sh` | `docs/cmux-parity-plan.md` | `docs/limux-hcom-workflow.md` | `docs/limux-vs-multica-decision-guide.md` | `HANDOFF.md`
+
+## 2026-05-29 - Expanded Phase 5C Next Steps Packet
+### What:
+Added a clearer Markdown and dark-mode HTML decision packet for the post-Phase-5C next steps.
+
+### Why:
+The one-line recommendation, "reviewer/capture wrapper plus consensus conventions," was too compressed. The operator asked for revised next steps with more detail.
+
+### How:
+Created `docs/LIMUX_PHASE5C_NEXT_STEPS_DECISION_PACKET_2026-05-29.md` and `.html`. The packet recommends Phase 5D1, a reviewer workflow scaffold that creates review request files, appends pending ledger entries, and prints reviewer prompts before attempting full reviewer pane spawn/capture automation. Updated `HANDOFF.md` and the Limux+hcom workflow guide to point to the richer plan.
+
+### Impact:
+The next session can choose between Phase 5D1 scaffold, full spawn/capture wrapper, real-agent readiness smoke, or consensus convention docs with clear tradeoffs and a copy-back payload.
+
+### Related:
+`docs/LIMUX_PHASE5C_NEXT_STEPS_DECISION_PACKET_2026-05-29.md` | `docs/LIMUX_PHASE5C_NEXT_STEPS_DECISION_PACKET_2026-05-29.html` | `HANDOFF.md` | `docs/limux-hcom-workflow.md`

@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Limux Phase 5C Next Steps Decision Packet</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07090c;
+      --panel: #11161c;
+      --panel-2: #171d24;
+      --line: #2d3742;
+      --line-strong: #46515e;
+      --text: #eef2f5;
+      --muted: #aab5bf;
+      --faint: #76818c;
+      --green: #6ee7a8;
+      --cyan: #67d6f3;
+      --amber: #f3c46b;
+      --red: #ff7f7f;
+      --ink: #061016;
+      --radius: 8px;
+      --shadow: 0 22px 60px rgba(0, 0, 0, 0.38);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background:
+        linear-gradient(180deg, rgba(103, 214, 243, 0.055), transparent 340px),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.018) 0, rgba(255,255,255,0.018) 1px, transparent 1px, transparent 92px),
+        var(--bg);
+      color: var(--text);
+      font-family: Aptos, "Segoe UI", Arial, sans-serif;
+      line-height: 1.55;
+    }
+    a { color: var(--cyan); text-underline-offset: 3px; }
+    code, pre, textarea { font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace; }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      border-bottom: 1px solid var(--line);
+      background: rgba(7, 9, 12, 0.92);
+      backdrop-filter: blur(14px);
+    }
+    .topbar {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 15px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .brand { min-width: 0; }
+    .brand strong { display: block; font-size: 15px; }
+    .brand span { display: block; color: var(--muted); font-size: 13px; }
+    nav { display: flex; flex-wrap: wrap; gap: 8px; }
+    nav a {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 11px;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 13px;
+      background: var(--panel);
+    }
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 28px auto 56px;
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 24px;
+    }
+    .roadmap {
+      position: sticky;
+      top: 82px;
+      align-self: start;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(17, 22, 28, 0.92);
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+    .roadmap h2 { margin: 0 0 14px; font-size: 16px; }
+    .road-step {
+      position: relative;
+      display: grid;
+      grid-template-columns: 18px 1fr;
+      gap: 10px;
+      padding: 0 0 20px;
+      color: var(--muted);
+    }
+    .road-step:not(:last-child)::before {
+      content: "";
+      position: absolute;
+      left: 7px;
+      top: 18px;
+      bottom: 2px;
+      width: 2px;
+      background: var(--line);
+    }
+    .dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      margin-top: 3px;
+      border: 2px solid var(--line-strong);
+      background: var(--panel-2);
+    }
+    .done .dot { border-color: var(--green); background: rgba(110, 231, 168, 0.22); }
+    .current .dot { border-color: var(--amber); background: rgba(243, 196, 107, 0.25); }
+    .road-step strong { display: block; color: var(--text); font-size: 14px; }
+    .road-step span { display: block; font-size: 12px; }
+    .content { min-width: 0; }
+    .hero, .section {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(17, 22, 28, 0.94);
+      box-shadow: var(--shadow);
+      margin-bottom: 18px;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) minmax(260px, 0.9fr);
+      gap: 18px;
+      padding: 24px;
+    }
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--cyan);
+      font-weight: 700;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+    h1 { margin: 0 0 12px; font-size: clamp(30px, 4vw, 48px); line-height: 1.05; letter-spacing: 0; }
+    h2 { margin: 0; font-size: 22px; letter-spacing: 0; }
+    h3 { margin: 0 0 8px; font-size: 17px; letter-spacing: 0; }
+    p { margin: 0 0 12px; color: var(--muted); }
+    .lead { font-size: 18px; color: #d9e1e8; }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .meta div, .recommendation, .card, .status-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-2);
+    }
+    .meta div { padding: 10px; min-width: 0; }
+    .meta span { display: block; color: var(--faint); font-size: 12px; }
+    .meta strong { display: block; overflow-wrap: anywhere; font-size: 13px; }
+    .recommendation { padding: 18px; }
+    .stack { display: grid; gap: 8px; margin-top: 12px; }
+    .stack div {
+      border-left: 3px solid var(--green);
+      background: rgba(110, 231, 168, 0.08);
+      padding: 9px 10px;
+      color: var(--text);
+      font-size: 14px;
+    }
+    .section-header {
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .section-body { padding: 20px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .status-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .card, .status-card { padding: 16px; min-width: 0; }
+    .status-card strong { display: block; color: var(--green); margin-bottom: 5px; }
+    .status-card span { color: var(--muted); font-size: 14px; }
+    .tag {
+      display: inline-block;
+      margin-bottom: 10px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--ink);
+      background: var(--cyan);
+    }
+    .tag.green { background: var(--green); }
+    .tag.amber { background: var(--amber); }
+    .tag.red { background: var(--red); }
+    ul, ol { margin: 8px 0 0; padding-left: 20px; color: var(--muted); }
+    li { margin: 6px 0; }
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px;
+      background: #080d12;
+      color: #d9f5ff;
+      margin: 10px 0 0;
+    }
+    .choice-grid { display: grid; gap: 10px; }
+    label.choice {
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 10px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 12px;
+      background: var(--panel-2);
+    }
+    label.choice input { margin-top: 3px; }
+    label.choice strong { display: block; color: var(--text); }
+    label.choice span span { display: block; color: var(--muted); font-size: 13px; }
+    textarea {
+      width: 100%;
+      min-height: 260px;
+      resize: vertical;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      background: #060b10;
+      color: var(--text);
+      padding: 14px;
+      line-height: 1.45;
+    }
+    button {
+      border: 0;
+      border-radius: var(--radius);
+      padding: 11px 14px;
+      background: var(--cyan);
+      color: var(--ink);
+      font-weight: 800;
+      cursor: pointer;
+    }
+    button.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--line-strong); }
+    .button-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+    .note { color: var(--faint); font-size: 13px; margin-top: 8px; }
+    @media (max-width: 900px) {
+      .topbar { align-items: flex-start; flex-direction: column; }
+      main { grid-template-columns: 1fr; }
+      .roadmap { position: static; }
+      .hero { grid-template-columns: 1fr; }
+      .grid, .status-grid, .meta { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <div class="brand">
+        <strong>Limux Phase 5C Next Steps</strong>
+        <span>Scope: /home/riche/MCPs/limux | Runtime: Codex / tipi | 2026-05-29 11:32 PM EDT</span>
+      </div>
+      <nav>
+        <a href="#status">Status</a>
+        <a href="#options">Options</a>
+        <a href="#decisions">Decide</a>
+        <a href="#copy">Copy</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <aside class="roadmap" aria-label="Roadmap">
+      <h2>Roadmap</h2>
+      <div class="road-step done"><i class="dot"></i><div><strong>5A</strong><span>Protocol discovery and instruction-source pointers.</span></div></div>
+      <div class="road-step done"><i class="dot"></i><div><strong>5B</strong><span>Automatic peer bootstrap after protocol write.</span></div></div>
+      <div class="road-step done"><i class="dot"></i><div><strong>5C</strong><span>Durable roster and review ledger seeding.</span></div></div>
+      <div class="road-step current"><i class="dot"></i><div><strong>5D1</strong><span>Recommended reviewer workflow scaffold.</span></div></div>
+      <div class="road-step"><i class="dot"></i><div><strong>5D2</strong><span>Spawn/capture wrapper after scaffold.</span></div></div>
+      <div class="road-step"><i class="dot"></i><div><strong>5D3</strong><span>Consensus and hcom pointer conventions.</span></div></div>
+    </aside>
+
+    <div class="content">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Recommended default</p>
+          <h1>Do Phase 5D1 first.</h1>
+          <p class="lead">Build a reviewer workflow scaffold before the full spawn/capture wrapper. It makes review requests, evidence slots, and ledger entries durable without depending on real Codex or Claude TUI readiness in the first pass.</p>
+          <div class="meta">
+            <div><span>Current commit</span><strong>6a73909 feat(cli): seed agent-team roster and review ledger</strong></div>
+            <div><span>Repo state</span><strong>Phase 5C pushed and verified</strong></div>
+            <div><span>Primary next command family</span><strong>limux review prepare</strong></div>
+            <div><span>Decision packet pattern</span><strong>$html-decision-packet</strong></div>
+          </div>
+        </div>
+        <aside class="recommendation">
+          <h2>Why this order</h2>
+          <p>Phase 5C created the durable files. Phase 5D1 should make those files useful for adversarial review before automating real agent spawning.</p>
+          <div class="stack">
+            <div>Lower risk than full TUI automation.</div>
+            <div>Creates testable review artifacts and ledger entries.</div>
+            <div>Sets up Phase 5D2 and 5D3 cleanly.</div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="section" id="status">
+        <div class="section-header">
+          <div>
+            <h2>Status</h2>
+            <p>What is already true before the next implementation starts.</p>
+          </div>
+        </div>
+        <div class="section-body status-grid">
+          <div class="status-card"><strong>Done</strong><span>Phase 5C seeds `LIMUX_TEAM_ROSTER.md` and `LIMUX_REVIEW_LEDGER.md` when missing.</span></div>
+          <div class="status-card"><strong>Done</strong><span>Generated `LIMUX_AGENTS.md` points peers to protocol, roster, ledger, and instruction sources.</span></div>
+          <div class="status-card"><strong>Safe default</strong><span>Existing roster/ledger files are preserved. Ledger is create-if-missing only.</span></div>
+          <div class="status-card"><strong>Verified</strong><span>CLI tests, clippy, full workspace check, diff check, and debug/release Xvfb smoke passed.</span></div>
+          <div class="status-card"><strong>Reviewed</strong><span>Claude plugin follow-up found no commit-blocking issues after fixes.</span></div>
+          <div class="status-card"><strong>Not next</strong><span>Multica pilot and full install remain deferred.</span></div>
+        </div>
+      </section>
+
+      <section class="section" id="options">
+        <div class="section-header">
+          <div>
+            <h2>Next-Step Options</h2>
+            <p>Pick the smallest useful next lane, or choose a bigger jump intentionally.</p>
+          </div>
+        </div>
+        <div class="section-body grid">
+          <article class="card">
+            <span class="tag green">Recommended</span>
+            <h3>Option A: Phase 5D1 Scaffold</h3>
+            <p>Add a `limux review prepare` style workflow that creates review request files, appends pending ledger entries, and prints the exact reviewer prompt or send payload.</p>
+            <ul>
+              <li>No real reviewer pane launch yet.</li>
+              <li>Works without a running host in dry-run mode.</li>
+              <li>Tests file creation, ledger append, prompt generation, and path safety.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <span class="tag amber">Bigger</span>
+            <h3>Option B: Full Run Wrapper</h3>
+            <p>Add `limux review run` to prepare, spawn a reviewer pane, send a prompt, capture visible output, save evidence, and update the ledger.</p>
+            <ul>
+              <li>Closer to near-zero friction.</li>
+              <li>Higher risk from real TUI readiness and viewport capture limits.</li>
+              <li>Best after 5D1 defines the durable request and ledger format.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <span class="tag amber">Reliability</span>
+            <h3>Option C: Real-Agent Smoke</h3>
+            <p>Run a disposable real Codex/Claude bootstrap smoke to learn cold-start timing and readiness behavior.</p>
+            <ul>
+              <li>Useful before full automation.</li>
+              <li>Must avoid real secrets and production repos.</li>
+              <li>Produces evidence for timeout defaults.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <span class="tag">Docs</span>
+            <h3>Option D: Consensus Conventions</h3>
+            <p>Write the durable conventions for GO, WAIT, NO-GO, accepted risk, cross-team pointer, and consensus reports before new CLI work.</p>
+            <ul>
+              <li>Lowest implementation risk.</li>
+              <li>Helps all teams use the new ledger consistently.</li>
+              <li>Does not reduce launch/capture friction by itself.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <div>
+            <h2>Option A Details</h2>
+            <p>Concrete implementation target if you accept the recommended path.</p>
+          </div>
+        </div>
+        <div class="section-body">
+          <h3>Proposed command</h3>
+          <pre>limux review prepare \
+  --artifact &lt;path-or-ref&gt; \
+  --reviewer &lt;codex|claude|gemini|opencode|manual&gt; \
+  --lens &lt;security|correctness|maintainability|ux|release&gt; \
+  --summary &lt;short-review-goal&gt; \
+  [--cwd &lt;path&gt;] \
+  [--ledger-path &lt;path&gt;] \
+  [--reviews-dir &lt;path&gt;] \
+  [--dry-run]</pre>
+          <h3>Acceptance criteria</h3>
+          <ul>
+            <li>Create review request files under `reviews/` atomically.</li>
+            <li>Append pending entries to `LIMUX_REVIEW_LEDGER.md` without rewriting prior entries.</li>
+            <li>Print the prompt or `limux send` payload for the reviewer.</li>
+            <li>Refuse symlink, non-regular, and overlapping ledger/review output paths.</li>
+            <li>Reject generated prompt control characters.</li>
+            <li>Document no-secrets and no-raw-transcript rules.</li>
+          </ul>
+          <h3>Verification target</h3>
+          <pre>cargo test -p limux-cli review
+cargo test -p limux-cli agent_team
+cargo fmt --check
+cargo clippy -p limux-cli --all-targets -- -D warnings
+git diff --check</pre>
+        </div>
+      </section>
+
+      <section class="section" id="decisions">
+        <div class="section-header">
+          <div>
+            <h2>Selections</h2>
+            <p>Choose the next lane and execution posture.</p>
+          </div>
+        </div>
+        <div class="section-body grid">
+          <div class="card">
+            <h3>Main next step</h3>
+            <div class="choice-grid">
+              <label class="choice"><input type="radio" name="next" value="Proceed with Option A: Phase 5D1 Reviewer Workflow Scaffold." checked><span><strong>Option A: 5D1 scaffold</strong><span>Recommended, lowest useful implementation risk.</span></span></label>
+              <label class="choice"><input type="radio" name="next" value="Proceed with Option B: full reviewer spawn/capture wrapper."><span><strong>Option B: full wrapper</strong><span>Bigger jump toward near-zero friction.</span></span></label>
+              <label class="choice"><input type="radio" name="next" value="Proceed with Option C: real-agent readiness smoke first."><span><strong>Option C: readiness smoke</strong><span>Focus on real Codex/Claude reliability.</span></span></label>
+              <label class="choice"><input type="radio" name="next" value="Proceed with Option D: consensus convention docs first."><span><strong>Option D: conventions</strong><span>Document the workflow before adding CLI.</span></span></label>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Execution mode</h3>
+            <div class="choice-grid">
+              <label class="choice"><input type="radio" name="exec" value="Current Codex session implements the selected scoped step." checked><span><strong>Current Codex</strong><span>Fastest for this repo-local lane.</span></span></label>
+              <label class="choice"><input type="radio" name="exec" value="Use native subagents for design/test review, then current Codex integrates."><span><strong>Native subagents</strong><span>Useful if scope grows or review lanes split.</span></span></label>
+              <label class="choice"><input type="radio" name="exec" value="Use hcom-managed reviewers only if cross-tool review is needed."><span><strong>hcom only if needed</strong><span>Keep hcom for cross-session or named reviewers.</span></span></label>
+              <label class="choice"><input type="radio" name="exec" value="Defer implementation and only document the selected plan."><span><strong>Defer</strong><span>No code change yet.</span></span></label>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Skills</h3>
+            <div class="choice-grid">
+              <label class="choice"><input type="checkbox" name="skills" value="$methodical-modification-protocol" checked><span><strong>$methodical-modification-protocol</strong><span>Safe, scoped changes.</span></span></label>
+              <label class="choice"><input type="checkbox" name="skills" value="$test-driven-development" checked><span><strong>$test-driven-development</strong><span>Tests first for CLI behavior.</span></span></label>
+              <label class="choice"><input type="checkbox" name="skills" value="$agent-orchestration" checked><span><strong>$agent-orchestration</strong><span>Keep reviewer workflow aligned with teams.</span></span></label>
+              <label class="choice"><input type="checkbox" name="skills" value="$adversarial-review or $adversarial-assessment" checked><span><strong>$adversarial-review</strong><span>Stress test before commit.</span></span></label>
+              <label class="choice"><input type="checkbox" name="skills" value="$code-audit" checked><span><strong>$code-audit</strong><span>Review file/path safety and no-secrets posture.</span></span></label>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Extra controls</h3>
+            <div class="choice-grid">
+              <label class="choice"><input type="checkbox" name="extra" value="Do not use a dedicated skill-ranking subagent for Phase 5D1." checked><span><strong>No skill-ranker for 5D1</strong><span>Scope is clear enough.</span></span></label>
+              <label class="choice"><input type="checkbox" name="extra" value="Keep Multica deferred until after reviewer workflow polish." checked><span><strong>Keep Multica deferred</strong><span>Stay on Limux workflow improvements.</span></span></label>
+            </div>
+            <p class="note">Additional notes:</p>
+            <textarea id="notes" aria-label="Additional notes"></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="copy">
+        <div class="section-header">
+          <div>
+            <h2>Copy-Back Payload</h2>
+            <p>Use this to continue the work with a clear instruction.</p>
+          </div>
+        </div>
+        <div class="section-body">
+          <textarea id="payload" readonly></textarea>
+          <div class="button-row">
+            <button id="copyBtn" type="button">Copy Payload</button>
+            <button id="refreshBtn" type="button" class="secondary">Refresh Payload</button>
+          </div>
+          <p class="note" id="copyStatus">Ready.</p>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <div>
+            <h2>Sources And Evidence</h2>
+            <p>Local files and commit references used for this packet.</p>
+          </div>
+        </div>
+        <div class="section-body">
+          <ul>
+            <li>`HANDOFF.md`</li>
+            <li>`FYI.md`</li>
+            <li>`README.md`</li>
+            <li>`docs/cmux-parity-plan.md`</li>
+            <li>`docs/limux-hcom-workflow.md`</li>
+            <li>`docs/limux-vs-multica-decision-guide.md`</li>
+            <li>Commit `6a73909 feat(cli): seed agent-team roster and review ledger`</li>
+          </ul>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    function selectedRadio(name) {
+      var el = document.querySelector('input[name="' + name + '"]:checked');
+      return el ? el.value : 'None selected.';
+    }
+    function selectedChecks(name) {
+      var values = Array.prototype.slice.call(document.querySelectorAll('input[name="' + name + '"]:checked')).map(function (el) {
+        return el.value;
+      });
+      return values.length ? values.map(function (value) { return '   - ' + value; }).join('\n') : '   - None.';
+    }
+    function buildPayload() {
+      var notes = document.getElementById('notes').value.trim();
+      var lines = [
+        'My decisions after reviewing the Limux Phase 5C next-steps packet:',
+        '',
+        '1. Main next step:',
+        '   - ' + selectedRadio('next'),
+        '',
+        '2. Execution mode:',
+        '   - ' + selectedRadio('exec'),
+        '',
+        '3. Skills:',
+        selectedChecks('skills'),
+        '',
+        '4. Extra controls:',
+        selectedChecks('extra'),
+        '',
+        '5. Additional notes:',
+        notes ? '   - ' + notes.replace(/\n/g, '\n   - ') : '   - None.',
+        '',
+        'Please proceed according to these selections.'
+      ];
+      document.getElementById('payload').value = lines.join('\n');
+    }
+    document.addEventListener('change', buildPayload);
+    document.getElementById('notes').addEventListener('input', buildPayload);
+    document.getElementById('refreshBtn').addEventListener('click', buildPayload);
+    document.getElementById('copyBtn').addEventListener('click', function () {
+      buildPayload();
+      var payload = document.getElementById('payload');
+      payload.select();
+      navigator.clipboard.writeText(payload.value).then(function () {
+        document.getElementById('copyStatus').textContent = 'Copied.';
+      }, function () {
+        document.execCommand('copy');
+        document.getElementById('copyStatus').textContent = 'Copied using fallback.';
+      });
+    });
+    buildPayload();
+  </script>
+</body>
+</html>

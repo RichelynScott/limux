@@ -310,11 +310,20 @@ End of task:
 
 The highest-leverage Limux improvements for this workflow are:
 
-1. Add a wrapper command for "spawn reviewer, capture surface, read result".
-2. Add documented conventions for consensus reports and cross-team broadcasts.
-3. Add optional runtime-specific `.limux/` adapters for Codex, Claude Code,
+1. Add Phase 5D1 reviewer workflow scaffold: create durable review request
+   files, append pending entries to `LIMUX_REVIEW_LEDGER.md`, and print the
+   reviewer prompt or `limux send` payload without launching real reviewer panes
+   yet.
+2. Add the full reviewer spawn/capture wrapper after the scaffold is stable.
+   This should start a reviewer pane, send the prompt after readiness, capture
+   evidence to `reviews/`, update the ledger, and print only short hcom
+   pointers.
+3. Add documented conventions for consensus reports and cross-team broadcasts:
+   GO, WAIT, NO-GO, accepted risk, unresolved risk, and targeted hcom pointer
+   examples.
+4. Add optional runtime-specific `.limux/` adapters for Codex, Claude Code,
    Gemini, and OpenCode if direct protocol discovery needs deeper integration.
-4. Add a later machine-readable roster/ledger adapter if Markdown sidecars are
+5. Add a later machine-readable roster/ledger adapter if Markdown sidecars are
    not enough for automation.
 
 ## Current Prime Snapshot

@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-05-29 23:23 EDT
+Last updated: 2026-05-29 23:32 EDT
 
 ## Immediate Next Action
 
@@ -13,10 +13,28 @@ submits it with explicit Enter. `--no-bootstrap`, `--no-launch`, and `--dry-run`
 all skip prompt sends. `--dry-run` still materializes the generated protocol
 and seeds missing roster/ledger files; it only skips host contact.
 
-Recommended next scoped action: implement a reviewer/capture wrapper plus
-documented consensus and cross-team broadcast conventions. The wrapper should
-spawn a focused reviewer, capture/read the result, write a ledger entry or
-consensus report, and send hcom pointers only to relevant teams.
+Recommended next scoped action: **Phase 5D1 Reviewer Workflow Scaffold**. This
+is a smaller and safer first step than the full spawn/capture wrapper. It should
+create durable review request files under `reviews/`, append pending entries to
+`LIMUX_REVIEW_LEDGER.md`, print the exact reviewer prompt or `limux send`
+payload, and avoid launching real reviewer panes until the request/ledger format
+is stable.
+
+Detailed next-step packet:
+
+```text
+docs/LIMUX_PHASE5C_NEXT_STEPS_DECISION_PACKET_2026-05-29.md
+docs/LIMUX_PHASE5C_NEXT_STEPS_DECISION_PACKET_2026-05-29.html
+```
+
+Recommended sequence:
+
+1. **Phase 5D1:** `limux review prepare` style scaffold.
+2. **Phase 5D2:** full reviewer spawn/capture wrapper after the scaffold is
+   proven.
+3. **Phase 5D3:** consensus and cross-team hcom pointer conventions.
+4. **Later:** machine-readable roster/ledger adapters only if Markdown sidecars
+   are not enough for automation.
 
 Current verification baseline:
 
@@ -33,6 +51,12 @@ The operator requested an easier-to-read status/options artifact on
 
 ```text
 docs/LIMUX_NEXT_STEPS_STATUS_DECISION_PACKET_2026-05-29.html
+```
+
+For the current post-Phase-5C decision, prefer:
+
+```text
+docs/LIMUX_PHASE5C_NEXT_STEPS_DECISION_PACKET_2026-05-29.html
 ```
 
 For the current install-prerequisite decision, use:
@@ -263,8 +287,12 @@ Phase ordering:
 4. **Done:** Define and test the typed-PTY control-character policy for `limux send`, respawn, paste-buffer, `pane.create --command`, `workspace.create --command`, direct socket callers, and the live GTK host sink.
 5. **Done:** Implement two-phase automatic bootstrap: launch the agent binary, wait for pane readiness, then send prompt text through guarded `surface.send_text` plus explicit Enter.
 6. **Done:** Seed a project/team roster and durable review/consensus ledger.
-7. **Next:** Add a reviewer/capture wrapper and consensus/cross-team broadcast conventions.
-8. **Optional later:** Add runtime-specific `.limux/` adapters for Codex, Claude Code, Gemini, and OpenCode.
+7. **Next:** Add Phase 5D1 reviewer workflow scaffold: review request files,
+   pending ledger entries, and generated reviewer prompts without launching real
+   reviewer panes yet.
+8. **After 5D1:** Add the full reviewer spawn/capture wrapper and
+   consensus/cross-team broadcast conventions.
+9. **Optional later:** Add runtime-specific `.limux/` adapters for Codex, Claude Code, Gemini, and OpenCode.
 
 ## Key Files For Context
 
@@ -276,6 +304,8 @@ Phase ordering:
 | `/home/riche/MCPs/limux/docs/cmux-parity-plan.md` | Roadmap and current open bridge/protocol work. |
 | `/home/riche/MCPs/limux/docs/limux-hcom-workflow.md` | Operator workflow for Limux plus hcom. |
 | `/home/riche/MCPs/limux/docs/limux-vs-multica-decision-guide.md` | Decision record for Limux vs Multica and selected path. |
+| `/home/riche/MCPs/limux/docs/LIMUX_PHASE5C_NEXT_STEPS_DECISION_PACKET_2026-05-29.md` | Detailed next-step options after Phase 5C. |
+| `/home/riche/MCPs/limux/docs/LIMUX_PHASE5C_NEXT_STEPS_DECISION_PACKET_2026-05-29.html` | Dark-mode selectable next-step packet with copy-back payload. |
 | `/home/riche/MCPs/limux/docs/LIMUX_NEXT_STEPS_STATUS_DECISION_PACKET_2026-05-29.html` | Dark-mode copy-back packet for selecting the next implementation path. |
 | `/home/riche/MCPs/limux/FYI.md` | Append-only session journal. |
 
@@ -312,5 +342,5 @@ Phase ordering:
 ## Morning Resume Prompt
 
 ```text
-Please resume the Limux work from HANDOFF.md. Phase 5A zero-friction protocol discovery, GTK `surface.send_text` readiness/failure reporting, shell-quoted launch snippets, typed-PTY control-character guards, Phase 5B automatic `agent-team` bootstrap, and Phase 5C durable roster/review-ledger seeding are implemented and verified. Host prerequisites are installed, the approved Ghostty/Zig gate built `ghostty/zig-out/lib/libghostty.so`, `./scripts/check.sh`, debug Xvfb smoke, and release Xvfb smoke pass locally. Next implement the reviewer/capture wrapper plus consensus and cross-team broadcast conventions.
+Please resume the Limux work from HANDOFF.md and the Phase 5C next-steps packet at docs/LIMUX_PHASE5C_NEXT_STEPS_DECISION_PACKET_2026-05-29.md. Phase 5A zero-friction protocol discovery, GTK `surface.send_text` readiness/failure reporting, shell-quoted launch snippets, typed-PTY control-character guards, Phase 5B automatic `agent-team` bootstrap, and Phase 5C durable roster/review-ledger seeding are implemented and verified. Host prerequisites are installed, the approved Ghostty/Zig gate built `ghostty/zig-out/lib/libghostty.so`, `./scripts/check.sh`, debug Xvfb smoke, and release Xvfb smoke pass locally. Recommended next implementation is Phase 5D1: a reviewer workflow scaffold that creates review request files, appends pending ledger entries, and prints reviewer prompts without launching real reviewer panes yet.
 ```

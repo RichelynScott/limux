@@ -695,8 +695,9 @@ Parent surface if blocked: &lt;surface-id&gt;.</code></pre>
       <section id="improvements">
         <h2>Best Next Improvements</h2>
         <ol>
-          <li>Add a wrapper command for "spawn reviewer, capture surface, read result".</li>
-          <li>Add documented conventions for consensus reports and cross-team broadcasts.</li>
+          <li>Add Phase 5D1 reviewer workflow scaffold: create durable review request files, append pending entries to <code>LIMUX_REVIEW_LEDGER.md</code>, and print the reviewer prompt or <code>limux send</code> payload without launching real reviewer panes yet.</li>
+          <li>Add the full reviewer spawn/capture wrapper after the scaffold is stable. This should start a reviewer pane, send the prompt after readiness, capture evidence to <code>reviews/</code>, update the ledger, and print only short hcom pointers.</li>
+          <li>Add documented conventions for consensus reports and cross-team broadcasts: GO, WAIT, NO-GO, accepted risk, unresolved risk, and targeted hcom pointer examples.</li>
           <li>Add optional runtime-specific <code>.limux/</code> adapters for Codex, Claude Code, Gemini, and OpenCode if direct protocol discovery needs deeper integration.</li>
           <li>Add a later machine-readable roster/ledger adapter if Markdown sidecars are not enough for automation.</li>
         </ol>
