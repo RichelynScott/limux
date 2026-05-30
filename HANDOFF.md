@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-05-29 20:32 EDT
+Last updated: 2026-05-29 20:47 EDT
 
 ## Immediate Next Action
 
@@ -8,22 +8,21 @@ Phase 5A zero-friction protocol discovery for `limux agent-team` is implemented
 and locally verified. GTK bridge `surface.send_text` now reports not-ready
 terminal surfaces as a conflict instead of returning `ok: true`. Host
 GTK/pkg-config prerequisites are installed, and the approved Ghostty/Zig v2 gate
-has built local `ghostty/zig-out/lib/libghostty.so`.
+has built local `ghostty/zig-out/lib/libghostty.so`. The full workspace check
+and Xvfb live smoke harness now pass locally.
 
-Recommended next scoped action: remove the `unused_mut` warning reported by the
-focused host test in `rust/limux-host-linux/src/window.rs`, then run the
-workspace gates that were previously blocked by missing Ghostty:
+Recommended next scoped action: add shell-quoting regression tests before
+expanding automatic launch/bootstrap behavior for agents. Cover spaces, quotes,
+`$`, backticks, semicolons, and newlines in generated launch/bootstrap commands.
+
+Current verification baseline:
 
 ```bash
 cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
 git diff --check
+LD_LIBRARY_PATH="$PWD/ghostty/zig-out/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./scripts/check.sh
+LD_LIBRARY_PATH="$PWD/ghostty/zig-out/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./scripts/xvfb-smoke-test.sh
 ```
-
-Run `./scripts/check.sh` after the warning is fixed. Run the Xvfb smoke harness
-as a separate explicit verification lane if the operator wants live GUI/socket
-coverage next.
 
 The operator requested an easier-to-read status/options artifact on
 2026-05-29. Use this packet if a decision needs to be confirmed before coding:
@@ -105,9 +104,9 @@ Focused host verification passed:
 CARGO_NET_OFFLINE=true LD_LIBRARY_PATH="$PWD/ghostty/zig-out/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" cargo test --locked -p limux-host-linux surface_send_text_response
 ```
 
-Result: `2 passed; 0 failed; 186 filtered out`. The test emitted an
-`unused_mut` warning at `rust/limux-host-linux/src/window.rs:4340`, which should
-be fixed before claiming the full clippy/workspace gate.
+Result: `2 passed; 0 failed; 186 filtered out`. The later follow-up removed the
+`unused_mut` warning at `rust/limux-host-linux/src/window.rs:4340`, and the full
+workspace gate now passes.
 
 Execution wrapper deviation: the command extraction wrapper captured all
 `bash` fences in the review doc, so it first ran the README illustrative block:
@@ -147,9 +146,9 @@ cargo clippy -p limux-cli --all-targets -- -D warnings
 git diff --check
 ```
 
-`libghostty.so` and host GTK/pkg-config prerequisites are now present locally.
-The next expected full-gate issue is the focused host-test `unused_mut` warning,
-which should be fixed before `clippy -D warnings` or `./scripts/check.sh`.
+`libghostty.so` and host GTK/pkg-config prerequisites are present locally. The
+focused host warning is fixed, and the full workspace/Xvfb gates now pass with
+the local Ghostty library on `LD_LIBRARY_PATH`.
 
 ## Completed This Session
 
@@ -175,15 +174,16 @@ which should be fixed before `clippy -D warnings` or `./scripts/check.sh`.
 | 2026-05-29 20:10 EDT | Ghostty/Zig mutation review | Created draft-only review for project-scoped Zig 0.15.2 download, pinned Ghostty submodule initialization, `libghostty.so` build, and host test verification. Decision is `WAIT` pending explicit approval. |
 | 2026-05-29 20:15 EDT | Ghostty/Zig consensus gate | `niru`, `zori`, `kazu`, and Claude plugin reviewed v1, returned `WAIT`, v2 was patched, then v2 re-review returned GO for operator approval. |
 | 2026-05-29 20:32 EDT | Approved Ghostty/Zig execution | Verified v2 SHA, built `ghostty/zig-out/lib/libghostty.so`, captured evidence logs, and passed the locked offline host send-text test. Wrapper deviation documented: an earlier README bash fence initialized the top-level `ghostty` submodule before the approved v2 block; no nested submodules or system mutation were found. |
+| 2026-05-29 20:47 EDT | Full gate and Xvfb smoke restored | Removed the host `unused_mut` warning, updated Xvfb smoke from `softpipe`/OpenGL 3.3 to `llvmpipe`/OpenGL 4.3, accepted current `new-pane --json` refs, and verified `cargo fmt --check`, `git diff --check`, `./scripts/check.sh`, and `./scripts/xvfb-smoke-test.sh`. |
 
 ## Current State
 
 - Branch: `main`
 - Code commit pushed before this handoff: `cec067f fix(cli): protect agent-team protocol output`
-- Latest implementation in this handoff: GTK `surface.send_text` readiness/failure hardening.
+- Latest implementation in this handoff: full gate and Xvfb smoke restoration after the Ghostty/Zig build gate.
 - Latest pushed status/report commit before Phase 5A implementation:
   `1c12e97 docs(decision): add limux next steps packet`
-- Working tree should be clean after committing/pushing the Ghostty/Zig evidence update.
+- Working tree should be clean after committing/pushing the full-gate/smoke restoration.
 
 ## Architectural Decisions Locked In
 
@@ -207,8 +207,8 @@ LIMUX_AGENTS.local.md            = optional durable local team policy
 Phase ordering:
 
 1. **Done:** Improve generated `LIMUX_AGENTS.md` with instruction-source detection, generated marker, no-overwrite guard, and local-policy extension point.
-2. **Done, pending host-crate build prerequisite verification:** Fix `surface.send_text` readiness/failure semantics in the GTK host bridge.
-3. **WAIT:** Implement two-phase agent bootstrap only after shell-quoting tests and host smoke verification exist.
+2. **Done:** Fix `surface.send_text` readiness/failure semantics in the GTK host bridge and verify it through the full workspace gate.
+3. **Next:** Add shell-quoting tests before implementing two-phase automatic launch/bootstrap behavior.
 4. **Optional later:** Add runtime-specific `.limux/` adapters for Codex, Claude Code, Gemini, and OpenCode.
 
 ## Key Files For Context
@@ -237,7 +237,8 @@ Phase ordering:
 ## Known Risks And Blockers
 
 - `ghostty/zig-out/lib/libghostty.so` exists locally after the approved build gate, but it is a generated artifact. Fresh clones or cleaned worktrees must rebuild it through the reviewed lane before host/workspace checks.
-- Host-crate tests moved past the prior `pkg-config` and `libghostty` blockers. The focused host test now exposes an `unused_mut` warning at `rust/limux-host-linux/src/window.rs:4340`; full `clippy -D warnings` should fix that first.
+- Host-crate tests moved past the prior `pkg-config` and `libghostty` blockers. The `unused_mut` warning at `rust/limux-host-linux/src/window.rs:4340` is fixed.
+- The Xvfb smoke harness requires Mesa software OpenGL 4.3 for the pinned Ghostty. It now defaults to `llvmpipe` and can be overridden with `LIMUX_SMOKE_GALLIUM_DRIVER` for local Mesa debugging.
 - `zig` is intentionally not on `PATH`; the reviewed lane used project-scoped Zig under `$HOME/.cache/limux-tools`.
 - Shell-injected launch/bootstrap commands need tests for spaces, quotes, `$`, backticks, semicolons, and newlines before automation expands.
 - Instruction-source hashes are deterministic `fnv1a64` metadata for change detection, not cryptographic integrity claims.
@@ -245,5 +246,5 @@ Phase ordering:
 ## Morning Resume Prompt
 
 ```text
-Please resume the Limux work from HANDOFF.md. Phase 5A zero-friction protocol discovery is implemented, GTK `surface.send_text` now returns a conflict when the terminal is not ready, host prerequisites are installed, and the approved Ghostty/Zig gate built `ghostty/zig-out/lib/libghostty.so`. Next fix the `unused_mut` warning at `rust/limux-host-linux/src/window.rs:4340`, run the full workspace gates, then decide whether to run Xvfb smoke and add shell-quoting tests for launch/bootstrap commands.
+Please resume the Limux work from HANDOFF.md. Phase 5A zero-friction protocol discovery is implemented, GTK `surface.send_text` now returns a conflict when the terminal is not ready, host prerequisites are installed, the approved Ghostty/Zig gate built `ghostty/zig-out/lib/libghostty.so`, and both `./scripts/check.sh` and `./scripts/xvfb-smoke-test.sh` pass locally with the Ghostty library on `LD_LIBRARY_PATH`. Next add shell-quoting tests for launch/bootstrap commands before expanding automatic agent bootstrap.
 ```

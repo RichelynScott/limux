@@ -4337,7 +4337,7 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 )
             };
 
-            let Some((mut payload, handle)) = target else {
+            let Some((payload, handle)) = target else {
                 let _ = reply.send(Err(crate::control_bridge::BridgeError::not_found(
                     "terminal surface not found",
                 )));

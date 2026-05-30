@@ -195,3 +195,19 @@ Execution wrapper note: the shell extraction command accidentally captured an ea
 
 ### Related:
 `docs/evidence/limux-ghostty-zig-20260530T002418Z-18756/` | `docs/LIMUX_GHOSTTY_ZIG_MUTATION_REVIEW_2026-05-29.md` | `HANDOFF.md`
+
+## 2026-05-29 - Full Gate And Xvfb Smoke Restored
+### What:
+Cleared the remaining host warning and restored the Xvfb live smoke harness after the Ghostty/Zig gate.
+
+### Why:
+The approved Ghostty build made host verification possible again, but the focused host test still emitted an `unused_mut` warning and the smoke harness still carried old Mesa assumptions that prevented Ghostty surfaces from realizing under Xvfb.
+
+### How:
+Removed the unnecessary `mut` binding in `rust/limux-host-linux/src/window.rs`. Debugged the smoke failure with `GHOSTTY_LOG=stderr`, which showed `error.OpenGLOutdated`: the script forced `softpipe` plus OpenGL `3.3`, while the pinned Ghostty requires OpenGL `4.3`. Updated the smoke harness to use `llvmpipe` and OpenGL `4.3` by default, with `LIMUX_SMOKE_GALLIUM_DRIVER` available for local Mesa debugging. Also updated stage 6 to accept the current `new-pane --json` ref-shaped response and compare it with raw `LIMUX_*` child env values.
+
+### Impact:
+`cargo fmt --check`, `git diff --check`, `./scripts/check.sh`, and `./scripts/xvfb-smoke-test.sh` pass with the local Ghostty library on `LD_LIBRARY_PATH`. The live smoke now verifies `agent-team --dry-run`, live `agent-team --no-launch`, workspace listing, peer surface send, workspace notify, self-split `new-pane` command execution with fresh `LIMUX_*` env, and hook translation.
+
+### Related:
+`scripts/xvfb-smoke-test.sh` | `rust/limux-host-linux/src/window.rs` | `HANDOFF.md`

@@ -117,13 +117,14 @@ SMOKE_SESSION
 
 echo
 echo "== stage 1: boot limux host under xvfb-run =="
-# Under Xvfb there is no GPU, so Mesa would fall back to llvmpipe, which
-# has historically crashed on Ghostty's shader variants. Force softpipe
-# (slower but stable), and pin GL version to avoid newer-feature probes.
+# Under Xvfb there is no GPU, so Mesa falls back to a software renderer.
+# Ghostty now requires OpenGL 4.3, which softpipe cannot provide reliably
+# enough for the embedded surface path. Use llvmpipe by default, while keeping
+# an explicit smoke-only override for debugging local Mesa regressions.
 export LIBGL_ALWAYS_SOFTWARE=1
-export GALLIUM_DRIVER=softpipe
+export GALLIUM_DRIVER="${LIMUX_SMOKE_GALLIUM_DRIVER:-llvmpipe}"
 export LP_NUM_THREADS=1
-export MESA_GL_VERSION_OVERRIDE="${MESA_GL_VERSION_OVERRIDE:-3.3}"
+export MESA_GL_VERSION_OVERRIDE="${MESA_GL_VERSION_OVERRIDE:-4.3}"
 xvfb-run -a -s "-screen 0 1280x800x24 +extension GLX +render" \
   "$LIMUX_HOST" >"$LOG_DIR/host.stdout" 2>"$LOG_DIR/host.stderr" &
 HOST_PID=$!
@@ -251,9 +252,22 @@ RESPONSE_WORKSPACE="$(sed -n 's/.*"workspace_id"[[:space:]]*:[[:space:]]*"\([^"]
 RESPONSE_PANE="$(sed -n 's/.*"pane_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$LOG_DIR/stage6.json" | head -1)"
 RESPONSE_SURFACE="$(sed -n 's/.*"surface_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$LOG_DIR/stage6.json" | head -1)"
 
-[ -n "$RESPONSE_WORKSPACE" ] || { echo "FAIL: pane.create response missing workspace_id"; exit 1; }
-[ -n "$RESPONSE_PANE" ] || { echo "FAIL: pane.create response missing pane_id"; exit 1; }
-[ -n "$RESPONSE_SURFACE" ] || { echo "FAIL: pane.create response missing surface_id"; exit 1; }
+if [ -z "$RESPONSE_WORKSPACE" ]; then
+  RESPONSE_WORKSPACE_REF="$(sed -n 's/.*"workspace_ref"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$LOG_DIR/stage6.json" | head -1)"
+  RESPONSE_WORKSPACE="${RESPONSE_WORKSPACE_REF#workspace:}"
+fi
+if [ -z "$RESPONSE_PANE" ]; then
+  RESPONSE_PANE_REF="$(sed -n 's/.*"pane_ref"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$LOG_DIR/stage6.json" | head -1)"
+  RESPONSE_PANE="${RESPONSE_PANE_REF#pane:}"
+fi
+if [ -z "$RESPONSE_SURFACE" ]; then
+  RESPONSE_SURFACE_REF="$(sed -n 's/.*"surface_ref"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$LOG_DIR/stage6.json" | head -1)"
+  RESPONSE_SURFACE="${RESPONSE_SURFACE_REF#surface:}"
+fi
+
+[ -n "$RESPONSE_WORKSPACE" ] || { echo "FAIL: pane.create response missing workspace_id/workspace_ref"; exit 1; }
+[ -n "$RESPONSE_PANE" ] || { echo "FAIL: pane.create response missing pane_id/pane_ref"; exit 1; }
+[ -n "$RESPONSE_SURFACE" ] || { echo "FAIL: pane.create response missing surface_id/surface_ref"; exit 1; }
 
 for _ in $(seq 1 50); do
   if [ -f "$SELF_SPLIT_PROOF" ] && [ -f "$SELF_SPLIT_ENV" ]; then
