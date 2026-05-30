@@ -1,8 +1,15 @@
 # Limux Phase 5C Next Steps Decision Packet
 
 Generated: 2026-05-29 23:32 EDT  
+Updated: 2026-05-30 00:20 EDT
 Scope: `/home/riche/MCPs/limux`  
-Current pushed commit: `6a73909 feat(cli): seed agent-team roster and review ledger`
+Baseline pushed commit at packet creation: `6a73909 feat(cli): seed agent-team roster and review ledger`
+
+## 2026-05-30 Update
+
+The operator selected **Option A: Phase 5D1 Reviewer Workflow Scaffold**.
+`limux review prepare` is now implemented and verified. The next recommended
+path is **Phase 5D2: Reviewer Spawn/Capture Wrapper**.
 
 ## Current State
 
@@ -32,12 +39,13 @@ Claude plugin follow-up review found no commit-blocking issues after fixes.
 
 ## Recommended Default
 
-Proceed with **Phase 5D1: Reviewer Workflow Scaffold** before building a full
-spawn/capture wrapper.
+Historical recommendation was to proceed with **Phase 5D1: Reviewer Workflow
+Scaffold** before building a full spawn/capture wrapper. That recommendation has
+now been executed.
 
-This is the best next step because it turns the new ledger into a reliable
-review workflow without betting everything on real Codex/Claude TUI readiness
-or fragile transcript capture in the first pass.
+Current recommendation: proceed with **Phase 5D2: Reviewer Spawn/Capture
+Wrapper**. This should reuse the prepared request file and pending ledger entry,
+then launch/send/capture in a separate, narrower step.
 
 ## Roadmap
 
@@ -51,7 +59,7 @@ or fragile transcript capture in the first pass.
 
 ## Option A: Phase 5D1 Reviewer Workflow Scaffold
 
-Recommended.
+Selected and implemented on 2026-05-30.
 
 ### Proposed CLI Shape
 
@@ -96,9 +104,13 @@ limux review prepare \
 - Does not depend on a running Limux host for `--dry-run`.
 - Creates review request files atomically.
 - Appends ledger entries instead of rewriting the ledger.
-- Refuses symlink and non-regular review/ledger paths.
+- Refuses existing request files, leaf symlink and non-regular review/ledger
+  paths, and overlapping request/ledger paths. Use trusted output directories;
+  parent path components are not recursively audited for symlinks.
 - Rejects control characters in generated prompt text.
-- Tests cover request-file creation, ledger append, dry-run, symlink refusal, and malformed arguments.
+- Tests cover request-file creation, ledger append, dry-run, existing-request
+  refusal, symlink refusal, non-regular ledger refusal, invalid choices,
+  overlapping request/ledger paths, dispatch, and malformed arguments.
 - Docs show how to use it with the Phase 5C roster and ledger.
 
 ### Verification
@@ -174,32 +186,34 @@ work.
 
 ## Recommendation
 
-Pick **Option A**.
+Historical packet recommendation: **Option A**.
 
-It gives the next implementation a narrow scope, strong tests, and a direct
-connection to the Phase 5C ledger. It also sets up Options B and D without
-requiring a full agent-spawn/capture pipeline immediately.
+Status update: Option A has been implemented. The next recommendation is
+**Option B / Phase 5D2**, using the tested `review prepare` request and ledger
+format as the foundation for reviewer pane launch, prompt send, evidence
+capture, and ledger completion.
 
 ## Copy-Back Payload
 
 ```text
-My decisions after reviewing the Limux Phase 5C next-steps packet:
+My decisions after reviewing the Limux Phase 5D1 completion update:
 
 1. Main next step:
-   - Proceed with Option A: Phase 5D1 Reviewer Workflow Scaffold.
+   - Proceed with Option B: Phase 5D2 reviewer spawn/capture wrapper.
 
 2. Scope:
-   - Add a `limux review prepare` style workflow.
-   - Create durable review request files under `reviews/`.
-   - Append pending entries to `LIMUX_REVIEW_LEDGER.md`.
-   - Print the reviewer prompt or send payload.
-   - Do not launch real reviewer panes yet.
+   - Reuse the existing `limux review prepare` request file and pending ledger entry.
+   - Start a reviewer pane only after request creation succeeds.
+   - Send the prepared prompt after pane readiness.
+   - Capture or point to reviewer evidence under `reviews/`.
+   - Update the existing ledger entry without rewriting unrelated content.
+   - Keep hcom output to short durable pointers.
 
 3. Follow-up priority:
-   - After 5D1, evaluate Option B: full reviewer spawn/capture wrapper.
+   - After 5D2, define consensus and cross-team hcom pointer conventions.
 
 4. Execution mode:
-   - Current Codex session should implement the scoped Phase 5D1 step.
+   - Current Codex session should implement the scoped Phase 5D2 step unless the scope expands.
 
 5. Skills:
    - $methodical-modification-protocol
@@ -222,4 +236,5 @@ Please proceed according to these selections.
 - `docs/cmux-parity-plan.md`
 - `docs/limux-hcom-workflow.md`
 - `docs/limux-vs-multica-decision-guide.md`
-- Commit `6a73909 feat(cli): seed agent-team roster and review ledger`
+- Baseline commit `6a73909 feat(cli): seed agent-team roster and review ledger`
+- Phase 5D1 local verification commands listed in `FYI.md` and `HANDOFF.md`

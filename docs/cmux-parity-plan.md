@@ -196,6 +196,26 @@ into a `notify` (and, where useful, an inline `send`). Drop-in for
   harness now proves fake agents see protocol, roster, and ledger files before
   receiving the bootstrap prompt.
 
+**Shipped after Phase 5C: Phase 5D1 — reviewer workflow scaffold**
+
+- Added `limux review prepare --artifact <path-or-ref> --reviewer
+  <codex|claude|gemini|opencode|manual> --lens
+  <security|correctness|maintainability|ux|release> --summary <text>`.
+- The scaffold creates a durable `reviews/<review-id>.md` request file,
+  appends a pending entry to `LIMUX_REVIEW_LEDGER.md`, and prints the exact
+  reviewer prompt without contacting the host or launching reviewer panes.
+- `--dry-run` plans the request, ledger entry, and prompt without writing
+  files. `--review-id`, `--reviews-dir`, and `--ledger-path` allow deterministic
+  paths for coordinated reviews.
+- Existing request files, leaf symlink review directories, leaf symlink
+  ledgers, non-regular targets, overlapping request/ledger paths, and control
+  characters in generated prompt fields are refused. Use trusted output
+  directories; parent path components are not recursively audited for symlinks.
+- CLI tests cover request creation, append-only ledger behavior, dry-run,
+  existing request refusal, symlink refusal, non-regular ledger refusal, invalid
+  choices, overlapping request/ledger paths, dispatch, missing required
+  arguments, and control-character rejection.
+
 ### Phase 6 — (deferred) `limux progress`, `limux log`, `limux markdown`
 Nice polish, not blockers.
 

@@ -368,12 +368,12 @@
         <p class="lede">
           Use Limux as the local live workspace layer. Use hcom as the
           cross-session and cross-project coordination bus. Keep durable files
-          as the source of truth.
+          as the source of truth, including review requests and ledger entries.
         </p>
         <div class="meta" aria-label="Review metadata">
-          <span class="pill">Reviewed 2026-05-29</span>
+          <span class="pill">Reviewed 2026-05-30</span>
           <span class="pill">Branch main</span>
-          <span class="pill">Shell snippet hardened</span>
+          <span class="pill">Phase 5D1 review prepare</span>
         </div>
       </header>
 
@@ -409,8 +409,12 @@
               <td><code>limux read-screen --surface ... --lines 80</code></td>
             </tr>
             <tr>
+              <td>Prepare a review without launching a pane</td>
+              <td><code>limux review prepare --artifact &lt;path&gt; --reviewer claude --lens security --summary "..."</code></td>
+            </tr>
+            <tr>
               <td>Spawn a short-lived reviewer beside the current pane</td>
-              <td><code>limux new-pane --direction right --command 'codex'</code>, then <code>limux send ...</code> after the pane is ready</td>
+              <td><code>limux agent-team --agents codex,claude --cwd "$PWD"</code>, or <code>limux new-pane --direction right --command 'codex'</code> plus the prompt from <code>limux review prepare</code></td>
             </tr>
             <tr>
               <td>Get human attention inside the GUI</td>
@@ -582,12 +586,27 @@ limux send-key --surface "$peer_surface" enter</code></pre>
         <h2>Subagent And Review Pattern</h2>
         <ol>
           <li>The project orchestrator writes or identifies the artifact under review.</li>
+          <li>Run <code>limux review prepare</code> to create a file-backed request and pending ledger entry before sending prompt text to any reviewer.</li>
           <li>Spawn reviewers as Limux panes if they only need the current repo.</li>
           <li>Use hcom if the reviewer lives in another runtime, project, or machine.</li>
           <li>Require reviewers to write file-backed findings or leave clear pane output.</li>
           <li>The orchestrator reads outputs, resolves conflicts, and writes a synthesis.</li>
           <li>If another project is affected, send only the synthesis pointer through hcom.</li>
         </ol>
+
+        <h3>Prepare a review request</h3>
+        <pre><code>limux review prepare \
+  --artifact &lt;path-or-ref&gt; \
+  --reviewer claude \
+  --lens security \
+  --summary "Review this diff for blocking issues"</code></pre>
+        <p>
+          This writes <code>reviews/&lt;review-id&gt;.md</code>, appends a pending
+          entry to <code>LIMUX_REVIEW_LEDGER.md</code>, and prints the exact
+          reviewer prompt. It does not launch or message a reviewer pane yet.
+          Use <code>--dry-run</code> to inspect planned paths and prompt text
+          without writing files.
+        </p>
 
         <h3>Reviewer prompt shape</h3>
         <pre><code>Review this artifact for blocking issues only.
@@ -695,8 +714,8 @@ Parent surface if blocked: &lt;surface-id&gt;.</code></pre>
       <section id="improvements">
         <h2>Best Next Improvements</h2>
         <ol>
-          <li>Add Phase 5D1 reviewer workflow scaffold: create durable review request files, append pending entries to <code>LIMUX_REVIEW_LEDGER.md</code>, and print the reviewer prompt or <code>limux send</code> payload without launching real reviewer panes yet.</li>
-          <li>Add the full reviewer spawn/capture wrapper after the scaffold is stable. This should start a reviewer pane, send the prompt after readiness, capture evidence to <code>reviews/</code>, update the ledger, and print only short hcom pointers.</li>
+          <li>Add Phase 5D2 full reviewer spawn/capture wrapper. This should start a reviewer pane, send the <code>review prepare</code> prompt after readiness, capture evidence to <code>reviews/</code>, update the ledger, and print only short hcom pointers.</li>
+          <li>Add a <code>review collect</code> or <code>review complete</code> path that records reviewer verdicts back into the existing ledger entry without rewriting unrelated content.</li>
           <li>Add documented conventions for consensus reports and cross-team broadcasts: GO, WAIT, NO-GO, accepted risk, unresolved risk, and targeted hcom pointer examples.</li>
           <li>Add optional runtime-specific <code>.limux/</code> adapters for Codex, Claude Code, Gemini, and OpenCode if direct protocol discovery needs deeper integration.</li>
           <li>Add a later machine-readable roster/ledger adapter if Markdown sidecars are not enough for automation.</li>
@@ -711,11 +730,12 @@ Parent surface if blocked: &lt;surface-id&gt;.</code></pre>
           <li>Existing repo <code>AGENTS.md</code> files are not written by default.</li>
           <li>Generated <code>LIMUX_AGENTS.md</code> files include a generated marker, instruction sources, durable roster/ledger pointers, sidecar policy guidance, and no-overwrite protection for unmarked sidecars.</li>
           <li>Live <code>agent-team</code> launches peer panes with bare agent commands, writes the protocol, roster, and ledger before bootstrap, then submits a sanitized one-line bootstrap prompt with explicit Enter. <code>--no-bootstrap</code> and <code>--no-launch</code> skip prompt sends.</li>
+          <li><code>limux review prepare</code> creates durable review request files, appends pending <code>LIMUX_REVIEW_LEDGER.md</code> entries, supports dry-run planning, and refuses existing requests, leaf symlink/non-regular/overlapping targets, and control-character prompt fields. Use trusted output directories; parent path components are not recursively audited for symlinks.</li>
           <li>Generated <code>new-pane --command</code> examples quote launch commands and avoid nested arbitrary prompt text.</li>
           <li>Typed terminal text now rejects ESC/BEL/C1/control payloads except tab, LF, and CR across CLI, bridge/core, and host send-sink paths.</li>
           <li>Latest tag is <code>v0.1.19</code>.</li>
           <li>Full <code>./scripts/check.sh</code> and <code>./scripts/xvfb-smoke-test.sh</code> pass locally with the local Ghostty library; the smoke script exports the required library path automatically when <code>ghostty/zig-out/lib</code> exists.</li>
-          <li>Next: reviewer/capture wrapper plus documented consensus and cross-team broadcast conventions.</li>
+          <li>Next: Phase 5D2 reviewer spawn/capture wrapper plus documented consensus and cross-team broadcast conventions.</li>
         </ul>
       </section>
 

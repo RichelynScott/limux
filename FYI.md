@@ -300,3 +300,47 @@ The next session can choose between Phase 5D1 scaffold, full spawn/capture wrapp
 
 ### Related:
 `docs/LIMUX_PHASE5C_NEXT_STEPS_DECISION_PACKET_2026-05-29.md` | `docs/LIMUX_PHASE5C_NEXT_STEPS_DECISION_PACKET_2026-05-29.html` | `HANDOFF.md` | `docs/limux-hcom-workflow.md`
+
+## 2026-05-30 - Phase 5D1 Reviewer Workflow Scaffold
+### What:
+Implemented `limux review prepare` as the first reviewer workflow scaffold on
+top of the Phase 5C review ledger.
+
+### Why:
+The operator selected Option A from the Phase 5C next-steps packet. The safest
+next step was to make reviews durable and repeatable before automating real
+reviewer pane launch, prompt delivery, output capture, or consensus finalization.
+
+### How:
+Added `review prepare` with required `--artifact`, `--reviewer`, `--lens`, and
+`--summary` fields; optional `--cwd`, `--ledger-path`, `--reviews-dir`,
+`--review-id`, and `--dry-run`; atomic `reviews/<review-id>.md` creation;
+append-only pending entries in `LIMUX_REVIEW_LEDGER.md`; reviewer/lens
+allowlists; and refusal for existing request files, leaf symlink review
+directories, leaf symlink/non-regular ledgers, overlapping request/ledger paths,
+and control characters in generated prompt fields. Documented that output
+directories must be trusted because parent path components are not recursively
+audited for symlinks. Updated README, roadmap, workflow Markdown/HTML, decision
+packet, handoff, and this journal.
+
+### Impact:
+Limux can now prepare a file-backed review without contacting a running host or
+launching an agent. The next practical lane is Phase 5D2: start a reviewer pane,
+send the prepared prompt after readiness, capture or point to reviewer evidence,
+and update the pending ledger entry without rewriting unrelated content.
+
+### Verification:
+Observed RED compile failure before implementation because `run_review_prepare`
+did not exist. After implementation, `cargo test -p limux-cli review_prepare`,
+`cargo test -p limux-cli review`, `cargo test -p limux-cli agent_team`,
+`cargo test -p limux-cli`, `cargo fmt --check`, `cargo clippy -p limux-cli
+--all-targets -- -D warnings`, `git diff --check`,
+`LD_LIBRARY_PATH="$PWD/ghostty/zig-out/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+./scripts/check.sh`, and `./scripts/xvfb-smoke-test.sh` passed. Claude plugin
+adversarial review found no high blockers; follow-up tightened symlink wording
+and expanded refusal-branch tests before commit.
+
+### Related:
+`rust/limux-cli/src/main.rs` | `README.md` | `docs/cmux-parity-plan.md` |
+`docs/limux-hcom-workflow.md` | `docs/limux-hcom-workflow.html` |
+`HANDOFF.md`

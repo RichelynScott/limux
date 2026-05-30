@@ -254,7 +254,7 @@
     <div class="topbar">
       <div class="brand">
         <strong>Limux Phase 5C Next Steps</strong>
-        <span>Scope: /home/riche/MCPs/limux | Runtime: Codex / tipi | 2026-05-29 11:32 PM EDT</span>
+        <span>Scope: /home/riche/MCPs/limux | Runtime: Codex / tipi | Generated 2026-05-29 11:32 PM EDT | Updated 2026-05-30 12:20 AM EDT</span>
       </div>
       <nav>
         <a href="#status">Status</a>
@@ -271,31 +271,31 @@
       <div class="road-step done"><i class="dot"></i><div><strong>5A</strong><span>Protocol discovery and instruction-source pointers.</span></div></div>
       <div class="road-step done"><i class="dot"></i><div><strong>5B</strong><span>Automatic peer bootstrap after protocol write.</span></div></div>
       <div class="road-step done"><i class="dot"></i><div><strong>5C</strong><span>Durable roster and review ledger seeding.</span></div></div>
-      <div class="road-step current"><i class="dot"></i><div><strong>5D1</strong><span>Recommended reviewer workflow scaffold.</span></div></div>
-      <div class="road-step"><i class="dot"></i><div><strong>5D2</strong><span>Spawn/capture wrapper after scaffold.</span></div></div>
+      <div class="road-step done"><i class="dot"></i><div><strong>5D1</strong><span>Reviewer workflow scaffold implemented.</span></div></div>
+      <div class="road-step current"><i class="dot"></i><div><strong>5D2</strong><span>Spawn/capture wrapper after scaffold.</span></div></div>
       <div class="road-step"><i class="dot"></i><div><strong>5D3</strong><span>Consensus and hcom pointer conventions.</span></div></div>
     </aside>
 
     <div class="content">
       <section class="hero">
         <div>
-          <p class="eyebrow">Recommended default</p>
-          <h1>Do Phase 5D1 first.</h1>
-          <p class="lead">Build a reviewer workflow scaffold before the full spawn/capture wrapper. It makes review requests, evidence slots, and ledger entries durable without depending on real Codex or Claude TUI readiness in the first pass.</p>
+          <p class="eyebrow">Completed update</p>
+          <h1>Phase 5D1 is complete. Do Phase 5D2 next.</h1>
+          <p class="lead">The reviewer workflow scaffold now creates durable request files, appends pending ledger entries, and prints reviewer prompts without launching agents. The next useful step is the spawn/capture wrapper.</p>
           <div class="meta">
-            <div><span>Current commit</span><strong>6a73909 feat(cli): seed agent-team roster and review ledger</strong></div>
-            <div><span>Repo state</span><strong>Phase 5C pushed and verified</strong></div>
-            <div><span>Primary next command family</span><strong>limux review prepare</strong></div>
+            <div><span>Baseline commit</span><strong>6a73909 feat(cli): seed agent-team roster and review ledger</strong></div>
+            <div><span>Repo state</span><strong>Phase 5D1 implemented and verified</strong></div>
+            <div><span>Primary next command family</span><strong>limux review run / collect</strong></div>
             <div><span>Decision packet pattern</span><strong>$html-decision-packet</strong></div>
           </div>
         </div>
         <aside class="recommendation">
           <h2>Why this order</h2>
-          <p>Phase 5C created the durable files. Phase 5D1 should make those files useful for adversarial review before automating real agent spawning.</p>
+          <p>Phase 5D1 made the ledger useful for durable review requests. Phase 5D2 should now automate reviewer launch, prompt delivery, evidence capture, and ledger completion.</p>
           <div class="stack">
-            <div>Lower risk than full TUI automation.</div>
-            <div>Creates testable review artifacts and ledger entries.</div>
-            <div>Sets up Phase 5D2 and 5D3 cleanly.</div>
+            <div>Reuses the already-tested request and ledger format.</div>
+            <div>Keeps launch/capture automation separate from file safety.</div>
+            <div>Sets up Phase 5D3 consensus reporting cleanly.</div>
           </div>
         </aside>
       </section>
@@ -309,10 +309,11 @@
         </div>
         <div class="section-body status-grid">
           <div class="status-card"><strong>Done</strong><span>Phase 5C seeds `LIMUX_TEAM_ROSTER.md` and `LIMUX_REVIEW_LEDGER.md` when missing.</span></div>
+          <div class="status-card"><strong>Done</strong><span>Phase 5D1 adds `limux review prepare` request files, pending ledger entries, dry-run planning, leaf path checks, and prompt-field safety checks.</span></div>
           <div class="status-card"><strong>Done</strong><span>Generated `LIMUX_AGENTS.md` points peers to protocol, roster, ledger, and instruction sources.</span></div>
           <div class="status-card"><strong>Safe default</strong><span>Existing roster/ledger files are preserved. Ledger is create-if-missing only.</span></div>
           <div class="status-card"><strong>Verified</strong><span>CLI tests, clippy, full workspace check, diff check, and debug/release Xvfb smoke passed.</span></div>
-          <div class="status-card"><strong>Reviewed</strong><span>Claude plugin follow-up found no commit-blocking issues after fixes.</span></div>
+          <div class="status-card"><strong>Verified</strong><span>Phase 5D1 focused tests, full CLI suite, workspace check, clippy, diff check, and release Xvfb smoke passed.</span></div>
           <div class="status-card"><strong>Not next</strong><span>Multica pilot and full install remain deferred.</span></div>
         </div>
       </section>
@@ -326,9 +327,9 @@
         </div>
         <div class="section-body grid">
           <article class="card">
-            <span class="tag green">Recommended</span>
+            <span class="tag green">Completed</span>
             <h3>Option A: Phase 5D1 Scaffold</h3>
-            <p>Add a `limux review prepare` style workflow that creates review request files, appends pending ledger entries, and prints the exact reviewer prompt or send payload.</p>
+            <p>Implemented `limux review prepare`: it creates review request files, appends pending ledger entries, supports dry-run, and prints the exact reviewer prompt.</p>
             <ul>
               <li>No real reviewer pane launch yet.</li>
               <li>Works without a running host in dry-run mode.</li>
@@ -372,11 +373,11 @@
         <div class="section-header">
           <div>
             <h2>Option A Details</h2>
-            <p>Concrete implementation target if you accept the recommended path.</p>
+            <p>Implemented Phase 5D1 command and safety target.</p>
           </div>
         </div>
         <div class="section-body">
-          <h3>Proposed command</h3>
+          <h3>Implemented command</h3>
           <pre>limux review prepare \
   --artifact &lt;path-or-ref&gt; \
   --reviewer &lt;codex|claude|gemini|opencode|manual&gt; \
@@ -385,13 +386,14 @@
   [--cwd &lt;path&gt;] \
   [--ledger-path &lt;path&gt;] \
   [--reviews-dir &lt;path&gt;] \
+  [--review-id &lt;id&gt;] \
   [--dry-run]</pre>
           <h3>Acceptance criteria</h3>
           <ul>
             <li>Create review request files under `reviews/` atomically.</li>
             <li>Append pending entries to `LIMUX_REVIEW_LEDGER.md` without rewriting prior entries.</li>
-            <li>Print the prompt or `limux send` payload for the reviewer.</li>
-            <li>Refuse symlink, non-regular, and overlapping ledger/review output paths.</li>
+            <li>Print the prompt for the reviewer.</li>
+            <li>Refuse existing request files, leaf symlink/non-regular ledger and review output targets, and overlapping request/ledger paths. Use trusted output directories; parent path components are not recursively audited for symlinks.</li>
             <li>Reject generated prompt control characters.</li>
             <li>Document no-secrets and no-raw-transcript rules.</li>
           </ul>
@@ -408,15 +410,15 @@ git diff --check</pre>
         <div class="section-header">
           <div>
             <h2>Selections</h2>
-            <p>Choose the next lane and execution posture.</p>
+            <p>Option A is complete. These controls now default to the next lane.</p>
           </div>
         </div>
         <div class="section-body grid">
           <div class="card">
             <h3>Main next step</h3>
             <div class="choice-grid">
-              <label class="choice"><input type="radio" name="next" value="Proceed with Option A: Phase 5D1 Reviewer Workflow Scaffold." checked><span><strong>Option A: 5D1 scaffold</strong><span>Recommended, lowest useful implementation risk.</span></span></label>
-              <label class="choice"><input type="radio" name="next" value="Proceed with Option B: full reviewer spawn/capture wrapper."><span><strong>Option B: full wrapper</strong><span>Bigger jump toward near-zero friction.</span></span></label>
+              <label class="choice"><input type="radio" name="next" value="Phase 5D1 is complete; no further scaffold work requested."><span><strong>Option A: 5D1 scaffold</strong><span>Completed on 2026-05-30.</span></span></label>
+              <label class="choice"><input type="radio" name="next" value="Proceed with Option B: Phase 5D2 reviewer spawn/capture wrapper." checked><span><strong>Option B: full wrapper</strong><span>Next step toward near-zero friction.</span></span></label>
               <label class="choice"><input type="radio" name="next" value="Proceed with Option C: real-agent readiness smoke first."><span><strong>Option C: readiness smoke</strong><span>Focus on real Codex/Claude reliability.</span></span></label>
               <label class="choice"><input type="radio" name="next" value="Proceed with Option D: consensus convention docs first."><span><strong>Option D: conventions</strong><span>Document the workflow before adding CLI.</span></span></label>
             </div>
@@ -443,7 +445,7 @@ git diff --check</pre>
           <div class="card">
             <h3>Extra controls</h3>
             <div class="choice-grid">
-              <label class="choice"><input type="checkbox" name="extra" value="Do not use a dedicated skill-ranking subagent for Phase 5D1." checked><span><strong>No skill-ranker for 5D1</strong><span>Scope is clear enough.</span></span></label>
+              <label class="choice"><input type="checkbox" name="extra" value="Use subagents or hcom reviewers only if Phase 5D2 scope expands beyond local CLI work." checked><span><strong>Bound reviewer use</strong><span>Keep extra agents tied to concrete launch/capture risk.</span></span></label>
               <label class="choice"><input type="checkbox" name="extra" value="Keep Multica deferred until after reviewer workflow polish." checked><span><strong>Keep Multica deferred</strong><span>Stay on Limux workflow improvements.</span></span></label>
             </div>
             <p class="note">Additional notes:</p>
@@ -484,7 +486,8 @@ git diff --check</pre>
             <li>`docs/cmux-parity-plan.md`</li>
             <li>`docs/limux-hcom-workflow.md`</li>
             <li>`docs/limux-vs-multica-decision-guide.md`</li>
-            <li>Commit `6a73909 feat(cli): seed agent-team roster and review ledger`</li>
+            <li>Baseline commit `6a73909 feat(cli): seed agent-team roster and review ledger`</li>
+            <li>Phase 5D1 local verification: `cargo test -p limux-cli review`, `cargo test -p limux-cli agent_team`, `cargo test -p limux-cli`, `cargo clippy -p limux-cli --all-targets -- -D warnings`, `./scripts/check.sh`, and `./scripts/xvfb-smoke-test.sh`</li>
           </ul>
         </div>
       </section>
@@ -505,7 +508,7 @@ git diff --check</pre>
     function buildPayload() {
       var notes = document.getElementById('notes').value.trim();
       var lines = [
-        'My decisions after reviewing the Limux Phase 5C next-steps packet:',
+        'My decisions after reviewing the Limux Phase 5D1 completion update packet:',
         '',
         '1. Main next step:',
         '   - ' + selectedRadio('next'),

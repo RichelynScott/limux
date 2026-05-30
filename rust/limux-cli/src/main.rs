@@ -24,11 +24,21 @@ const AGENT_TEAM_BOOTSTRAP_RETRY_INTERVAL: Duration = Duration::from_millis(100)
 const AGENT_TEAM_PROTOCOL_MARKER: &str = "<!-- limux-agent-team-protocol generated:v1 -->";
 const AGENT_TEAM_ROSTER_MARKER: &str = "<!-- limux-team-roster durable:create-if-missing:v1 -->";
 const AGENT_TEAM_LEDGER_MARKER: &str = "<!-- limux-review-ledger durable:v1 -->";
+const REVIEW_REQUEST_MARKER: &str = "<!-- limux-review-request generated:v1 -->";
 const AGENT_TEAM_DEFAULT_PROTOCOL_FILE: &str = "LIMUX_AGENTS.md";
 const AGENT_TEAM_DEFAULT_ROSTER_FILE: &str = "LIMUX_TEAM_ROSTER.md";
 const AGENT_TEAM_DEFAULT_LEDGER_FILE: &str = "LIMUX_REVIEW_LEDGER.md";
 const AGENT_TEAM_LOCAL_POLICY_FILE: &str = "LIMUX_AGENTS.local.md";
 const AGENT_TEAM_INSTRUCTION_FILES: &[&str] = &["AGENTS.md", "CLAUDE.md", "GEMINI.md"];
+const REVIEW_DEFAULT_REVIEWS_DIR: &str = "reviews";
+const REVIEW_REVIEWERS: &[&str] = &["codex", "claude", "gemini", "opencode", "manual"];
+const REVIEW_LENSES: &[&str] = &[
+    "security",
+    "correctness",
+    "maintainability",
+    "ux",
+    "release",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum IdFormat {
@@ -210,7 +220,7 @@ fn parse_global_args() -> Result<GlobalOptions> {
 
 fn print_help() {
     println!(
-        "limux CLI\n\nUsage: limux [--socket <path>] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the active workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, writes LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md\n      plus LIMUX_REVIEW_LEDGER.md when missing so peers can coordinate via\n      durable files and `limux send --surface <peer-surface-id> <envelope>`.\n"
+        "limux CLI\n\nUsage: limux [--socket <path>] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the active workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, writes LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md\n      plus LIMUX_REVIEW_LEDGER.md when missing so peers can coordinate via\n      durable files and `limux send --surface <peer-surface-id> <envelope>`.\n  review prepare --artifact <path-or-ref> --reviewer <agent|manual> --lens <name> --summary <text> [--cwd <path>] [--ledger-path <path>] [--reviews-dir <path>] [--review-id <id>] [--dry-run]\n      Creates a durable review request file, appends a pending review-ledger\n      entry, and prints the reviewer prompt without launching a reviewer pane.\n"
     );
     println!(
         "  agent-team extra flags: --no-bootstrap skips the post-launch bootstrap prompt while still launching panes; --dry-run skips host contact but still materializes the protocol and seeds missing roster/ledger files."
@@ -422,6 +432,13 @@ fn trailing_title(args: &[String]) -> Option<String> {
             || arg == "--message"
             || arg == "--event"
             || arg == "--agents"
+            || arg == "--artifact"
+            || arg == "--reviewer"
+            || arg == "--lens"
+            || arg == "--summary"
+            || arg == "--ledger-path"
+            || arg == "--reviews-dir"
+            || arg == "--review-id"
             || arg == "--selector"
             || arg == "--text"
             || arg == "--attr"
@@ -2816,6 +2833,17 @@ struct AgentTeamCoordinationFiles<'a> {
     ledger_path: &'a Path,
 }
 
+struct ReviewRequestMd<'a> {
+    review_id: &'a str,
+    artifact: &'a str,
+    reviewer: &'a str,
+    lens: &'a str,
+    summary: &'a str,
+    cwd: &'a Path,
+    ledger_path: &'a Path,
+    prompt: &'a str,
+}
+
 fn discover_instruction_sources(cwd: &Path) -> Vec<InstructionSource> {
     AGENT_TEAM_INSTRUCTION_FILES
         .iter()
@@ -3032,6 +3060,407 @@ fn build_agent_team_ledger_md(cwd: &str, protocol_path: &Path, roster_path: &Pat
     out.push_str("Cross-team notifications: `<hcom targets or none>`\n");
     out.push_str("```\n\n");
     out.push_str("## Entries\n\n");
+    out
+}
+
+fn run_review_command(args: &[String]) -> Result<Value> {
+    match args.first().map(String::as_str) {
+        Some("prepare") => run_review_prepare(args),
+        Some(subcommand) => bail!("unknown review subcommand: {subcommand}"),
+        None => bail!("review requires a subcommand; try `review prepare`"),
+    }
+}
+
+fn run_review_prepare(raw_args: &[String]) -> Result<Value> {
+    let args = if raw_args.first().map(String::as_str) == Some("prepare") {
+        &raw_args[1..]
+    } else {
+        raw_args
+    };
+
+    let cwd_raw = parse_opt(args, "--cwd")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let cwd = cwd_raw.canonicalize().with_context(|| {
+        format!(
+            "review prepare: could not resolve --cwd {}",
+            cwd_raw.display()
+        )
+    })?;
+    let cwd_string = cwd.to_string_lossy().to_string();
+
+    let artifact = required_review_opt(args, "--artifact")?;
+    let reviewer = required_review_opt(args, "--reviewer")?.to_ascii_lowercase();
+    let lens = required_review_opt(args, "--lens")?.to_ascii_lowercase();
+    let summary = required_review_opt(args, "--summary")?;
+    let dry_run = parse_flag(args, "--dry-run");
+
+    validate_review_field("review artifact", &artifact)?;
+    validate_review_choice("reviewer", &reviewer, REVIEW_REVIEWERS)?;
+    validate_review_choice("review lens", &lens, REVIEW_LENSES)?;
+    validate_review_field("review summary", &summary)?;
+
+    let review_id = match parse_opt(args, "--review-id") {
+        Some(raw) => {
+            validate_review_id(&raw)?;
+            raw
+        }
+        None => generate_review_id(&reviewer, &lens),
+    };
+
+    let ledger_path =
+        resolve_review_output_path(&cwd, args, "--ledger-path", AGENT_TEAM_DEFAULT_LEDGER_FILE);
+    let reviews_dir =
+        resolve_review_output_path(&cwd, args, "--reviews-dir", REVIEW_DEFAULT_REVIEWS_DIR);
+    let request_path = reviews_dir.join(format!("{review_id}.md"));
+
+    validate_review_output_paths_are_distinct(&request_path, &ledger_path)?;
+    validate_review_output_dir_path(&reviews_dir)?;
+    validate_review_request_path(&request_path)?;
+    validate_agent_team_durable_file_path(&ledger_path, "review ledger")?;
+
+    let prompt = build_review_prepare_prompt(&review_id, &artifact, &reviewer, &lens, &summary);
+    validate_terminal_text_arg("review prompt", &prompt)?;
+    let request_body = build_review_request_md(ReviewRequestMd {
+        review_id: &review_id,
+        artifact: &artifact,
+        reviewer: &reviewer,
+        lens: &lens,
+        summary: &summary,
+        cwd: &cwd,
+        ledger_path: &ledger_path,
+        prompt: &prompt,
+    });
+    let ledger_entry = build_review_ledger_entry(
+        &review_id,
+        &artifact,
+        &reviewer,
+        &lens,
+        &summary,
+        &request_path,
+    );
+
+    let (request_status, ledger_status, ledger_seed_status) = if dry_run {
+        ("planned", "planned", Value::Null)
+    } else {
+        create_review_request_file(&request_path, &request_body)?;
+        let protocol_path = cwd.join(AGENT_TEAM_DEFAULT_PROTOCOL_FILE);
+        let roster_path = cwd.join(AGENT_TEAM_DEFAULT_ROSTER_FILE);
+        let ledger_body = build_agent_team_ledger_md(&cwd_string, &protocol_path, &roster_path);
+        let seed_status = create_agent_team_ledger_file_if_missing(&ledger_path, &ledger_body)?;
+        append_review_ledger_entry(&ledger_path, &ledger_entry)?;
+        (
+            "created",
+            "appended",
+            Value::String(seed_status.to_string()),
+        )
+    };
+
+    Ok(json!({
+        "ok": true,
+        "dry_run": dry_run,
+        "cwd": cwd_string,
+        "review_id": review_id,
+        "artifact": artifact,
+        "reviewer": reviewer,
+        "lens": lens,
+        "summary": summary,
+        "request_path": request_path.to_string_lossy().to_string(),
+        "ledger_path": ledger_path.to_string_lossy().to_string(),
+        "reviews_dir": reviews_dir.to_string_lossy().to_string(),
+        "request": {
+            "status": request_status,
+            "path": request_path.to_string_lossy().to_string(),
+        },
+        "ledger": {
+            "status": ledger_status,
+            "path": ledger_path.to_string_lossy().to_string(),
+            "seed_status": ledger_seed_status,
+        },
+        "prompt": prompt,
+        "request_markdown": request_body,
+        "ledger_entry": ledger_entry,
+    }))
+}
+
+fn required_review_opt(args: &[String], flag: &str) -> Result<String> {
+    let value = parse_opt(args, flag)
+        .filter(|value| !value.trim().is_empty() && !value.starts_with("--"))
+        .ok_or_else(|| anyhow!("review prepare requires {flag}"))?;
+    Ok(value)
+}
+
+fn validate_review_choice(label: &str, value: &str, allowed: &[&str]) -> Result<()> {
+    validate_review_field(label, value)?;
+    if !allowed.iter().any(|candidate| candidate == &value) {
+        bail!("{label} must be one of {}", allowed.join("|"));
+    }
+    Ok(())
+}
+
+fn validate_review_field(label: &str, value: &str) -> Result<()> {
+    if value.trim().is_empty() {
+        bail!("{label} cannot be empty");
+    }
+    for (index, ch) in value.char_indices() {
+        if ch.is_control() {
+            bail!(
+                "{label} contains unsupported control character U+{:04X} at byte {}",
+                ch as u32,
+                index
+            );
+        }
+    }
+    Ok(())
+}
+
+fn validate_review_id(review_id: &str) -> Result<()> {
+    validate_review_field("review id", review_id)?;
+    if review_id.starts_with('.') {
+        bail!("review id cannot start with '.'");
+    }
+    if !review_id
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+    {
+        bail!("review id may contain only ASCII letters, numbers, '-', '_', and '.'");
+    }
+    Ok(())
+}
+
+fn generate_review_id(reviewer: &str, lens: &str) -> String {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    format!("review-{nonce}-{}-{reviewer}-{lens}", std::process::id())
+}
+
+fn resolve_review_output_path(
+    cwd: &Path,
+    args: &[String],
+    flag: &str,
+    default_file: &str,
+) -> PathBuf {
+    if let Some(raw_path) = parse_opt(args, flag) {
+        let path = PathBuf::from(raw_path);
+        if path.is_absolute() {
+            path
+        } else {
+            cwd.join(path)
+        }
+    } else {
+        cwd.join(default_file)
+    }
+}
+
+fn validate_review_output_paths_are_distinct(
+    request_path: &Path,
+    ledger_path: &Path,
+) -> Result<()> {
+    if comparable_agent_team_path(request_path) == comparable_agent_team_path(ledger_path) {
+        bail!(
+            "review output paths must be distinct; request and review ledger both resolve to {}",
+            request_path.display()
+        );
+    }
+    Ok(())
+}
+
+fn validate_review_output_dir_path(path: &Path) -> Result<()> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(err) => {
+            return Err(err).with_context(|| format!("failed to inspect {}", path.display()));
+        }
+    };
+    let file_type = metadata.file_type();
+    if file_type.is_symlink() {
+        bail!(
+            "refusing to use reviews directory because it is a symlink: {}",
+            path.display()
+        );
+    }
+    if !file_type.is_dir() {
+        bail!(
+            "refusing to use reviews directory because it is not a directory: {}",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+fn validate_review_request_path(path: &Path) -> Result<()> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(err) => {
+            return Err(err).with_context(|| format!("failed to inspect {}", path.display()));
+        }
+    };
+    let file_type = metadata.file_type();
+    if file_type.is_symlink() {
+        bail!(
+            "refusing to write review request because it is a symlink: {}",
+            path.display()
+        );
+    }
+    if !file_type.is_file() {
+        bail!(
+            "refusing to write review request because it is not a regular file: {}",
+            path.display()
+        );
+    }
+    bail!("review request already exists: {}", path.display())
+}
+
+fn create_review_request_file(path: &Path, body: &str) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+    }
+    validate_review_request_path(path)?;
+    match OpenOptions::new().write(true).create_new(true).open(path) {
+        Ok(mut file) => {
+            if let Err(err) = file.write_all(body.as_bytes()) {
+                let _ = fs::remove_file(path);
+                return Err(err)
+                    .with_context(|| format!("failed to write review request {}", path.display()));
+            }
+            Ok(())
+        }
+        Err(err) if err.kind() == ErrorKind::AlreadyExists => {
+            validate_review_request_path(path)?;
+            bail!("review request already exists: {}", path.display())
+        }
+        Err(err) => {
+            Err(err).with_context(|| format!("failed to create review request {}", path.display()))
+        }
+    }
+}
+
+fn append_review_ledger_entry(path: &Path, entry: &str) -> Result<()> {
+    validate_agent_team_durable_file_path(path, "review ledger")?;
+    let needs_leading_newline = match fs::read(path) {
+        Ok(bytes) => !bytes.is_empty() && bytes.last() != Some(&b'\n'),
+        Err(err) if err.kind() == ErrorKind::NotFound => false,
+        Err(err) => {
+            return Err(err)
+                .with_context(|| format!("failed to inspect review ledger {}", path.display()));
+        }
+    };
+
+    let mut file = OpenOptions::new()
+        .append(true)
+        .open(path)
+        .with_context(|| format!("failed to open review ledger {}", path.display()))?;
+    let mut body = String::new();
+    if needs_leading_newline {
+        body.push('\n');
+    }
+    body.push_str(entry);
+    if !body.ends_with('\n') {
+        body.push('\n');
+    }
+    file.write_all(body.as_bytes())
+        .with_context(|| format!("failed to append review ledger {}", path.display()))?;
+    Ok(())
+}
+
+fn build_review_prepare_prompt(
+    review_id: &str,
+    artifact: &str,
+    reviewer: &str,
+    lens: &str,
+    summary: &str,
+) -> String {
+    format!(
+        "Review request: {review_id}\n\
+         Reviewer: {reviewer}\n\
+         Lens: {lens}\n\
+         Artifact: {artifact}\n\
+         Goal: {summary}\n\n\
+         Please review the artifact using the named lens. Return a verdict of GO, WAIT, or NO-GO; list concrete findings with file/line evidence when applicable; call out residual risks; and keep raw terminal transcripts out of the response."
+    )
+}
+
+fn build_review_request_md(request: ReviewRequestMd<'_>) -> String {
+    let mut out = String::new();
+    out.push_str(REVIEW_REQUEST_MARKER);
+    out.push('\n');
+    out.push_str("# Limux Review Request\n\n");
+    out.push_str(&format!(
+        "Review ID: `{}`\n",
+        markdown_table_cell(request.review_id)
+    ));
+    out.push_str("Status: `pending`\n");
+    out.push_str(&format!(
+        "Reviewer: `{}`\n",
+        markdown_table_cell(request.reviewer)
+    ));
+    out.push_str(&format!("Lens: `{}`\n", markdown_table_cell(request.lens)));
+    out.push_str(&format!(
+        "Artifact: `{}`\n",
+        markdown_table_cell(request.artifact)
+    ));
+    out.push_str(&format!(
+        "Summary: `{}`\n",
+        markdown_table_cell(request.summary)
+    ));
+    out.push_str(&format!("Shared cwd: `{}`\n", markdown_path(request.cwd)));
+    out.push_str(&format!(
+        "Review ledger: `{}`\n\n",
+        markdown_path(request.ledger_path)
+    ));
+    out.push_str("## Instructions\n\n");
+    out.push_str(
+        "- Inspect the artifact and relevant surrounding context before giving a verdict.\n",
+    );
+    out.push_str("- Return `GO`, `WAIT`, or `NO-GO` with concrete rationale.\n");
+    out.push_str("- Include file and line evidence for code findings when possible.\n");
+    out.push_str(
+        "- Do not paste raw terminal transcripts, secrets, credentials, or unrelated logs.\n\n",
+    );
+    out.push_str("## Prompt\n\n");
+    out.push_str("```text\n");
+    out.push_str(request.prompt);
+    out.push_str("\n```\n");
+    out
+}
+
+fn build_review_ledger_entry(
+    review_id: &str,
+    artifact: &str,
+    reviewer: &str,
+    lens: &str,
+    summary: &str,
+    request_path: &Path,
+) -> String {
+    let mut out = String::new();
+    out.push_str(&format!(
+        "## pending - {}\n\n",
+        markdown_table_cell(review_id)
+    ));
+    out.push_str("Status: pending\n");
+    out.push_str("Project: `current`\n");
+    out.push_str("Thread: `limux-agent-team`\n");
+    out.push_str(&format!("Artifact: `{}`\n", markdown_table_cell(artifact)));
+    out.push_str(&format!("Reviewer: `{}`\n", markdown_table_cell(reviewer)));
+    out.push_str(&format!("Lens: `{}`\n", markdown_table_cell(lens)));
+    out.push_str(&format!("Request: `{}`\n", markdown_path(request_path)));
+    out.push_str(&format!("Summary: `{}`\n\n", markdown_table_cell(summary)));
+    out.push_str("### Pending Review\n\n");
+    out.push_str("| Reviewer | Lens | Verdict | Evidence |\n");
+    out.push_str("|---|---|---|---|\n");
+    out.push_str(&format!(
+        "| `{}` | `{}` | pending | `{}` |\n\n",
+        markdown_table_cell(reviewer),
+        markdown_table_cell(lens),
+        markdown_path(request_path)
+    ));
     out
 }
 
@@ -4441,6 +4870,29 @@ async fn execute_command(client: &mut Client, opts: &GlobalOptions) -> Result<Co
                     .unwrap_or("unknown");
                 CommandOutput::Text(format!(
                     "OK agent-team workspace={workspace} peers=[{peers}] agents_md={agents_md} bootstrap={bootstrap}"
+                ))
+            }
+        }
+        "review" => {
+            let payload = run_review_command(args)?;
+            if opts.json_output {
+                CommandOutput::Json(payload)
+            } else {
+                let request = payload
+                    .get("request_path")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let ledger = payload
+                    .get("ledger_path")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let dry_run = payload
+                    .get("dry_run")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                let prompt = payload.get("prompt").and_then(Value::as_str).unwrap_or("");
+                CommandOutput::Text(format!(
+                    "OK review prepare request={request} ledger={ledger} dry_run={dry_run}\n\n{prompt}"
                 ))
             }
         }
@@ -6114,6 +6566,456 @@ limux() {{
         assert_eq!(
             String::from_utf8(output.stdout[(split + 1)..].to_vec()).expect("utf8 stdout"),
             expected
+        );
+    }
+}
+
+#[cfg(test)]
+mod review_prepare_tests {
+    use super::*;
+
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn review_prepare_dry_run_reports_paths_without_writing_files() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let payload = run_review_prepare(&args(&[
+            "prepare",
+            "--cwd",
+            cwd.to_str().expect("utf8 cwd"),
+            "--artifact",
+            "rust/limux-cli/src/main.rs",
+            "--reviewer",
+            "claude",
+            "--lens",
+            "security",
+            "--summary",
+            "Review Phase 5D1 scaffold",
+            "--review-id",
+            "phase5d1-test",
+            "--dry-run",
+        ]))
+        .expect("dry-run should succeed without host");
+
+        let request_path = cwd.join("reviews/phase5d1-test.md");
+        let ledger_path = cwd.join(AGENT_TEAM_DEFAULT_LEDGER_FILE);
+        assert_eq!(payload["dry_run"], true);
+        assert_eq!(payload["request"]["status"], "planned");
+        assert_eq!(payload["ledger"]["status"], "planned");
+        assert_eq!(
+            payload.get("request_path").and_then(Value::as_str),
+            Some(request_path.to_string_lossy().as_ref())
+        );
+        assert_eq!(
+            payload.get("ledger_path").and_then(Value::as_str),
+            Some(ledger_path.to_string_lossy().as_ref())
+        );
+        assert!(payload["prompt"]
+            .as_str()
+            .unwrap()
+            .contains("phase5d1-test"));
+        assert!(!request_path.exists());
+        assert!(!ledger_path.exists());
+    }
+
+    #[test]
+    fn review_prepare_creates_request_file_and_appends_pending_ledger_entry() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let payload = run_review_prepare(&args(&[
+            "prepare",
+            "--cwd",
+            cwd.to_str().expect("utf8 cwd"),
+            "--artifact",
+            "rust/limux-cli/src/main.rs",
+            "--reviewer",
+            "claude",
+            "--lens",
+            "security",
+            "--summary",
+            "Review Phase 5D1 scaffold",
+            "--review-id",
+            "phase5d1-test",
+        ]))
+        .expect("review prepare should create durable artifacts");
+
+        let request_path = cwd.join("reviews/phase5d1-test.md");
+        let ledger_path = cwd.join(AGENT_TEAM_DEFAULT_LEDGER_FILE);
+        assert_eq!(payload["request"]["status"], "created");
+        assert_eq!(payload["ledger"]["status"], "appended");
+        assert_eq!(
+            payload.get("request_path").and_then(Value::as_str),
+            Some(request_path.to_string_lossy().as_ref())
+        );
+
+        let request = std::fs::read_to_string(&request_path).expect("read request");
+        assert!(request.starts_with("<!-- limux-review-request generated:v1 -->"));
+        assert!(request.contains("Review ID: `phase5d1-test`"));
+        assert!(request.contains("Reviewer: `claude`"));
+        assert!(request.contains("Lens: `security`"));
+        assert!(request.contains("Do not paste raw terminal transcripts"));
+
+        let ledger = std::fs::read_to_string(&ledger_path).expect("read ledger");
+        assert!(ledger.starts_with(AGENT_TEAM_LEDGER_MARKER));
+        assert!(ledger.contains("## pending - phase5d1-test"));
+        assert!(ledger.contains("Status: pending"));
+        assert!(ledger.contains("Request: `"));
+        assert!(ledger.contains("Reviewer: `claude`"));
+    }
+
+    #[test]
+    fn review_prepare_appends_without_rewriting_existing_ledger() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let ledger_path = cwd.join(AGENT_TEAM_DEFAULT_LEDGER_FILE);
+        std::fs::write(&ledger_path, "manual ledger header\n").expect("seed ledger");
+
+        run_review_prepare(&args(&[
+            "prepare",
+            "--cwd",
+            cwd.to_str().expect("utf8 cwd"),
+            "--artifact",
+            "README.md",
+            "--reviewer",
+            "manual",
+            "--lens",
+            "correctness",
+            "--summary",
+            "Check docs",
+            "--review-id",
+            "manual-review",
+        ]))
+        .expect("review prepare should append");
+
+        let ledger = std::fs::read_to_string(&ledger_path).expect("read ledger");
+        assert!(ledger.starts_with("manual ledger header\n"));
+        assert!(ledger.contains("## pending - manual-review"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn review_prepare_refuses_symlink_ledger_path() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let target = cwd.join("target-ledger.md");
+        std::fs::write(&target, "target ledger\n").expect("write target");
+        let symlink_path = cwd.join("ledger-link.md");
+        symlink(&target, &symlink_path).expect("create ledger symlink");
+
+        let error = run_review_prepare(&args(&[
+            "prepare",
+            "--cwd",
+            cwd.to_str().expect("utf8 cwd"),
+            "--ledger-path",
+            symlink_path.to_str().expect("utf8 symlink"),
+            "--artifact",
+            "README.md",
+            "--reviewer",
+            "manual",
+            "--lens",
+            "correctness",
+            "--summary",
+            "Check docs",
+            "--review-id",
+            "manual-review",
+        ]))
+        .expect_err("ledger symlink should be refused");
+
+        assert!(
+            error
+                .to_string()
+                .contains("refusing to use review ledger path because it is a symlink"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&target).expect("read target"),
+            "target ledger\n"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn review_prepare_refuses_symlink_reviews_dir() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let target = cwd.join("real-reviews");
+        std::fs::create_dir(&target).expect("create target dir");
+        let symlink_path = cwd.join("reviews-link");
+        symlink(&target, &symlink_path).expect("create reviews symlink");
+
+        let error = run_review_prepare(&args(&[
+            "prepare",
+            "--cwd",
+            cwd.to_str().expect("utf8 cwd"),
+            "--reviews-dir",
+            symlink_path.to_str().expect("utf8 symlink"),
+            "--artifact",
+            "README.md",
+            "--reviewer",
+            "manual",
+            "--lens",
+            "correctness",
+            "--summary",
+            "Check docs",
+            "--review-id",
+            "manual-review",
+        ]))
+        .expect_err("reviews dir symlink should be refused");
+
+        assert!(
+            error
+                .to_string()
+                .contains("refusing to use reviews directory because it is a symlink"),
+            "unexpected error: {error:#}"
+        );
+    }
+
+    #[test]
+    fn review_prepare_refuses_non_regular_ledger_path() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let ledger_path = cwd.join("ledger-dir");
+        std::fs::create_dir(&ledger_path).expect("create ledger dir");
+
+        let error = run_review_prepare(&args(&[
+            "prepare",
+            "--cwd",
+            cwd.to_str().expect("utf8 cwd"),
+            "--ledger-path",
+            ledger_path.to_str().expect("utf8 ledger dir"),
+            "--artifact",
+            "README.md",
+            "--reviewer",
+            "manual",
+            "--lens",
+            "correctness",
+            "--summary",
+            "Check docs",
+            "--review-id",
+            "manual-review",
+        ]))
+        .expect_err("directory ledger path should be refused");
+
+        assert!(
+            error
+                .to_string()
+                .contains("refusing to use review ledger path because it is not a regular file"),
+            "unexpected error: {error:#}"
+        );
+    }
+
+    #[test]
+    fn review_prepare_refuses_existing_request_file() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let reviews_dir = cwd.join("reviews");
+        std::fs::create_dir(&reviews_dir).expect("create reviews dir");
+        let request_path = reviews_dir.join("manual-review.md");
+        std::fs::write(&request_path, "existing review\n").expect("seed request");
+
+        let error = run_review_prepare(&args(&[
+            "prepare",
+            "--cwd",
+            cwd.to_str().expect("utf8 cwd"),
+            "--artifact",
+            "README.md",
+            "--reviewer",
+            "manual",
+            "--lens",
+            "correctness",
+            "--summary",
+            "Check docs",
+            "--review-id",
+            "manual-review",
+        ]))
+        .expect_err("existing request should be refused");
+
+        assert!(
+            error.to_string().contains("review request already exists"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&request_path).expect("read request"),
+            "existing review\n"
+        );
+    }
+
+    #[test]
+    fn review_prepare_refuses_overlapping_request_and_ledger_paths() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+
+        let error = run_review_prepare(&args(&[
+            "prepare",
+            "--cwd",
+            cwd.to_str().expect("utf8 cwd"),
+            "--ledger-path",
+            "reviews/manual-review.md",
+            "--artifact",
+            "README.md",
+            "--reviewer",
+            "manual",
+            "--lens",
+            "correctness",
+            "--summary",
+            "Check docs",
+            "--review-id",
+            "manual-review",
+        ]))
+        .expect_err("overlapping request and ledger paths should be refused");
+
+        assert!(
+            error
+                .to_string()
+                .contains("review output paths must be distinct"),
+            "unexpected error: {error:#}"
+        );
+    }
+
+    #[test]
+    fn review_prepare_rejects_invalid_reviewer_and_lens() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+
+        let reviewer_error = run_review_prepare(&args(&[
+            "prepare",
+            "--cwd",
+            cwd.to_str().expect("utf8 cwd"),
+            "--artifact",
+            "README.md",
+            "--reviewer",
+            "unknown",
+            "--lens",
+            "correctness",
+            "--summary",
+            "Check docs",
+        ]))
+        .expect_err("invalid reviewer should fail");
+        assert!(
+            reviewer_error
+                .to_string()
+                .contains("reviewer must be one of"),
+            "unexpected error: {reviewer_error:#}"
+        );
+
+        let lens_error = run_review_prepare(&args(&[
+            "prepare",
+            "--cwd",
+            cwd.to_str().expect("utf8 cwd"),
+            "--artifact",
+            "README.md",
+            "--reviewer",
+            "manual",
+            "--lens",
+            "unknown",
+            "--summary",
+            "Check docs",
+        ]))
+        .expect_err("invalid lens should fail");
+        assert!(
+            lens_error
+                .to_string()
+                .contains("review lens must be one of"),
+            "unexpected error: {lens_error:#}"
+        );
+    }
+
+    #[tokio::test]
+    async fn review_command_dispatches_prepare_without_host_contact() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let mut client = Client::new(cwd.join("missing.sock"));
+        let opts = GlobalOptions {
+            socket: None,
+            socket_mode: SocketMode::Runtime,
+            json_output: true,
+            id_format: IdFormat::Refs,
+            request: None,
+            pretty: false,
+            command_args: args(&[
+                "review",
+                "prepare",
+                "--cwd",
+                cwd.to_str().expect("utf8 cwd"),
+                "--artifact",
+                "README.md",
+                "--reviewer",
+                "manual",
+                "--lens",
+                "correctness",
+                "--summary",
+                "Check docs",
+                "--review-id",
+                "manual-review",
+                "--dry-run",
+            ]),
+        };
+
+        let output = execute_command(&mut client, &opts)
+            .await
+            .expect("review dispatch should not contact host");
+        let CommandOutput::Json(payload) = output else {
+            panic!("expected json payload");
+        };
+        assert_eq!(payload["dry_run"], true);
+        assert_eq!(payload["review_id"], "manual-review");
+        assert!(!cwd.join("reviews/manual-review.md").exists());
+    }
+
+    #[test]
+    fn review_prepare_rejects_missing_required_arguments() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let error = run_review_prepare(&args(&[
+            "prepare",
+            "--cwd",
+            cwd.to_str().expect("utf8 cwd"),
+            "--reviewer",
+            "claude",
+            "--lens",
+            "security",
+            "--summary",
+            "Missing artifact",
+        ]))
+        .expect_err("missing artifact should fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("review prepare requires --artifact"),
+            "unexpected error: {error:#}"
+        );
+    }
+
+    #[test]
+    fn review_prepare_rejects_control_characters_in_generated_prompt_fields() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let error = run_review_prepare(&args(&[
+            "prepare",
+            "--cwd",
+            cwd.to_str().expect("utf8 cwd"),
+            "--artifact",
+            "README.md",
+            "--reviewer",
+            "manual",
+            "--lens",
+            "correctness",
+            "--summary",
+            "Check docs\u{1b}[31m",
+        ]))
+        .expect_err("terminal control characters should fail");
+
+        assert!(
+            error.to_string().contains("review summary"),
+            "unexpected error: {error:#}"
         );
     }
 }

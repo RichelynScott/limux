@@ -191,6 +191,26 @@ generated protocol and seeds missing roster/ledger files so agents can inspect
 the exact outputs. Use temporary `--protocol-path`, `--roster-path`, and
 `--ledger-path` values when you want a preview outside the repo root.
 
+Prepare a durable review request without launching another agent:
+
+```bash
+limux review prepare \
+  --artifact rust/limux-cli/src/main.rs \
+  --reviewer claude \
+  --lens security \
+  --summary "Review the Phase 5D scaffold for blockers"
+```
+
+`review prepare` creates `reviews/<review-id>.md`, appends a pending entry to
+`LIMUX_REVIEW_LEDGER.md`, and prints the exact reviewer prompt. It does not
+contact the Limux host, split panes, or run reviewer CLIs. Use `--dry-run` to
+preview paths, Markdown, and prompt text without writing files. Use
+`--review-id`, `--reviews-dir`, and `--ledger-path` when you need deterministic
+paths for a coordinated review. Existing request files, symlink targets, and
+non-regular ledger paths are refused at the output leaf. Use trusted output
+directories; Limux does not recursively audit every parent path component for
+symlinks.
+
 Checked-in hook templates live in [`hooks/`](hooks/). They mirror
 `limux hooks setup` for Codex, Claude Code, and Gemini CLI; OpenCode is
 omitted until its hook integration is ready.
