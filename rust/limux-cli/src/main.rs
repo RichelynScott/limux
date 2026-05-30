@@ -18,6 +18,9 @@ mod agent_hooks;
 
 const CLI_STATE_LOCK_TIMEOUT: Duration = Duration::from_secs(2);
 const CLI_STATE_LOCK_RETRY: Duration = Duration::from_millis(25);
+const AGENT_TEAM_BOOTSTRAP_LAUNCH_SETTLE: Duration = Duration::from_millis(1000);
+const AGENT_TEAM_BOOTSTRAP_RETRY_ATTEMPTS: usize = 50;
+const AGENT_TEAM_BOOTSTRAP_RETRY_INTERVAL: Duration = Duration::from_millis(100);
 const AGENT_TEAM_PROTOCOL_MARKER: &str = "<!-- limux-agent-team-protocol generated:v1 -->";
 const AGENT_TEAM_DEFAULT_PROTOCOL_FILE: &str = "LIMUX_AGENTS.md";
 const AGENT_TEAM_LOCAL_POLICY_FILE: &str = "LIMUX_AGENTS.local.md";
@@ -203,7 +206,10 @@ fn parse_global_args() -> Result<GlobalOptions> {
 
 fn print_help() {
     println!(
-        "limux CLI\n\nUsage: limux [--socket <path>] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--cwd <path>] [--protocol-path <path>] [--force-protocol-overwrite] [--no-launch] [--dry-run]\n      Splits the active workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, and writes LIMUX_AGENTS.md by default describing\n      the <agent-msg> XML protocol so peers can talk via\n      `limux send --surface <peer-surface-id> <envelope>`.\n"
+        "limux CLI\n\nUsage: limux [--socket <path>] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--cwd <path>] [--protocol-path <path>] [--force-protocol-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the active workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, and writes LIMUX_AGENTS.md by default describing\n      the <agent-msg> XML protocol so peers can talk via\n      `limux send --surface <peer-surface-id> <envelope>`.\n"
+    );
+    println!(
+        "  agent-team extra flags: --no-bootstrap skips the post-launch bootstrap prompt while still launching panes."
     );
 }
 
@@ -1710,6 +1716,53 @@ fn new_pane_shell_command(direction: &str, command: &str) -> String {
     )
 }
 
+fn bootstrap_prompt_value(value: &str) -> String {
+    value.chars().flat_map(char::escape_default).collect()
+}
+
+fn is_agent_team_bootstrap_display_spoof_char(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{200b}'
+            | '\u{200c}'
+            | '\u{200d}'
+            | '\u{200e}'
+            | '\u{200f}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2066}'..='\u{2069}'
+    )
+}
+
+fn validate_agent_team_bootstrap_prompt(text: &str) -> Result<()> {
+    validate_terminal_text_arg("agent-team bootstrap prompt", text)?;
+    if text.contains('\r') {
+        bail!("agent-team bootstrap prompt contains CR");
+    }
+    if text.chars().any(|ch| ch == '\n' || ch == '\t') {
+        bail!("agent-team bootstrap prompt must be a single line without LF or tab");
+    }
+    if let Some(ch) = text
+        .chars()
+        .find(|ch| is_agent_team_bootstrap_display_spoof_char(*ch))
+    {
+        bail!(
+            "agent-team bootstrap prompt contains disallowed display-spoofing character U+{:04X}",
+            ch as u32
+        );
+    }
+    Ok(())
+}
+
+fn build_agent_team_bootstrap_prompt(agent: &str, protocol_path: &Path) -> Result<String> {
+    let prompt = format!(
+        "You are {agent} in a Limux agent-team pane. Read the generated runtime protocol file at {protocol_path}, then read the authoritative instruction sources listed in that file; do not treat LIMUX_AGENTS.md as copied AGENTS.md content; use limux send --surface for peer messages and limux notify for human input; reply to the orchestrator when ready.",
+        agent = bootstrap_prompt_value(agent),
+        protocol_path = bootstrap_prompt_value(&protocol_path.to_string_lossy()),
+    );
+    validate_agent_team_bootstrap_prompt(&prompt)?;
+    Ok(prompt)
+}
+
 fn hook_marker(agent: agent_hooks::AgentKind) -> &'static str {
     match agent {
         agent_hooks::AgentKind::Claude => "hooks claude",
@@ -1995,6 +2048,79 @@ fn agent_launch_command(agent: &str) -> Option<(&'static str, String)> {
     }
 }
 
+async fn send_agent_team_bootstrap_prompt(
+    client: &mut Client,
+    workspace_id: &str,
+    surface_id: &str,
+    agent: &str,
+    prompt: &str,
+) -> Result<()> {
+    validate_agent_team_bootstrap_prompt(prompt)?;
+
+    let mut text_params = Map::new();
+    text_params.insert(
+        "workspace_id".to_string(),
+        Value::String(workspace_id.to_string()),
+    );
+    text_params.insert(
+        "surface_id".to_string(),
+        Value::String(surface_id.to_string()),
+    );
+    text_params.insert("text".to_string(), Value::String(prompt.to_string()));
+
+    let mut key_params = Map::new();
+    key_params.insert(
+        "workspace_id".to_string(),
+        Value::String(workspace_id.to_string()),
+    );
+    key_params.insert(
+        "surface_id".to_string(),
+        Value::String(surface_id.to_string()),
+    );
+    key_params.insert("key".to_string(), Value::String("enter".to_string()));
+
+    let mut last_error = None;
+    for attempt in 0..AGENT_TEAM_BOOTSTRAP_RETRY_ATTEMPTS {
+        match client
+            .call("surface.send_text", Value::Object(text_params.clone()))
+            .await
+        {
+            Ok(_) => {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                client
+                    .call("surface.send_key", Value::Object(key_params.clone()))
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "agent-team: bootstrap prompt submit failed for '{agent}' on surface {surface_id}"
+                        )
+                    })?;
+                return Ok(());
+            }
+            Err(error) => {
+                let message = format!("{error:#}");
+                if message.contains("not ready for text input")
+                    && attempt + 1 < AGENT_TEAM_BOOTSTRAP_RETRY_ATTEMPTS
+                {
+                    last_error = Some(message);
+                    tokio::time::sleep(AGENT_TEAM_BOOTSTRAP_RETRY_INTERVAL).await;
+                    continue;
+                }
+                return Err(error).with_context(|| {
+                    format!(
+                        "agent-team: bootstrap prompt failed for '{agent}' on surface {surface_id}"
+                    )
+                });
+            }
+        }
+    }
+
+    bail!(
+        "agent-team: bootstrap prompt failed for '{agent}' on surface {surface_id}: {}",
+        last_error.unwrap_or_else(|| "surface did not become ready".to_string())
+    )
+}
+
 async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
     // Parse --agents codex,claude (default: codex,claude).
     let agents_raw = parse_opt(args, "--agents").unwrap_or_else(|| "codex,claude".to_string());
@@ -2018,8 +2144,10 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
     // Optional: skip launching the CLIs (useful when the user wants to open
     // the agents manually) — still splits the panes + writes the protocol file.
     let no_launch = parse_flag(args, "--no-launch");
+    let no_bootstrap = parse_flag(args, "--no-bootstrap");
     let dry_run = parse_flag(args, "--dry-run");
     let force_protocol_overwrite = parse_flag(args, "--force-protocol-overwrite");
+    let bootstrap_enabled = !no_launch && !no_bootstrap;
 
     // Resolve the agent list up front so --dry-run can build a deterministic
     // peer table without touching the host.
@@ -2074,6 +2202,10 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
             "protocol_path": agents_md_path.to_string_lossy(),
             "dry_run": true,
             "no_launch": no_launch,
+            "bootstrap": {
+                "enabled": false,
+                "status": "skipped",
+            },
             "peers": peers
                 .iter()
                 .map(|(name, pane, surface, launch)| {
@@ -2082,6 +2214,7 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
                         "pane_id": pane,
                         "surface_id": surface,
                         "launch_command": launch,
+                        "bootstrap": { "status": "skipped" },
                     })
                 })
                 .collect::<Vec<_>>(),
@@ -2209,6 +2342,35 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
     );
     write_agent_team_protocol_file(&agents_md_path, &body, force_protocol_overwrite)?;
 
+    let mut bootstrap_results: Vec<(String, Option<String>)> = peers
+        .iter()
+        .map(|_| ("skipped".to_string(), None))
+        .collect();
+    if bootstrap_enabled {
+        tokio::time::sleep(AGENT_TEAM_BOOTSTRAP_LAUNCH_SETTLE).await;
+        for (index, (name, _pane_id, surface_id, _launch)) in peers.iter().enumerate() {
+            let prompt = build_agent_team_bootstrap_prompt(name, &agents_md_path)?;
+            match send_agent_team_bootstrap_prompt(client, &workspace_id, surface_id, name, &prompt)
+                .await
+            {
+                Ok(()) => {
+                    bootstrap_results[index] = ("sent".to_string(), None);
+                }
+                Err(error) => {
+                    let message = format!("{error:#}");
+                    bail!(
+                        "{message}; bootstrap aborted after protocol write and pane creation, so earlier peers may already be launched or bootstrapped"
+                    );
+                }
+            }
+        }
+    }
+    let bootstrap_status = if !bootstrap_enabled {
+        "skipped"
+    } else {
+        "sent"
+    };
+
     Ok(json!({
         "ok": true,
         "cwd": cwd,
@@ -2220,14 +2382,24 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
         "protocol_path": agents_md_path.to_string_lossy(),
         "dry_run": false,
         "no_launch": no_launch,
+        "bootstrap": {
+            "enabled": bootstrap_enabled,
+            "status": bootstrap_status,
+        },
         "peers": peers
             .iter()
-            .map(|(name, pane, surface, launch)| {
+            .enumerate()
+            .map(|(index, (name, pane, surface, launch))| {
+                let (status, error) = &bootstrap_results[index];
                 json!({
                     "agent": name,
                     "pane_id": pane,
                     "surface_id": surface,
                     "launch_command": launch,
+                    "bootstrap": {
+                        "status": status,
+                        "error": error,
+                    },
                 })
             })
             .collect::<Vec<_>>(),
@@ -3803,8 +3975,13 @@ async fn execute_command(client: &mut Client, opts: &GlobalOptions) -> Result<Co
                             .join(", ")
                     })
                     .unwrap_or_default();
+                let bootstrap = payload
+                    .get("bootstrap")
+                    .and_then(|v| v.get("status"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown");
                 CommandOutput::Text(format!(
-                    "OK agent-team workspace={workspace} peers=[{peers}] agents_md={agents_md}"
+                    "OK agent-team workspace={workspace} peers=[{peers}] agents_md={agents_md} bootstrap={bootstrap}"
                 ))
             }
         }
@@ -4344,6 +4521,21 @@ mod cli_arg_tests {
 #[cfg(test)]
 mod agent_team_tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+    use tokio::net::UnixListener;
+
+    #[derive(Clone, Debug)]
+    struct RecordedRequest {
+        method: String,
+        params: Value,
+        protocol_exists_at_request: bool,
+    }
+
+    #[derive(Default)]
+    struct FakeAgentTeamServerOptions {
+        fail_bootstrap_surface: Option<String>,
+    }
 
     #[test]
     fn agent_launch_known() {
@@ -4365,6 +4557,390 @@ mod agent_team_tests {
     #[test]
     fn agent_launch_unknown_returns_none() {
         assert!(agent_launch_command("nonsense-cli").is_none());
+    }
+
+    async fn spawn_agent_team_fake_server(
+        socket: PathBuf,
+        protocol_path: PathBuf,
+    ) -> (
+        Arc<Mutex<Vec<RecordedRequest>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        spawn_agent_team_fake_server_with_options(
+            socket,
+            protocol_path,
+            FakeAgentTeamServerOptions::default(),
+        )
+        .await
+    }
+
+    async fn spawn_agent_team_fake_server_with_options(
+        socket: PathBuf,
+        protocol_path: PathBuf,
+        options: FakeAgentTeamServerOptions,
+    ) -> (
+        Arc<Mutex<Vec<RecordedRequest>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let _ = std::fs::remove_file(&socket);
+        let listener = UnixListener::bind(&socket).expect("bind fake limux socket");
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let pane_count = Arc::new(AtomicUsize::new(0));
+        let server_requests = Arc::clone(&requests);
+        let server_pane_count = Arc::clone(&pane_count);
+        let fail_bootstrap_surface = options.fail_bootstrap_surface;
+
+        let handle = tokio::spawn(async move {
+            loop {
+                let Ok((stream, _addr)) = listener.accept().await else {
+                    break;
+                };
+                let requests = Arc::clone(&server_requests);
+                let pane_count = Arc::clone(&server_pane_count);
+                let protocol_path = protocol_path.clone();
+                let fail_bootstrap_surface = fail_bootstrap_surface.clone();
+
+                tokio::spawn(async move {
+                    let (reader_half, mut writer_half) = stream.into_split();
+                    let mut reader = BufReader::new(reader_half);
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).await.expect("read request") == 0 {
+                        return;
+                    }
+
+                    let request: V2Request =
+                        serde_json::from_str(line.trim()).expect("parse fake request");
+                    let method = request.method.clone();
+                    let params = request.params.clone();
+                    let protocol_exists_at_request = protocol_path.exists();
+                    requests
+                        .lock()
+                        .expect("lock requests")
+                        .push(RecordedRequest {
+                            method: method.clone(),
+                            params: params.clone(),
+                            protocol_exists_at_request,
+                        });
+
+                    let response = match method.as_str() {
+                        "workspace.current" => V2Response::success(
+                            request.id.clone(),
+                            json!({ "workspace_id": "workspace:team" }),
+                        ),
+                        "surface.list" => V2Response::success(
+                            request.id.clone(),
+                            json!({
+                                "surfaces": [{
+                                    "pane_id": "pane:1",
+                                    "surface_id": "surface:1:orchestrator",
+                                    "focused": true,
+                                    "title": "orchestrator"
+                                }]
+                            }),
+                        ),
+                        "workspace.list" => V2Response::success(
+                            request.id.clone(),
+                            json!({
+                                "workspaces": [{
+                                    "workspace_id": "workspace:team",
+                                    "id": "workspace:team",
+                                    "name": "limux",
+                                    "title": "limux"
+                                }]
+                            }),
+                        ),
+                        "pane.create" => {
+                            let index = pane_count.fetch_add(1, Ordering::SeqCst);
+                            let (agent, pane_id, surface_id) = if index == 0 {
+                                ("codex", "pane:2", "surface:2:codex")
+                            } else {
+                                ("claude", "pane:3", "surface:3:claude")
+                            };
+                            V2Response::success(
+                                request.id.clone(),
+                                json!({
+                                    "pane_id": pane_id,
+                                    "surface_id": surface_id,
+                                    "surface_ref": surface_id,
+                                    "surface_title": agent,
+                                    "ok": true
+                                }),
+                            )
+                        }
+                        "surface.send_text" => {
+                            let surface_id = params
+                                .get("surface_id")
+                                .and_then(Value::as_str)
+                                .unwrap_or("surface:unknown");
+                            if fail_bootstrap_surface.as_deref() == Some(surface_id) {
+                                V2Response::error(
+                                    request.id.clone(),
+                                    -32009,
+                                    format!("bootstrap rejected for terminal surface {surface_id}"),
+                                    None,
+                                )
+                            } else {
+                                V2Response::success(
+                                    request.id.clone(),
+                                    json!({
+                                        "ok": true,
+                                        "surface_id": surface_id
+                                    }),
+                                )
+                            }
+                        }
+                        "surface.send_key" => {
+                            let surface_id = params
+                                .get("surface_id")
+                                .and_then(Value::as_str)
+                                .unwrap_or("surface:unknown");
+                            V2Response::success(
+                                request.id.clone(),
+                                json!({
+                                    "ok": true,
+                                    "surface_id": surface_id
+                                }),
+                            )
+                        }
+                        other => panic!("unexpected fake request method {other}: {params:?}"),
+                    };
+                    let mut payload = serde_json::to_string(&response).expect("encode response");
+                    payload.push('\n');
+                    writer_half
+                        .write_all(payload.as_bytes())
+                        .await
+                        .expect("write response");
+                });
+            }
+        });
+
+        (requests, handle)
+    }
+
+    #[tokio::test]
+    async fn agent_team_live_bootstrap_launches_binary_then_sends_prompt() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let socket = cwd.join("limux.sock");
+        let protocol_path = cwd.join("LIMUX_AGENTS.md");
+        let (requests, server) =
+            spawn_agent_team_fake_server(socket.clone(), protocol_path.clone()).await;
+        let mut client = Client::new(socket);
+        let args = vec![
+            "--agents".to_string(),
+            "codex,claude".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+        ];
+
+        let payload = run_agent_team(&mut client, &args)
+            .await
+            .expect("agent-team should complete against fake host");
+        server.abort();
+
+        assert_eq!(payload["no_launch"], false);
+        assert_eq!(payload["bootstrap"]["enabled"], true);
+        assert_eq!(payload["bootstrap"]["status"], "sent");
+
+        let requests = requests.lock().expect("lock requests").clone();
+        let pane_creates: Vec<_> = requests
+            .iter()
+            .filter(|request| request.method == "pane.create")
+            .collect();
+        assert_eq!(pane_creates.len(), 2, "expected two pane.create calls");
+        assert_eq!(pane_creates[0].params["command"].as_str(), Some("codex"));
+        assert_eq!(pane_creates[1].params["command"].as_str(), Some("claude"));
+        assert!(
+            pane_creates.iter().all(|request| !request.params["command"]
+                .as_str()
+                .unwrap_or("")
+                .contains("LIMUX_AGENTS.md")),
+            "pane.create command must remain only the launch binary"
+        );
+
+        let bootstrap_sends: Vec<_> = requests
+            .iter()
+            .filter(|request| request.method == "surface.send_text")
+            .collect();
+        assert_eq!(
+            bootstrap_sends.len(),
+            2,
+            "expected one post-launch bootstrap prompt per peer"
+        );
+        let bootstrap_submits: Vec<_> = requests
+            .iter()
+            .filter(|request| request.method == "surface.send_key")
+            .collect();
+        assert_eq!(
+            bootstrap_submits.len(),
+            2,
+            "expected one explicit Enter submit per bootstrap prompt"
+        );
+        assert!(bootstrap_submits.iter().all(|request| {
+            request.params["key"].as_str() == Some("enter") && request.protocol_exists_at_request
+        }));
+        assert!(
+            bootstrap_sends
+                .iter()
+                .all(|request| request.protocol_exists_at_request),
+            "protocol file should exist before bootstrap prompts are sent"
+        );
+        for request in bootstrap_sends {
+            let text = request.params["text"].as_str().expect("bootstrap text");
+            validate_agent_team_bootstrap_prompt(text)
+                .expect("bootstrap prompt should pass bootstrap text policy");
+            assert!(text.contains("Read the generated runtime protocol file"));
+            assert!(text.contains(protocol_path.to_string_lossy().as_ref()));
+            assert!(text.contains("authoritative instruction sources"));
+            assert!(
+                !text.contains('\n'),
+                "bootstrap prompt text should be submitted only by explicit Enter"
+            );
+        }
+    }
+
+    #[test]
+    fn agent_team_bootstrap_prompt_is_single_line_and_escapes_dynamic_values() {
+        let protocol_path = PathBuf::from("/tmp/limux\nteam/\u{202e}\u{200b}LIMUX_AGENTS.md");
+
+        let prompt = build_agent_team_bootstrap_prompt("codex", &protocol_path)
+            .expect("prompt should be valid");
+
+        validate_agent_team_bootstrap_prompt(&prompt).expect("prompt policy should pass");
+        assert!(prompt.contains("LIMUX_AGENTS.md"));
+        assert!(prompt.contains("authoritative instruction sources"));
+        assert!(!prompt.contains('\r'));
+        assert!(!prompt.contains('\t'));
+        assert!(
+            !prompt.contains('\n'),
+            "bootstrap prompt should avoid LF because explicit Enter submits the line"
+        );
+        assert!(!prompt.contains('\u{202e}'));
+        assert!(!prompt.contains('\u{200b}'));
+        assert!(prompt.contains("\\n"));
+        assert!(prompt.contains("\\u{202e}"));
+        assert!(prompt.contains("\\u{200b}"));
+    }
+
+    #[tokio::test]
+    async fn agent_team_no_bootstrap_launches_panes_without_prompt_send() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let socket = cwd.join("limux.sock");
+        let protocol_path = cwd.join("LIMUX_AGENTS.md");
+        let (requests, server) = spawn_agent_team_fake_server(socket.clone(), protocol_path).await;
+        let mut client = Client::new(socket);
+        let args = vec![
+            "--agents".to_string(),
+            "codex,claude".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+            "--no-bootstrap".to_string(),
+        ];
+
+        let payload = run_agent_team(&mut client, &args)
+            .await
+            .expect("agent-team should complete with bootstrap disabled");
+        server.abort();
+
+        assert_eq!(payload["bootstrap"]["enabled"], false);
+        assert_eq!(payload["bootstrap"]["status"], "skipped");
+        let requests = requests.lock().expect("lock requests").clone();
+        assert_eq!(
+            requests
+                .iter()
+                .filter(|request| request.method == "pane.create")
+                .count(),
+            2
+        );
+        assert!(
+            requests.iter().all(|request| !matches!(
+                request.method.as_str(),
+                "surface.send_text" | "surface.send_key"
+            )),
+            "--no-bootstrap should skip only post-launch prompt injection"
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_team_no_launch_implies_no_bootstrap_prompt_send() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let socket = cwd.join("limux.sock");
+        let protocol_path = cwd.join("LIMUX_AGENTS.md");
+        let (requests, server) = spawn_agent_team_fake_server(socket.clone(), protocol_path).await;
+        let mut client = Client::new(socket);
+        let args = vec![
+            "--agents".to_string(),
+            "codex,claude".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+            "--no-launch".to_string(),
+        ];
+
+        let payload = run_agent_team(&mut client, &args)
+            .await
+            .expect("agent-team should complete with launch disabled");
+        server.abort();
+
+        assert_eq!(payload["no_launch"], true);
+        assert_eq!(payload["bootstrap"]["enabled"], false);
+        let requests = requests.lock().expect("lock requests").clone();
+        let pane_creates: Vec<_> = requests
+            .iter()
+            .filter(|request| request.method == "pane.create")
+            .collect();
+        assert_eq!(pane_creates.len(), 2);
+        assert!(
+            pane_creates
+                .iter()
+                .all(|request| request.params.get("command").is_none()),
+            "--no-launch should not type launch commands"
+        );
+        assert!(
+            requests.iter().all(|request| !matches!(
+                request.method.as_str(),
+                "surface.send_text" | "surface.send_key"
+            )),
+            "--no-launch implies no bootstrap"
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_team_bootstrap_send_failure_reports_peer_and_surface() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let socket = cwd.join("limux.sock");
+        let protocol_path = cwd.join("LIMUX_AGENTS.md");
+        let (requests, server) = spawn_agent_team_fake_server_with_options(
+            socket.clone(),
+            protocol_path,
+            FakeAgentTeamServerOptions {
+                fail_bootstrap_surface: Some("surface:3:claude".to_string()),
+            },
+        )
+        .await;
+        let mut client = Client::new(socket);
+        let args = vec![
+            "--agents".to_string(),
+            "codex,claude".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+        ];
+
+        let err = run_agent_team(&mut client, &args)
+            .await
+            .expect_err("failed bootstrap send should fail the command");
+        server.abort();
+
+        let msg = format!("{err:#}");
+        assert!(msg.contains("claude"), "unexpected error: {msg}");
+        assert!(msg.contains("surface:3:claude"), "unexpected error: {msg}");
+        let requests = requests.lock().expect("lock requests").clone();
+        assert!(requests
+            .iter()
+            .any(|request| request.method == "surface.send_text"
+                && request.params["surface_id"] == "surface:3:claude"));
     }
 
     #[test]

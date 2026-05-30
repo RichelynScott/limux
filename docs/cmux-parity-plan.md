@@ -77,10 +77,14 @@ into a `notify` (and, where useful, an inline `send`). Drop-in for
 ### Phase 5 — `limux agent-team` + generated protocol file ✅
 `limux agent-team [--agents codex,claude[,opencode,gemini]] [--cwd <path>]
 [--protocol-path <path>] [--force-protocol-overwrite] [--no-launch]
-[--dry-run]`:
+[--no-bootstrap] [--dry-run]`:
 
 - Splits the active workspace into one terminal pane per agent and launches
   each agent CLI unless `--no-launch` is set.
+- After the generated protocol file is written, sends each launched peer a
+  short bootstrap prompt that tells it to read `LIMUX_AGENTS.md` and the
+  authoritative instruction sources listed there. Use `--no-bootstrap` to
+  launch panes without that post-launch prompt.
 - Bridge passes `allow_name=true` to `parse_optional_workspace_target` for
   `surface.send_text` and `notification.create`; the generated team protocol
   still addresses peers by surface ID because agents share one workspace.
@@ -143,15 +147,23 @@ into a `notify` (and, where useful, an inline `send`). Drop-in for
   caught by the control-character guard. Revisit those before untrusted
   generated prompt text flows through automatic bootstrap.
 
-**Deferred: Phase 5B — automatic bootstrap**
+**Shipped after typed-PTY guard: Phase 5B — automatic bootstrap**
 
-Caller-shell quoting for generated `new-pane --command` snippets now has
-regression coverage, typed-PTY control-character payloads are rejected, and the
-live GTK/Xvfb smoke path is runnable with the documented host prerequisites.
-Full two-phase launch/bootstrap is still deferred until Limux launches the
-agent binary first, waits for pane readiness, and sends arbitrary prompt text
-through the guarded `surface.send_text` path instead of embedding it inside
-`--command`.
+- `agent-team` now keeps `pane.create.command` to the bare launcher binary
+  (`codex`, `claude`, etc.) and does not embed prompt text in launch shell
+  commands.
+- Generated bootstrap prompts are single-line text with escaped dynamic values
+  and no CR, tab, LF, bidi formatting, or zero-width display-spoofing
+  characters.
+- Bootstrap starts only after `LIMUX_AGENTS.md` is written. The prompt is sent
+  through `surface.send_text`, then submitted with `surface.send_key enter`,
+  matching the documented manual `limux send` + `limux send-key enter` pattern.
+- The live GTK host now submits `pane.create --command` by typing the validated
+  command text and sending an explicit Enter key, which avoids bracketed-paste
+  shells leaving launch commands sitting at the prompt.
+- The Xvfb smoke harness shadows `codex` and `claude` with fake binaries and
+  verifies both fake agents receive the post-write bootstrap prompt with
+  `LIMUX_*` env and zero extra argv.
 
 ### Phase 6 — (deferred) `limux progress`, `limux log`, `limux markdown`
 Nice polish, not blockers.

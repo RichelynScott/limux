@@ -620,9 +620,10 @@ Parent surface if blocked: &lt;surface-id&gt;.</code></pre>
         <div class="warning">
           <strong>Protect repo instructions</strong>
           <code>limux agent-team --cwd "$PWD"</code> now writes generated runtime
-          protocol to <code>LIMUX_AGENTS.md</code> by default instead of
-          <code>AGENTS.md</code>. Repo instructions remain protected from the
-          previous default clobber path.
+          protocol to <code>LIMUX_AGENTS.md</code> by default, launches peer
+          panes, and sends each peer a short bootstrap prompt after the protocol
+          file is written. Repo instructions remain protected from the previous
+          default clobber path.
         </div>
 
         <p>
@@ -634,12 +635,15 @@ Parent surface if blocked: &lt;surface-id&gt;.</code></pre>
           human-notification rules.
         </p>
         <p>
-          The next friction-reduction step is to add an
-          <code>Instruction Sources</code> section, generated-marker, and
-          no-overwrite semantics for existing unmarked
-          <code>LIMUX_AGENTS.md</code> files. Use
+          <code>LIMUX_AGENTS.md</code> now includes an
+          <code>Instruction Sources</code> section for detected
+          <code>AGENTS.md</code>, <code>CLAUDE.md</code>, and
+          <code>GEMINI.md</code> files, plus generated-marker and no-overwrite
+          semantics for existing unmarked sidecars. Use
           <code>--protocol-path &lt;path&gt;</code> when the generated protocol
-          should live somewhere other than the shared cwd.
+          should live somewhere other than the shared cwd, and
+          <code>--no-bootstrap</code> when you want panes launched without the
+          post-launch prompt.
         </p>
       </section>
 
@@ -674,11 +678,11 @@ Parent surface if blocked: &lt;surface-id&gt;.</code></pre>
       <section id="improvements">
         <h2>Best Next Improvements</h2>
         <ol>
-          <li>Add <code>LIMUX_AGENTS.md</code> instruction-source discovery, generated-marker, and no-overwrite semantics.</li>
-          <li>Add two-phase automatic bootstrap that launches the agent binary first, waits for pane readiness, then sends prompt text over the guarded <code>limux send</code> path.</li>
           <li>Add a compact project roster file mapping project names to Limux workspaces, surface IDs, hcom names, and durable coordination files.</li>
+          <li>Add a durable review and consensus ledger for reviewer findings, decisions, and unresolved risks.</li>
           <li>Add a wrapper command for "spawn reviewer, capture surface, read result".</li>
           <li>Add documented conventions for consensus reports and cross-team broadcasts.</li>
+          <li>Add optional runtime-specific <code>.limux/</code> adapters for Codex, Claude Code, Gemini, and OpenCode if direct protocol discovery needs deeper integration.</li>
         </ol>
       </section>
 
@@ -687,11 +691,13 @@ Parent surface if blocked: &lt;surface-id&gt;.</code></pre>
         <ul>
           <li><code>agent-team</code> writes <code>LIMUX_AGENTS.md</code> by default and supports <code>--protocol-path</code>.</li>
           <li>Existing repo <code>AGENTS.md</code> files are not written by default.</li>
+          <li>Generated <code>LIMUX_AGENTS.md</code> files include a generated marker, instruction sources, sidecar policy guidance, and no-overwrite protection for unmarked sidecars.</li>
+          <li>Live <code>agent-team</code> launches peer panes with bare agent commands, writes the protocol file before bootstrap, then submits a sanitized one-line bootstrap prompt with explicit Enter. <code>--no-bootstrap</code> and <code>--no-launch</code> skip prompt sends.</li>
           <li>Generated <code>new-pane --command</code> examples quote launch commands and avoid nested arbitrary prompt text.</li>
           <li>Typed terminal text now rejects ESC/BEL/C1/control payloads except tab, LF, and CR across CLI, bridge/core, and host send-sink paths.</li>
           <li>Latest tag is <code>v0.1.19</code>.</li>
-          <li>Full <code>./scripts/check.sh</code> and <code>./scripts/xvfb-smoke-test.sh</code> pass locally with <code>ghostty/zig-out/lib/libghostty.so</code> on <code>LD_LIBRARY_PATH</code>.</li>
-          <li>Next: two-phase automatic bootstrap that launches the agent binary, waits for pane readiness, then sends prompt text through guarded <code>limux send</code>.</li>
+          <li>Full <code>./scripts/check.sh</code> and <code>./scripts/xvfb-smoke-test.sh</code> pass locally with the local Ghostty library; the smoke script exports the required library path automatically when <code>ghostty/zig-out/lib</code> exists.</li>
+          <li>Next: project/team roster plus durable review and consensus ledger.</li>
         </ul>
       </section>
 

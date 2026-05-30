@@ -249,3 +249,22 @@ Red tests were observed before implementation for protocol, CLI, core, and host 
 
 ### Related:
 `rust/limux-protocol/src/lib.rs` | `rust/limux-cli/src/main.rs` | `rust/limux-core/src/lib.rs` | `rust/limux-host-linux/src/control_bridge.rs` | `rust/limux-host-linux/src/window.rs` | `scripts/xvfb-smoke-test.sh` | `HANDOFF.md` | hcom thread `limux-typed-pty-policy`
+
+## 2026-05-29 - Phase 5B Agent-Team Automatic Bootstrap
+### What:
+Implemented Phase 5B for `limux agent-team`: live runs now launch peer panes with bare agent commands, write `LIMUX_AGENTS.md` first, then send each peer a short bootstrap prompt that points to the generated protocol and authoritative instruction sources.
+
+### Why:
+The operator workflow needs near-zero-friction Codex/Claude team startup without putting arbitrary prompt text inside launch-shell command strings or silently copying repo instructions.
+
+### How:
+Added `--no-bootstrap`, top-level/per-peer bootstrap status reporting, strict generated-prompt validation, post-write `surface.send_text` delivery, explicit `surface.send_key enter` submission, and failure reporting that names the peer and surface. Fixed host command-launch Enter semantics for Ghostty by sending text and Enter separately, and widened the command-launch readiness budget for slower hosts. Expanded CLI tests and the Xvfb smoke harness with fake `codex`/`claude` binaries that prove the prompt was received after the protocol file exists.
+
+### Impact:
+`agent-team` can now start a paired local agent team and orient peers automatically while preserving `--dry-run`, `--no-launch`, and `--no-bootstrap` safety paths. The next Limux workflow work is project/team roster plus durable review and consensus ledger support.
+
+### Verification:
+`cargo fmt --check`, `bash -n scripts/xvfb-smoke-test.sh`, `git diff --check`, `cargo test -p limux-cli agent_team`, `cargo test -p limux-cli`, `cargo test -p limux-host-linux fallback_enter_key_values_match_ghostty_key_encoding`, `cargo clippy -p limux-cli --all-targets -- -D warnings`, `LD_LIBRARY_PATH="$PWD/ghostty/zig-out/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./scripts/check.sh`, `LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh`, and `./scripts/xvfb-smoke-test.sh` passed after the final Claude review fixes. Pre-exec hcom reviewers `kazu` and `zori` returned GO with blockers that were implemented; `niru` acked the gate and no late blocking verdict was observed before closeout. Claude plugin adversarial review found no security-blocking defect and flagged medium reliability issues; follow-up removed trailing-LF double submission, made fail-fast partial-side-effect behavior explicit in the error path, and widened the command-launch readiness budget. Residual: the smoke proves fake-agent ordering, not real Codex/Claude TUI readiness under slow cold starts.
+
+### Related:
+`rust/limux-cli/src/main.rs` | `rust/limux-host-linux/src/window.rs` | `rust/limux-host-linux/src/terminal.rs` | `scripts/xvfb-smoke-test.sh` | `docs/cmux-parity-plan.md` | `docs/limux-hcom-workflow.md` | `HANDOFF.md` | hcom thread `limux-phase5b-bootstrap`

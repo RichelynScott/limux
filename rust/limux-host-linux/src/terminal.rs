@@ -233,13 +233,14 @@ impl TerminalHandle {
         let Some((keyval, modifier)) = gtk::accelerator_parse(binding.to_config_accel()) else {
             return false;
         };
+        let keycode = fallback_native_keycode(keyval);
 
         let press = translate_key_event(
             GHOSTTY_ACTION_PRESS,
             Some(self.gl_area.upcast_ref()),
             None,
             keyval,
-            0,
+            keycode,
             modifier,
         );
         let release = translate_key_event(
@@ -247,7 +248,7 @@ impl TerminalHandle {
             Some(self.gl_area.upcast_ref()),
             None,
             keyval,
-            0,
+            keycode,
             modifier,
         );
 
@@ -2131,6 +2132,10 @@ fn fallback_consumed_mods(keyval: gtk::gdk::Key, modifier: gtk::gdk::ModifierTyp
 }
 
 fn fallback_unshifted_codepoint(keyval: gtk::gdk::Key) -> u32 {
+    if keyval == gtk::gdk::Key::Return || keyval == gtk::gdk::Key::KP_Enter {
+        return 0x0D;
+    }
+
     match keyval.to_unicode() {
         Some('!') => '1' as u32,
         Some('@') => '2' as u32,
@@ -2156,6 +2161,16 @@ fn fallback_unshifted_codepoint(keyval: gtk::gdk::Key) -> u32 {
         Some(ch) => ch.to_lowercase().next().map(|c| c as u32).unwrap_or(0),
         None => 0,
     }
+}
+
+fn fallback_native_keycode(keyval: gtk::gdk::Key) -> u32 {
+    if keyval == gtk::gdk::Key::Return {
+        return 0x24;
+    }
+    if keyval == gtk::gdk::Key::KP_Enter {
+        return 0x68;
+    }
+    0
 }
 
 /// Show a brief "Copied to clipboard" toast at the bottom of the terminal.
@@ -2306,6 +2321,14 @@ mod tests {
             '-' as u32
         );
         assert_eq!(fallback_unshifted_codepoint(gtk::gdk::Key::A), 'a' as u32);
+    }
+
+    #[test]
+    fn fallback_enter_key_values_match_ghostty_key_encoding() {
+        assert_eq!(fallback_unshifted_codepoint(gtk::gdk::Key::Return), 0x0D);
+        assert_eq!(fallback_native_keycode(gtk::gdk::Key::Return), 0x24);
+        assert_eq!(fallback_unshifted_codepoint(gtk::gdk::Key::KP_Enter), 0x0D);
+        assert_eq!(fallback_native_keycode(gtk::gdk::Key::KP_Enter), 0x68);
     }
 
     #[test]

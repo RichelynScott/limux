@@ -671,7 +671,7 @@
     <div class="topbar">
       <div class="brand">
         <strong>Limux vs Multica Decision Guide</strong>
-        <span>Dark-mode decision packet updated on 2026-05-29 at 2:06 AM EDT</span>
+        <span>Dark-mode decision packet updated on 2026-05-29 at 10:31 PM EDT</span>
       </div>
       <nav class="quick-nav" aria-label="Page sections">
         <a href="#summary">Summary</a>
@@ -688,7 +688,7 @@
       <h2>Roadmap</h2>
       <div class="road-step done"><i class="road-dot"></i><div><strong>Context</strong><span>Limux and Multica compared.</span></div></div>
       <div class="road-step done"><i class="road-dot"></i><div><strong>Decision</strong><span>Limux + hcom primary; Multica deferred.</span></div></div>
-      <div class="road-step current"><i class="road-dot"></i><div><strong>Execution</strong><span>Next: two-phase bootstrap Phase 5B.</span></div></div>
+      <div class="road-step current"><i class="road-dot"></i><div><strong>Execution</strong><span>Phase 5B shipped; next roster and ledger.</span></div></div>
       <div class="road-step done"><i class="road-dot"></i><div><strong>Canonical template</strong><span>Kazu completed global pattern update.</span></div></div>
       <div class="road-step current"><i class="road-dot"></i><div><strong>Closeout</strong><span>Handoff docs ready for morning.</span></div></div>
     </aside>
@@ -698,12 +698,12 @@
       <div class="hero-copy">
         <p class="eyebrow">Bottom line</p>
         <h1>Keep Limux + hcom primary.</h1>
-        <p class="lead">Multica stays deferred. The next Limux step is making `LIMUX_AGENTS.md` discover repo instructions without silently copying or merging them.</p>
+        <p class="lead">Multica stays deferred. Limux now has protected protocol discovery and post-launch peer bootstrap; the next step is durable roster and review-ledger support.</p>
         <div class="packet-meta" aria-label="Packet metadata">
           <div class="meta-item"><span>Scope</span><strong>/home/riche/MCPs/limux</strong></div>
           <div class="meta-item"><span>Runtime/session</span><strong>Codex / tipi</strong></div>
           <div class="meta-item"><span>Date</span><strong>2026-05-29</strong></div>
-          <div class="meta-item"><span>Time</span><strong>2:06 AM EDT</strong></div>
+          <div class="meta-item"><span>Time</span><strong>10:31 PM EDT</strong></div>
           <div class="meta-item"><span>Pattern</span><strong>$html-decision-packet</strong></div>
           <div class="meta-item"><span>Canonical owner</span><strong>@kazu completed global template request</strong></div>
         </div>
@@ -731,9 +731,10 @@
       <div class="section-body status-grid">
         <div class="status-card"><strong>Done</strong><span>User selected Limux + hcom primary and no Multica pilot for now.</span></div>
         <div class="status-card"><strong>Done</strong><span>Commit `cec067f` moved generated protocol output to `LIMUX_AGENTS.md` and added `--protocol-path`.</span></div>
+        <div class="status-card"><strong>Done</strong><span>Phase 5A/5B now generate protected instruction-source metadata and send sanitized post-launch bootstrap prompts.</span></div>
         <div class="status-card"><strong>Done</strong><span>Typed terminal text now rejects ESC/BEL/C1/control payloads except tab, LF, and CR across CLI, bridge/core, and host send-sink paths.</span></div>
-        <div class="status-card"><strong>Verified</strong><span>`cargo test -p limux-cli`, fmt, clippy, diff whitespace, full `./scripts/check.sh`, and Xvfb smoke pass locally with the built Ghostty library on `LD_LIBRARY_PATH`.</span></div>
-        <div class="status-card"><strong>Gated</strong><span>Full automatic bootstrap now waits on implementing the two-phase launch/readiness/send flow.</span></div>
+        <div class="status-card"><strong>Verified</strong><span>`cargo test -p limux-cli`, fmt, clippy, diff whitespace, full `./scripts/check.sh`, and debug/release Xvfb smoke pass locally.</span></div>
+        <div class="status-card"><strong>Gated</strong><span>Multica adoption remains deferred. The next Limux lane is roster/ledger and cross-team coordination polish.</span></div>
         <div class="status-card"><strong>Local prerequisite</strong><span>Fresh clones or cleaned worktrees still need the reviewed Ghostty/Zig build lane before host checks.</span></div>
         <div class="status-card"><strong>Not done</strong><span>Did not clone, install, build, or run Multica. Did not edit global templates directly.</span></div>
       </div>
@@ -754,13 +755,13 @@
         </article>
         <article class="card">
           <span class="tag amber">Next</span>
-          <h3>Limux Phase 5B</h3>
-          <p>Implement two-phase automatic bootstrap: launch the agent binary, wait for pane readiness, then send prompt text through guarded `limux send`.</p>
+          <h3>Roster + ledger</h3>
+          <p>Add project/team roster and durable review/consensus ledger support for four-project workflows.</p>
         </article>
         <article class="card">
-          <span class="tag amber">Deferred</span>
+          <span class="tag green">Shipped</span>
           <h3>Automatic bootstrap</h3>
-          <p>Do not embed arbitrary prompts inside `--command`; prompt text belongs in the guarded post-readiness send phase.</p>
+          <p>Phase 5B launches bare agent commands, writes the protocol first, then sends a sanitized post-launch prompt with explicit Enter.</p>
         </article>
       </div>
     </section>
@@ -878,10 +879,10 @@
           <ul>
             <li>Shipped: `agent-team` no longer writes `AGENTS.md` by default.</li>
             <li>Shipped: `--protocol-path` allows explicit sidecar location.</li>
-            <li>Next: add `Instruction Sources` to `LIMUX_AGENTS.md` without copying repo instruction files.</li>
-            <li>Next: add generated-marker and no-overwrite behavior for existing unmarked sidecars.</li>
-            <li>Add a project/team roster for 4+ project coordination.</li>
-            <li>Add a durable review and consensus ledger.</li>
+            <li>Shipped: `Instruction Sources`, generated-marker, and no-overwrite behavior for `LIMUX_AGENTS.md`.</li>
+            <li>Shipped: Phase 5B post-launch bootstrap prompts.</li>
+            <li>Next: add a project/team roster for 4+ project coordination.</li>
+            <li>Next: add a durable review and consensus ledger.</li>
             <li>Improve transcript capture beyond visible viewport reads.</li>
           </ul>
         </article>
@@ -1022,12 +1023,16 @@
                 <span><strong>Keep AGENTS.md protection</strong><span>Already shipped in `cec067f`.</span></span>
               </label>
               <label class="check">
-                <input type="checkbox" name="limux" value="Add `LIMUX_AGENTS.md` instruction-source discovery." checked>
-                <span><strong>Instruction Sources</strong><span>Point agents to repo instructions directly.</span></span>
+                <input type="checkbox" name="limux" value="Keep the shipped `LIMUX_AGENTS.md` instruction-source discovery." checked>
+                <span><strong>Keep Instruction Sources</strong><span>Point agents to repo instructions directly.</span></span>
               </label>
               <label class="check">
-                <input type="checkbox" name="limux" value="Add generated-marker and no-overwrite semantics for unmarked `LIMUX_AGENTS.md` files." checked>
-                <span><strong>Sidecar no-overwrite</strong><span>Protect hand-edited protocol files.</span></span>
+                <input type="checkbox" name="limux" value="Keep generated-marker and no-overwrite semantics for unmarked `LIMUX_AGENTS.md` files." checked>
+                <span><strong>Keep sidecar no-overwrite</strong><span>Protect hand-edited protocol files.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="limux" value="Keep the shipped Phase 5B post-launch bootstrap prompts." checked>
+                <span><strong>Keep Phase 5B bootstrap</strong><span>Orient new peers after protocol write.</span></span>
               </label>
               <label class="check">
                 <input type="checkbox" name="limux" value="Add a project/team roster for workspaces, sessions, owners, and related teams." checked>
@@ -1245,7 +1250,7 @@
         '10. Extra notes:',
         notes.value.trim() ? `   - ${notes.value.trim().replace(/\n/g, '\n   - ')}` : '   - None.',
         '',
-        'Please use these decisions to proceed with Phase 5B from HANDOFF.md: implement two-phase automatic bootstrap by launching the agent binary first, waiting for pane readiness, then sending prompt text through guarded limux send.'
+        'Please use these decisions to proceed from HANDOFF.md with the project/team roster plus durable review and consensus ledger.'
       ];
 
       output.value = lines.join('\n');

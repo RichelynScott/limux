@@ -28,7 +28,9 @@ use crate::shortcut_config::{
 use crate::split_tree::{self, SplitTreeContainer};
 
 const PANE_CREATE_COMMAND_READY_INTERVAL_MS: u64 = 50;
-const PANE_CREATE_COMMAND_READY_ATTEMPTS: u32 = 40;
+const PANE_CREATE_COMMAND_READY_ATTEMPTS: u32 = 80;
+const PANE_CREATE_COMMAND_SETTLE_ATTEMPTS: u32 = 10;
+const PANE_CREATE_COMMAND_SUBMIT_DELAY_MS: u64 = 100;
 
 // ---------------------------------------------------------------------------
 // State
@@ -185,8 +187,8 @@ fn send_pane_create_response_after_command(
     }
 
     let mut attempts = 0;
+    let mut writable_attempts = 0;
     let mut reply = Some(reply);
-    let command = format!("{command}\n");
 
     glib::timeout_add_local(
         std::time::Duration::from_millis(PANE_CREATE_COMMAND_READY_INTERVAL_MS),
@@ -196,9 +198,28 @@ fn send_pane_create_response_after_command(
             if let Some((matched_surface_id, handle)) =
                 pane::exact_terminal_handle_for_surface(&pane_widget, &surface_id)
             {
-                if matched_surface_id == surface_id && handle.send_text(&command) {
+                writable_attempts += 1;
+                if matched_surface_id == surface_id
+                    && writable_attempts >= PANE_CREATE_COMMAND_SETTLE_ATTEMPTS
+                {
+                    if !handle.send_text(&command) {
+                        return glib::ControlFlow::Continue;
+                    }
                     if let Some(reply) = reply.take() {
-                        let _ = reply.send(Ok(response.clone()));
+                        let response = response.clone();
+                        let surface_id = surface_id.clone();
+                        glib::timeout_add_local_once(
+                            std::time::Duration::from_millis(PANE_CREATE_COMMAND_SUBMIT_DELAY_MS),
+                            move || {
+                                if handle.send_key("enter") {
+                                    let _ = reply.send(Ok(response));
+                                } else {
+                                    let _ = reply.send(Err(BridgeError::internal(format!(
+                                        "pane.create command target surface {surface_id} could not submit Enter"
+                                    ))));
+                                }
+                            },
+                        );
                     }
                     return glib::ControlFlow::Break;
                 }
@@ -4219,7 +4240,12 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                     };
                     if let Some((_surface_id, handle)) = target {
                         handle.send_text(&command);
-                        handle.send_text("\n");
+                        glib::timeout_add_local_once(
+                            std::time::Duration::from_millis(PANE_CREATE_COMMAND_SUBMIT_DELAY_MS),
+                            move || {
+                                handle.send_key("enter");
+                            },
+                        );
                     }
                 });
             }

@@ -50,12 +50,65 @@ LIMUX_CLI="$ROOT_DIR/$BIN_DIR/limux-cli"
 [ -x "$LIMUX_HOST" ] || { echo "FAIL: host binary missing at $LIMUX_HOST"; exit 2; }
 [ -x "$LIMUX_CLI" ]  || { echo "FAIL: cli binary missing at $LIMUX_CLI"; exit 2; }
 
-# The release host needs libghostty.so on the runtime path; debug finds
-# it via rpath.
+# The host needs libghostty.so on the runtime path in both release and debug
+# profiles on some distro/toolchain combinations.
 LIBGHOSTTY_DIR="$ROOT_DIR/ghostty/zig-out/lib"
-if [ "$PROFILE" = "release" ] && [ -d "$LIBGHOSTTY_DIR" ]; then
+if [ -d "$LIBGHOSTTY_DIR" ]; then
   export LD_LIBRARY_PATH="$LIBGHOSTTY_DIR:${LD_LIBRARY_PATH:-}"
 fi
+
+FAKE_BIN_DIR="$DEMO_DIR/fake-bin"
+FAKE_AGENT_PROOF_DIR="$DEMO_DIR/fake-agent-proof"
+FAKE_SHELL="$DEMO_DIR/fake-shell"
+FAKE_ZDOTDIR="$DEMO_DIR/zdot"
+mkdir -p "$FAKE_BIN_DIR" "$FAKE_AGENT_PROOF_DIR" "$FAKE_ZDOTDIR"
+cat > "$FAKE_BIN_DIR/codex" <<'FAKE_AGENT'
+#!/usr/bin/env bash
+set -euo pipefail
+agent="$(basename "$0")"
+proof_dir="${LIMUX_FAKE_AGENT_PROOF_DIR:-__LIMUX_FAKE_AGENT_PROOF_DIR__}"
+protocol_path="${LIMUX_FAKE_AGENT_PROTOCOL_PATH:-__LIMUX_FAKE_AGENT_PROTOCOL_PATH__}"
+mkdir -p "$proof_dir"
+line_status="timeout"
+line=""
+if IFS= read -r -t "${LIMUX_FAKE_AGENT_READ_TIMEOUT:-10}" line; then
+  line_status="read"
+fi
+protocol_exists="no"
+if [[ -f "$protocol_path" ]]; then
+  protocol_exists="yes"
+fi
+{
+  printf 'agent=%s\n' "$agent"
+  printf 'argc=%s\n' "$#"
+  printf 'line_status=%s\n' "$line_status"
+  printf 'protocol_exists=%s\n' "$protocol_exists"
+  printf 'workspace=%s\n' "${LIMUX_WORKSPACE_ID:-}"
+  printf 'surface=%s\n' "${LIMUX_SURFACE_ID:-}"
+  printf 'line=%s\n' "$line"
+} > "$proof_dir/$agent.bootstrap"
+FAKE_AGENT
+sed -i \
+  -e "s|__LIMUX_FAKE_AGENT_PROOF_DIR__|$FAKE_AGENT_PROOF_DIR|g" \
+  -e "s|__LIMUX_FAKE_AGENT_PROTOCOL_PATH__|$DEMO_DIR/LIMUX_AGENTS.md|g" \
+  "$FAKE_BIN_DIR/codex"
+cp "$FAKE_BIN_DIR/codex" "$FAKE_BIN_DIR/claude"
+chmod +x "$FAKE_BIN_DIR/codex" "$FAKE_BIN_DIR/claude"
+export PATH="$FAKE_BIN_DIR:$PATH"
+export LIMUX_FAKE_AGENT_PROOF_DIR="$FAKE_AGENT_PROOF_DIR"
+export LIMUX_FAKE_AGENT_PROTOCOL_PATH="$DEMO_DIR/LIMUX_AGENTS.md"
+export LIMUX_FAKE_AGENT_READ_TIMEOUT=10
+cat > "$FAKE_ZDOTDIR/.zshenv" <<FAKE_ZSHENV
+export PATH="$FAKE_BIN_DIR:\$PATH"
+FAKE_ZSHENV
+export ZDOTDIR="$FAKE_ZDOTDIR"
+cat > "$FAKE_SHELL" <<FAKE_SHELL_WRAPPER
+#!/usr/bin/env bash
+export PATH="$FAKE_BIN_DIR:\$PATH"
+exec /bin/bash "\$@"
+FAKE_SHELL_WRAPPER
+chmod +x "$FAKE_SHELL"
+export SHELL="$FAKE_SHELL"
 
 # --- 3. Stage 0: dry-run agent-team (no host) ----------------------------
 # Fast sanity pass — if this fails nothing else will work.
@@ -168,28 +221,48 @@ done
 
 [ -S "$SOCKET" ] || { echo "FAIL: socket $SOCKET never appeared"; exit 1; }
 
-# --- 5. Stage 2: live agent-team ------------------------------------------
+# --- 5. Stage 2: live agent-team bootstrap with fake agents ---------------
 echo
-echo "== stage 2: agent-team against live host (--no-launch) =="
-# --no-launch keeps the workspace commands from actually spawning codex/
-# claude binaries (which may not be installed in CI); the bridge + LIMUX_AGENTS.md
-# + allow_name=true path are still fully exercised.
+echo "== stage 2: agent-team two-phase bootstrap with fake agents =="
+rm -f "$FAKE_AGENT_PROOF_DIR"/*.bootstrap
 "$LIMUX_CLI" --id-format both agent-team \
   --agents codex,claude \
   --cwd "$DEMO_DIR" \
-  --no-launch \
+  --force-protocol-overwrite \
   2>&1 | tee "$LOG_DIR/stage2.txt"
 
-grep -q "peers=\[codex, claude\]" "$LOG_DIR/stage2.txt" \
-  || { echo "FAIL: live agent-team did not create peers"; exit 1; }
-[ -f "$DEMO_DIR/LIMUX_AGENTS.md" ] \
-  || { echo "FAIL: LIMUX_AGENTS.md not written to $DEMO_DIR"; exit 1; }
+grep -q "bootstrap=sent" "$LOG_DIR/stage2.txt" \
+  || { echo "FAIL: live agent-team did not report bootstrap=sent"; exit 1; }
 
-# Assert the runtime protocol file has the envelope + both peers.
-grep -q "<agent-msg"  "$DEMO_DIR/LIMUX_AGENTS.md" || { echo "FAIL: LIMUX_AGENTS.md missing <agent-msg>"; exit 1; }
-grep -q "\bcodex\b"   "$DEMO_DIR/LIMUX_AGENTS.md" || { echo "FAIL: LIMUX_AGENTS.md missing codex peer"; exit 1; }
-grep -q "\bclaude\b"  "$DEMO_DIR/LIMUX_AGENTS.md" || { echo "FAIL: LIMUX_AGENTS.md missing claude peer"; exit 1; }
-echo "stage 2: OK (LIMUX_AGENTS.md + 2 peers + bridge send path)"
+for i in $(seq 1 50); do
+  if [[ -s "$FAKE_AGENT_PROOF_DIR/codex.bootstrap" && -s "$FAKE_AGENT_PROOF_DIR/claude.bootstrap" ]]; then
+    break
+  fi
+  sleep 0.2
+done
+
+for agent in codex claude; do
+  proof="$FAKE_AGENT_PROOF_DIR/$agent.bootstrap"
+  if [[ ! -s "$proof" ]]; then
+    surface="$(
+      awk -F'|' -v agent="\`$agent\`" '$2 ~ agent { gsub(/[`[:space:]]/, "", $4); print $4; exit }' \
+        "$DEMO_DIR/LIMUX_AGENTS.md"
+    )"
+    if [[ -n "$surface" ]]; then
+      "$LIMUX_CLI" read-screen --surface "$surface" --scrollback --lines 80 \
+        > "$LOG_DIR/stage2-$agent-screen.txt" 2>&1 || true
+      cat "$LOG_DIR/stage2-$agent-screen.txt" || true
+    fi
+    echo "FAIL: missing fake $agent bootstrap proof"
+    exit 1
+  fi
+  grep -q '^argc=0$' "$proof" || { echo "FAIL: fake $agent received unexpected argv"; cat "$proof"; exit 1; }
+  grep -q '^line_status=read$' "$proof" || { echo "FAIL: fake $agent did not read bootstrap prompt"; cat "$proof"; exit 1; }
+  grep -q '^protocol_exists=yes$' "$proof" || { echo "FAIL: fake $agent read prompt before LIMUX_AGENTS.md existed"; cat "$proof"; exit 1; }
+  grep -q 'Read the generated runtime protocol file' "$proof" || { echo "FAIL: fake $agent prompt missing protocol instruction"; cat "$proof"; exit 1; }
+  grep -q 'authoritative instruction sources' "$proof" || { echo "FAIL: fake $agent prompt missing instruction-source instruction"; cat "$proof"; exit 1; }
+done
+echo "stage 2: OK (fake agents received post-write bootstrap prompt)"
 
 # Extract the generated team targets for the remaining live bridge checks.
 TEAM_WORKSPACE="$(
@@ -206,8 +279,8 @@ CLAUDE_SURFACE="$(
 # --- 6. Stage 3: list-workspaces sanity -----------------------------------
 echo
 echo "== stage 3: list-workspaces sees team workspace =="
-"$LIMUX_CLI" --id-format both list-workspaces 2>&1 | tee "$LOG_DIR/stage3.txt"
-grep -q "$TEAM_WORKSPACE" "$LOG_DIR/stage3.txt" \
+"$LIMUX_CLI" --id-format both list-workspaces 2>&1 | tee "$LOG_DIR/stage3-list.txt"
+grep -q "$TEAM_WORKSPACE" "$LOG_DIR/stage3-list.txt" \
   || { echo "FAIL: list-workspaces missing team workspace $TEAM_WORKSPACE"; exit 1; }
 echo "stage 3: OK"
 
@@ -216,7 +289,7 @@ echo
 echo "== stage 4: surface.send_text to generated peer surface =="
 ENVELOPE=$'<agent-msg from="codex" to="claude" id="smoke-1" ts="2026-04-19T23:59:00Z">\n\t<request>smoke test ping π</request>\n</agent-msg>\n'
 if "$LIMUX_CLI" send --workspace "$TEAM_WORKSPACE" --surface "$CLAUDE_SURFACE" "$ENVELOPE" \
-     2>&1 | tee "$LOG_DIR/stage4.txt"; then
+     2>&1 | tee "$LOG_DIR/stage4-send.txt"; then
   echo "stage 4: OK (surface send accepted)"
 else
   echo "FAIL: send to generated claude surface failed"
@@ -227,7 +300,7 @@ fi
 echo
 echo "== stage 5: notification.create by team workspace id =="
 if "$LIMUX_CLI" notify --workspace "$TEAM_WORKSPACE" --subtitle "smoke" --body "all good" "Smoke test" \
-     2>&1 | tee "$LOG_DIR/stage5.txt"; then
+     2>&1 | tee "$LOG_DIR/stage5-notify.txt"; then
   echo "stage 5: OK (workspace notify accepted)"
 else
   echo "FAIL: workspace notify failed"

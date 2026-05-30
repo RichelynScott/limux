@@ -2,7 +2,7 @@
 
 Date: 2026-05-29
 
-Last updated: 2026-05-29 21:36 EDT
+Last updated: 2026-05-29 22:31 EDT
 
 Authoring runtime/session: Codex / tipi
 
@@ -18,7 +18,7 @@ Updated with the `$html-decision-packet` pattern: explicit packet metadata, road
 |---|---|---|
 | Context | Done | Limux and Multica were compared through local source inspection, public repo/docs review, and subagent reports. |
 | Decision | Done | User chose Limux + hcom primary, no Multica pilot yet, and Limux fixes first. |
-| Execution | Current | `agent-team` no longer writes `AGENTS.md` by default; zero-friction protocol discovery, launch-snippet hardening, and typed-PTY control-character guards are implemented. |
+| Execution | Current | `agent-team` no longer writes `AGENTS.md` by default; zero-friction protocol discovery, launch-snippet hardening, typed-PTY control-character guards, and Phase 5B automatic bootstrap are implemented. |
 | Canonical template update | Done | Kazu updated the global decision-packet pattern/template/skill with a bottom Sources / Evidence section when applicable. |
 | Closeout | Current | Handoff docs now capture the morning resume path. |
 
@@ -29,9 +29,10 @@ Updated with the `$html-decision-packet` pattern: explicit packet metadata, road
 | Done | Created the readable Markdown guide and dark-mode HTML decision sheet; user filled it out and selected the Limux-first path. |
 | Done | Commit `cec067f` moved `agent-team` protocol output to `LIMUX_AGENTS.md` by default and added `--protocol-path`. |
 | Done | Ran a five-subagent brainstorm on near-zero-friction Limux agent-team workflow. |
+| Done | Added generated `LIMUX_AGENTS.md` instruction-source discovery, generated marker, local sidecar policy guidance, no-overwrite protection, and Phase 5B post-launch bootstrap prompts. |
 | Done | Added shared typed-PTY text validation for CLI, bridge/core, and host sink paths; terminal controls now use `send-key` instead of text injection. |
-| Verified | `cargo test -p limux-cli`, `cargo fmt --check`, `cargo clippy -p limux-cli --all-targets -- -D warnings`, `git diff --check`, full `./scripts/check.sh`, and Xvfb smoke pass locally with the built Ghostty library on `LD_LIBRARY_PATH`. |
-| Gated | Multica adoption and install remain deferred. Full automatic Limux bootstrap is now gated on implementing the two-phase launch/readiness/send flow, not on the typed-PTY control-character policy. |
+| Verified | `cargo test -p limux-cli`, `cargo fmt --check`, `cargo clippy -p limux-cli --all-targets -- -D warnings`, `git diff --check`, full `./scripts/check.sh`, and debug/release Xvfb smoke pass locally. |
+| Gated | Multica adoption and install remain deferred. The next Limux work is roster/ledger and cross-team coordination polish, not Multica migration. |
 | Local prerequisite | Fresh clones or cleaned worktrees still need the reviewed Ghostty/Zig build lane before host checks. |
 | Explicitly not done | Did not clone, install, build, or execute Multica. Did not edit global Codex/Claude templates directly from this Limux session. |
 
@@ -45,7 +46,7 @@ Recommended path:
 1. Keep Limux as the live operator cockpit for visible Codex, Claude Code, and reviewer panes.
 2. Keep hcom plus durable files for cross-project and cross-team messaging.
 3. Defer the Multica pilot until after Limux fixes.
-4. Continue improving `agent-team` around generated protocol discovery, local policy, roster, and consensus ledger support.
+4. Continue improving Limux around project/team roster, durable review ledger, and cross-team routing support.
 
 The subagents converged on the same conclusion: Multica is promising, but it is not a drop-in replacement for Limux's terminal-first workflow.
 
@@ -156,7 +157,8 @@ Limux is narrower and easier to reason about as a local terminal workspace manag
 
 | Risk | Recommended action |
 |---|---|
-| `agent-team` previously clobbered `AGENTS.md` | Shipped in `cec067f`: default output is now `LIMUX_AGENTS.md`; next add generated-marker and no-overwrite semantics for the sidecar. |
+| `agent-team` previously clobbered `AGENTS.md` | Shipped in `cec067f`: default output is now `LIMUX_AGENTS.md`; later Phase 5A added generated-marker, instruction sources, and no-overwrite semantics. |
+| Agent-team peers previously needed manual orientation | Shipped in Phase 5B: peer panes launch with bare agent commands, then receive a sanitized post-write bootstrap prompt. |
 | Browser bridge parity is unfinished | Keep browser automation separate until parity is implemented. |
 | `read-screen` is viewport-oriented | Do not rely on it for full long-running transcript capture. |
 | No durable consensus ledger | Add a repo-side review ledger or integrate with hcom files. |
@@ -175,12 +177,16 @@ friction. The consensus was:
   `CLAUDE.md`, `GEMINI.md`, and similar files directly.
 - Add generated-marker and no-overwrite semantics before relying on automatic
   regeneration.
-- Defer two-phase automatic bootstrap until generated launch commands start
-  only the agent binary, wait for pane readiness, then send arbitrary prompt
-  text through the guarded `limux send` path.
+- Launch agent binaries first, then send a small bootstrap prompt after pane
+  readiness and after the protocol file exists.
 
-Recommended next implementation: Phase 5B two-phase bootstrap in
+Implemented next implementation: Phase 5B two-phase bootstrap in
 [`cmux-parity-plan.md`](cmux-parity-plan.md).
+
+Recommended next implementation: project/team roster plus durable review and
+consensus ledger, so four-project workflows can track workspaces, sessions,
+owners, related teams, reviewer findings, and open decisions without relying on
+terminal scrollback.
 
 ## HCOM Updates From The Thread
 
@@ -283,9 +289,9 @@ Use this to continue:
 
 ```text
 Resume from HANDOFF.md. Phase 5A protocol discovery, generated launch-snippet
-hardening, and typed-PTY control-character guards are implemented and verified.
-Next implement Phase 5B two-phase automatic bootstrap: launch the agent binary,
-wait for pane readiness, then send prompt text through guarded `limux send`.
+hardening, typed-PTY control-character guards, and Phase 5B automatic bootstrap
+are implemented and verified. Next implement the project/team roster plus
+durable review and consensus ledger.
 ```
 
 ## Original Decisions Template
@@ -317,8 +323,9 @@ My decisions after reviewing the Limux vs Multica guide:
 4. Limux priorities:
    - [x] Fix agent-team AGENTS.md clobber risk first.
    - [x] Add sidecar protocol file support.
-   - [ ] Add LIMUX_AGENTS.md instruction-source discovery.
-   - [ ] Add generated-marker and no-overwrite semantics for LIMUX_AGENTS.md.
+   - [x] Add LIMUX_AGENTS.md instruction-source discovery.
+   - [x] Add generated-marker and no-overwrite semantics for LIMUX_AGENTS.md.
+   - [x] Add Phase 5B post-launch bootstrap prompts.
    - [ ] Add project/team roster.
    - [ ] Add durable review/consensus ledger.
    - [ ] Improve read-screen/transcript capture.

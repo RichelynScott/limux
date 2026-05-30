@@ -1,13 +1,14 @@
 # Limux + hcom Workflow Guide
 
 Last reviewed: 2026-05-29
-Repo state reviewed: `main` with local shell-quoted launch snippet hardening
+Repo state reviewed: `main` with Phase 5B automatic `agent-team` bootstrap
 
 ## Executive Summary
 
 Limux is best used as the live local workspace layer for coding-agent teams.
 It owns panes, surfaces, workspace layout, same-project message injection,
-screen reads, and GUI notifications.
+screen reads, GUI notifications, and now low-friction `agent-team` peer
+bootstrap through generated `LIMUX_AGENTS.md` protocol files.
 
 hcom is best used as the cross-session and cross-project coordination bus.
 It owns named agent discovery, direct messages across tools, event history,
@@ -19,7 +20,7 @@ Use them together like this:
 |---|---|
 | Codex asks Claude in the same project to review a diff | `limux send --surface ...` |
 | Parent checks whether a child pane is stuck | `limux read-screen --surface ... --lines 80` |
-| Spawn a short-lived reviewer beside the current pane | `limux new-pane --direction right --command 'codex'`, then `limux send ...` after the pane is ready |
+| Spawn a short-lived reviewer beside the current pane | `limux agent-team --agents codex,claude --cwd "$PWD"` for a paired team, or `limux new-pane --direction right --command 'codex'` plus a manual send for one-off panes |
 | Get human attention inside the GUI | `limux notify ...` |
 | Tell another project team about a relevant change | `uvx hcom send @agent --intent inform --thread ... --name tipi -- "..."` |
 | Preserve decisions, plans, reviews, or handoffs | Write a durable file, then send a Limux or hcom pointer |
@@ -241,8 +242,10 @@ limux agent-team --cwd "$PWD"
 ```
 
 The current implementation writes generated runtime protocol to
-`LIMUX_AGENTS.md` in the shared cwd by default. This is safer than the previous
-`AGENTS.md` behavior and protects load-bearing repo instructions.
+`LIMUX_AGENTS.md` in the shared cwd by default, then launches peer agent panes
+and sends each peer a short bootstrap prompt after the protocol file is written.
+This is safer than the previous `AGENTS.md` behavior and protects load-bearing
+repo instructions.
 
 Important remaining rule: do not treat `LIMUX_AGENTS.md` as an inherited or
 merged copy of `AGENTS.md`. Repo instruction files such as `AGENTS.md`,
@@ -250,13 +253,14 @@ merged copy of `AGENTS.md`. Repo instruction files such as `AGENTS.md`,
 only describe the Limux runtime team, messaging protocol, peer roster, and
 operator-escalation rules.
 
-The next friction-reduction step is to add an `Instruction Sources` section to
-`LIMUX_AGENTS.md`, plus generated-marker and no-overwrite semantics for an
-existing unmarked sidecar file. Until that lands, check the generated file
-before relying on it as a durable team protocol.
+`LIMUX_AGENTS.md` now includes an `Instruction Sources` section that points to
+detected `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` files with path, mtime, and
+hash metadata. Existing unmarked `LIMUX_AGENTS.md` files are protected by
+default; use `--force-protocol-overwrite` only when replacing one is intentional.
 
 Use `--protocol-path <path>` when you want the generated protocol somewhere
-other than the shared cwd.
+other than the shared cwd. Use `--no-bootstrap` when you want the panes launched
+without the post-launch prompt.
 
 ## Suggested Operating Cadence
 
@@ -286,15 +290,14 @@ End of task:
 
 The highest-leverage Limux improvements for this workflow are:
 
-1. Add `LIMUX_AGENTS.md` instruction-source discovery, generated-marker, and
-   no-overwrite semantics.
-2. Add two-phase automatic bootstrap that launches the agent binary first, waits
-   for pane readiness, then sends prompt text over the guarded `limux send`
-   path.
-3. Add a compact project roster file mapping project names to Limux workspaces,
+1. Add a compact project roster file mapping project names to Limux workspaces,
    surface IDs, hcom names, and durable coordination files.
-4. Add a wrapper command for "spawn reviewer, capture surface, read result".
-5. Add documented conventions for consensus reports and cross-team broadcasts.
+2. Add a durable review and consensus ledger for reviewer findings, decisions,
+   and unresolved risks.
+3. Add a wrapper command for "spawn reviewer, capture surface, read result".
+4. Add documented conventions for consensus reports and cross-team broadcasts.
+5. Add optional runtime-specific `.limux/` adapters for Codex, Claude Code,
+   Gemini, and OpenCode if direct protocol discovery needs deeper integration.
 
 ## Current Prime Snapshot
 
@@ -303,14 +306,21 @@ As of this review:
 - `agent-team` writes `LIMUX_AGENTS.md` by default and supports
   `--protocol-path`.
 - Existing repo `AGENTS.md` files are not written by default.
+- Generated `LIMUX_AGENTS.md` files include a generated marker, instruction
+  sources, sidecar policy guidance, and no-overwrite protection for unmarked
+  sidecars.
+- Live `agent-team` launches peer panes with bare agent commands, writes the
+  protocol file before bootstrap, then submits a sanitized one-line bootstrap
+  prompt with explicit Enter. `--no-bootstrap` and `--no-launch` skip prompt
+  sends.
 - Generated `new-pane --command` examples quote launch commands and avoid
   nested arbitrary prompt text.
 - Typed terminal text now rejects ESC/BEL/C1/control payloads except tab, LF,
   and CR across CLI, bridge/core, and host send-sink paths.
 - Latest tag is `v0.1.19`.
 - Full `./scripts/check.sh` and `./scripts/xvfb-smoke-test.sh` pass locally
-  with `ghostty/zig-out/lib/libghostty.so` on `LD_LIBRARY_PATH`.
-- The next recommended implementation is two-phase automatic bootstrap:
-  launch the agent binary, wait for pane readiness, then send prompt text
-  through guarded `limux send`, tracked from
+  with the local Ghostty library; the smoke script now exports the required
+  `LD_LIBRARY_PATH` automatically when `ghostty/zig-out/lib` exists.
+- The next recommended implementation is the project/team roster plus durable
+  review and consensus ledger, tracked from
   [`cmux-parity-plan.md`](cmux-parity-plan.md).

@@ -1,27 +1,20 @@
 # Limux Session Handoff
 
-Last updated: 2026-05-29 21:41 EDT
+Last updated: 2026-05-29 22:31 EDT
 
 ## Immediate Next Action
 
-Phase 5A zero-friction protocol discovery for `limux agent-team` is implemented
-and locally verified. GTK bridge `surface.send_text` now reports not-ready
-terminal surfaces as a conflict instead of returning `ok: true`. Host
-GTK/pkg-config prerequisites are installed, and the approved Ghostty/Zig v2 gate
-has built local `ghostty/zig-out/lib/libghostty.so`. The full workspace check
-and Xvfb live smoke harness pass locally. Generated `new-pane --command`
-snippets now quote launch commands through a central helper, preserve
-metacharacter payloads as one caller-shell argv, and reject unquoted extra
-`new-pane` positionals before socket contact. Typed terminal text sent through
-`surface.send_text`, `limux send`, `paste-buffer`, `respawn-pane`,
-`pane.create --command`, and `workspace.create --command` now rejects terminal
-control characters other than tab, LF, and CR at the CLI, protocol/server, core
-dispatcher, live GTK bridge parser, and host send sink.
+Phase 5B automatic `limux agent-team` bootstrap is implemented and locally
+verified. The current flow writes protected generated protocol to
+`LIMUX_AGENTS.md`, launches peer panes with bare agent commands, waits for pane
+readiness, sends each peer a sanitized one-line bootstrap prompt after the
+protocol file exists, then submits it with explicit Enter. `--no-bootstrap`,
+`--no-launch`, and `--dry-run` all skip prompt sends.
 
-Recommended next scoped action: implement the two-phase automatic bootstrap for
-agents. Do not embed arbitrary prompt text inside `--command`; launch the agent
-binary first, wait for the new pane surface to become writable, then send prompt
-text through the guarded `limux send` / `surface.send_text` path.
+Recommended next scoped action: implement the project/team roster plus durable
+review and consensus ledger. This should map project names to Limux workspaces,
+surface IDs, hcom names, owners, related teams, durable coordination files,
+reviewer findings, consensus decisions, and unresolved risks.
 
 Current verification baseline:
 
@@ -29,7 +22,8 @@ Current verification baseline:
 cargo fmt --check
 git diff --check
 LD_LIBRARY_PATH="$PWD/ghostty/zig-out/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./scripts/check.sh
-LD_LIBRARY_PATH="$PWD/ghostty/zig-out/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./scripts/xvfb-smoke-test.sh
+LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh
+./scripts/xvfb-smoke-test.sh
 ```
 
 The operator requested an easier-to-read status/options artifact on
@@ -145,18 +139,42 @@ Phase 5A completed in `rust/limux-cli/src/main.rs`:
 6. Existing unmarked `LIMUX_AGENTS.md` files are refused by default; `--force-protocol-overwrite` is required to replace one.
 7. `LIMUX_AGENTS.local.md` is documented as the durable local policy sidecar; Limux does not create or overwrite it.
 
+Phase 5B completed in `rust/limux-cli/src/main.rs`,
+`rust/limux-host-linux/src/window.rs`,
+`rust/limux-host-linux/src/terminal.rs`, and `scripts/xvfb-smoke-test.sh`:
+
+1. Added `--no-bootstrap` for live `agent-team` runs.
+2. Kept generated pane-create commands as bare launchers such as `codex` or
+   `claude`; arbitrary orientation text is sent only after the pane is created.
+3. Wrote `LIMUX_AGENTS.md` before any bootstrap prompt send.
+4. Sanitized generated bootstrap prompts more strictly than normal typed text:
+   no CR, no tab, no LF, no bidi format controls, and no zero-width
+   display-spoofing characters.
+5. Sent the prompt through `surface.send_text`, then submitted it through
+   `surface.send_key enter` so shells that treat paste/newline conservatively
+   still receive the message.
+6. Made live smoke use fake `codex`/`claude` binaries to prove the prompt was
+   received after protocol write.
+7. Fixed Ghostty Enter key submission for command-launch paths.
+
 Recommended acceptance tests:
 
 ```bash
 cargo test -p limux-cli agent_team
+cargo test -p limux-cli
 cargo fmt --check
 cargo clippy -p limux-cli --all-targets -- -D warnings
+LD_LIBRARY_PATH="$PWD/ghostty/zig-out/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./scripts/check.sh
+LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh
+./scripts/xvfb-smoke-test.sh
 git diff --check
 ```
 
 `libghostty.so` and host GTK/pkg-config prerequisites are present locally. The
 focused host warning is fixed, and the full workspace/Xvfb gates now pass with
-the local Ghostty library on `LD_LIBRARY_PATH`.
+the local Ghostty library. The smoke script exports `LD_LIBRARY_PATH`
+automatically when `ghostty/zig-out/lib` exists; the full check still needs the
+explicit `LD_LIBRARY_PATH` prefix.
 
 ## Completed This Session
 
@@ -185,15 +203,16 @@ the local Ghostty library on `LD_LIBRARY_PATH`.
 | 2026-05-29 20:47 EDT | Full gate and Xvfb smoke restored | Removed the host `unused_mut` warning, updated Xvfb smoke from `softpipe`/OpenGL 3.3 to `llvmpipe`/OpenGL 4.3, accepted current `new-pane --json` refs, and verified `cargo fmt --check`, `git diff --check`, `./scripts/check.sh`, and `./scripts/xvfb-smoke-test.sh`. |
 | 2026-05-29 21:10 EDT | Shell-quoted launch snippet hardening | Added central generated-snippet shell quoting, quoted generated `LIMUX_AGENTS.md` scratch-pane commands, rejected unquoted extra `new-pane` positionals, removed nested prompt examples from docs, and verified focused CLI tests, full workspace check, and Xvfb smoke. Claude plugin review timed out; hcom reviewers converged on GO for the manual snippet path and deferred typed-PTY control-character policy before auto-bootstrap. |
 | 2026-05-29 21:36 EDT | Typed-PTY control-character guard | Added shared typed-text validation in `limux-protocol`; enforced it in the CLI, standalone core dispatcher, live GTK bridge parser, and GTK host send sink; documented `send-key` as the control-key route; expanded Xvfb smoke stage 7 to reject ESC/BEL/C1 payloads across send/new-pane/respawn/paste/new-workspace. Claude plugin review timed out after 240 seconds, so it is not counted as passed; hcom reviewers `kazu`, `zori`, and `niru` had already converged on the policy shape. |
+| 2026-05-29 22:31 EDT | Phase 5B automatic bootstrap | Added post-launch `agent-team` bootstrap prompts, `--no-bootstrap`, protocol-write-before-send behavior, stricter generated-prompt validation, explicit Enter submission, command-launch Enter fixes, fake-agent Xvfb proof, and refreshed workflow/decision/handoff docs. |
 
 ## Current State
 
 - Branch: `main`
-- Code commit pushed before this handoff: `aa169e5 fix(cli): harden generated new-pane shell snippets`
-- Latest implementation in this handoff: typed-PTY control-character guard after shell-quoted launch snippet hardening.
+- Code commit pushed before this handoff: `6f59e84 docs(handoff): track bootstrap display spoofing residuals`
+- Latest implementation in this handoff: Phase 5B automatic agent-team bootstrap after typed-PTY control-character hardening.
 - Latest pushed status/report commit before Phase 5A implementation:
   `1c12e97 docs(decision): add limux next steps packet`
-- Working tree should be clean after committing/pushing the typed-PTY guard.
+- Working tree should be clean after committing/pushing Phase 5B.
 
 ## Architectural Decisions Locked In
 
@@ -201,7 +220,7 @@ the local Ghostty library on `LD_LIBRARY_PATH`.
 2. **Authority split.** Repo files such as `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` remain authoritative project instructions.
 3. **Runtime sidecar.** `LIMUX_AGENTS.md` is generated Limux runtime context: peers, surfaces, messaging, human notification, and routing.
 4. **Zero-friction path.** Reduce friction through automated discovery, explicit pointers, environment variables, and later bootstrap/adapters, not hidden prompt composition.
-5. **Launch automation waits.** Generated launch snippets should only start the agent binary. Full two-phase automatic launch/bootstrap should send arbitrary prompt text only after pane readiness through the guarded typed-text path.
+5. **Launch automation waits.** Generated launch snippets should only start the agent binary. Automatic launch/bootstrap sends bounded prompt text only after protocol write and pane readiness through guarded typed-text plus explicit `send-key enter`.
 
 ## Subagent Brainstorm Synthesis
 
@@ -220,8 +239,9 @@ Phase ordering:
 2. **Done:** Fix `surface.send_text` readiness/failure semantics in the GTK host bridge and verify it through the full workspace gate.
 3. **Done:** Add caller-shell quoting tests and generated-snippet hardening before expanding automatic launch/bootstrap behavior.
 4. **Done:** Define and test the typed-PTY control-character policy for `limux send`, respawn, paste-buffer, `pane.create --command`, `workspace.create --command`, direct socket callers, and the live GTK host sink.
-5. **Next:** Implement two-phase automatic bootstrap: launch the agent binary, wait for pane readiness, then send prompt text through guarded `limux send`.
-6. **Optional later:** Add runtime-specific `.limux/` adapters for Codex, Claude Code, Gemini, and OpenCode.
+5. **Done:** Implement two-phase automatic bootstrap: launch the agent binary, wait for pane readiness, then send prompt text through guarded `surface.send_text` plus explicit Enter.
+6. **Next:** Add a project/team roster and durable review/consensus ledger.
+7. **Optional later:** Add runtime-specific `.limux/` adapters for Codex, Claude Code, Gemini, and OpenCode.
 
 ## Key Files For Context
 
@@ -242,7 +262,8 @@ Phase ordering:
 - Do not implement hidden prompt inheritance. Use explicit detected source references.
 - Do not launch hcom-managed workers for bounded local repo work unless a persistent cross-tool runtime is actually needed.
 - Preserve `limux agent-team --dry-run` without a running host.
-- Preserve `--no-launch` behavior when future bootstrap work starts.
+- Preserve `--no-launch` and `--no-bootstrap` behavior for `agent-team`;
+  neither path should send bootstrap prompts.
 - Use `apply_patch` for manual edits.
 - Do not edit `/home/riche/.claude` from this Limux session.
 
@@ -254,12 +275,13 @@ Phase ordering:
 - `zig` is intentionally not on `PATH`; the reviewed lane used project-scoped Zig under `$HOME/.cache/limux-tools`.
 - Caller-shell generated snippet tests now cover spaces, quotes, `$`, command substitution, backticks, semicolons, control characters, newlines, exact JSON preservation, and side-effect inertness.
 - Typed-PTY control characters are now rejected everywhere the current control surface can inject typed terminal text. Intentional control keys must use `surface.send_key` / `limux send-key`.
-- Bootstrap threat-model carry-forward from Kazu's typed-PTY closeout: CR is allowed by design alongside tab and LF, so bare carriage-return line-overwrite display spoofing remains an accepted/deferred display risk. Unicode format characters such as bidi controls (`U+200E`, `U+200F`, `U+202A`-`U+202E`, `U+2066`-`U+2069`) and zero-width characters such as `U+200B` also remain outside this `is_control()` guard. Treat both as display-spoofing risks, not execution risks, and revisit them explicitly before untrusted generated text flows through Phase 5B automatic bootstrap.
+- Bootstrap prompt generation now rejects CR, tab, LF, bidi format controls, and zero-width display-spoofing characters even though the broader typed-text policy still allows tab/LF/CR for manual multiline messages. Keep that stricter boundary for generated automatic prompts.
 - Instruction-source hashes are deterministic `fnv1a64` metadata for change detection, not cryptographic integrity claims.
 - Claude plugin adversarial review did not complete for the shell-quoting lane: normal mode timed out after 180 seconds, and `--bare` mode failed because Claude was not logged in under bare mode. hcom reviewer `kazu` provided the Claude-family shell-safety lens instead. For the typed-PTY lane, the normal plugin review timed out after 240 seconds and is not counted as passed.
+- Claude plugin adversarial review completed for Phase 5B. It found no security-blocking defect, but flagged reliability issues that were handled before commit: removed trailing-LF double submission, made fail-fast partial-side-effect behavior explicit in the error path, and widened the command-launch readiness budget. Residual: live smoke uses fake instant agents, so real Codex/Claude cold-start/TUI readiness remains a future robustness target.
 
 ## Morning Resume Prompt
 
 ```text
-Please resume the Limux work from HANDOFF.md. Phase 5A zero-friction protocol discovery is implemented, GTK `surface.send_text` now returns a conflict when the terminal is not ready, host prerequisites are installed, the approved Ghostty/Zig gate built `ghostty/zig-out/lib/libghostty.so`, both `./scripts/check.sh` and `./scripts/xvfb-smoke-test.sh` pass locally with the Ghostty library on `LD_LIBRARY_PATH`, generated `new-pane --command` shell snippets now quote launch commands with regression coverage, and typed terminal text now rejects ESC/BEL/C1/control payloads except tab/LF/CR across CLI, bridge/core, and host sink paths. Next implement two-phase automatic bootstrap: launch the agent binary first, wait for pane readiness, then send prompt text through guarded `limux send`.
+Please resume the Limux work from HANDOFF.md. Phase 5A zero-friction protocol discovery, GTK `surface.send_text` readiness/failure reporting, shell-quoted launch snippets, typed-PTY control-character guards, and Phase 5B automatic `agent-team` bootstrap are implemented and verified. Host prerequisites are installed, the approved Ghostty/Zig gate built `ghostty/zig-out/lib/libghostty.so`, `./scripts/check.sh`, debug Xvfb smoke, and release Xvfb smoke pass locally. Next implement the project/team roster plus durable review and consensus ledger.
 ```

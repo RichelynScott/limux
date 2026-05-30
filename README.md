@@ -129,13 +129,16 @@ limux hooks setup
 echo '{"event":"stop"}' | limux claude-hook --event stop
 echo '{"event":"finished"}' | limux gemini-hook --event finished
 
-# Spin up a multi-agent collaboration team in the active workspace,
-# launches each agent's CLI, and writes LIMUX_AGENTS.md describing
-# the <agent-msg> XML protocol so peers can talk to each other:
+# Spin up a multi-agent collaboration team in the active workspace.
+# Limux launches each agent CLI, writes LIMUX_AGENTS.md describing
+# the <agent-msg> XML protocol, then sends each peer a short bootstrap
+# prompt that points back to that generated protocol file:
 limux agent-team --agents codex,claude --cwd "$PWD"
+# Use --no-bootstrap if you want panes launched but no post-launch prompt.
 # → Codex and Claude can now do:
 #   limux send --surface "<peer-surface-id>" \
 #     $'<agent-msg from="codex" to="claude" id="…" ts="…">…</agent-msg>\n'
+#   limux send-key --surface "<peer-surface-id>" enter
 # Text typed into terminal panes allows printable Unicode plus tab/LF/CR.
 # Use send-key for control keys; send/new-pane command text rejects ESC/BEL/CSI.
 
