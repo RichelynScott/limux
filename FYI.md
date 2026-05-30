@@ -268,3 +268,19 @@ Added `--no-bootstrap`, top-level/per-peer bootstrap status reporting, strict ge
 
 ### Related:
 `rust/limux-cli/src/main.rs` | `rust/limux-host-linux/src/window.rs` | `rust/limux-host-linux/src/terminal.rs` | `scripts/xvfb-smoke-test.sh` | `docs/cmux-parity-plan.md` | `docs/limux-hcom-workflow.md` | `HANDOFF.md` | hcom thread `limux-phase5b-bootstrap`
+
+## 2026-05-29 - Phase 5C Agent-Team Durable Roster And Review Ledger
+### What:
+Implemented Phase 5C for `limux agent-team`: runs now seed `LIMUX_TEAM_ROSTER.md` and `LIMUX_REVIEW_LEDGER.md` when missing and point generated protocol/bootstrap instructions at both durable coordination files.
+
+### Why:
+The operator workflow spans multiple projects and agent teams. Team ownership, related teams, reviewer findings, consensus decisions, accepted risks, and cross-team notifications need durable files instead of terminal scrollback.
+
+### How:
+Added `--roster-path`, `--ledger-path`, and `--force-roster-overwrite`; created a durable Markdown roster template and append-oriented review ledger template; preserved existing roster/ledger files by default; kept live surface/pane/workspace IDs in the regenerated `LIMUX_AGENTS.md` protocol instead of the durable roster; refused unmarked force replacement, symlink, non-regular, and overlapping roster/ledger/protocol targets; updated generated `LIMUX_AGENTS.md`, bootstrap prompts, README, roadmap, workflow, decision, and handoff docs. Expanded CLI tests and Xvfb fake-agent smoke proof so peers see protocol, roster, and ledger files before bootstrap.
+
+### Impact:
+`agent-team` now gives new Codex/Claude/Gemini/OpenCode panes a low-friction, file-backed place to find project/team routing and record review consensus. The next practical lane is a reviewer/capture wrapper plus consensus/cross-team broadcast conventions.
+
+### Related:
+`rust/limux-cli/src/main.rs` | `scripts/xvfb-smoke-test.sh` | `docs/cmux-parity-plan.md` | `docs/limux-hcom-workflow.md` | `docs/limux-vs-multica-decision-guide.md` | `HANDOFF.md`

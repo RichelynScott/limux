@@ -688,7 +688,7 @@
       <h2>Roadmap</h2>
       <div class="road-step done"><i class="road-dot"></i><div><strong>Context</strong><span>Limux and Multica compared.</span></div></div>
       <div class="road-step done"><i class="road-dot"></i><div><strong>Decision</strong><span>Limux + hcom primary; Multica deferred.</span></div></div>
-      <div class="road-step current"><i class="road-dot"></i><div><strong>Execution</strong><span>Phase 5B shipped; next roster and ledger.</span></div></div>
+      <div class="road-step current"><i class="road-dot"></i><div><strong>Execution</strong><span>Phase 5C shipped; next reviewer wrapper.</span></div></div>
       <div class="road-step done"><i class="road-dot"></i><div><strong>Canonical template</strong><span>Kazu completed global pattern update.</span></div></div>
       <div class="road-step current"><i class="road-dot"></i><div><strong>Closeout</strong><span>Handoff docs ready for morning.</span></div></div>
     </aside>
@@ -698,12 +698,12 @@
       <div class="hero-copy">
         <p class="eyebrow">Bottom line</p>
         <h1>Keep Limux + hcom primary.</h1>
-        <p class="lead">Multica stays deferred. Limux now has protected protocol discovery and post-launch peer bootstrap; the next step is durable roster and review-ledger support.</p>
+        <p class="lead">Multica stays deferred. Limux now has protected protocol discovery, post-launch peer bootstrap, and durable roster/review-ledger seeding; the next step is reviewer/capture workflow polish.</p>
         <div class="packet-meta" aria-label="Packet metadata">
           <div class="meta-item"><span>Scope</span><strong>/home/riche/MCPs/limux</strong></div>
           <div class="meta-item"><span>Runtime/session</span><strong>Codex / tipi</strong></div>
           <div class="meta-item"><span>Date</span><strong>2026-05-29</strong></div>
-          <div class="meta-item"><span>Time</span><strong>10:31 PM EDT</strong></div>
+          <div class="meta-item"><span>Time</span><strong>11:23 PM EDT</strong></div>
           <div class="meta-item"><span>Pattern</span><strong>$html-decision-packet</strong></div>
           <div class="meta-item"><span>Canonical owner</span><strong>@kazu completed global template request</strong></div>
         </div>
@@ -731,10 +731,10 @@
       <div class="section-body status-grid">
         <div class="status-card"><strong>Done</strong><span>User selected Limux + hcom primary and no Multica pilot for now.</span></div>
         <div class="status-card"><strong>Done</strong><span>Commit `cec067f` moved generated protocol output to `LIMUX_AGENTS.md` and added `--protocol-path`.</span></div>
-        <div class="status-card"><strong>Done</strong><span>Phase 5A/5B now generate protected instruction-source metadata and send sanitized post-launch bootstrap prompts.</span></div>
+        <div class="status-card"><strong>Done</strong><span>Phase 5A/5B/5C now generate protected instruction-source metadata, send sanitized post-launch bootstrap prompts, and seed durable roster/review-ledger files.</span></div>
         <div class="status-card"><strong>Done</strong><span>Typed terminal text now rejects ESC/BEL/C1/control payloads except tab, LF, and CR across CLI, bridge/core, and host send-sink paths.</span></div>
         <div class="status-card"><strong>Verified</strong><span>`cargo test -p limux-cli`, fmt, clippy, diff whitespace, full `./scripts/check.sh`, and debug/release Xvfb smoke pass locally.</span></div>
-        <div class="status-card"><strong>Gated</strong><span>Multica adoption remains deferred. The next Limux lane is roster/ledger and cross-team coordination polish.</span></div>
+        <div class="status-card"><strong>Gated</strong><span>Multica adoption remains deferred. The next Limux lane is reviewer/capture workflow polish and cross-team coordination conventions.</span></div>
         <div class="status-card"><strong>Local prerequisite</strong><span>Fresh clones or cleaned worktrees still need the reviewed Ghostty/Zig build lane before host checks.</span></div>
         <div class="status-card"><strong>Not done</strong><span>Did not clone, install, build, or run Multica. Did not edit global templates directly.</span></div>
       </div>
@@ -755,8 +755,8 @@
         </article>
         <article class="card">
           <span class="tag amber">Next</span>
-          <h3>Roster + ledger</h3>
-          <p>Add project/team roster and durable review/consensus ledger support for four-project workflows.</p>
+          <h3>Reviewer wrapper</h3>
+          <p>Add a wrapper for spawning reviewers, capturing their output, reading results, and writing consensus or cross-team pointers.</p>
         </article>
         <article class="card">
           <span class="tag green">Shipped</span>
@@ -881,8 +881,9 @@
             <li>Shipped: `--protocol-path` allows explicit sidecar location.</li>
             <li>Shipped: `Instruction Sources`, generated-marker, and no-overwrite behavior for `LIMUX_AGENTS.md`.</li>
             <li>Shipped: Phase 5B post-launch bootstrap prompts.</li>
-            <li>Next: add a project/team roster for 4+ project coordination.</li>
-            <li>Next: add a durable review and consensus ledger.</li>
+            <li>Shipped: Phase 5C seeds `LIMUX_TEAM_ROSTER.md` for 4+ project coordination.</li>
+            <li>Shipped: Phase 5C seeds `LIMUX_REVIEW_LEDGER.md` for durable review and consensus records.</li>
+            <li>Next: add a reviewer/capture wrapper and consensus report conventions.</li>
             <li>Improve transcript capture beyond visible viewport reads.</li>
           </ul>
         </article>
@@ -1035,12 +1036,16 @@
                 <span><strong>Keep Phase 5B bootstrap</strong><span>Orient new peers after protocol write.</span></span>
               </label>
               <label class="check">
-                <input type="checkbox" name="limux" value="Add a project/team roster for workspaces, sessions, owners, and related teams." checked>
-                <span><strong>Project/team roster</strong><span>Better 4+ project control.</span></span>
+                <input type="checkbox" name="limux" value="Keep the shipped project/team roster seeding for workspaces, sessions, owners, and related teams." checked>
+                <span><strong>Keep project/team roster</strong><span>Better 4+ project control.</span></span>
               </label>
               <label class="check">
-                <input type="checkbox" name="limux" value="Add a durable review and consensus ledger." checked>
-                <span><strong>Review ledger</strong><span>Make adversarial review decisions durable.</span></span>
+                <input type="checkbox" name="limux" value="Keep the shipped durable review and consensus ledger seeding." checked>
+                <span><strong>Keep review ledger</strong><span>Make adversarial review decisions durable.</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="limux" value="Add a reviewer/capture wrapper plus consensus report conventions." checked>
+                <span><strong>Reviewer wrapper</strong><span>Reduce review closeout friction.</span></span>
               </label>
               <label class="check">
                 <input type="checkbox" name="limux" value="Improve read-screen/transcript capture beyond visible viewport text.">
@@ -1250,7 +1255,7 @@
         '10. Extra notes:',
         notes.value.trim() ? `   - ${notes.value.trim().replace(/\n/g, '\n   - ')}` : '   - None.',
         '',
-        'Please use these decisions to proceed from HANDOFF.md with the project/team roster plus durable review and consensus ledger.'
+        'Please use these decisions to proceed from HANDOFF.md with the reviewer/capture wrapper plus consensus and cross-team broadcast conventions.'
       ];
 
       output.value = lines.join('\n');

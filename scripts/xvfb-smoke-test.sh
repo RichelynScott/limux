@@ -68,6 +68,8 @@ set -euo pipefail
 agent="$(basename "$0")"
 proof_dir="${LIMUX_FAKE_AGENT_PROOF_DIR:-__LIMUX_FAKE_AGENT_PROOF_DIR__}"
 protocol_path="${LIMUX_FAKE_AGENT_PROTOCOL_PATH:-__LIMUX_FAKE_AGENT_PROTOCOL_PATH__}"
+roster_path="${LIMUX_FAKE_AGENT_ROSTER_PATH:-__LIMUX_FAKE_AGENT_ROSTER_PATH__}"
+ledger_path="${LIMUX_FAKE_AGENT_LEDGER_PATH:-__LIMUX_FAKE_AGENT_LEDGER_PATH__}"
 mkdir -p "$proof_dir"
 line_status="timeout"
 line=""
@@ -78,11 +80,21 @@ protocol_exists="no"
 if [[ -f "$protocol_path" ]]; then
   protocol_exists="yes"
 fi
+roster_exists="no"
+if [[ -f "$roster_path" ]]; then
+  roster_exists="yes"
+fi
+ledger_exists="no"
+if [[ -f "$ledger_path" ]]; then
+  ledger_exists="yes"
+fi
 {
   printf 'agent=%s\n' "$agent"
   printf 'argc=%s\n' "$#"
   printf 'line_status=%s\n' "$line_status"
   printf 'protocol_exists=%s\n' "$protocol_exists"
+  printf 'roster_exists=%s\n' "$roster_exists"
+  printf 'ledger_exists=%s\n' "$ledger_exists"
   printf 'workspace=%s\n' "${LIMUX_WORKSPACE_ID:-}"
   printf 'surface=%s\n' "${LIMUX_SURFACE_ID:-}"
   printf 'line=%s\n' "$line"
@@ -91,12 +103,16 @@ FAKE_AGENT
 sed -i \
   -e "s|__LIMUX_FAKE_AGENT_PROOF_DIR__|$FAKE_AGENT_PROOF_DIR|g" \
   -e "s|__LIMUX_FAKE_AGENT_PROTOCOL_PATH__|$DEMO_DIR/LIMUX_AGENTS.md|g" \
+  -e "s|__LIMUX_FAKE_AGENT_ROSTER_PATH__|$DEMO_DIR/LIMUX_TEAM_ROSTER.md|g" \
+  -e "s|__LIMUX_FAKE_AGENT_LEDGER_PATH__|$DEMO_DIR/LIMUX_REVIEW_LEDGER.md|g" \
   "$FAKE_BIN_DIR/codex"
 cp "$FAKE_BIN_DIR/codex" "$FAKE_BIN_DIR/claude"
 chmod +x "$FAKE_BIN_DIR/codex" "$FAKE_BIN_DIR/claude"
 export PATH="$FAKE_BIN_DIR:$PATH"
 export LIMUX_FAKE_AGENT_PROOF_DIR="$FAKE_AGENT_PROOF_DIR"
 export LIMUX_FAKE_AGENT_PROTOCOL_PATH="$DEMO_DIR/LIMUX_AGENTS.md"
+export LIMUX_FAKE_AGENT_ROSTER_PATH="$DEMO_DIR/LIMUX_TEAM_ROSTER.md"
+export LIMUX_FAKE_AGENT_LEDGER_PATH="$DEMO_DIR/LIMUX_REVIEW_LEDGER.md"
 export LIMUX_FAKE_AGENT_READ_TIMEOUT=10
 cat > "$FAKE_ZDOTDIR/.zshenv" <<FAKE_ZSHENV
 export PATH="$FAKE_BIN_DIR:\$PATH"
@@ -117,11 +133,19 @@ echo "== stage 0: agent-team --dry-run (no host) =="
 "$LIMUX_CLI" agent-team --dry-run \
   --agents codex,claude,opencode,gemini \
   --cwd "$DEMO_DIR" \
+  --roster-path "$DEMO_DIR/stage0-team-roster.md" \
+  --ledger-path "$DEMO_DIR/stage0-review-ledger.md" \
   2>&1 | tee "$LOG_DIR/stage0.txt"
 
 grep -q "peers=\[codex, claude, opencode, gemini\]" \
   "$LOG_DIR/stage0.txt" \
   || { echo "FAIL: stage 0 dry-run did not report expected peers"; exit 1; }
+grep -q '<!-- limux-team-roster durable:create-if-missing:v1 -->' "$DEMO_DIR/stage0-team-roster.md" \
+  || { echo "FAIL: stage 0 did not create dry-run roster"; exit 1; }
+grep -q '<!-- limux-review-ledger durable:v1 -->' "$DEMO_DIR/stage0-review-ledger.md" \
+  || { echo "FAIL: stage 0 did not create dry-run review ledger"; exit 1; }
+grep -F -q '| `current` | peer | `opencode`' "$DEMO_DIR/stage0-team-roster.md" \
+  || { echo "FAIL: stage 0 roster missing opencode peer"; exit 1; }
 echo "stage 0: OK"
 
 # --- 4. Launch the live host under Xvfb ----------------------------------
@@ -225,6 +249,7 @@ done
 echo
 echo "== stage 2: agent-team two-phase bootstrap with fake agents =="
 rm -f "$FAKE_AGENT_PROOF_DIR"/*.bootstrap
+printf 'manual review ledger sentinel\n' > "$DEMO_DIR/LIMUX_REVIEW_LEDGER.md"
 "$LIMUX_CLI" --id-format both agent-team \
   --agents codex,claude \
   --cwd "$DEMO_DIR" \
@@ -259,9 +284,17 @@ for agent in codex claude; do
   grep -q '^argc=0$' "$proof" || { echo "FAIL: fake $agent received unexpected argv"; cat "$proof"; exit 1; }
   grep -q '^line_status=read$' "$proof" || { echo "FAIL: fake $agent did not read bootstrap prompt"; cat "$proof"; exit 1; }
   grep -q '^protocol_exists=yes$' "$proof" || { echo "FAIL: fake $agent read prompt before LIMUX_AGENTS.md existed"; cat "$proof"; exit 1; }
+  grep -q '^roster_exists=yes$' "$proof" || { echo "FAIL: fake $agent read prompt before LIMUX_TEAM_ROSTER.md existed"; cat "$proof"; exit 1; }
+  grep -q '^ledger_exists=yes$' "$proof" || { echo "FAIL: fake $agent read prompt before LIMUX_REVIEW_LEDGER.md existed"; cat "$proof"; exit 1; }
   grep -q 'Read the generated runtime protocol file' "$proof" || { echo "FAIL: fake $agent prompt missing protocol instruction"; cat "$proof"; exit 1; }
+  grep -q 'team roster' "$proof" || { echo "FAIL: fake $agent prompt missing roster instruction"; cat "$proof"; exit 1; }
+  grep -q 'durable review ledger' "$proof" || { echo "FAIL: fake $agent prompt missing ledger instruction"; cat "$proof"; exit 1; }
   grep -q 'authoritative instruction sources' "$proof" || { echo "FAIL: fake $agent prompt missing instruction-source instruction"; cat "$proof"; exit 1; }
 done
+grep -q '<!-- limux-team-roster durable:create-if-missing:v1 -->' "$DEMO_DIR/LIMUX_TEAM_ROSTER.md" \
+  || { echo "FAIL: live agent-team did not seed team roster"; exit 1; }
+grep -q 'manual review ledger sentinel' "$DEMO_DIR/LIMUX_REVIEW_LEDGER.md" \
+  || { echo "FAIL: live agent-team overwrote existing review ledger"; exit 1; }
 echo "stage 2: OK (fake agents received post-write bootstrap prompt)"
 
 # Extract the generated team targets for the remaining live bridge checks.

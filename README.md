@@ -131,8 +131,8 @@ echo '{"event":"finished"}' | limux gemini-hook --event finished
 
 # Spin up a multi-agent collaboration team in the active workspace.
 # Limux launches each agent CLI, writes LIMUX_AGENTS.md describing
-# the <agent-msg> XML protocol, then sends each peer a short bootstrap
-# prompt that points back to that generated protocol file:
+# the <agent-msg> XML protocol, seeds durable roster/ledger files
+# when missing, then sends each peer a short bootstrap prompt:
 limux agent-team --agents codex,claude --cwd "$PWD"
 # Use --no-bootstrap if you want panes launched but no post-launch prompt.
 # → Codex and Claude can now do:
@@ -159,12 +159,12 @@ limux send --workspace "$LIMUX_WORKSPACE_ID" --surface "<peer-surface-id>" \
 ```
 
 See the auto-generated `LIMUX_AGENTS.md` (written into the shared cwd by
-default) for the full protocol spec, peer table, instruction-source pointers,
-and editable Policies section. Generated files include a stable marker and an
-`Instruction Sources` table for detected `AGENTS.md`, `CLAUDE.md`, and
-`GEMINI.md` files, including path, modified time, and deterministic content
-hash metadata. Limux points agents to read those files directly; it does not
-copy or merge their contents.
+default) for the full protocol spec, peer table, durable coordination file
+pointers, instruction-source pointers, and editable Policies section. Generated
+files include a stable marker and an `Instruction Sources` table for detected
+`AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` files, including path, modified time,
+and deterministic content hash metadata. Limux points agents to read those files
+directly; it does not copy or merge their contents.
 
 Use `--protocol-path <path>` to write the generated protocol elsewhere.
 Existing unmarked protocol files are not overwritten by default; use
@@ -173,6 +173,23 @@ Existing unmarked protocol files are not overwritten by default; use
 instructions are not clobbered. Put durable team policy notes that should
 survive regeneration in `LIMUX_AGENTS.local.md`; Limux documents that sidecar
 but does not create or overwrite it.
+
+`agent-team` also seeds `LIMUX_TEAM_ROSTER.md` and `LIMUX_REVIEW_LEDGER.md`
+when missing. The roster maps projects, owners, hcom names, related teams,
+routing rules, and durable coordination files; live workspace/pane/surface IDs
+stay in the freshly generated `LIMUX_AGENTS.md` runtime protocol to avoid stale
+durable routing. The review ledger is for reviewer findings, consensus
+decisions, accepted risks, and cross-team notifications that should not live
+only in terminal scrollback. Existing roster and ledger files are preserved by
+default; use `--roster-path <path>`, `--ledger-path <path>`, and
+`--force-roster-overwrite` only when an intentional alternate path or marked
+roster reset is needed. Symlink and non-regular roster/ledger targets are
+refused.
+
+`--dry-run` does not contact a running Limux host, but it still materializes the
+generated protocol and seeds missing roster/ledger files so agents can inspect
+the exact outputs. Use temporary `--protocol-path`, `--roster-path`, and
+`--ledger-path` values when you want a preview outside the repo root.
 
 Checked-in hook templates live in [`hooks/`](hooks/). They mirror
 `limux hooks setup` for Codex, Claude Code, and Gemini CLI; OpenCode is

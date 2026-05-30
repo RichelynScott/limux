@@ -76,7 +76,8 @@ into a `notify` (and, where useful, an inline `send`). Drop-in for
 
 ### Phase 5 — `limux agent-team` + generated protocol file ✅
 `limux agent-team [--agents codex,claude[,opencode,gemini]] [--cwd <path>]
-[--protocol-path <path>] [--force-protocol-overwrite] [--no-launch]
+[--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>]
+[--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch]
 [--no-bootstrap] [--dry-run]`:
 
 - Splits the active workspace into one terminal pane per agent and launches
@@ -99,10 +100,20 @@ into a `notify` (and, where useful, an inline `send`). Drop-in for
     - the `limux notify` escalation path for human input,
     - the `LIMUX_*` env contract every spawned terminal inherits,
     - the optional `LIMUX_AGENTS.local.md` durable policy sidecar,
+    - the durable `LIMUX_TEAM_ROSTER.md` and `LIMUX_REVIEW_LEDGER.md`
+      coordination files,
     - editable Policies section (timeouts, size limits, destructive-action gating).
   Existing repo `AGENTS.md` files are not written by default. Existing unmarked
   protocol files are not overwritten unless `--force-protocol-overwrite` is
   explicitly passed. Symlink protocol paths are refused.
+- Seeds `LIMUX_TEAM_ROSTER.md` and `LIMUX_REVIEW_LEDGER.md` when missing, or
+  the explicit `--roster-path` / `--ledger-path` targets. Existing roster and
+  ledger files are preserved by default. `--force-roster-overwrite` replaces
+  only marked Limux roster files; the review ledger remains create-if-missing
+  only. Symlink, non-regular, and overlapping output paths are refused.
+- `--dry-run` does not contact a running host, but still writes the generated
+  protocol and seeds missing roster/ledger files. Use temporary explicit output
+  paths for preview-only runs.
 
 **Shipped in `cec067f`:**
 
@@ -164,6 +175,26 @@ into a `notify` (and, where useful, an inline `send`). Drop-in for
 - The Xvfb smoke harness shadows `codex` and `claude` with fake binaries and
   verifies both fake agents receive the post-write bootstrap prompt with
   `LIMUX_*` env and zero extra argv.
+
+**Shipped after Phase 5B: Phase 5C — durable roster and review ledger**
+
+- `agent-team` now seeds `LIMUX_TEAM_ROSTER.md` with project, agent, owner,
+  hcom, related-team, routing, privacy, and durable-file placeholders. Live
+  workspace/pane/surface IDs stay in the regenerated `LIMUX_AGENTS.md` runtime
+  protocol so the durable roster does not become stale routing data.
+- `agent-team` now seeds `LIMUX_REVIEW_LEDGER.md` with an append-oriented entry
+  template for reviewer findings, consensus decisions, accepted risks, and
+  cross-team notifications.
+- Generated `LIMUX_AGENTS.md` points peers to both durable files, and bootstrap
+  prompts tell launched peers to read the roster and ledger before starting.
+- Existing roster and ledger files are preserved by default. The roster has an
+  explicit `--force-roster-overwrite` reset path for marked Limux roster files;
+  the ledger is never overwritten by `agent-team`.
+- CLI tests cover dry-run creation, existing roster/ledger preservation, forced
+  roster replacement, unmarked roster force refusal, symlink refusal,
+  overlapping output path refusal, and live bootstrap ordering. The Xvfb smoke
+  harness now proves fake agents see protocol, roster, and ledger files before
+  receiving the bootstrap prompt.
 
 ### Phase 6 — (deferred) `limux progress`, `limux log`, `limux markdown`
 Nice polish, not blockers.

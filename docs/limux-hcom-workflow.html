@@ -621,9 +621,11 @@ Parent surface if blocked: &lt;surface-id&gt;.</code></pre>
           <strong>Protect repo instructions</strong>
           <code>limux agent-team --cwd "$PWD"</code> now writes generated runtime
           protocol to <code>LIMUX_AGENTS.md</code> by default, launches peer
-          panes, and sends each peer a short bootstrap prompt after the protocol
-          file is written. Repo instructions remain protected from the previous
-          default clobber path.
+          panes, seeds <code>LIMUX_TEAM_ROSTER.md</code> and
+          <code>LIMUX_REVIEW_LEDGER.md</code> when missing, and sends each peer
+          a short bootstrap prompt after those coordination files are written.
+          Repo instructions remain protected from the previous default clobber
+          path.
         </div>
 
         <p>
@@ -631,8 +633,8 @@ Parent surface if blocked: &lt;surface-id&gt;.</code></pre>
           copy of <code>AGENTS.md</code>. Repo instruction files such as
           <code>AGENTS.md</code>, <code>CLAUDE.md</code>, and
           <code>GEMINI.md</code> remain authoritative. The generated sidecar
-          should describe Limux runtime topology, peer routing, messaging, and
-          human-notification rules.
+          should describe Limux runtime topology, coordination-file pointers,
+          peer routing, messaging, and human-notification rules.
         </p>
         <p>
           <code>LIMUX_AGENTS.md</code> now includes an
@@ -644,6 +646,21 @@ Parent surface if blocked: &lt;surface-id&gt;.</code></pre>
           should live somewhere other than the shared cwd, and
           <code>--no-bootstrap</code> when you want panes launched without the
           post-launch prompt.
+        </p>
+        <p>
+          Durable coordination files are seeded only when missing:
+          <code>LIMUX_TEAM_ROSTER.md</code> maps projects, agents, hcom names,
+          owners, related teams, routing rules, and coordination-file paths.
+          Live workspace/pane/surface IDs stay in the current generated
+          <code>LIMUX_AGENTS.md</code> runtime protocol so the durable roster
+          does not become stale routing data. <code>LIMUX_REVIEW_LEDGER.md</code>
+          is the durable place for reviewer findings, consensus decisions,
+          accepted risks, unresolved risks, and cross-team notifications.
+          Existing roster and ledger files are preserved by default; use
+          <code>--roster-path</code>, <code>--ledger-path</code>, or
+          <code>--force-roster-overwrite</code> only when intentional for marked
+          Limux roster files. <code>--dry-run</code> skips host contact but still
+          materializes the protocol and seeds missing roster/ledger files.
         </p>
       </section>
 
@@ -678,11 +695,10 @@ Parent surface if blocked: &lt;surface-id&gt;.</code></pre>
       <section id="improvements">
         <h2>Best Next Improvements</h2>
         <ol>
-          <li>Add a compact project roster file mapping project names to Limux workspaces, surface IDs, hcom names, and durable coordination files.</li>
-          <li>Add a durable review and consensus ledger for reviewer findings, decisions, and unresolved risks.</li>
           <li>Add a wrapper command for "spawn reviewer, capture surface, read result".</li>
           <li>Add documented conventions for consensus reports and cross-team broadcasts.</li>
           <li>Add optional runtime-specific <code>.limux/</code> adapters for Codex, Claude Code, Gemini, and OpenCode if direct protocol discovery needs deeper integration.</li>
+          <li>Add a later machine-readable roster/ledger adapter if Markdown sidecars are not enough for automation.</li>
         </ol>
       </section>
 
@@ -690,14 +706,15 @@ Parent surface if blocked: &lt;surface-id&gt;.</code></pre>
         <h2>Current Prime Snapshot</h2>
         <ul>
           <li><code>agent-team</code> writes <code>LIMUX_AGENTS.md</code> by default and supports <code>--protocol-path</code>.</li>
+          <li><code>agent-team</code> seeds <code>LIMUX_TEAM_ROSTER.md</code> and <code>LIMUX_REVIEW_LEDGER.md</code> when missing and supports <code>--roster-path</code>, <code>--ledger-path</code>, and <code>--force-roster-overwrite</code>.</li>
           <li>Existing repo <code>AGENTS.md</code> files are not written by default.</li>
-          <li>Generated <code>LIMUX_AGENTS.md</code> files include a generated marker, instruction sources, sidecar policy guidance, and no-overwrite protection for unmarked sidecars.</li>
-          <li>Live <code>agent-team</code> launches peer panes with bare agent commands, writes the protocol file before bootstrap, then submits a sanitized one-line bootstrap prompt with explicit Enter. <code>--no-bootstrap</code> and <code>--no-launch</code> skip prompt sends.</li>
+          <li>Generated <code>LIMUX_AGENTS.md</code> files include a generated marker, instruction sources, durable roster/ledger pointers, sidecar policy guidance, and no-overwrite protection for unmarked sidecars.</li>
+          <li>Live <code>agent-team</code> launches peer panes with bare agent commands, writes the protocol, roster, and ledger before bootstrap, then submits a sanitized one-line bootstrap prompt with explicit Enter. <code>--no-bootstrap</code> and <code>--no-launch</code> skip prompt sends.</li>
           <li>Generated <code>new-pane --command</code> examples quote launch commands and avoid nested arbitrary prompt text.</li>
           <li>Typed terminal text now rejects ESC/BEL/C1/control payloads except tab, LF, and CR across CLI, bridge/core, and host send-sink paths.</li>
           <li>Latest tag is <code>v0.1.19</code>.</li>
           <li>Full <code>./scripts/check.sh</code> and <code>./scripts/xvfb-smoke-test.sh</code> pass locally with the local Ghostty library; the smoke script exports the required library path automatically when <code>ghostty/zig-out/lib</code> exists.</li>
-          <li>Next: project/team roster plus durable review and consensus ledger.</li>
+          <li>Next: reviewer/capture wrapper plus documented consensus and cross-team broadcast conventions.</li>
         </ul>
       </section>
 

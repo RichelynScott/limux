@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 use std::env;
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::hash::{Hash, Hasher};
-use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
+use std::io::{ErrorKind, Write};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -22,7 +22,11 @@ const AGENT_TEAM_BOOTSTRAP_LAUNCH_SETTLE: Duration = Duration::from_millis(1000)
 const AGENT_TEAM_BOOTSTRAP_RETRY_ATTEMPTS: usize = 50;
 const AGENT_TEAM_BOOTSTRAP_RETRY_INTERVAL: Duration = Duration::from_millis(100);
 const AGENT_TEAM_PROTOCOL_MARKER: &str = "<!-- limux-agent-team-protocol generated:v1 -->";
+const AGENT_TEAM_ROSTER_MARKER: &str = "<!-- limux-team-roster durable:create-if-missing:v1 -->";
+const AGENT_TEAM_LEDGER_MARKER: &str = "<!-- limux-review-ledger durable:v1 -->";
 const AGENT_TEAM_DEFAULT_PROTOCOL_FILE: &str = "LIMUX_AGENTS.md";
+const AGENT_TEAM_DEFAULT_ROSTER_FILE: &str = "LIMUX_TEAM_ROSTER.md";
+const AGENT_TEAM_DEFAULT_LEDGER_FILE: &str = "LIMUX_REVIEW_LEDGER.md";
 const AGENT_TEAM_LOCAL_POLICY_FILE: &str = "LIMUX_AGENTS.local.md";
 const AGENT_TEAM_INSTRUCTION_FILES: &[&str] = &["AGENTS.md", "CLAUDE.md", "GEMINI.md"];
 
@@ -206,10 +210,10 @@ fn parse_global_args() -> Result<GlobalOptions> {
 
 fn print_help() {
     println!(
-        "limux CLI\n\nUsage: limux [--socket <path>] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--cwd <path>] [--protocol-path <path>] [--force-protocol-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the active workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, and writes LIMUX_AGENTS.md by default describing\n      the <agent-msg> XML protocol so peers can talk via\n      `limux send --surface <peer-surface-id> <envelope>`.\n"
+        "limux CLI\n\nUsage: limux [--socket <path>] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the active workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, writes LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md\n      plus LIMUX_REVIEW_LEDGER.md when missing so peers can coordinate via\n      durable files and `limux send --surface <peer-surface-id> <envelope>`.\n"
     );
     println!(
-        "  agent-team extra flags: --no-bootstrap skips the post-launch bootstrap prompt while still launching panes."
+        "  agent-team extra flags: --no-bootstrap skips the post-launch bootstrap prompt while still launching panes; --dry-run skips host contact but still materializes the protocol and seeds missing roster/ledger files."
     );
 }
 
@@ -1753,11 +1757,18 @@ fn validate_agent_team_bootstrap_prompt(text: &str) -> Result<()> {
     Ok(())
 }
 
-fn build_agent_team_bootstrap_prompt(agent: &str, protocol_path: &Path) -> Result<String> {
+fn build_agent_team_bootstrap_prompt(
+    agent: &str,
+    protocol_path: &Path,
+    roster_path: &Path,
+    ledger_path: &Path,
+) -> Result<String> {
     let prompt = format!(
-        "You are {agent} in a Limux agent-team pane. Read the generated runtime protocol file at {protocol_path}, then read the authoritative instruction sources listed in that file; do not treat LIMUX_AGENTS.md as copied AGENTS.md content; use limux send --surface for peer messages and limux notify for human input; reply to the orchestrator when ready.",
+        "You are {agent} in a Limux agent-team pane. Read the generated runtime protocol file at {protocol_path}, the durable ownership/team roster at {roster_path}, and the durable review ledger at {ledger_path}, then read the authoritative instruction sources listed in the protocol file; use the protocol file for current surface IDs; do not treat LIMUX_AGENTS.md as copied AGENTS.md content; use limux send --surface for peer messages and limux notify for human input; record durable review decisions in the ledger; reply to the orchestrator when ready.",
         agent = bootstrap_prompt_value(agent),
         protocol_path = bootstrap_prompt_value(&protocol_path.to_string_lossy()),
+        roster_path = bootstrap_prompt_value(&roster_path.to_string_lossy()),
+        ledger_path = bootstrap_prompt_value(&ledger_path.to_string_lossy()),
     );
     validate_agent_team_bootstrap_prompt(&prompt)?;
     Ok(prompt)
@@ -2147,6 +2158,7 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
     let no_bootstrap = parse_flag(args, "--no-bootstrap");
     let dry_run = parse_flag(args, "--dry-run");
     let force_protocol_overwrite = parse_flag(args, "--force-protocol-overwrite");
+    let force_roster_overwrite = parse_flag(args, "--force-roster-overwrite");
     let bootstrap_enabled = !no_launch && !no_bootstrap;
 
     // Resolve the agent list up front so --dry-run can build a deterministic
@@ -2167,7 +2179,12 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
     }
 
     let agents_md_path = resolve_agent_team_protocol_path(&cwd, args);
+    let roster_path = resolve_agent_team_roster_path(&cwd, args);
+    let ledger_path = resolve_agent_team_ledger_path(&cwd, args);
+    validate_agent_team_output_paths_are_distinct(&agents_md_path, &roster_path, &ledger_path)?;
     validate_agent_team_protocol_file(&agents_md_path, force_protocol_overwrite)?;
+    validate_agent_team_roster_file(&roster_path, force_roster_overwrite)?;
+    validate_agent_team_durable_file_path(&ledger_path, "review ledger")?;
     let instruction_sources = discover_instruction_sources(Path::new(&cwd));
 
     if dry_run {
@@ -2189,9 +2206,29 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
             "<active-workspace>",
             "<dry-run-workspace>",
             "<dry-run-orchestrator>",
+            AgentTeamCoordinationFiles {
+                roster_path: &roster_path,
+                ledger_path: &ledger_path,
+            },
             &instruction_sources,
         );
+        let roster_body = build_agent_team_roster_md(
+            &peers,
+            &cwd,
+            "<active-workspace>",
+            "<dry-run-workspace>",
+            "<dry-run-orchestrator>",
+            &agents_md_path,
+            &ledger_path,
+        );
+        let ledger_body = build_agent_team_ledger_md(&cwd, &agents_md_path, &roster_path);
         write_agent_team_protocol_file(&agents_md_path, &body, force_protocol_overwrite)?;
+        let roster_status = write_agent_team_roster_file_if_missing(
+            &roster_path,
+            &roster_body,
+            force_roster_overwrite,
+        )?;
+        let ledger_status = create_agent_team_ledger_file_if_missing(&ledger_path, &ledger_body)?;
         return Ok(json!({
             "ok": true,
             "cwd": cwd,
@@ -2200,6 +2237,14 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
             "orchestrator_surface_id": Value::Null,
             "agents_md": agents_md_path.to_string_lossy(),
             "protocol_path": agents_md_path.to_string_lossy(),
+            "roster_path": roster_path.to_string_lossy(),
+            "ledger_path": ledger_path.to_string_lossy(),
+            "roster": {
+                "status": roster_status,
+            },
+            "ledger": {
+                "status": ledger_status,
+            },
             "dry_run": true,
             "no_launch": no_launch,
             "bootstrap": {
@@ -2338,9 +2383,29 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
         &workspace_name,
         &workspace_id,
         &orchestrator_surface,
+        AgentTeamCoordinationFiles {
+            roster_path: &roster_path,
+            ledger_path: &ledger_path,
+        },
         &instruction_sources,
     );
+    let roster_body = build_agent_team_roster_md(
+        &peers,
+        &cwd,
+        &workspace_name,
+        &workspace_id,
+        &orchestrator_surface,
+        &agents_md_path,
+        &ledger_path,
+    );
+    let ledger_body = build_agent_team_ledger_md(&cwd, &agents_md_path, &roster_path);
     write_agent_team_protocol_file(&agents_md_path, &body, force_protocol_overwrite)?;
+    let roster_status = write_agent_team_roster_file_if_missing(
+        &roster_path,
+        &roster_body,
+        force_roster_overwrite,
+    )?;
+    let ledger_status = create_agent_team_ledger_file_if_missing(&ledger_path, &ledger_body)?;
 
     let mut bootstrap_results: Vec<(String, Option<String>)> = peers
         .iter()
@@ -2349,7 +2414,12 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
     if bootstrap_enabled {
         tokio::time::sleep(AGENT_TEAM_BOOTSTRAP_LAUNCH_SETTLE).await;
         for (index, (name, _pane_id, surface_id, _launch)) in peers.iter().enumerate() {
-            let prompt = build_agent_team_bootstrap_prompt(name, &agents_md_path)?;
+            let prompt = build_agent_team_bootstrap_prompt(
+                name,
+                &agents_md_path,
+                &roster_path,
+                &ledger_path,
+            )?;
             match send_agent_team_bootstrap_prompt(client, &workspace_id, surface_id, name, &prompt)
                 .await
             {
@@ -2380,6 +2450,14 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
         "orchestrator_surface_id": orchestrator_surface,
         "agents_md": agents_md_path.to_string_lossy(),
         "protocol_path": agents_md_path.to_string_lossy(),
+        "roster_path": roster_path.to_string_lossy(),
+        "ledger_path": ledger_path.to_string_lossy(),
+        "roster": {
+            "status": roster_status,
+        },
+        "ledger": {
+            "status": ledger_status,
+        },
         "dry_run": false,
         "no_launch": no_launch,
         "bootstrap": {
@@ -2407,8 +2485,30 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
 }
 
 fn resolve_agent_team_protocol_path(cwd: &str, args: &[String]) -> PathBuf {
+    resolve_agent_team_output_path(
+        cwd,
+        args,
+        "--protocol-path",
+        AGENT_TEAM_DEFAULT_PROTOCOL_FILE,
+    )
+}
+
+fn resolve_agent_team_roster_path(cwd: &str, args: &[String]) -> PathBuf {
+    resolve_agent_team_output_path(cwd, args, "--roster-path", AGENT_TEAM_DEFAULT_ROSTER_FILE)
+}
+
+fn resolve_agent_team_ledger_path(cwd: &str, args: &[String]) -> PathBuf {
+    resolve_agent_team_output_path(cwd, args, "--ledger-path", AGENT_TEAM_DEFAULT_LEDGER_FILE)
+}
+
+fn resolve_agent_team_output_path(
+    cwd: &str,
+    args: &[String],
+    flag: &str,
+    default_file: &str,
+) -> PathBuf {
     let cwd_path = Path::new(cwd);
-    if let Some(raw_path) = parse_opt(args, "--protocol-path") {
+    if let Some(raw_path) = parse_opt(args, flag) {
         let path = PathBuf::from(raw_path);
         return if path.is_absolute() {
             path
@@ -2417,10 +2517,94 @@ fn resolve_agent_team_protocol_path(cwd: &str, args: &[String]) -> PathBuf {
         };
     }
 
-    cwd_path.join(AGENT_TEAM_DEFAULT_PROTOCOL_FILE)
+    cwd_path.join(default_file)
+}
+
+fn validate_agent_team_output_paths_are_distinct(
+    protocol_path: &Path,
+    roster_path: &Path,
+    ledger_path: &Path,
+) -> Result<()> {
+    let paths = [
+        (
+            "protocol",
+            protocol_path,
+            comparable_agent_team_path(protocol_path),
+        ),
+        (
+            "team roster",
+            roster_path,
+            comparable_agent_team_path(roster_path),
+        ),
+        (
+            "review ledger",
+            ledger_path,
+            comparable_agent_team_path(ledger_path),
+        ),
+    ];
+    for (left_index, (left_label, left_path, left_comparable)) in paths.iter().enumerate() {
+        for (right_label, _right_path, right_comparable) in paths.iter().skip(left_index + 1) {
+            if left_comparable == right_comparable {
+                bail!(
+                    "agent-team output paths must be distinct; {left_label} and {right_label} both resolve to {}",
+                    left_path.display()
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn comparable_agent_team_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !normalized.pop() {
+                    normalized.push(component.as_os_str());
+                }
+            }
+            Component::Normal(part) => normalized.push(part),
+            Component::RootDir | Component::Prefix(_) => normalized.push(component.as_os_str()),
+        }
+    }
+    normalized
 }
 
 fn validate_agent_team_protocol_file(path: &Path, force: bool) -> Result<()> {
+    validate_agent_team_generated_file(
+        path,
+        AGENT_TEAM_PROTOCOL_MARKER,
+        force,
+        "protocol",
+        "--force-protocol-overwrite",
+    )
+}
+
+fn validate_agent_team_roster_file(path: &Path, force: bool) -> Result<()> {
+    validate_agent_team_durable_file_path(path, "team roster")?;
+    if force && path.exists() {
+        let existing = fs::read_to_string(path).with_context(|| {
+            format!("failed to inspect existing team roster {}", path.display())
+        })?;
+        if !existing.contains(AGENT_TEAM_ROSTER_MARKER) {
+            bail!(
+                "refusing to replace existing unmarked team roster {}; move it aside or add the Limux roster marker before using --force-roster-overwrite",
+                path.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+fn validate_agent_team_generated_file(
+    path: &Path,
+    marker: &str,
+    force: bool,
+    label: &str,
+    force_flag: &str,
+) -> Result<()> {
     let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(()),
@@ -2432,13 +2616,13 @@ fn validate_agent_team_protocol_file(path: &Path, force: bool) -> Result<()> {
     let file_type = metadata.file_type();
     if file_type.is_symlink() {
         bail!(
-            "refusing to write protocol path because it is a symlink: {}",
+            "refusing to write {label} path because it is a symlink: {}",
             path.display()
         );
     }
     if !file_type.is_file() {
         bail!(
-            "refusing to write protocol path because it is not a regular file: {}",
+            "refusing to write {label} path because it is not a regular file: {}",
             path.display()
         );
     }
@@ -2446,15 +2630,11 @@ fn validate_agent_team_protocol_file(path: &Path, force: bool) -> Result<()> {
         return Ok(());
     }
 
-    let existing = fs::read_to_string(path).with_context(|| {
-        format!(
-            "failed to inspect existing protocol file {}",
-            path.display()
-        )
-    })?;
-    if !existing.contains(AGENT_TEAM_PROTOCOL_MARKER) {
+    let existing = fs::read_to_string(path)
+        .with_context(|| format!("failed to inspect existing {label} file {}", path.display()))?;
+    if !existing.contains(marker) {
         bail!(
-            "refusing to overwrite existing unmarked protocol file {}; rerun with --force-protocol-overwrite only if this file is safe to replace",
+            "refusing to overwrite existing unmarked {label} file {}; rerun with {force_flag} only if this file is safe to replace",
             path.display()
         );
     }
@@ -2462,10 +2642,10 @@ fn validate_agent_team_protocol_file(path: &Path, force: bool) -> Result<()> {
     Ok(())
 }
 
-fn temporary_agent_team_protocol_path(path: &Path) -> Result<PathBuf> {
+fn temporary_agent_team_output_path(path: &Path) -> Result<PathBuf> {
     let file_name = path
         .file_name()
-        .ok_or_else(|| anyhow!("protocol path has no file name: {}", path.display()))?;
+        .ok_or_else(|| anyhow!("output path has no file name: {}", path.display()))?;
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
@@ -2476,29 +2656,148 @@ fn temporary_agent_team_protocol_path(path: &Path) -> Result<PathBuf> {
 }
 
 fn write_agent_team_protocol_file(path: &Path, body: &str, force: bool) -> Result<()> {
+    write_agent_team_generated_file(
+        path,
+        body,
+        force,
+        validate_agent_team_protocol_file,
+        "protocol",
+    )
+}
+
+fn write_agent_team_generated_file(
+    path: &Path,
+    body: &str,
+    force: bool,
+    validate: fn(&Path, bool) -> Result<()>,
+    label: &str,
+) -> Result<()> {
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
             fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create {}", parent.display()))?;
         }
     }
-    validate_agent_team_protocol_file(path, force)?;
+    validate(path, force)?;
 
-    let temp_path = temporary_agent_team_protocol_path(path)?;
+    let temp_path = temporary_agent_team_output_path(path)?;
     fs::write(&temp_path, body)
         .with_context(|| format!("failed to write {}", temp_path.display()))?;
-    validate_agent_team_protocol_file(path, force)?;
+    validate(path, force)?;
     if let Err(err) = fs::rename(&temp_path, path) {
         let _ = fs::remove_file(&temp_path);
         return Err(err).with_context(|| {
             format!(
-                "failed to move generated protocol from {} to {}",
+                "failed to move generated {label} from {} to {}",
                 temp_path.display(),
                 path.display()
             )
         });
     }
     Ok(())
+}
+
+fn create_agent_team_ledger_file_if_missing(path: &Path, body: &str) -> Result<&'static str> {
+    create_agent_team_durable_file_if_missing(path, body, "review ledger")
+}
+
+fn create_agent_team_durable_file_if_missing(
+    path: &Path,
+    body: &str,
+    label: &str,
+) -> Result<&'static str> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+    }
+
+    match validate_agent_team_durable_file_path(path, label) {
+        Ok(()) if path.exists() => Ok("existing"),
+        Ok(()) => match OpenOptions::new().write(true).create_new(true).open(path) {
+            Ok(mut file) => {
+                if let Err(err) = file.write_all(body.as_bytes()) {
+                    let _ = fs::remove_file(path);
+                    return Err(err)
+                        .with_context(|| format!("failed to write {label} {}", path.display()));
+                }
+                Ok("created")
+            }
+            Err(err) if err.kind() == ErrorKind::AlreadyExists => {
+                validate_agent_team_durable_file_path(path, label)?;
+                Ok("existing")
+            }
+            Err(err) => {
+                Err(err).with_context(|| format!("failed to create {label} {}", path.display()))
+            }
+        },
+        Err(error) => Err(error),
+    }
+}
+
+fn validate_agent_team_durable_file_path(path: &Path, label: &str) -> Result<()> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(err) => {
+            return Err(err).with_context(|| format!("failed to inspect {}", path.display()));
+        }
+    };
+    let file_type = metadata.file_type();
+    if file_type.is_symlink() {
+        bail!(
+            "refusing to use {label} path because it is a symlink: {}",
+            path.display()
+        );
+    }
+    if !file_type.is_file() {
+        bail!(
+            "refusing to use {label} path because it is not a regular file: {}",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+fn write_agent_team_roster_file_if_missing(
+    path: &Path,
+    body: &str,
+    force: bool,
+) -> Result<&'static str> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+    }
+    validate_agent_team_roster_file(path, force)?;
+    let existed = path.exists();
+
+    if !force {
+        return create_agent_team_durable_file_if_missing(path, body, "team roster");
+    }
+
+    let temp_path = temporary_agent_team_output_path(path)?;
+    fs::write(&temp_path, body)
+        .with_context(|| format!("failed to write {}", temp_path.display()))?;
+    validate_agent_team_roster_file(path, force)?;
+    if let Err(err) = fs::rename(&temp_path, path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(err).with_context(|| {
+            format!(
+                "failed to move generated roster seed from {} to {}",
+                temp_path.display(),
+                path.display()
+            )
+        });
+    }
+
+    if existed && force {
+        Ok("replaced")
+    } else {
+        Ok("created")
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2509,6 +2808,12 @@ struct InstructionSource {
     modified_unix: Option<u64>,
     hash: Option<String>,
     note: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct AgentTeamCoordinationFiles<'a> {
+    roster_path: &'a Path,
+    ledger_path: &'a Path,
 }
 
 fn discover_instruction_sources(cwd: &Path) -> Vec<InstructionSource> {
@@ -2592,7 +2897,142 @@ fn fnv1a64_hash(bytes: &[u8]) -> String {
 }
 
 fn markdown_table_cell(value: &str) -> String {
-    value.replace('\n', " ").replace('|', "\\|")
+    value
+        .replace('\n', " ")
+        .replace('|', "\\|")
+        .replace('`', "'")
+}
+
+fn markdown_path(path: &Path) -> String {
+    markdown_table_cell(&path.to_string_lossy())
+}
+
+fn build_agent_team_roster_md(
+    peers: &[(String, String, String, String)],
+    cwd: &str,
+    workspace_name: &str,
+    _workspace_id: &str,
+    _orchestrator_surface: &str,
+    protocol_path: &Path,
+    ledger_path: &Path,
+) -> String {
+    let mut out = String::new();
+    out.push_str(AGENT_TEAM_ROSTER_MARKER);
+    out.push('\n');
+    out.push_str("# Limux Team Roster\n\n");
+    out.push_str(
+        "This durable file is seeded by `limux agent-team` when missing. Edit it\n\
+         to track project owners, hcom names, related teams, durable handoffs,\n\
+         and routing rules. Limux does not overwrite it during normal\n\
+         regeneration.\n\n",
+    );
+
+    out.push_str("## Coordination Files\n\n");
+    out.push_str("| Purpose | Path | Notes |\n");
+    out.push_str("|---|---|---|\n");
+    out.push_str(&format!(
+        "| Runtime protocol | `{}` | Generated; current workspace peers and message protocol |\n",
+        markdown_path(protocol_path)
+    ));
+    out.push_str(&format!(
+        "| Local policy | `{}` | Optional durable team policy; Limux never creates or overwrites it |\n",
+        markdown_table_cell(AGENT_TEAM_LOCAL_POLICY_FILE)
+    ));
+    out.push_str(&format!(
+        "| Review ledger | `{}` | Append-only review findings, consensus decisions, and open risks |\n\n",
+        markdown_path(ledger_path)
+    ));
+
+    out.push_str("## Projects\n\n");
+    out.push_str("| Project ID | Name | Repo Path | Runtime Source | Lead | hcom Thread | Related Teams | Status |\n");
+    out.push_str("|---|---|---|---|---|---|---|---|\n");
+    out.push_str(&format!(
+        "| `current` | `{}` | `{}` | `{}` | `unassigned` | `limux-agent-team` | `unassigned` | active |\n\n",
+        markdown_table_cell(workspace_name),
+        markdown_table_cell(cwd),
+        markdown_path(protocol_path)
+    ));
+
+    out.push_str("## Agents\n\n");
+    out.push_str(
+        "| Project ID | Role | Runtime | hcom Name | Owner | Scope | Status | Handoff |\n",
+    );
+    out.push_str("|---|---|---|---|---|---|---|---|\n");
+    out.push_str("| `current` | orchestrator | unknown | `unassigned` | `unassigned` | repo orchestration | active | `HANDOFF.md` |\n");
+    for (name, _pane_id, _surface_id, _launch) in peers {
+        out.push_str(&format!(
+            "| `current` | peer | `{}` | `unassigned` | `unassigned` | repo peer work | active | `HANDOFF.md` |\n",
+            markdown_table_cell(name)
+        ));
+    }
+    out.push('\n');
+    out.push_str(
+        "Live workspace IDs, pane IDs, surface IDs, and launch commands are\n\
+         volatile. Use the current generated runtime protocol file listed above\n\
+         for live surface routing; keep durable ownership and cross-team routing\n\
+         here.\n\n",
+    );
+
+    out.push_str("## Routing Rules\n\n");
+    out.push_str("| Path/Topic | Owner | Preferred Channel | Fallback | Notes |\n");
+    out.push_str("|---|---|---|---|---|\n");
+    out.push_str("| `.` | `unassigned` | Limux surface / hcom 1:1 | review ledger entry | Replace this row with project-specific ownership. |\n\n");
+
+    out.push_str("## Privacy Rules\n\n");
+    out.push_str("- Do not store secrets, tokens, credentials, env dumps, browser cookies, or raw terminal transcripts here.\n");
+    out.push_str(
+        "- Prefer repo-relative paths before sharing this file outside the local machine.\n",
+    );
+    out.push_str(
+        "- Treat surface IDs, pane IDs, workspace IDs, and hcom names as local topology.\n",
+    );
+
+    out
+}
+
+fn build_agent_team_ledger_md(cwd: &str, protocol_path: &Path, roster_path: &Path) -> String {
+    let mut out = String::new();
+    out.push_str(AGENT_TEAM_LEDGER_MARKER);
+    out.push('\n');
+    out.push_str("# Limux Review And Consensus Ledger\n\n");
+    out.push_str(
+        "Append review findings, consensus decisions, accepted risks, and\n\
+         cross-team notification records here. Limux creates this file only\n\
+         when it is missing and never overwrites existing entries.\n\n",
+    );
+    out.push_str("## Coordination\n\n");
+    out.push_str(&format!("- Shared cwd: `{}`\n", markdown_table_cell(cwd)));
+    out.push_str(&format!(
+        "- Runtime protocol: `{}`\n",
+        markdown_path(protocol_path)
+    ));
+    out.push_str(&format!(
+        "- Team roster: `{}`\n\n",
+        markdown_path(roster_path)
+    ));
+
+    out.push_str("## Entry Template\n\n");
+    out.push_str("```markdown\n");
+    out.push_str("## <UTC timestamp> - <review-id>\n\n");
+    out.push_str("Status: pending | go | wait | no-go | superseded\n");
+    out.push_str("Project: `current`\n");
+    out.push_str("Thread: `limux-agent-team`\n");
+    out.push_str("Artifact: `<path or commit/ref>`\n");
+    out.push_str("Coordinator: `<agent or human>`\n\n");
+    out.push_str("### Reviewers\n\n");
+    out.push_str("| Reviewer | Runtime | hcom Name | Lens | Verdict | Evidence |\n");
+    out.push_str("|---|---|---|---|---|---|\n\n");
+    out.push_str("### Findings\n\n");
+    out.push_str("| Severity | File | Line | Summary | Owner | Status |\n");
+    out.push_str("|---|---|---:|---|---|---|\n\n");
+    out.push_str("### Consensus\n\n");
+    out.push_str("Decision: `<GO/WAIT/NO-GO plus rationale>`\n");
+    out.push_str("Open risks: `<short list or none>`\n");
+    out.push_str("Next actions: `<owner/action/status>`\n");
+    out.push_str("Cross-team notifications: `<hcom targets or none>`\n");
+    out.push_str("```\n\n");
+    out.push_str("## Entries\n\n");
+    out
 }
 
 fn build_agents_md(
@@ -2601,6 +3041,7 @@ fn build_agents_md(
     workspace_name: &str,
     workspace_id: &str,
     orchestrator_surface: &str,
+    coordination_files: AgentTeamCoordinationFiles<'_>,
     instruction_sources: &[InstructionSource],
 ) -> String {
     let mut out = String::new();
@@ -2656,6 +3097,21 @@ fn build_agents_md(
         AGENT_TEAM_LOCAL_POLICY_FILE
     ));
 
+    out.push_str("## Durable Coordination Files\n\n");
+    out.push_str(
+        "Use these files for project/team state that should survive protocol\n\
+         regeneration. Limux seeds the roster and ledger only when missing;\n\
+         it does not overwrite existing durable entries by default.\n\n",
+    );
+    out.push_str(&format!(
+        "- Team roster: `{}`\n",
+        markdown_path(coordination_files.roster_path)
+    ));
+    out.push_str(&format!(
+        "- Review and consensus ledger: `{}`\n\n",
+        markdown_path(coordination_files.ledger_path)
+    ));
+
     out.push_str(&format!(
         "## Team workspace\n\n\
          The orchestrator (the pane that ran `limux agent-team`) and all\n\
@@ -2677,7 +3133,9 @@ fn build_agents_md(
     out.push('\n');
     out.push_str(
         "The orchestrator is not in the table — message it back using its\n\
-         `Orchestrator surface` from the block above.\n\n",
+         `Orchestrator surface` from the block above. This table is the current\n\
+         runtime snapshot; durable ownership and cross-project routing belong\n\
+         in the team roster.\n\n",
     );
 
     out.push_str("## How to send a message\n\n");
@@ -2761,6 +3219,7 @@ fn build_agents_md(
     out.push_str(
         "- Never send more than 200 lines at once; write to a file and send the path instead.\n",
     );
+    out.push_str("- Record reviewer findings, consensus decisions, accepted risks, and cross-team notifications in the review ledger before relying on terminal scrollback.\n");
     out.push_str("- If two agents disagree on an approach, both message the human via `limux notify` and stop.\n");
     out.push_str("- Before taking destructive actions (rm, git push, kubectl apply), ask the human via `limux notify`.\n\n");
 
@@ -4530,6 +4989,8 @@ mod agent_team_tests {
         method: String,
         params: Value,
         protocol_exists_at_request: bool,
+        roster_exists_at_request: bool,
+        ledger_exists_at_request: bool,
     }
 
     #[derive(Default)]
@@ -4584,6 +5045,14 @@ mod agent_team_tests {
     ) {
         let _ = std::fs::remove_file(&socket);
         let listener = UnixListener::bind(&socket).expect("bind fake limux socket");
+        let roster_path = protocol_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(AGENT_TEAM_DEFAULT_ROSTER_FILE);
+        let ledger_path = protocol_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(AGENT_TEAM_DEFAULT_LEDGER_FILE);
         let requests = Arc::new(Mutex::new(Vec::new()));
         let pane_count = Arc::new(AtomicUsize::new(0));
         let server_requests = Arc::clone(&requests);
@@ -4598,6 +5067,8 @@ mod agent_team_tests {
                 let requests = Arc::clone(&server_requests);
                 let pane_count = Arc::clone(&server_pane_count);
                 let protocol_path = protocol_path.clone();
+                let roster_path = roster_path.clone();
+                let ledger_path = ledger_path.clone();
                 let fail_bootstrap_surface = fail_bootstrap_surface.clone();
 
                 tokio::spawn(async move {
@@ -4613,6 +5084,8 @@ mod agent_team_tests {
                     let method = request.method.clone();
                     let params = request.params.clone();
                     let protocol_exists_at_request = protocol_path.exists();
+                    let roster_exists_at_request = roster_path.exists();
+                    let ledger_exists_at_request = ledger_path.exists();
                     requests
                         .lock()
                         .expect("lock requests")
@@ -4620,6 +5093,8 @@ mod agent_team_tests {
                             method: method.clone(),
                             params: params.clone(),
                             protocol_exists_at_request,
+                            roster_exists_at_request,
+                            ledger_exists_at_request,
                         });
 
                     let response = match method.as_str() {
@@ -4741,6 +5216,8 @@ mod agent_team_tests {
         assert_eq!(payload["no_launch"], false);
         assert_eq!(payload["bootstrap"]["enabled"], true);
         assert_eq!(payload["bootstrap"]["status"], "sent");
+        assert_eq!(payload["roster"]["status"], "created");
+        assert_eq!(payload["ledger"]["status"], "created");
 
         let requests = requests.lock().expect("lock requests").clone();
         let pane_creates: Vec<_> = requests
@@ -4777,13 +5254,18 @@ mod agent_team_tests {
             "expected one explicit Enter submit per bootstrap prompt"
         );
         assert!(bootstrap_submits.iter().all(|request| {
-            request.params["key"].as_str() == Some("enter") && request.protocol_exists_at_request
+            request.params["key"].as_str() == Some("enter")
+                && request.protocol_exists_at_request
+                && request.roster_exists_at_request
+                && request.ledger_exists_at_request
         }));
         assert!(
             bootstrap_sends
                 .iter()
-                .all(|request| request.protocol_exists_at_request),
-            "protocol file should exist before bootstrap prompts are sent"
+                .all(|request| request.protocol_exists_at_request
+                    && request.roster_exists_at_request
+                    && request.ledger_exists_at_request),
+            "coordination files should exist before bootstrap prompts are sent"
         );
         for request in bootstrap_sends {
             let text = request.params["text"].as_str().expect("bootstrap text");
@@ -4791,6 +5273,8 @@ mod agent_team_tests {
                 .expect("bootstrap prompt should pass bootstrap text policy");
             assert!(text.contains("Read the generated runtime protocol file"));
             assert!(text.contains(protocol_path.to_string_lossy().as_ref()));
+            assert!(text.contains(AGENT_TEAM_DEFAULT_ROSTER_FILE));
+            assert!(text.contains(AGENT_TEAM_DEFAULT_LEDGER_FILE));
             assert!(text.contains("authoritative instruction sources"));
             assert!(
                 !text.contains('\n'),
@@ -4802,12 +5286,17 @@ mod agent_team_tests {
     #[test]
     fn agent_team_bootstrap_prompt_is_single_line_and_escapes_dynamic_values() {
         let protocol_path = PathBuf::from("/tmp/limux\nteam/\u{202e}\u{200b}LIMUX_AGENTS.md");
+        let roster_path = PathBuf::from("/tmp/limux\nteam/LIMUX_TEAM_ROSTER.md");
+        let ledger_path = PathBuf::from("/tmp/limux\nteam/LIMUX_REVIEW_LEDGER.md");
 
-        let prompt = build_agent_team_bootstrap_prompt("codex", &protocol_path)
-            .expect("prompt should be valid");
+        let prompt =
+            build_agent_team_bootstrap_prompt("codex", &protocol_path, &roster_path, &ledger_path)
+                .expect("prompt should be valid");
 
         validate_agent_team_bootstrap_prompt(&prompt).expect("prompt policy should pass");
         assert!(prompt.contains("LIMUX_AGENTS.md"));
+        assert!(prompt.contains("LIMUX_TEAM_ROSTER.md"));
+        assert!(prompt.contains("LIMUX_REVIEW_LEDGER.md"));
         assert!(prompt.contains("authoritative instruction sources"));
         assert!(!prompt.contains('\r'));
         assert!(!prompt.contains('\t'));
@@ -4965,6 +5454,10 @@ mod agent_team_tests {
             "active-ws",
             "ws-uuid-123",
             "9:terminal-orch",
+            AgentTeamCoordinationFiles {
+                roster_path: Path::new("/tmp/team/LIMUX_TEAM_ROSTER.md"),
+                ledger_path: Path::new("/tmp/team/LIMUX_REVIEW_LEDGER.md"),
+            },
             &[],
         );
 
@@ -5115,6 +5608,194 @@ mod agent_team_tests {
         );
         assert!(md.contains("LIMUX_AGENTS.local.md"));
         assert!(md.contains("Limux does not create or overwrite it"));
+        assert!(md.contains("## Durable Coordination Files"));
+        assert!(md.contains(AGENT_TEAM_DEFAULT_ROSTER_FILE));
+        assert!(md.contains(AGENT_TEAM_DEFAULT_LEDGER_FILE));
+    }
+
+    #[tokio::test]
+    async fn agent_team_dry_run_creates_roster_and_review_ledger_without_host() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let args = vec![
+            "--dry-run".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+        ];
+        let mut client = Client::new(cwd.join("unused.sock"));
+
+        let payload = run_agent_team(&mut client, &args)
+            .await
+            .expect("dry run should not contact host");
+
+        let roster_path = cwd.join(AGENT_TEAM_DEFAULT_ROSTER_FILE);
+        let ledger_path = cwd.join(AGENT_TEAM_DEFAULT_LEDGER_FILE);
+        assert_eq!(
+            payload.get("roster_path").and_then(Value::as_str),
+            Some(roster_path.to_string_lossy().as_ref())
+        );
+        assert_eq!(
+            payload.get("ledger_path").and_then(Value::as_str),
+            Some(ledger_path.to_string_lossy().as_ref())
+        );
+        assert_eq!(payload["roster"]["status"], "created");
+        assert_eq!(payload["ledger"]["status"], "created");
+
+        let roster = std::fs::read_to_string(&roster_path).expect("read roster");
+        assert!(roster.starts_with(AGENT_TEAM_ROSTER_MARKER));
+        assert!(roster.contains("# Limux Team Roster"));
+        assert!(roster.contains("| `current` | peer | `codex`"));
+        assert!(roster.contains("| `current` | peer | `claude`"));
+        assert!(roster.contains(AGENT_TEAM_DEFAULT_LEDGER_FILE));
+        assert!(roster.contains("Use the current generated runtime protocol"));
+        assert!(!roster.contains("<dry-run-orchestrator>"));
+
+        let ledger = std::fs::read_to_string(&ledger_path).expect("read ledger");
+        assert!(ledger.starts_with(AGENT_TEAM_LEDGER_MARKER));
+        assert!(ledger.contains("# Limux Review And Consensus Ledger"));
+        assert!(ledger.contains("## Entry Template"));
+    }
+
+    #[tokio::test]
+    async fn agent_team_dry_run_preserves_existing_roster_and_review_ledger() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let roster_path = cwd.join(AGENT_TEAM_DEFAULT_ROSTER_FILE);
+        let ledger_path = cwd.join(AGENT_TEAM_DEFAULT_LEDGER_FILE);
+        std::fs::write(&roster_path, "manual roster\n").expect("write roster");
+        std::fs::write(&ledger_path, "manual ledger\n").expect("write ledger");
+        let args = vec![
+            "--dry-run".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+        ];
+        let mut client = Client::new(cwd.join("unused.sock"));
+
+        let payload = run_agent_team(&mut client, &args)
+            .await
+            .expect("dry run should preserve durable files");
+
+        assert_eq!(payload["roster"]["status"], "existing");
+        assert_eq!(payload["ledger"]["status"], "existing");
+        assert_eq!(
+            std::fs::read_to_string(&roster_path).expect("read roster"),
+            "manual roster\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&ledger_path).expect("read ledger"),
+            "manual ledger\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_team_dry_run_force_overwrites_existing_roster_file_only() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let roster_path = cwd.join(AGENT_TEAM_DEFAULT_ROSTER_FILE);
+        let ledger_path = cwd.join(AGENT_TEAM_DEFAULT_LEDGER_FILE);
+        std::fs::write(
+            &roster_path,
+            format!("{AGENT_TEAM_ROSTER_MARKER}\nold generated roster\n"),
+        )
+        .expect("write roster");
+        std::fs::write(&ledger_path, "manual ledger\n").expect("write ledger");
+        let args = vec![
+            "--dry-run".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+            "--force-roster-overwrite".to_string(),
+        ];
+        let mut client = Client::new(cwd.join("unused.sock"));
+
+        let payload = run_agent_team(&mut client, &args)
+            .await
+            .expect("force should reseed roster without touching ledger");
+
+        assert_eq!(payload["roster"]["status"], "replaced");
+        assert_eq!(payload["ledger"]["status"], "existing");
+        let roster = std::fs::read_to_string(&roster_path).expect("read roster");
+        assert!(roster.contains(AGENT_TEAM_ROSTER_MARKER));
+        assert!(!roster.contains("old generated roster"));
+        assert_eq!(
+            std::fs::read_to_string(&ledger_path).expect("read ledger"),
+            "manual ledger\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_team_dry_run_force_refuses_unmarked_roster_file() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let roster_path = cwd.join(AGENT_TEAM_DEFAULT_ROSTER_FILE);
+        std::fs::write(&roster_path, "manual roster\n").expect("write roster");
+        let args = vec![
+            "--dry-run".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+            "--force-roster-overwrite".to_string(),
+        ];
+        let mut client = Client::new(cwd.join("unused.sock"));
+
+        let error = run_agent_team(&mut client, &args)
+            .await
+            .expect_err("force should not replace unmarked roster files");
+        assert!(
+            error.to_string().contains("unmarked team roster"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&roster_path).expect("read roster"),
+            "manual roster\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_team_dry_run_refuses_overlapping_output_paths() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let shared_path = cwd.join("shared.md");
+        let args = vec![
+            "--dry-run".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+            "--roster-path".to_string(),
+            shared_path.to_string_lossy().to_string(),
+            "--ledger-path".to_string(),
+            shared_path.to_string_lossy().to_string(),
+        ];
+        let mut client = Client::new(cwd.join("unused.sock"));
+
+        let error = run_agent_team(&mut client, &args)
+            .await
+            .expect_err("roster and ledger paths must not overlap");
+        assert!(
+            error.to_string().contains("output paths must be distinct"),
+            "unexpected error: {error:#}"
+        );
+        assert!(!shared_path.exists());
+    }
+
+    #[tokio::test]
+    async fn agent_team_dry_run_refuses_lexically_overlapping_output_paths() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let args = vec![
+            "--dry-run".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+            "--roster-path".to_string(),
+            format!("./{AGENT_TEAM_DEFAULT_PROTOCOL_FILE}"),
+        ];
+        let mut client = Client::new(cwd.join("unused.sock"));
+
+        let error = run_agent_team(&mut client, &args)
+            .await
+            .expect_err("protocol and roster paths must not overlap through ./ alias");
+        assert!(
+            error.to_string().contains("output paths must be distinct"),
+            "unexpected error: {error:#}"
+        );
+        assert!(!cwd.join(AGENT_TEAM_DEFAULT_PROTOCOL_FILE).exists());
     }
 
     #[tokio::test]
@@ -5234,6 +5915,57 @@ mod agent_team_tests {
         );
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn agent_team_dry_run_refuses_roster_and_ledger_symlinks() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let roster_target = cwd.join("roster-target.md");
+        let ledger_target = cwd.join("ledger-target.md");
+        std::fs::write(&roster_target, "target roster\n").expect("write roster target");
+        std::fs::write(&ledger_target, "target ledger\n").expect("write ledger target");
+        symlink(&roster_target, cwd.join(AGENT_TEAM_DEFAULT_ROSTER_FILE))
+            .expect("create roster symlink");
+        symlink(&ledger_target, cwd.join(AGENT_TEAM_DEFAULT_LEDGER_FILE))
+            .expect("create ledger symlink");
+        let args = vec![
+            "--dry-run".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+            "--force-roster-overwrite".to_string(),
+        ];
+        let mut client = Client::new(cwd.join("unused.sock"));
+
+        let err = run_agent_team(&mut client, &args)
+            .await
+            .expect_err("dry run should refuse symlink roster before ledger");
+        assert!(
+            format!("{err:#}").contains("refusing to use team roster path because it is a symlink"),
+            "unexpected error: {err:#}"
+        );
+
+        std::fs::remove_file(cwd.join(AGENT_TEAM_DEFAULT_ROSTER_FILE))
+            .expect("remove roster symlink");
+        let err = run_agent_team(&mut client, &args)
+            .await
+            .expect_err("dry run should refuse symlink ledger");
+        assert!(
+            format!("{err:#}")
+                .contains("refusing to use review ledger path because it is a symlink"),
+            "unexpected error: {err:#}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&roster_target).expect("read roster target"),
+            "target roster\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&ledger_target).expect("read ledger target"),
+            "target ledger\n"
+        );
+    }
+
     #[test]
     fn shell_command_arg_round_trips_launch_metacharacters() {
         for launch in [
@@ -5346,6 +6078,10 @@ limux() {{
             "active-ws",
             "ws-uuid-123",
             "9:terminal-orch",
+            AgentTeamCoordinationFiles {
+                roster_path: Path::new("/tmp/team/LIMUX_TEAM_ROSTER.md"),
+                ledger_path: Path::new("/tmp/team/LIMUX_REVIEW_LEDGER.md"),
+            },
             &[],
         );
 

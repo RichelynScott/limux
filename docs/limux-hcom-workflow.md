@@ -1,14 +1,16 @@
 # Limux + hcom Workflow Guide
 
 Last reviewed: 2026-05-29
-Repo state reviewed: `main` with Phase 5B automatic `agent-team` bootstrap
+Repo state reviewed: `main` with Phase 5C durable `agent-team` roster and
+review ledger seeding
 
 ## Executive Summary
 
 Limux is best used as the live local workspace layer for coding-agent teams.
 It owns panes, surfaces, workspace layout, same-project message injection,
 screen reads, GUI notifications, and now low-friction `agent-team` peer
-bootstrap through generated `LIMUX_AGENTS.md` protocol files.
+bootstrap through generated `LIMUX_AGENTS.md` protocol files plus durable
+roster/review-ledger sidecars.
 
 hcom is best used as the cross-session and cross-project coordination bus.
 It owns named agent discovery, direct messages across tools, event history,
@@ -243,15 +245,16 @@ limux agent-team --cwd "$PWD"
 
 The current implementation writes generated runtime protocol to
 `LIMUX_AGENTS.md` in the shared cwd by default, then launches peer agent panes
-and sends each peer a short bootstrap prompt after the protocol file is written.
-This is safer than the previous `AGENTS.md` behavior and protects load-bearing
-repo instructions.
+and seeds `LIMUX_TEAM_ROSTER.md` plus `LIMUX_REVIEW_LEDGER.md` when missing.
+It sends each peer a short bootstrap prompt after those coordination files are
+written. This is safer than the previous `AGENTS.md` behavior and protects
+load-bearing repo instructions.
 
 Important remaining rule: do not treat `LIMUX_AGENTS.md` as an inherited or
 merged copy of `AGENTS.md`. Repo instruction files such as `AGENTS.md`,
 `CLAUDE.md`, and `GEMINI.md` remain authoritative. `LIMUX_AGENTS.md` should
-only describe the Limux runtime team, messaging protocol, peer roster, and
-operator-escalation rules.
+only describe the Limux runtime team, messaging protocol, coordination-file
+pointers, and operator-escalation rules.
 
 `LIMUX_AGENTS.md` now includes an `Instruction Sources` section that points to
 detected `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` files with path, mtime, and
@@ -261,6 +264,23 @@ default; use `--force-protocol-overwrite` only when replacing one is intentional
 Use `--protocol-path <path>` when you want the generated protocol somewhere
 other than the shared cwd. Use `--no-bootstrap` when you want the panes launched
 without the post-launch prompt.
+
+Durable coordination files:
+
+- `LIMUX_TEAM_ROSTER.md` maps projects, agents, hcom names, owners, related
+  teams, routing rules, and coordination-file paths. Live workspace/pane/surface
+  IDs stay in the current generated `LIMUX_AGENTS.md` runtime protocol so the
+  durable roster does not become stale routing data.
+- `LIMUX_REVIEW_LEDGER.md` is the durable place for reviewer findings,
+  consensus decisions, accepted risks, unresolved risks, and cross-team
+  notifications.
+- Existing roster and ledger files are preserved by default. Use
+  `--roster-path <path>` or `--ledger-path <path>` for alternate files.
+  `--force-roster-overwrite` intentionally resets only marked Limux roster
+  files; the ledger remains create-if-missing only.
+- `--dry-run` does not contact a Limux host, but it still materializes the
+  protocol and seeds missing roster/ledger files. Use temporary output paths for
+  preview-only runs.
 
 ## Suggested Operating Cadence
 
@@ -290,14 +310,12 @@ End of task:
 
 The highest-leverage Limux improvements for this workflow are:
 
-1. Add a compact project roster file mapping project names to Limux workspaces,
-   surface IDs, hcom names, and durable coordination files.
-2. Add a durable review and consensus ledger for reviewer findings, decisions,
-   and unresolved risks.
-3. Add a wrapper command for "spawn reviewer, capture surface, read result".
-4. Add documented conventions for consensus reports and cross-team broadcasts.
-5. Add optional runtime-specific `.limux/` adapters for Codex, Claude Code,
+1. Add a wrapper command for "spawn reviewer, capture surface, read result".
+2. Add documented conventions for consensus reports and cross-team broadcasts.
+3. Add optional runtime-specific `.limux/` adapters for Codex, Claude Code,
    Gemini, and OpenCode if direct protocol discovery needs deeper integration.
+4. Add a later machine-readable roster/ledger adapter if Markdown sidecars are
+   not enough for automation.
 
 ## Current Prime Snapshot
 
@@ -305,14 +323,17 @@ As of this review:
 
 - `agent-team` writes `LIMUX_AGENTS.md` by default and supports
   `--protocol-path`.
+- `agent-team` seeds `LIMUX_TEAM_ROSTER.md` and `LIMUX_REVIEW_LEDGER.md` when
+  missing and supports `--roster-path`, `--ledger-path`, and
+  `--force-roster-overwrite`.
 - Existing repo `AGENTS.md` files are not written by default.
 - Generated `LIMUX_AGENTS.md` files include a generated marker, instruction
-  sources, sidecar policy guidance, and no-overwrite protection for unmarked
-  sidecars.
+  sources, durable roster/ledger pointers, sidecar policy guidance, and
+  no-overwrite protection for unmarked sidecars.
 - Live `agent-team` launches peer panes with bare agent commands, writes the
-  protocol file before bootstrap, then submits a sanitized one-line bootstrap
-  prompt with explicit Enter. `--no-bootstrap` and `--no-launch` skip prompt
-  sends.
+  protocol, roster, and ledger before bootstrap, then submits a sanitized
+  one-line bootstrap prompt with explicit Enter. `--no-bootstrap` and
+  `--no-launch` skip prompt sends.
 - Generated `new-pane --command` examples quote launch commands and avoid
   nested arbitrary prompt text.
 - Typed terminal text now rejects ESC/BEL/C1/control payloads except tab, LF,
@@ -321,6 +342,6 @@ As of this review:
 - Full `./scripts/check.sh` and `./scripts/xvfb-smoke-test.sh` pass locally
   with the local Ghostty library; the smoke script now exports the required
   `LD_LIBRARY_PATH` automatically when `ghostty/zig-out/lib` exists.
-- The next recommended implementation is the project/team roster plus durable
-  review and consensus ledger, tracked from
+- The next recommended implementation is a reviewer wrapper plus documented
+  consensus/cross-team broadcast conventions, tracked from
   [`cmux-parity-plan.md`](cmux-parity-plan.md).

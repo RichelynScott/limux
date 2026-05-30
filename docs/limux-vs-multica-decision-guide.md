@@ -18,7 +18,7 @@ Updated with the `$html-decision-packet` pattern: explicit packet metadata, road
 |---|---|---|
 | Context | Done | Limux and Multica were compared through local source inspection, public repo/docs review, and subagent reports. |
 | Decision | Done | User chose Limux + hcom primary, no Multica pilot yet, and Limux fixes first. |
-| Execution | Current | `agent-team` no longer writes `AGENTS.md` by default; zero-friction protocol discovery, launch-snippet hardening, typed-PTY control-character guards, and Phase 5B automatic bootstrap are implemented. |
+| Execution | Current | `agent-team` no longer writes `AGENTS.md` by default; zero-friction protocol discovery, launch-snippet hardening, typed-PTY control-character guards, Phase 5B automatic bootstrap, and Phase 5C durable roster/review-ledger seeding are implemented. |
 | Canonical template update | Done | Kazu updated the global decision-packet pattern/template/skill with a bottom Sources / Evidence section when applicable. |
 | Closeout | Current | Handoff docs now capture the morning resume path. |
 
@@ -29,10 +29,10 @@ Updated with the `$html-decision-packet` pattern: explicit packet metadata, road
 | Done | Created the readable Markdown guide and dark-mode HTML decision sheet; user filled it out and selected the Limux-first path. |
 | Done | Commit `cec067f` moved `agent-team` protocol output to `LIMUX_AGENTS.md` by default and added `--protocol-path`. |
 | Done | Ran a five-subagent brainstorm on near-zero-friction Limux agent-team workflow. |
-| Done | Added generated `LIMUX_AGENTS.md` instruction-source discovery, generated marker, local sidecar policy guidance, no-overwrite protection, and Phase 5B post-launch bootstrap prompts. |
+| Done | Added generated `LIMUX_AGENTS.md` instruction-source discovery, generated marker, local sidecar policy guidance, no-overwrite protection, Phase 5B post-launch bootstrap prompts, and Phase 5C durable roster/review-ledger seeding. |
 | Done | Added shared typed-PTY text validation for CLI, bridge/core, and host sink paths; terminal controls now use `send-key` instead of text injection. |
 | Verified | `cargo test -p limux-cli`, `cargo fmt --check`, `cargo clippy -p limux-cli --all-targets -- -D warnings`, `git diff --check`, full `./scripts/check.sh`, and debug/release Xvfb smoke pass locally. |
-| Gated | Multica adoption and install remain deferred. The next Limux work is roster/ledger and cross-team coordination polish, not Multica migration. |
+| Gated | Multica adoption and install remain deferred. The next Limux work is reviewer/capture workflow polish and cross-team coordination conventions, not Multica migration. |
 | Local prerequisite | Fresh clones or cleaned worktrees still need the reviewed Ghostty/Zig build lane before host checks. |
 | Explicitly not done | Did not clone, install, build, or execute Multica. Did not edit global Codex/Claude templates directly from this Limux session. |
 
@@ -46,7 +46,7 @@ Recommended path:
 1. Keep Limux as the live operator cockpit for visible Codex, Claude Code, and reviewer panes.
 2. Keep hcom plus durable files for cross-project and cross-team messaging.
 3. Defer the Multica pilot until after Limux fixes.
-4. Continue improving Limux around project/team roster, durable review ledger, and cross-team routing support.
+4. Continue improving Limux around reviewer wrappers, consensus conventions, and cross-team routing support.
 
 The subagents converged on the same conclusion: Multica is promising, but it is not a drop-in replacement for Limux's terminal-first workflow.
 
@@ -71,7 +71,7 @@ The user selected:
 | Need | Limux | Multica | Practical winner |
 |---|---|---|---|
 | Live Codex and Claude Code sessions | Real terminal panes, visible shells, direct send/read/notify | Daemon-dispatched tasks with logs and comments | Limux |
-| 4+ projects | Workspaces can map to projects, but roster/routing is manual | Workspaces, projects, issues, agents, and runs are native | Multica |
+| 4+ projects | Workspaces can map to projects; `agent-team` now seeds a Markdown roster, but routing is still manually maintained | Workspaces, projects, issues, agents, and runs are native | Multica |
 | One Codex plus one Claude per project | Straightforward as panes | Supported as runtimes, but Codex has important limitations | Limux for live work |
 | Subagent teams | Can host them, but orchestration is convention | Squads can route work through a leader | Multica partially |
 | Adversarial review and consensus | Not native; use skills, hcom, and files | Not native; model with issues/comments/status conventions | Neither native |
@@ -161,8 +161,8 @@ Limux is narrower and easier to reason about as a local terminal workspace manag
 | Agent-team peers previously needed manual orientation | Shipped in Phase 5B: peer panes launch with bare agent commands, then receive a sanitized post-write bootstrap prompt. |
 | Browser bridge parity is unfinished | Keep browser automation separate until parity is implemented. |
 | `read-screen` is viewport-oriented | Do not rely on it for full long-running transcript capture. |
-| No durable consensus ledger | Add a repo-side review ledger or integrate with hcom files. |
-| No project/team roster | Add a simple project roster mapping workspaces, sessions, owners, and related teams. |
+| No durable consensus ledger | Shipped in Phase 5C: `agent-team` seeds `LIMUX_REVIEW_LEDGER.md` when missing and never overwrites it. |
+| No project/team roster | Shipped in Phase 5C: `agent-team` seeds `LIMUX_TEAM_ROSTER.md` when missing and preserves existing rosters by default. |
 
 ## Post-Decision Subagent Brainstorm
 
@@ -180,13 +180,14 @@ friction. The consensus was:
 - Launch agent binaries first, then send a small bootstrap prompt after pane
   readiness and after the protocol file exists.
 
-Implemented next implementation: Phase 5B two-phase bootstrap in
+Implemented next implementations: Phase 5B two-phase bootstrap and Phase 5C
+durable roster/review-ledger seeding in
 [`cmux-parity-plan.md`](cmux-parity-plan.md).
 
-Recommended next implementation: project/team roster plus durable review and
-consensus ledger, so four-project workflows can track workspaces, sessions,
-owners, related teams, reviewer findings, and open decisions without relying on
-terminal scrollback.
+Recommended next implementation: a wrapper for spawning reviewers, capturing
+their output, reading results, and writing a consensus report or cross-team hcom
+pointer. The roster and ledger now provide the durable files that wrapper can
+target.
 
 ## HCOM Updates From The Thread
 
@@ -289,9 +290,10 @@ Use this to continue:
 
 ```text
 Resume from HANDOFF.md. Phase 5A protocol discovery, generated launch-snippet
-hardening, typed-PTY control-character guards, and Phase 5B automatic bootstrap
-are implemented and verified. Next implement the project/team roster plus
-durable review and consensus ledger.
+hardening, typed-PTY control-character guards, Phase 5B automatic bootstrap,
+and Phase 5C durable roster/review-ledger seeding are implemented and verified.
+Next implement the reviewer/capture wrapper plus consensus and cross-team
+broadcast conventions.
 ```
 
 ## Original Decisions Template
@@ -326,8 +328,8 @@ My decisions after reviewing the Limux vs Multica guide:
    - [x] Add LIMUX_AGENTS.md instruction-source discovery.
    - [x] Add generated-marker and no-overwrite semantics for LIMUX_AGENTS.md.
    - [x] Add Phase 5B post-launch bootstrap prompts.
-   - [ ] Add project/team roster.
-   - [ ] Add durable review/consensus ledger.
+   - [x] Add project/team roster.
+   - [x] Add durable review/consensus ledger.
    - [ ] Improve read-screen/transcript capture.
 
 5. hcom posture:

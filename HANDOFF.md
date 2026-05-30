@@ -1,20 +1,22 @@
 # Limux Session Handoff
 
-Last updated: 2026-05-29 22:31 EDT
+Last updated: 2026-05-29 23:23 EDT
 
 ## Immediate Next Action
 
-Phase 5B automatic `limux agent-team` bootstrap is implemented and locally
-verified. The current flow writes protected generated protocol to
-`LIMUX_AGENTS.md`, launches peer panes with bare agent commands, waits for pane
-readiness, sends each peer a sanitized one-line bootstrap prompt after the
-protocol file exists, then submits it with explicit Enter. `--no-bootstrap`,
-`--no-launch`, and `--dry-run` all skip prompt sends.
+Phase 5C durable `limux agent-team` coordination files are implemented. The
+current flow writes protected generated protocol to `LIMUX_AGENTS.md`, seeds
+`LIMUX_TEAM_ROSTER.md` and `LIMUX_REVIEW_LEDGER.md` when missing, launches peer
+panes with bare agent commands, waits for pane readiness, sends each peer a
+sanitized one-line bootstrap prompt after all coordination files exist, then
+submits it with explicit Enter. `--no-bootstrap`, `--no-launch`, and `--dry-run`
+all skip prompt sends. `--dry-run` still materializes the generated protocol
+and seeds missing roster/ledger files; it only skips host contact.
 
-Recommended next scoped action: implement the project/team roster plus durable
-review and consensus ledger. This should map project names to Limux workspaces,
-surface IDs, hcom names, owners, related teams, durable coordination files,
-reviewer findings, consensus decisions, and unresolved risks.
+Recommended next scoped action: implement a reviewer/capture wrapper plus
+documented consensus and cross-team broadcast conventions. The wrapper should
+spawn a focused reviewer, capture/read the result, write a ledger entry or
+consensus report, and send hcom pointers only to relevant teams.
 
 Current verification baseline:
 
@@ -126,7 +128,7 @@ git status --short --branch
 sed -n '1,220p' HANDOFF.md
 sed -n '70,130p' docs/cmux-parity-plan.md
 sed -n '210,285p' docs/limux-hcom-workflow.md
-rg -n "run_agent_team|build_agents_md|resolve_agent_team_protocol_path|LIMUX_AGENTS" rust/limux-cli/src/main.rs
+rg -n "run_agent_team|build_agents_md|LIMUX_AGENTS|LIMUX_TEAM_ROSTER|LIMUX_REVIEW_LEDGER" rust/limux-cli/src/main.rs
 ```
 
 Phase 5A completed in `rust/limux-cli/src/main.rs`:
@@ -156,6 +158,24 @@ Phase 5B completed in `rust/limux-cli/src/main.rs`,
 6. Made live smoke use fake `codex`/`claude` binaries to prove the prompt was
    received after protocol write.
 7. Fixed Ghostty Enter key submission for command-launch paths.
+
+Phase 5C completed in `rust/limux-cli/src/main.rs` and
+`scripts/xvfb-smoke-test.sh`:
+
+1. Added default `LIMUX_TEAM_ROSTER.md` and `LIMUX_REVIEW_LEDGER.md`
+   coordination files.
+2. Added `--roster-path <path>`, `--ledger-path <path>`, and
+   `--force-roster-overwrite`.
+3. Seeded the roster and ledger when missing before any live bootstrap prompt.
+4. Preserved existing roster and ledger files by default; the ledger remains
+   create-if-missing only.
+5. Rejected symlink, non-regular, and overlapping roster/ledger/protocol
+   targets.
+6. Pointed generated `LIMUX_AGENTS.md` and bootstrap prompts to the durable
+   roster and ledger.
+7. Expanded CLI tests and Xvfb smoke proof for creation, preservation, forced
+   marked-roster replacement, unmarked force refusal, symlink refusal,
+   overlapping-path refusal, and fake-agent file visibility.
 
 Recommended acceptance tests:
 
@@ -204,23 +224,23 @@ explicit `LD_LIBRARY_PATH` prefix.
 | 2026-05-29 21:10 EDT | Shell-quoted launch snippet hardening | Added central generated-snippet shell quoting, quoted generated `LIMUX_AGENTS.md` scratch-pane commands, rejected unquoted extra `new-pane` positionals, removed nested prompt examples from docs, and verified focused CLI tests, full workspace check, and Xvfb smoke. Claude plugin review timed out; hcom reviewers converged on GO for the manual snippet path and deferred typed-PTY control-character policy before auto-bootstrap. |
 | 2026-05-29 21:36 EDT | Typed-PTY control-character guard | Added shared typed-text validation in `limux-protocol`; enforced it in the CLI, standalone core dispatcher, live GTK bridge parser, and GTK host send sink; documented `send-key` as the control-key route; expanded Xvfb smoke stage 7 to reject ESC/BEL/C1 payloads across send/new-pane/respawn/paste/new-workspace. Claude plugin review timed out after 240 seconds, so it is not counted as passed; hcom reviewers `kazu`, `zori`, and `niru` had already converged on the policy shape. |
 | 2026-05-29 22:31 EDT | Phase 5B automatic bootstrap | Added post-launch `agent-team` bootstrap prompts, `--no-bootstrap`, protocol-write-before-send behavior, stricter generated-prompt validation, explicit Enter submission, command-launch Enter fixes, fake-agent Xvfb proof, and refreshed workflow/decision/handoff docs. |
+| 2026-05-29 23:23 EDT | Phase 5C durable roster and review ledger | Added `LIMUX_TEAM_ROSTER.md` and `LIMUX_REVIEW_LEDGER.md` seeding, `--roster-path`, `--ledger-path`, `--force-roster-overwrite`, no-overwrite ledger preservation, marked-roster force replacement, symlink/nonregular/overlapping path refusal, bootstrap pointers, CLI tests, Xvfb fake-agent file-visibility proof, and refreshed workflow/decision/handoff docs. |
 
 ## Current State
 
 - Branch: `main`
-- Code commit pushed before this handoff: `6f59e84 docs(handoff): track bootstrap display spoofing residuals`
-- Latest implementation in this handoff: Phase 5B automatic agent-team bootstrap after typed-PTY control-character hardening.
-- Latest pushed status/report commit before Phase 5A implementation:
-  `1c12e97 docs(decision): add limux next steps packet`
-- Working tree should be clean after committing/pushing Phase 5B.
+- Phase 5B baseline commit: `0d2597b feat(cli): bootstrap agent-team peers after launch`
+- Latest implementation in this handoff: Phase 5C durable roster and review-ledger seeding after Phase 5B automatic agent-team bootstrap.
+- Working tree should be clean after committing/pushing Phase 5C.
 
 ## Architectural Decisions Locked In
 
 1. **No silent inheritance.** `LIMUX_AGENTS.md` should not copy, merge, or reinterpret `AGENTS.md` by default.
 2. **Authority split.** Repo files such as `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` remain authoritative project instructions.
 3. **Runtime sidecar.** `LIMUX_AGENTS.md` is generated Limux runtime context: peers, surfaces, messaging, human notification, and routing.
-4. **Zero-friction path.** Reduce friction through automated discovery, explicit pointers, environment variables, and later bootstrap/adapters, not hidden prompt composition.
-5. **Launch automation waits.** Generated launch snippets should only start the agent binary. Automatic launch/bootstrap sends bounded prompt text only after protocol write and pane readiness through guarded typed-text plus explicit `send-key enter`.
+4. **Durable coordination files.** `LIMUX_TEAM_ROSTER.md` and `LIMUX_REVIEW_LEDGER.md` are create-if-missing durable operator files, not generated overwrite targets. Live surface/pane/workspace IDs remain in `LIMUX_AGENTS.md`.
+5. **Zero-friction path.** Reduce friction through automated discovery, explicit pointers, environment variables, bootstrap, and later adapters, not hidden prompt composition.
+6. **Launch automation waits.** Generated launch snippets should only start the agent binary. Automatic launch/bootstrap sends bounded prompt text only after protocol/roster/ledger write and pane readiness through guarded typed-text plus explicit `send-key enter`.
 
 ## Subagent Brainstorm Synthesis
 
@@ -230,6 +250,8 @@ The proposed future shape:
 AGENTS.md / CLAUDE.md / GEMINI.md = project instructions
 LIMUX_AGENTS.md                  = generated runtime protocol
 LIMUX_AGENTS.local.md            = optional durable local team policy
+LIMUX_TEAM_ROSTER.md             = durable project/team routing roster
+LIMUX_REVIEW_LEDGER.md           = durable review/consensus ledger
 .limux/ adapters                 = later tool-specific discovery helpers
 ```
 
@@ -240,8 +262,9 @@ Phase ordering:
 3. **Done:** Add caller-shell quoting tests and generated-snippet hardening before expanding automatic launch/bootstrap behavior.
 4. **Done:** Define and test the typed-PTY control-character policy for `limux send`, respawn, paste-buffer, `pane.create --command`, `workspace.create --command`, direct socket callers, and the live GTK host sink.
 5. **Done:** Implement two-phase automatic bootstrap: launch the agent binary, wait for pane readiness, then send prompt text through guarded `surface.send_text` plus explicit Enter.
-6. **Next:** Add a project/team roster and durable review/consensus ledger.
-7. **Optional later:** Add runtime-specific `.limux/` adapters for Codex, Claude Code, Gemini, and OpenCode.
+6. **Done:** Seed a project/team roster and durable review/consensus ledger.
+7. **Next:** Add a reviewer/capture wrapper and consensus/cross-team broadcast conventions.
+8. **Optional later:** Add runtime-specific `.limux/` adapters for Codex, Claude Code, Gemini, and OpenCode.
 
 ## Key Files For Context
 
@@ -264,6 +287,9 @@ Phase ordering:
 - Preserve `limux agent-team --dry-run` without a running host.
 - Preserve `--no-launch` and `--no-bootstrap` behavior for `agent-team`;
   neither path should send bootstrap prompts.
+- Preserve existing `LIMUX_TEAM_ROSTER.md` and `LIMUX_REVIEW_LEDGER.md` by
+  default. The ledger is append/manual state and must not be overwritten by
+  `agent-team`. `--force-roster-overwrite` is only for marked Limux rosters.
 - Use `apply_patch` for manual edits.
 - Do not edit `/home/riche/.claude` from this Limux session.
 
@@ -279,9 +305,12 @@ Phase ordering:
 - Instruction-source hashes are deterministic `fnv1a64` metadata for change detection, not cryptographic integrity claims.
 - Claude plugin adversarial review did not complete for the shell-quoting lane: normal mode timed out after 180 seconds, and `--bare` mode failed because Claude was not logged in under bare mode. hcom reviewer `kazu` provided the Claude-family shell-safety lens instead. For the typed-PTY lane, the normal plugin review timed out after 240 seconds and is not counted as passed.
 - Claude plugin adversarial review completed for Phase 5B. It found no security-blocking defect, but flagged reliability issues that were handled before commit: removed trailing-LF double submission, made fail-fast partial-side-effect behavior explicit in the error path, and widened the command-launch readiness budget. Residual: live smoke uses fake instant agents, so real Codex/Claude cold-start/TUI readiness remains a future robustness target.
+- Phase 5C roster/ledger files are Markdown coordination surfaces, not an
+  automatic source of truth. Agents still need to keep owners, hcom names,
+  related teams, and ledger entries current during work.
 
 ## Morning Resume Prompt
 
 ```text
-Please resume the Limux work from HANDOFF.md. Phase 5A zero-friction protocol discovery, GTK `surface.send_text` readiness/failure reporting, shell-quoted launch snippets, typed-PTY control-character guards, and Phase 5B automatic `agent-team` bootstrap are implemented and verified. Host prerequisites are installed, the approved Ghostty/Zig gate built `ghostty/zig-out/lib/libghostty.so`, `./scripts/check.sh`, debug Xvfb smoke, and release Xvfb smoke pass locally. Next implement the project/team roster plus durable review and consensus ledger.
+Please resume the Limux work from HANDOFF.md. Phase 5A zero-friction protocol discovery, GTK `surface.send_text` readiness/failure reporting, shell-quoted launch snippets, typed-PTY control-character guards, Phase 5B automatic `agent-team` bootstrap, and Phase 5C durable roster/review-ledger seeding are implemented and verified. Host prerequisites are installed, the approved Ghostty/Zig gate built `ghostty/zig-out/lib/libghostty.so`, `./scripts/check.sh`, debug Xvfb smoke, and release Xvfb smoke pass locally. Next implement the reviewer/capture wrapper plus consensus and cross-team broadcast conventions.
 ```
