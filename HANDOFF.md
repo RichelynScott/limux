@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-05-29 20:47 EDT
+Last updated: 2026-05-29 21:10 EDT
 
 ## Immediate Next Action
 
@@ -9,11 +9,16 @@ and locally verified. GTK bridge `surface.send_text` now reports not-ready
 terminal surfaces as a conflict instead of returning `ok: true`. Host
 GTK/pkg-config prerequisites are installed, and the approved Ghostty/Zig v2 gate
 has built local `ghostty/zig-out/lib/libghostty.so`. The full workspace check
-and Xvfb live smoke harness now pass locally.
+and Xvfb live smoke harness pass locally. Generated `new-pane --command`
+snippets now quote launch commands through a central helper, preserve
+metacharacter payloads as one caller-shell argv, and reject unquoted extra
+`new-pane` positionals before socket contact.
 
-Recommended next scoped action: add shell-quoting regression tests before
-expanding automatic launch/bootstrap behavior for agents. Cover spaces, quotes,
-`$`, backticks, semicolons, and newlines in generated launch/bootstrap commands.
+Recommended next scoped action: define and test the typed-PTY
+control-character/newline policy for `limux send`, respawn, and host-spawn
+paths before expanding automatic launch/bootstrap behavior for agents. Do not
+embed arbitrary prompt text inside `--command`; launch the agent binary first,
+wait for readiness, then send prompt text through the guarded path.
 
 Current verification baseline:
 
@@ -175,15 +180,16 @@ the local Ghostty library on `LD_LIBRARY_PATH`.
 | 2026-05-29 20:15 EDT | Ghostty/Zig consensus gate | `niru`, `zori`, `kazu`, and Claude plugin reviewed v1, returned `WAIT`, v2 was patched, then v2 re-review returned GO for operator approval. |
 | 2026-05-29 20:32 EDT | Approved Ghostty/Zig execution | Verified v2 SHA, built `ghostty/zig-out/lib/libghostty.so`, captured evidence logs, and passed the locked offline host send-text test. Wrapper deviation documented: an earlier README bash fence initialized the top-level `ghostty` submodule before the approved v2 block; no nested submodules or system mutation were found. |
 | 2026-05-29 20:47 EDT | Full gate and Xvfb smoke restored | Removed the host `unused_mut` warning, updated Xvfb smoke from `softpipe`/OpenGL 3.3 to `llvmpipe`/OpenGL 4.3, accepted current `new-pane --json` refs, and verified `cargo fmt --check`, `git diff --check`, `./scripts/check.sh`, and `./scripts/xvfb-smoke-test.sh`. |
+| 2026-05-29 21:10 EDT | Shell-quoted launch snippet hardening | Added central generated-snippet shell quoting, quoted generated `LIMUX_AGENTS.md` scratch-pane commands, rejected unquoted extra `new-pane` positionals, removed nested prompt examples from docs, and verified focused CLI tests, full workspace check, and Xvfb smoke. Claude plugin review timed out; hcom reviewers converged on GO for the manual snippet path and deferred typed-PTY control-character policy before auto-bootstrap. |
 
 ## Current State
 
 - Branch: `main`
 - Code commit pushed before this handoff: `cec067f fix(cli): protect agent-team protocol output`
-- Latest implementation in this handoff: full gate and Xvfb smoke restoration after the Ghostty/Zig build gate.
+- Latest implementation in this handoff: shell-quoted launch snippet hardening after the full gate and Xvfb smoke restoration.
 - Latest pushed status/report commit before Phase 5A implementation:
   `1c12e97 docs(decision): add limux next steps packet`
-- Working tree should be clean after committing/pushing the full-gate/smoke restoration.
+- Working tree should be clean after committing/pushing the shell-quoted launch snippet hardening.
 
 ## Architectural Decisions Locked In
 
@@ -191,7 +197,7 @@ the local Ghostty library on `LD_LIBRARY_PATH`.
 2. **Authority split.** Repo files such as `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` remain authoritative project instructions.
 3. **Runtime sidecar.** `LIMUX_AGENTS.md` is generated Limux runtime context: peers, surfaces, messaging, human notification, and routing.
 4. **Zero-friction path.** Reduce friction through automated discovery, explicit pointers, environment variables, and later bootstrap/adapters, not hidden prompt composition.
-5. **Launch automation waits.** Full two-phase automatic launch/bootstrap should wait until shell quoting is hardened and the live GTK/Xvfb path can be verified with host prerequisites installed.
+5. **Launch automation waits.** Generated launch snippets should only start the agent binary. Full two-phase automatic launch/bootstrap should wait until arbitrary prompt text is sent after pane readiness and typed-PTY control-character/newline behavior is explicitly guarded and smoke-tested.
 
 ## Subagent Brainstorm Synthesis
 
@@ -208,8 +214,9 @@ Phase ordering:
 
 1. **Done:** Improve generated `LIMUX_AGENTS.md` with instruction-source detection, generated marker, no-overwrite guard, and local-policy extension point.
 2. **Done:** Fix `surface.send_text` readiness/failure semantics in the GTK host bridge and verify it through the full workspace gate.
-3. **Next:** Add shell-quoting tests before implementing two-phase automatic launch/bootstrap behavior.
-4. **Optional later:** Add runtime-specific `.limux/` adapters for Codex, Claude Code, Gemini, and OpenCode.
+3. **Done:** Add caller-shell quoting tests and generated-snippet hardening before expanding automatic launch/bootstrap behavior.
+4. **Next:** Define and test the typed-PTY control-character/newline policy for `limux send`, respawn, and host-spawn paths before automatic bootstrap.
+5. **Optional later:** Add runtime-specific `.limux/` adapters for Codex, Claude Code, Gemini, and OpenCode.
 
 ## Key Files For Context
 
@@ -240,11 +247,12 @@ Phase ordering:
 - Host-crate tests moved past the prior `pkg-config` and `libghostty` blockers. The `unused_mut` warning at `rust/limux-host-linux/src/window.rs:4340` is fixed.
 - The Xvfb smoke harness requires Mesa software OpenGL 4.3 for the pinned Ghostty. It now defaults to `llvmpipe` and can be overridden with `LIMUX_SMOKE_GALLIUM_DRIVER` for local Mesa debugging.
 - `zig` is intentionally not on `PATH`; the reviewed lane used project-scoped Zig under `$HOME/.cache/limux-tools`.
-- Shell-injected launch/bootstrap commands need tests for spaces, quotes, `$`, backticks, semicolons, and newlines before automation expands.
+- Caller-shell generated snippet tests now cover spaces, quotes, `$`, command substitution, backticks, semicolons, control characters, newlines, exact JSON preservation, and side-effect inertness. The remaining bootstrap blocker is typed-PTY safety: `limux send`, respawn, and host-spawn can still deliver control characters or newline-as-Enter behavior to a live terminal unless a policy is added.
 - Instruction-source hashes are deterministic `fnv1a64` metadata for change detection, not cryptographic integrity claims.
+- Claude plugin adversarial review did not complete for this lane: normal mode timed out after 180 seconds, and `--bare` mode failed because Claude was not logged in under bare mode. hcom reviewer `kazu` provided the Claude-family shell-safety lens instead.
 
 ## Morning Resume Prompt
 
 ```text
-Please resume the Limux work from HANDOFF.md. Phase 5A zero-friction protocol discovery is implemented, GTK `surface.send_text` now returns a conflict when the terminal is not ready, host prerequisites are installed, the approved Ghostty/Zig gate built `ghostty/zig-out/lib/libghostty.so`, and both `./scripts/check.sh` and `./scripts/xvfb-smoke-test.sh` pass locally with the Ghostty library on `LD_LIBRARY_PATH`. Next add shell-quoting tests for launch/bootstrap commands before expanding automatic agent bootstrap.
+Please resume the Limux work from HANDOFF.md. Phase 5A zero-friction protocol discovery is implemented, GTK `surface.send_text` now returns a conflict when the terminal is not ready, host prerequisites are installed, the approved Ghostty/Zig gate built `ghostty/zig-out/lib/libghostty.so`, both `./scripts/check.sh` and `./scripts/xvfb-smoke-test.sh` pass locally with the Ghostty library on `LD_LIBRARY_PATH`, and generated `new-pane --command` shell snippets now quote launch commands with regression coverage. Next define and test the typed-PTY control-character/newline policy for `limux send`, respawn, and host-spawn paths before implementing automatic bootstrap.
 ```

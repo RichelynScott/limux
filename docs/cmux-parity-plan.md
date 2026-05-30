@@ -56,7 +56,7 @@ dispatcher parity.
 - `surface.health` and `surface.read_text` now route on the live GTK bridge,
   so agents can inspect peer terminal health and visible screen text.
 - `pane.create` now routes through the GTK bridge for terminal panes. From
-  inside an agent terminal, `limux new-pane --direction right --command claude`
+  inside an agent terminal, `limux new-pane --direction right --command 'claude'`
   uses `LIMUX_WORKSPACE_ID`, `LIMUX_SURFACE_ID`, and `LIMUX_PANE_ID` to split
   the caller's pane, create a new terminal, and launch the command there.
 
@@ -131,10 +131,12 @@ into a `notify` (and, where useful, an inline `send`). Drop-in for
 
 **Deferred: Phase 5B — automatic bootstrap**
 
-Full two-phase launch/bootstrap should wait until shell-quoted launch commands
-have regression tests and the live GTK/Xvfb smoke path can be run in an
-environment with the required GTK/pkg-config/Ghostty prerequisites. A future
-blank-pane-then-send bootstrap must not bypass the readiness safety.
+Caller-shell quoting for generated `new-pane --command` snippets now has
+regression coverage, and the live GTK/Xvfb smoke path is runnable with the
+documented host prerequisites. Full two-phase launch/bootstrap is still
+deferred until arbitrary prompt text is sent after pane readiness instead of
+embedded inside `--command`, and the live smoke path proves metacharacter
+payloads cannot trigger shell side effects.
 
 ### Phase 6 — (deferred) `limux progress`, `limux log`, `limux markdown`
 Nice polish, not blockers.

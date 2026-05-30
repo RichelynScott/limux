@@ -731,9 +731,9 @@
       <div class="section-body status-grid">
         <div class="status-card"><strong>Done</strong><span>User selected Limux + hcom primary and no Multica pilot for now.</span></div>
         <div class="status-card"><strong>Done</strong><span>Commit `cec067f` moved generated protocol output to `LIMUX_AGENTS.md` and added `--protocol-path`.</span></div>
-        <div class="status-card"><strong>Verified</strong><span>`cargo test -p limux-cli`, fmt, clippy for limux-cli, and diff whitespace checks passed after the code fix.</span></div>
-        <div class="status-card"><strong>Gated</strong><span>Full automatic bootstrap waits on send-readiness and shell-quoting hardening.</span></div>
-        <div class="status-card"><strong>Blocked</strong><span>Full `./scripts/check.sh` needs `ghostty/zig-out/lib/libghostty.so` built first.</span></div>
+        <div class="status-card"><strong>Verified</strong><span>`cargo test -p limux-cli`, fmt, clippy, diff whitespace, full `./scripts/check.sh`, and Xvfb smoke pass locally with the built Ghostty library on `LD_LIBRARY_PATH`.</span></div>
+        <div class="status-card"><strong>Gated</strong><span>Full automatic bootstrap waits on two-phase launch/send hardening and live metacharacter smoke coverage.</span></div>
+        <div class="status-card"><strong>Local prerequisite</strong><span>Fresh clones or cleaned worktrees still need the reviewed Ghostty/Zig build lane before host checks.</span></div>
         <div class="status-card"><strong>Not done</strong><span>Did not clone, install, build, or run Multica. Did not edit global templates directly.</span></div>
       </div>
     </section>
@@ -759,7 +759,7 @@
         <article class="card">
           <span class="tag amber">Deferred</span>
           <h3>Automatic bootstrap</h3>
-          <p>Wait until `surface.send_text` readiness/failure reporting and shell quoting have regression coverage.</p>
+          <p>Wait until generated launch commands start only the agent binary, wait for pane readiness, then send arbitrary prompt text with `limux send` and live metacharacter smoke coverage.</p>
         </article>
       </div>
     </section>

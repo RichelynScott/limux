@@ -211,3 +211,22 @@ Removed the unnecessary `mut` binding in `rust/limux-host-linux/src/window.rs`. 
 
 ### Related:
 `scripts/xvfb-smoke-test.sh` | `rust/limux-host-linux/src/window.rs` | `HANDOFF.md`
+
+## 2026-05-29 - Shell-Quoted Launch Snippet Hardening
+### What:
+Hardened generated `limux new-pane --command ...` shell snippets and removed unsafe nested-prompt examples from workflow docs.
+
+### Why:
+Automatic agent bootstrap must not be built on ad hoc shell strings. Generated snippets need to preserve launch commands as one caller-shell argv, avoid command-substitution/semicolon side effects, and make arbitrary prompt text a post-readiness `limux send` concern instead of a launch-shell concern.
+
+### How:
+Added central `shell_command_arg` / `new_pane_shell_command` helpers, changed generated `LIMUX_AGENTS.md` scratch-pane output to quote `bash`, and made `new-pane` fail fast on unexpected positional tokens such as unquoted extra prompt text. Added regression tests for metacharacter round trips, exact JSON command preservation, leading-hyphen command values, single-argv parsing, and outer-shell side-effect inertness. Updated README, cmux parity, hcom workflow, and Limux-vs-Multica decision docs.
+
+### Impact:
+The current manual/generated-snippet path is green. Full automatic bootstrap remains deferred until typed-PTY paths such as `limux send` / respawn / host-spawn have an explicit control-character and newline policy plus live metacharacter smoke coverage.
+
+### Verification:
+`cargo test -p limux-cli agent_team_tests::`, `cargo test -p limux-cli new_pane_tests::`, `cargo test -p limux-cli`, `cargo fmt --check`, `cargo clippy -p limux-cli --all-targets -- -D warnings`, `git diff --check`, `LD_LIBRARY_PATH="$PWD/ghostty/zig-out/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./scripts/check.sh`, and `LD_LIBRARY_PATH="$PWD/ghostty/zig-out/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./scripts/xvfb-smoke-test.sh` passed. hcom reviewers `niru`, `zori`, and `kazu` converged on GO for the manual snippet path and deferred typed-PTY control-character handling before auto-bootstrap. Claude plugin adversarial review timed out after 180 seconds; a `--bare` retry failed because Claude was not logged in under bare mode, so it is not counted as a passed plugin review.
+
+### Related:
+`rust/limux-cli/src/main.rs` | `docs/cmux-parity-plan.md` | `docs/limux-hcom-workflow.md` | hcom thread `limux-shell-quoting`

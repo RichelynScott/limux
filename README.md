@@ -139,12 +139,12 @@ limux agent-team --agents codex,claude --cwd "$PWD"
 
 # Or split the current agent's pane and launch another terminal agent.
 # Inside Limux, workspace/surface/pane default from LIMUX_*:
-limux new-pane --direction right --command claude
+limux new-pane --direction right --command 'claude'
 # Live GTK self-spawn currently supports terminal panes only.
 
 # Explicit source targets are also accepted and serialized unchanged:
 limux new-pane --workspace "$LIMUX_WORKSPACE_ID" --surface "$LIMUX_SURFACE_ID" \
-  --pane "$LIMUX_PANE_ID" --direction down --command "codex"
+  --pane "$LIMUX_PANE_ID" --direction down --command 'codex'
 
 # Keep both agents in the same workspace on separate splits/tabs:
 limux identify --json

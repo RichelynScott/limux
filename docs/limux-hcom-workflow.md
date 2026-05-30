@@ -1,7 +1,7 @@
 # Limux + hcom Workflow Guide
 
 Last reviewed: 2026-05-29
-Repo state reviewed: `main` after `cec067f fix(cli): protect agent-team protocol output`
+Repo state reviewed: `main` with local shell-quoted launch snippet hardening
 
 ## Executive Summary
 
@@ -19,7 +19,7 @@ Use them together like this:
 |---|---|
 | Codex asks Claude in the same project to review a diff | `limux send --surface ...` |
 | Parent checks whether a child pane is stuck | `limux read-screen --surface ... --lines 80` |
-| Spawn a short-lived reviewer beside the current pane | `limux new-pane --direction right --command 'codex "..."'` |
+| Spawn a short-lived reviewer beside the current pane | `limux new-pane --direction right --command 'codex'`, then `limux send ...` after the pane is ready |
 | Get human attention inside the GUI | `limux notify ...` |
 | Tell another project team about a relevant change | `uvx hcom send @agent --intent inform --thread ... --name tipi -- "..."` |
 | Preserve decisions, plans, reviews, or handoffs | Write a durable file, then send a Limux or hcom pointer |
@@ -120,8 +120,13 @@ limux new-pane --direction right --command 'claude'
 Launch a focused Codex reviewer:
 
 ```bash
-limux new-pane --direction down --command 'codex "Review the current diff for correctness, regressions, and missing tests. Leave findings visible in this pane."'
+limux new-pane --direction down --command 'codex'
 ```
+
+After the pane is created and you have its surface id, send arbitrary prompt
+text with `limux send --surface ...` instead of embedding that text inside
+`--command`. This keeps prompts containing quotes, `$`, backticks, semicolons,
+or newlines out of the child pane's launch shell.
 
 Read a child pane:
 
@@ -272,8 +277,8 @@ The highest-leverage Limux improvements for this workflow are:
 
 1. Add `LIMUX_AGENTS.md` instruction-source discovery, generated-marker, and
    no-overwrite semantics.
-2. Fix `surface.send_text` readiness/failure reporting before automatic
-   bootstrap work.
+2. Add two-phase automatic bootstrap that launches the agent binary first, waits
+   for pane readiness, then sends arbitrary prompt text over `limux send`.
 3. Add a compact project roster file mapping project names to Limux workspaces,
    surface IDs, hcom names, and durable coordination files.
 4. Add a wrapper command for "spawn reviewer, capture surface, read result".
@@ -286,8 +291,11 @@ As of this review:
 - `agent-team` writes `LIMUX_AGENTS.md` by default and supports
   `--protocol-path`.
 - Existing repo `AGENTS.md` files are not written by default.
-- Code state before this handoff is pushed at `cec067f`.
+- Generated `new-pane --command` examples quote launch commands and avoid
+  nested arbitrary prompt text.
 - Latest tag is `v0.1.19`.
-- Full `./scripts/check.sh` still requires a built `ghostty/zig-out/lib/libghostty.so`.
-- The next recommended implementation is Phase 5A in
+- Full `./scripts/check.sh` and `./scripts/xvfb-smoke-test.sh` pass locally
+  with `ghostty/zig-out/lib/libghostty.so` on `LD_LIBRARY_PATH`.
+- The next recommended implementation is typed-PTY control-character/newline
+  policy work before automatic bootstrap, tracked from
   [`cmux-parity-plan.md`](cmux-parity-plan.md).

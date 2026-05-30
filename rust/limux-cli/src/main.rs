@@ -1670,6 +1670,41 @@ fn shell_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
+fn shell_command_arg(value: &str) -> String {
+    if value.chars().any(|ch| ch.is_ascii_control()) {
+        return shell_ansi_c_quote(value);
+    }
+    shell_single_quote(value)
+}
+
+fn shell_ansi_c_quote(value: &str) -> String {
+    let mut out = String::from("$'");
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '\'' => out.push_str("\\'"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            ch if ch.is_ascii_control() => {
+                use std::fmt::Write as _;
+                let _ = write!(out, "\\x{:02x}", ch as u32);
+            }
+            ch => out.push(ch),
+        }
+    }
+    out.push('\'');
+    out
+}
+
+fn new_pane_shell_command(direction: &str, command: &str) -> String {
+    format!(
+        "limux new-pane --direction {} --command {}",
+        direction,
+        shell_command_arg(command)
+    )
+}
+
 fn hook_marker(agent: agent_hooks::AgentKind) -> &'static str {
     match agent {
         agent_hooks::AgentKind::Claude => "hooks claude",
@@ -2529,7 +2564,8 @@ fn build_agents_md(
     out.push_str("## Splitting your own pane\n\n");
     out.push_str("If you need a scratch terminal next to you, split your own pane:\n\n");
     out.push_str("```bash\n");
-    out.push_str("limux new-pane --direction right --command bash\n");
+    out.push_str(&new_pane_shell_command("right", "bash"));
+    out.push('\n');
     out.push_str("```\n\n");
     out.push_str(
         "`new-pane` reads `LIMUX_WORKSPACE_ID`, `LIMUX_SURFACE_ID`, and\n\
@@ -2660,13 +2696,51 @@ fn build_new_pane_request(
     (workspace, Value::Object(params))
 }
 
+fn new_pane_unexpected_positionals(args: &[String]) -> Vec<String> {
+    const VALUE_OPTIONS: &[&str] = &[
+        "--workspace",
+        "--surface",
+        "--pane",
+        "--direction",
+        "--type",
+        "--command",
+        "--url",
+    ];
+    let mut unexpected = Vec::new();
+    let mut skip_value = false;
+
+    for arg in args {
+        if skip_value {
+            skip_value = false;
+            continue;
+        }
+        if VALUE_OPTIONS.contains(&arg.as_str()) {
+            skip_value = true;
+            continue;
+        }
+        if arg.starts_with('-') {
+            continue;
+        }
+        unexpected.push(arg.clone());
+    }
+
+    unexpected
+}
+
 async fn run_new_pane(client: &mut Client, args: &[String]) -> Result<Value> {
     // `pane.create` contract shared with the core dispatcher and live GTK host:
     // direction/type are validated by the server, and responses keep
     // pane_id/pane_ref/surface_id/surface_ref. Inside a Limux terminal,
-    // LIMUX_* defaults make `limux new-pane --command claude` split the
+    // LIMUX_* defaults make `limux new-pane --command 'claude'` split the
     // caller's pane; outside Limux, omitting workspace preserves active-focus
     // server behavior.
+    let unexpected = new_pane_unexpected_positionals(args);
+    if !unexpected.is_empty() {
+        bail!(
+            "new-pane received unexpected positional argument(s): {}. Quote multi-word launch commands, for example: --command 'codex --ask-for-approval never'. Send arbitrary prompts later with limux send.",
+            unexpected.join(", ")
+        );
+    }
     let (workspace, params) = build_new_pane_request(args, env_opt);
     call_in_workspace_scope(client, workspace, "pane.create", params).await
 }
@@ -4221,7 +4295,7 @@ mod agent_team_tests {
         assert!(md.contains("limux notify"));
         assert!(md.contains("LIMUX_WORKSPACE_ID"));
         assert!(md.contains("LIMUX_SURFACE_ID"));
-        assert!(md.contains("limux new-pane --direction right --command bash"));
+        assert!(md.contains("limux new-pane --direction right --command 'bash'"));
         assert!(md.contains("Live GTK self-spawn currently supports terminal"));
     }
 
@@ -4462,6 +4536,153 @@ mod agent_team_tests {
             "target protocol\n"
         );
     }
+
+    #[test]
+    fn shell_command_arg_round_trips_launch_metacharacters() {
+        for launch in [
+            "",
+            "--help",
+            "codex review spaces",
+            "codex \"review spaces\" '$PATH' `whoami`; echo nope",
+            "codex $HOME $(whoami) \\slash\ttab & wait | cat < in > out (paren) * ? ~ # !",
+            "codex first line\nsecond line with '$PATH' and `whoami`; echo nope",
+            "codex carriage\rreturn",
+            "codex escape \x1b bell \x07",
+        ] {
+            let quoted = shell_command_arg(launch);
+
+            assert_bash_word_round_trip(&quoted, launch);
+            assert!(
+                !quoted.contains('\n'),
+                "generated shell argument should not insert literal newlines: {quoted:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn shell_command_arg_keeps_newline_launches_single_line() {
+        let launch = "codex first line\nsecond line with '$PATH' and `whoami`; echo nope";
+        let quoted = shell_command_arg(launch);
+
+        assert_bash_word_round_trip(&quoted, launch);
+        assert!(
+            !quoted.contains('\n'),
+            "generated shell argument should not insert literal newlines: {quoted:?}"
+        );
+    }
+
+    #[test]
+    fn new_pane_shell_command_parses_as_single_argv_without_outer_side_effects() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let capture = tmp.path().join("captured-command");
+        let bad_substitution = tmp.path().join("bad-substitution");
+        let bad_backtick = tmp.path().join("bad-backtick");
+        let bad_semicolon = tmp.path().join("bad-semicolon");
+        let launch = format!(
+            "codex \"review spaces\" 'single' $HOME $(touch {}) `touch {}` ; touch {} \\\\slash\ttab\nsecond",
+            bad_substitution.display(),
+            bad_backtick.display(),
+            bad_semicolon.display()
+        );
+        let command = new_pane_shell_command("right", &launch);
+        let capture_arg = shell_command_arg(&capture.to_string_lossy());
+        let bad_substitution_arg = shell_command_arg(&bad_substitution.to_string_lossy());
+        let bad_backtick_arg = shell_command_arg(&bad_backtick.to_string_lossy());
+        let bad_semicolon_arg = shell_command_arg(&bad_semicolon.to_string_lossy());
+
+        let script = format!(
+            r#"
+set -euo pipefail
+limux() {{
+  [[ "$#" -eq 5 ]] || {{ printf 'argc=%s\n' "$#" >&2; return 90; }}
+  [[ "$1" == "new-pane" ]] || return 91
+  [[ "$2" == "--direction" ]] || return 92
+  [[ "$3" == "right" ]] || return 93
+  [[ "$4" == "--command" ]] || return 94
+  printf '%s' "$5" > {capture_arg}
+}}
+{command}
+[[ ! -e {bad_substitution_arg} ]]
+[[ ! -e {bad_backtick_arg} ]]
+[[ ! -e {bad_semicolon_arg} ]]
+"#
+        );
+
+        let output = std::process::Command::new("bash")
+            .arg("-lc")
+            .arg(script)
+            .output()
+            .expect("run bash");
+
+        assert!(
+            output.status.success(),
+            "generated command should parse as one --command argv without outer-shell side effects: stderr={}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            std::fs::read_to_string(&capture).expect("read captured command"),
+            launch
+        );
+    }
+
+    #[test]
+    fn new_pane_shell_command_quotes_command_argument() {
+        let launch = "codex \"review this\" '$PATH' `whoami`; echo nope\nnext";
+        let command = new_pane_shell_command("right", launch);
+        let expected_launch_arg = shell_command_arg(launch);
+
+        assert_eq!(
+            command,
+            format!("limux new-pane --direction right --command {expected_launch_arg}")
+        );
+        assert!(
+            !command.contains('\n'),
+            "generated new-pane command should remain one physical line"
+        );
+    }
+
+    #[test]
+    fn agents_md_uses_shell_quoted_new_pane_command_example() {
+        let md = build_agents_md(
+            &[],
+            "/tmp/team",
+            "active-ws",
+            "ws-uuid-123",
+            "9:terminal-orch",
+            &[],
+        );
+
+        assert!(md.contains("limux new-pane --direction right --command 'bash'"));
+        assert!(!md.contains("limux new-pane --direction right --command bash\n"));
+    }
+
+    fn assert_bash_word_round_trip(quoted: &str, expected: &str) {
+        let output = std::process::Command::new("bash")
+            .arg("-lc")
+            .arg(format!("set -- {quoted}; printf '%s\\0%s' \"$#\" \"$1\""))
+            .output()
+            .expect("run bash");
+
+        assert!(
+            output.status.success(),
+            "bash rejected quoted word {quoted:?}: stderr={}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let split = output
+            .stdout
+            .iter()
+            .position(|byte| *byte == 0)
+            .expect("round trip output should include NUL separator");
+        assert_eq!(
+            std::str::from_utf8(&output.stdout[..split]).expect("utf8 argc"),
+            "1",
+            "quoted word should parse as exactly one shell word"
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout[(split + 1)..].to_vec()).expect("utf8 stdout"),
+            expected
+        );
+    }
 }
 
 #[cfg(test)]
@@ -4529,6 +4750,58 @@ mod new_pane_tests {
                 "command": "codex --ask-for-approval never"
             })
         );
+    }
+
+    #[test]
+    fn new_pane_command_preserves_metacharacters_in_request_json() {
+        let payload =
+            "codex \"review\" 'single' $HOME $(whoami) `id`; echo nope \\\\slash\ttab\nsecond";
+
+        let (_workspace, params) = build_new_pane_request(&args(&["--command", payload]), test_env);
+
+        assert_eq!(params["command"].as_str(), Some(payload));
+    }
+
+    #[test]
+    fn new_pane_command_accepts_leading_hyphen_value() {
+        let (_workspace, params) =
+            build_new_pane_request(&args(&["--command", "--help"]), test_env);
+
+        assert_eq!(params["command"].as_str(), Some("--help"));
+        assert!(new_pane_unexpected_positionals(&args(&["--command", "--help"])).is_empty());
+    }
+
+    #[tokio::test]
+    async fn new_pane_rejects_unquoted_extra_command_tokens_before_contacting_host() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut client = Client::new(tmp.path().join("unused.sock"));
+
+        let err = run_new_pane(
+            &mut client,
+            &args(&["--command", "codex", "review this diff"]),
+        )
+        .await
+        .expect_err("unquoted extra command tokens should fail before socket use");
+
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("unexpected positional argument"),
+            "unexpected error: {msg}"
+        );
+        assert!(
+            msg.contains("Quote multi-word launch commands"),
+            "unexpected error: {msg}"
+        );
+        assert!(msg.contains("limux send"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn new_pane_allows_shell_quoted_multiword_command_as_one_argv() {
+        assert!(new_pane_unexpected_positionals(&args(&[
+            "--command",
+            "codex \"review this diff\""
+        ]))
+        .is_empty());
     }
 
     #[test]

@@ -29,9 +29,9 @@ Updated with the `$html-decision-packet` pattern: explicit packet metadata, road
 | Done | Created the readable Markdown guide and dark-mode HTML decision sheet; user filled it out and selected the Limux-first path. |
 | Done | Commit `cec067f` moved `agent-team` protocol output to `LIMUX_AGENTS.md` by default and added `--protocol-path`. |
 | Done | Ran a five-subagent brainstorm on near-zero-friction Limux agent-team workflow. |
-| Verified | `cargo test -p limux-cli`, `cargo fmt --check`, `cargo clippy -p limux-cli --all-targets -- -D warnings`, and `git diff --check` passed after the code fix. |
-| Gated | Multica adoption and install remain deferred. Full automatic Limux bootstrap is gated on send-readiness and shell-quoting hardening. |
-| Blocked | Full `./scripts/check.sh` requires building `ghostty/zig-out/lib/libghostty.so`; the last failure was a missing prerequisite. |
+| Verified | `cargo test -p limux-cli`, `cargo fmt --check`, `cargo clippy -p limux-cli --all-targets -- -D warnings`, `git diff --check`, full `./scripts/check.sh`, and Xvfb smoke pass locally with the built Ghostty library on `LD_LIBRARY_PATH`. |
+| Gated | Multica adoption and install remain deferred. Full automatic Limux bootstrap is gated on two-phase launch/send hardening and live metacharacter smoke coverage. |
+| Local prerequisite | Fresh clones or cleaned worktrees still need the reviewed Ghostty/Zig build lane before host checks. |
 | Explicitly not done | Did not clone, install, build, or execute Multica. Did not edit global Codex/Claude templates directly from this Limux session. |
 
 ## Short Answer
@@ -174,8 +174,9 @@ friction. The consensus was:
   `CLAUDE.md`, `GEMINI.md`, and similar files directly.
 - Add generated-marker and no-overwrite semantics before relying on automatic
   regeneration.
-- Defer two-phase automatic bootstrap until `surface.send_text` readiness and
-  shell quoting are hardened.
+- Defer two-phase automatic bootstrap until generated launch commands start
+  only the agent binary, wait for pane readiness, then send arbitrary prompt
+  text with `limux send` and live metacharacter smoke coverage.
 
 Recommended next implementation: Phase 5A in
 [`cmux-parity-plan.md`](cmux-parity-plan.md).
