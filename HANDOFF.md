@@ -44,9 +44,9 @@ Consensus Conventions**. Add a bounded path that records reviewer verdicts back
 into the existing ledger entry without rewriting unrelated content, then
 document GO/WAIT/NO-GO consensus and targeted hcom pointer conventions.
 
-Current implementation status: Phase 5D2 is in the current working tree with
-README, roadmap, workflow, handoff, and FYI updates. Commit/push status should
-be checked with `git status --short --branch` and `git log --oneline -3` before
+Current implementation status: Phase 5D2 is committed and pushed as
+`20f5785 feat(cli): add review spawn wrapper`. The branch was aligned with
+`origin/main` after push; verify with `git status --short --branch` before
 continuing.
 
 Historical next-step packet that selected Phase 5D1:
@@ -308,10 +308,10 @@ explicit `LD_LIBRARY_PATH` prefix.
 
 - Branch: `main`
 - Phase 5B baseline commit: `0d2597b feat(cli): bootstrap agent-team peers after launch`
-- Latest pushed commit before this session: `719be5f docs(closeout): update limux handoff`
+- Latest implementation commit: `20f5785 feat(cli): add review spawn wrapper`
 - Latest implementation in this handoff: Phase 5D2 `limux review spawn` wrapper after Phase 5D1 `review prepare`.
-- Working tree currently contains Phase 5D2 changes until committed; verify with
-  `git status --short --branch`.
+- Working tree was clean and aligned with `origin/main` immediately after the
+  Phase 5D2 implementation push.
 
 ## Architectural Decisions Locked In
 
