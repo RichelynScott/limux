@@ -365,3 +365,46 @@ and proceed only with the Phase 5D2 wrapper unless a regression is discovered.
 
 ### Related:
 `HANDOFF.md` | `e4ce6fd`
+
+## 2026-06-05 - Phase 5D2 Reviewer Spawn Evidence Pointer
+### What:
+Implemented `limux review spawn` as the Phase 5D2 continuation of
+`limux review prepare`.
+
+### Why:
+Phase 5D1 made review requests durable but deliberately stopped before real
+reviewer pane launch. The next useful automation step was to start one reviewer
+from an existing generated request, deliver the prepared prompt after pane
+creation, and leave durable evidence/ledger pointers without storing raw
+terminal transcripts.
+
+### How:
+Added `review spawn --review-id <id>` with optional `--cwd`, `--reviews-dir`,
+`--ledger-path`, `--evidence-path`, `--workspace`, `--surface`, `--direction`,
+`--no-launch`, and `--dry-run`. The command reads the generated request file,
+refuses `manual` reviewers, creates a reviewer terminal pane through
+`pane.create`, sends the request prompt through `surface.send_text` plus
+explicit Enter, writes `reviews/<review-id>.evidence.md` with the reviewer
+surface and capture command, and updates only the matching pending ledger block
+to `in-progress`. Updated README, `docs/cmux-parity-plan.md`,
+`docs/limux-hcom-workflow.md`, and `HANDOFF.md`.
+
+### Impact:
+Limux can now move a prepared review into a live reviewer pane while preserving
+the file-first request/ledger model. Remaining Phase 5D work is a
+collect/complete path that records reviewer verdicts and consensus back into
+the existing ledger entry without unrelated rewrites.
+
+### Verification:
+Observed RED compile failure before implementation because `run_review_command`
+was still prepare-only and synchronous. After implementation, `cargo test -p
+limux-cli review_spawn -- --nocapture`, `cargo test -p limux-cli review --
+--nocapture`, `cargo test -p limux-cli`, `cargo clippy -p limux-cli
+--all-targets -- -D warnings`, `cargo fmt --check`, `git diff --check`,
+`LD_LIBRARY_PATH="$PWD/ghostty/zig-out/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+./scripts/check.sh`, and `LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh`
+passed.
+
+### Related:
+`rust/limux-cli/src/main.rs` | `README.md` | `docs/cmux-parity-plan.md` |
+`docs/limux-hcom-workflow.md` | `HANDOFF.md`

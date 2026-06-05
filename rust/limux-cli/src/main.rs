@@ -25,6 +25,7 @@ const AGENT_TEAM_PROTOCOL_MARKER: &str = "<!-- limux-agent-team-protocol generat
 const AGENT_TEAM_ROSTER_MARKER: &str = "<!-- limux-team-roster durable:create-if-missing:v1 -->";
 const AGENT_TEAM_LEDGER_MARKER: &str = "<!-- limux-review-ledger durable:v1 -->";
 const REVIEW_REQUEST_MARKER: &str = "<!-- limux-review-request generated:v1 -->";
+const REVIEW_EVIDENCE_MARKER: &str = "<!-- limux-review-evidence pointer:v1 -->";
 const AGENT_TEAM_DEFAULT_PROTOCOL_FILE: &str = "LIMUX_AGENTS.md";
 const AGENT_TEAM_DEFAULT_ROSTER_FILE: &str = "LIMUX_TEAM_ROSTER.md";
 const AGENT_TEAM_DEFAULT_LEDGER_FILE: &str = "LIMUX_REVIEW_LEDGER.md";
@@ -224,6 +225,9 @@ fn print_help() {
     );
     println!(
         "  agent-team extra flags: --no-bootstrap skips the post-launch bootstrap prompt while still launching panes; --dry-run skips host contact but still materializes the protocol and seeds missing roster/ledger files."
+    );
+    println!(
+        "  review spawn: review spawn --review-id <id> [--cwd <path>] [--reviews-dir <path>] [--ledger-path <path>] [--evidence-path <path>] [--workspace <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--no-launch] [--dry-run]"
     );
 }
 
@@ -2844,6 +2848,35 @@ struct ReviewRequestMd<'a> {
     prompt: &'a str,
 }
 
+#[derive(Debug, Clone)]
+struct PreparedReviewRequest {
+    review_id: String,
+    artifact: String,
+    reviewer: String,
+    lens: String,
+    summary: String,
+    ledger_path: PathBuf,
+    prompt: String,
+}
+
+struct ReviewSpawnEvidenceMd<'a> {
+    request: &'a PreparedReviewRequest,
+    request_path: &'a Path,
+    ledger_path: &'a Path,
+    reviewer_pane_id: &'a str,
+    reviewer_surface_id: &'a str,
+    prompt_status: &'a str,
+    capture_command: &'a str,
+}
+
+struct ReviewSpawnLedgerUpdate<'a> {
+    evidence_path: &'a Path,
+    reviewer_pane_id: &'a str,
+    reviewer_surface_id: &'a str,
+    prompt_status: &'a str,
+    capture_command: &'a str,
+}
+
 fn discover_instruction_sources(cwd: &Path) -> Vec<InstructionSource> {
     AGENT_TEAM_INSTRUCTION_FILES
         .iter()
@@ -3063,11 +3096,12 @@ fn build_agent_team_ledger_md(cwd: &str, protocol_path: &Path, roster_path: &Pat
     out
 }
 
-fn run_review_command(args: &[String]) -> Result<Value> {
+async fn run_review_command(client: &mut Client, args: &[String]) -> Result<Value> {
     match args.first().map(String::as_str) {
         Some("prepare") => run_review_prepare(args),
+        Some("spawn") => run_review_spawn(client, args).await,
         Some(subcommand) => bail!("unknown review subcommand: {subcommand}"),
-        None => bail!("review requires a subcommand; try `review prepare`"),
+        None => bail!("review requires a subcommand; try `review prepare` or `review spawn`"),
     }
 }
 
@@ -3158,6 +3192,7 @@ fn run_review_prepare(raw_args: &[String]) -> Result<Value> {
 
     Ok(json!({
         "ok": true,
+        "review_command": "prepare",
         "dry_run": dry_run,
         "cwd": cwd_string,
         "review_id": review_id,
@@ -3181,6 +3216,218 @@ fn run_review_prepare(raw_args: &[String]) -> Result<Value> {
         "request_markdown": request_body,
         "ledger_entry": ledger_entry,
     }))
+}
+
+async fn run_review_spawn(client: &mut Client, raw_args: &[String]) -> Result<Value> {
+    let args = if raw_args.first().map(String::as_str) == Some("spawn") {
+        &raw_args[1..]
+    } else {
+        raw_args
+    };
+
+    let cwd_raw = parse_opt(args, "--cwd")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let cwd = cwd_raw.canonicalize().with_context(|| {
+        format!(
+            "review spawn: could not resolve --cwd {}",
+            cwd_raw.display()
+        )
+    })?;
+    let cwd_string = cwd.to_string_lossy().to_string();
+
+    let review_id = required_review_spawn_opt(args, "--review-id")?;
+    validate_review_id(&review_id)?;
+    let dry_run = parse_flag(args, "--dry-run");
+    let no_launch = parse_flag(args, "--no-launch");
+    let direction = parse_opt(args, "--direction")
+        .unwrap_or_else(|| "right".to_string())
+        .to_ascii_lowercase();
+    validate_review_spawn_direction(&direction)?;
+
+    let reviews_dir =
+        resolve_review_output_path(&cwd, args, "--reviews-dir", REVIEW_DEFAULT_REVIEWS_DIR);
+    let request_path = reviews_dir.join(format!("{review_id}.md"));
+    validate_review_output_dir_path(&reviews_dir)?;
+    validate_review_existing_request_path(&request_path)?;
+    let request = read_prepared_review_request(&request_path)?;
+    if request.review_id != review_id {
+        bail!(
+            "review spawn: request id mismatch; expected {review_id}, found {}",
+            request.review_id
+        );
+    }
+    if request.reviewer == "manual" {
+        bail!(
+            "review spawn cannot launch manual reviews; use review prepare for manual review files"
+        );
+    }
+    let (_, launch_command) = agent_launch_command(&request.reviewer).ok_or_else(|| {
+        anyhow!(
+            "review spawn: reviewer {} is not launchable",
+            request.reviewer
+        )
+    })?;
+
+    let ledger_path = parse_opt(args, "--ledger-path")
+        .map(PathBuf::from)
+        .map(|path| {
+            if path.is_absolute() {
+                path
+            } else {
+                cwd.join(path)
+            }
+        })
+        .unwrap_or_else(|| request.ledger_path.clone());
+    let evidence_path = parse_opt(args, "--evidence-path")
+        .map(PathBuf::from)
+        .map(|path| {
+            if path.is_absolute() {
+                path
+            } else {
+                cwd.join(path)
+            }
+        })
+        .unwrap_or_else(|| reviews_dir.join(format!("{review_id}.evidence.md")));
+    validate_review_spawn_output_paths_are_distinct(&request_path, &ledger_path, &evidence_path)?;
+    validate_agent_team_durable_file_path(&ledger_path, "review ledger")?;
+    validate_review_evidence_path(&evidence_path)?;
+    ensure_review_ledger_pending_entry(&ledger_path, &review_id)?;
+    validate_terminal_text_arg("review prompt", &request.prompt)?;
+
+    if dry_run {
+        let planned_surface = parse_opt(args, "--surface")
+            .or_else(|| {
+                env::var("LIMUX_SURFACE_ID")
+                    .ok()
+                    .filter(|value| !value.is_empty())
+            })
+            .unwrap_or_else(|| "<active-surface>".to_string());
+        let planned_workspace = parse_opt(args, "--workspace")
+            .or_else(|| {
+                env::var("LIMUX_WORKSPACE_ID")
+                    .ok()
+                    .filter(|value| !value.is_empty())
+            })
+            .unwrap_or_else(|| "<active-workspace>".to_string());
+        let capture_command = build_review_capture_command("<planned-reviewer-surface>", 120);
+        return Ok(json!({
+            "ok": true,
+            "review_command": "spawn",
+            "dry_run": true,
+            "no_launch": no_launch,
+            "cwd": cwd_string,
+            "review_id": request.review_id,
+            "artifact": request.artifact,
+            "reviewer": request.reviewer,
+            "lens": request.lens,
+            "summary": request.summary,
+            "request_path": request_path.to_string_lossy().to_string(),
+            "ledger_path": ledger_path.to_string_lossy().to_string(),
+            "reviews_dir": reviews_dir.to_string_lossy().to_string(),
+            "evidence_path": evidence_path.to_string_lossy().to_string(),
+            "workspace_id": planned_workspace,
+            "source_surface_id": planned_surface,
+            "reviewer_pane_id": Value::Null,
+            "reviewer_surface_id": "<planned-reviewer-surface>",
+            "direction": direction,
+            "launch_command": launch_command,
+            "capture_command": capture_command,
+            "spawn": { "status": "planned" },
+            "prompt": { "status": "planned", "text": request.prompt },
+            "evidence": { "status": "planned" },
+            "ledger": { "status": "planned" },
+        }));
+    }
+
+    let (workspace_id, source_surface_id) = resolve_review_spawn_source(client, args).await?;
+    let (reviewer_pane_id, reviewer_surface_id) = create_review_spawn_pane(
+        client,
+        &workspace_id,
+        &source_surface_id,
+        &direction,
+        if no_launch {
+            None
+        } else {
+            Some(launch_command.as_str())
+        },
+    )
+    .await?;
+
+    let prompt_status = if no_launch {
+        "skipped"
+    } else {
+        tokio::time::sleep(AGENT_TEAM_BOOTSTRAP_LAUNCH_SETTLE).await;
+        send_review_prompt(
+            client,
+            &workspace_id,
+            &reviewer_surface_id,
+            &request.reviewer,
+            &request.prompt,
+        )
+        .await?;
+        "sent"
+    };
+    let capture_command = build_review_capture_command(&reviewer_surface_id, 120);
+    let evidence_body = build_review_evidence_pointer_md(ReviewSpawnEvidenceMd {
+        request: &request,
+        request_path: &request_path,
+        ledger_path: &ledger_path,
+        reviewer_pane_id: &reviewer_pane_id,
+        reviewer_surface_id: &reviewer_surface_id,
+        prompt_status,
+        capture_command: &capture_command,
+    });
+    create_review_evidence_file(&evidence_path, &evidence_body)?;
+    let ledger_spawn_block = build_review_spawn_ledger_update(ReviewSpawnLedgerUpdate {
+        evidence_path: &evidence_path,
+        reviewer_pane_id: &reviewer_pane_id,
+        reviewer_surface_id: &reviewer_surface_id,
+        prompt_status,
+        capture_command: &capture_command,
+    });
+    update_review_ledger_entry_for_spawn(&ledger_path, &review_id, &ledger_spawn_block)?;
+
+    Ok(json!({
+        "ok": true,
+        "review_command": "spawn",
+        "dry_run": false,
+        "no_launch": no_launch,
+        "cwd": cwd_string,
+        "review_id": request.review_id,
+        "artifact": request.artifact,
+        "reviewer": request.reviewer,
+        "lens": request.lens,
+        "summary": request.summary,
+        "request_path": request_path.to_string_lossy().to_string(),
+        "ledger_path": ledger_path.to_string_lossy().to_string(),
+        "reviews_dir": reviews_dir.to_string_lossy().to_string(),
+        "evidence_path": evidence_path.to_string_lossy().to_string(),
+        "workspace_id": workspace_id,
+        "source_surface_id": source_surface_id,
+        "reviewer_pane_id": reviewer_pane_id,
+        "reviewer_surface_id": reviewer_surface_id,
+        "direction": direction,
+        "launch_command": launch_command,
+        "capture_command": capture_command,
+        "spawn": { "status": "created" },
+        "prompt": { "status": prompt_status, "text": request.prompt },
+        "evidence": { "status": "created" },
+        "ledger": { "status": "updated" },
+    }))
+}
+
+fn required_review_spawn_opt(args: &[String], flag: &str) -> Result<String> {
+    parse_opt(args, flag)
+        .filter(|value| !value.trim().is_empty() && !value.starts_with("--"))
+        .ok_or_else(|| anyhow!("review spawn requires {flag}"))
+}
+
+fn validate_review_spawn_direction(direction: &str) -> Result<()> {
+    match direction {
+        "left" | "right" | "up" | "down" => Ok(()),
+        _ => bail!("review spawn --direction must be one of left|right|up|down"),
+    }
 }
 
 fn required_review_opt(args: &[String], flag: &str) -> Result<String> {
@@ -3342,6 +3589,166 @@ fn create_review_request_file(path: &Path, body: &str) -> Result<()> {
     }
 }
 
+fn validate_review_existing_request_path(path: &Path) -> Result<()> {
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("failed to inspect review request {}", path.display()))?;
+    let file_type = metadata.file_type();
+    if file_type.is_symlink() {
+        bail!(
+            "refusing to read review request because it is a symlink: {}",
+            path.display()
+        );
+    }
+    if !file_type.is_file() {
+        bail!(
+            "refusing to read review request because it is not a regular file: {}",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+fn read_prepared_review_request(path: &Path) -> Result<PreparedReviewRequest> {
+    validate_review_existing_request_path(path)?;
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("failed to read review request {}", path.display()))?;
+    if !raw.contains(REVIEW_REQUEST_MARKER) {
+        bail!(
+            "review spawn: refusing unmarked review request {}; run `review prepare` first",
+            path.display()
+        );
+    }
+    let review_id = review_markdown_backtick_field(&raw, "Review ID")
+        .ok_or_else(|| anyhow!("review spawn: request missing Review ID"))?;
+    let reviewer = review_markdown_backtick_field(&raw, "Reviewer")
+        .ok_or_else(|| anyhow!("review spawn: request missing Reviewer"))?;
+    let lens = review_markdown_backtick_field(&raw, "Lens")
+        .ok_or_else(|| anyhow!("review spawn: request missing Lens"))?;
+    let artifact = review_markdown_backtick_field(&raw, "Artifact")
+        .ok_or_else(|| anyhow!("review spawn: request missing Artifact"))?;
+    let summary = review_markdown_backtick_field(&raw, "Summary")
+        .ok_or_else(|| anyhow!("review spawn: request missing Summary"))?;
+    let ledger_path = review_markdown_backtick_field(&raw, "Review ledger")
+        .map(PathBuf::from)
+        .ok_or_else(|| anyhow!("review spawn: request missing Review ledger"))?;
+    let prompt = review_markdown_prompt_block(&raw)
+        .ok_or_else(|| anyhow!("review spawn: request missing prompt block"))?;
+
+    validate_review_id(&review_id)?;
+    validate_review_choice("reviewer", &reviewer, REVIEW_REVIEWERS)?;
+    validate_review_choice("review lens", &lens, REVIEW_LENSES)?;
+    validate_review_field("review artifact", &artifact)?;
+    validate_review_field("review summary", &summary)?;
+    validate_terminal_text_arg("review prompt", &prompt)?;
+
+    Ok(PreparedReviewRequest {
+        review_id,
+        artifact,
+        reviewer,
+        lens,
+        summary,
+        ledger_path,
+        prompt,
+    })
+}
+
+fn review_markdown_backtick_field(markdown: &str, label: &str) -> Option<String> {
+    let prefix = format!("{label}: `");
+    markdown.lines().find_map(|line| {
+        let rest = line.strip_prefix(&prefix)?;
+        let end = rest.find('`')?;
+        Some(rest[..end].to_string())
+    })
+}
+
+fn review_markdown_prompt_block(markdown: &str) -> Option<String> {
+    let start = markdown.find("```text\n")? + "```text\n".len();
+    let rest = &markdown[start..];
+    let end = rest.find("\n```")?;
+    Some(rest[..end].to_string())
+}
+
+fn validate_review_spawn_output_paths_are_distinct(
+    request_path: &Path,
+    ledger_path: &Path,
+    evidence_path: &Path,
+) -> Result<()> {
+    let paths = [
+        (
+            "request",
+            request_path,
+            comparable_agent_team_path(request_path),
+        ),
+        (
+            "review ledger",
+            ledger_path,
+            comparable_agent_team_path(ledger_path),
+        ),
+        (
+            "review evidence",
+            evidence_path,
+            comparable_agent_team_path(evidence_path),
+        ),
+    ];
+    for (left_index, (left_label, left_path, left_comparable)) in paths.iter().enumerate() {
+        for (right_label, _right_path, right_comparable) in paths.iter().skip(left_index + 1) {
+            if left_comparable == right_comparable {
+                bail!(
+                    "review spawn output paths must be distinct; {left_label} and {right_label} both resolve to {}",
+                    left_path.display()
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_review_evidence_path(path: &Path) -> Result<()> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(err) => {
+            return Err(err).with_context(|| format!("failed to inspect {}", path.display()));
+        }
+    };
+    let file_type = metadata.file_type();
+    if file_type.is_symlink() {
+        bail!(
+            "refusing to write review evidence because it is a symlink: {}",
+            path.display()
+        );
+    }
+    if !file_type.is_file() {
+        bail!(
+            "refusing to write review evidence because it is not a regular file: {}",
+            path.display()
+        );
+    }
+    bail!("review evidence already exists: {}", path.display())
+}
+
+fn create_review_evidence_file(path: &Path, body: &str) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+    }
+    validate_review_evidence_path(path)?;
+    match OpenOptions::new().write(true).create_new(true).open(path) {
+        Ok(mut file) => file
+            .write_all(body.as_bytes())
+            .with_context(|| format!("failed to write review evidence {}", path.display())),
+        Err(err) if err.kind() == ErrorKind::AlreadyExists => {
+            validate_review_evidence_path(path)?;
+            bail!("review evidence already exists: {}", path.display())
+        }
+        Err(err) => {
+            Err(err).with_context(|| format!("failed to create review evidence {}", path.display()))
+        }
+    }
+}
+
 fn append_review_ledger_entry(path: &Path, entry: &str) -> Result<()> {
     validate_agent_team_durable_file_path(path, "review ledger")?;
     let needs_leading_newline = match fs::read(path) {
@@ -3368,6 +3775,171 @@ fn append_review_ledger_entry(path: &Path, entry: &str) -> Result<()> {
     file.write_all(body.as_bytes())
         .with_context(|| format!("failed to append review ledger {}", path.display()))?;
     Ok(())
+}
+
+async fn resolve_review_spawn_source(
+    client: &mut Client,
+    args: &[String],
+) -> Result<(String, String)> {
+    let workspace_id = if let Some(workspace_id) = parse_opt(args, "--workspace").or_else(|| {
+        env::var("LIMUX_WORKSPACE_ID")
+            .ok()
+            .filter(|value| !value.is_empty())
+    }) {
+        workspace_id
+    } else {
+        let payload = client
+            .call("workspace.current", json!({}))
+            .await
+            .context("review spawn: workspace.current failed")?;
+        get_string(&payload, &["workspace_id", "id"])
+            .ok_or_else(|| anyhow!("review spawn: workspace.current returned no workspace_id"))?
+    };
+
+    if let Some(surface_id) = parse_opt(args, "--surface").or_else(|| {
+        env::var("LIMUX_SURFACE_ID")
+            .ok()
+            .filter(|value| !value.is_empty())
+    }) {
+        return Ok((workspace_id, surface_id));
+    }
+
+    let surfaces = client
+        .call(
+            "surface.list",
+            json!({ "workspace_id": workspace_id.clone() }),
+        )
+        .await
+        .context("review spawn: surface.list failed for target workspace")?;
+    let surface_rows = surfaces
+        .get("surfaces")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if surface_rows.is_empty() {
+        bail!("review spawn: target workspace has no surfaces");
+    }
+    let source_surface_id = surface_rows
+        .iter()
+        .find(|row| row.get("focused").and_then(Value::as_bool) == Some(true))
+        .and_then(|row| get_string(row, &["surface_id"]))
+        .or_else(|| get_string(&surface_rows[0], &["surface_id"]))
+        .ok_or_else(|| anyhow!("review spawn: could not determine source surface"))?;
+
+    Ok((workspace_id, source_surface_id))
+}
+
+async fn create_review_spawn_pane(
+    client: &mut Client,
+    workspace_id: &str,
+    source_surface_id: &str,
+    direction: &str,
+    command: Option<&str>,
+) -> Result<(String, String)> {
+    let mut params = Map::new();
+    params.insert(
+        "workspace_id".to_string(),
+        Value::String(workspace_id.to_string()),
+    );
+    params.insert(
+        "surface_id".to_string(),
+        Value::String(source_surface_id.to_string()),
+    );
+    params.insert(
+        "direction".to_string(),
+        Value::String(direction.to_string()),
+    );
+    params.insert("type".to_string(), Value::String("terminal".to_string()));
+    if let Some(command) = command {
+        validate_terminal_text_arg("review spawn command", command)?;
+        params.insert("command".to_string(), Value::String(command.to_string()));
+    }
+
+    let created = client
+        .call("pane.create", Value::Object(params))
+        .await
+        .context("review spawn: pane.create failed")?;
+    let pane_id = get_string(&created, &["pane_id", "pane_ref"])
+        .ok_or_else(|| anyhow!("review spawn: pane.create returned no pane_id"))?;
+    let surface_id = get_string(&created, &["surface_id", "surface_ref"])
+        .ok_or_else(|| anyhow!("review spawn: pane.create returned no surface_id"))?;
+    Ok((pane_id, surface_id))
+}
+
+async fn send_review_prompt(
+    client: &mut Client,
+    workspace_id: &str,
+    surface_id: &str,
+    reviewer: &str,
+    prompt: &str,
+) -> Result<()> {
+    validate_terminal_text_arg("review prompt", prompt)?;
+    let mut text_params = Map::new();
+    text_params.insert(
+        "workspace_id".to_string(),
+        Value::String(workspace_id.to_string()),
+    );
+    text_params.insert(
+        "surface_id".to_string(),
+        Value::String(surface_id.to_string()),
+    );
+    text_params.insert("text".to_string(), Value::String(prompt.to_string()));
+
+    let mut key_params = Map::new();
+    key_params.insert(
+        "workspace_id".to_string(),
+        Value::String(workspace_id.to_string()),
+    );
+    key_params.insert(
+        "surface_id".to_string(),
+        Value::String(surface_id.to_string()),
+    );
+    key_params.insert("key".to_string(), Value::String("enter".to_string()));
+
+    let mut last_error = None;
+    for attempt in 0..AGENT_TEAM_BOOTSTRAP_RETRY_ATTEMPTS {
+        match client
+            .call("surface.send_text", Value::Object(text_params.clone()))
+            .await
+        {
+            Ok(_) => {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                client
+                    .call("surface.send_key", Value::Object(key_params.clone()))
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "review spawn: prompt submit failed for '{reviewer}' on surface {surface_id}"
+                        )
+                    })?;
+                return Ok(());
+            }
+            Err(error) => {
+                let message = format!("{error:#}");
+                if message.contains("not ready for text input")
+                    && attempt + 1 < AGENT_TEAM_BOOTSTRAP_RETRY_ATTEMPTS
+                {
+                    last_error = Some(message);
+                    tokio::time::sleep(AGENT_TEAM_BOOTSTRAP_RETRY_INTERVAL).await;
+                    continue;
+                }
+                return Err(error).with_context(|| {
+                    format!(
+                        "review spawn: prompt send failed for '{reviewer}' on surface {surface_id}"
+                    )
+                });
+            }
+        }
+    }
+
+    bail!(
+        "review spawn: prompt send failed for '{reviewer}' on surface {surface_id}: {}",
+        last_error.unwrap_or_else(|| "surface did not become ready".to_string())
+    )
+}
+
+fn build_review_capture_command(surface_id: &str, lines: u64) -> String {
+    format!("limux read-screen --surface {surface_id} --scrollback --lines {lines}")
 }
 
 fn build_review_prepare_prompt(
@@ -3462,6 +4034,163 @@ fn build_review_ledger_entry(
         markdown_path(request_path)
     ));
     out
+}
+
+fn build_review_evidence_pointer_md(evidence: ReviewSpawnEvidenceMd<'_>) -> String {
+    let mut out = String::new();
+    out.push_str(REVIEW_EVIDENCE_MARKER);
+    out.push('\n');
+    out.push_str("# Limux Review Evidence Pointer\n\n");
+    out.push_str(&format!(
+        "Review ID: `{}`\n",
+        markdown_table_cell(&evidence.request.review_id)
+    ));
+    out.push_str("Status: `in-progress`\n");
+    out.push_str(&format!(
+        "Reviewer: `{}`\n",
+        markdown_table_cell(&evidence.request.reviewer)
+    ));
+    out.push_str(&format!(
+        "Lens: `{}`\n",
+        markdown_table_cell(&evidence.request.lens)
+    ));
+    out.push_str(&format!(
+        "Artifact: `{}`\n",
+        markdown_table_cell(&evidence.request.artifact)
+    ));
+    out.push_str(&format!(
+        "Request: `{}`\n",
+        markdown_path(evidence.request_path)
+    ));
+    out.push_str(&format!(
+        "Review ledger: `{}`\n",
+        markdown_path(evidence.ledger_path)
+    ));
+    out.push_str(&format!(
+        "Reviewer pane: `{}`\n",
+        markdown_table_cell(evidence.reviewer_pane_id)
+    ));
+    out.push_str(&format!(
+        "Reviewer surface: `{}`\n",
+        markdown_table_cell(evidence.reviewer_surface_id)
+    ));
+    out.push_str(&format!(
+        "Prompt status: `{}`\n",
+        markdown_table_cell(evidence.prompt_status)
+    ));
+    out.push_str(&format!(
+        "Capture command: `{}`\n\n",
+        markdown_table_cell(evidence.capture_command)
+    ));
+    out.push_str(
+        "This file points to the live reviewer pane and the request file. Do not\n\
+         paste raw terminal transcripts here unless the capture has been\n\
+         reviewed for secrets and unrelated logs.\n",
+    );
+    out
+}
+
+fn build_review_spawn_ledger_update(update: ReviewSpawnLedgerUpdate<'_>) -> String {
+    let mut out = String::new();
+    out.push_str("### Spawn\n\n");
+    out.push_str("Spawn status: in-progress\n");
+    out.push_str(&format!(
+        "Reviewer pane: `{}`\n",
+        markdown_table_cell(update.reviewer_pane_id)
+    ));
+    out.push_str(&format!(
+        "Reviewer surface: `{}`\n",
+        markdown_table_cell(update.reviewer_surface_id)
+    ));
+    out.push_str(&format!(
+        "Prompt status: `{}`\n",
+        markdown_table_cell(update.prompt_status)
+    ));
+    out.push_str(&format!(
+        "Evidence pointer: `{}`\n",
+        markdown_path(update.evidence_path)
+    ));
+    out.push_str(&format!(
+        "Capture command: `{}`\n\n",
+        markdown_table_cell(update.capture_command)
+    ));
+    out
+}
+
+fn ensure_review_ledger_pending_entry(path: &Path, review_id: &str) -> Result<()> {
+    validate_agent_team_durable_file_path(path, "review ledger")?;
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("failed to read review ledger {}", path.display()))?;
+    let pending_header = format!("## pending - {}", markdown_table_cell(review_id));
+    if raw.contains(&pending_header) {
+        return Ok(());
+    }
+    let in_progress_header = format!("## in-progress - {}", markdown_table_cell(review_id));
+    if raw.contains(&in_progress_header) {
+        bail!("review ledger entry already in-progress for {review_id}");
+    }
+    bail!("review ledger has no pending entry for {review_id}")
+}
+
+fn update_review_ledger_entry_for_spawn(
+    path: &Path,
+    review_id: &str,
+    spawn_block: &str,
+) -> Result<()> {
+    validate_agent_team_durable_file_path(path, "review ledger")?;
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("failed to read review ledger {}", path.display()))?;
+    let pending_header = format!("## pending - {}", markdown_table_cell(review_id));
+    let in_progress_header = format!("## in-progress - {}", markdown_table_cell(review_id));
+    if raw.contains(&in_progress_header) {
+        bail!("review ledger entry already in-progress for {review_id}");
+    }
+    let header_start = raw
+        .find(&pending_header)
+        .ok_or_else(|| anyhow!("review ledger has no pending entry for {review_id}"))?;
+    let search_from = header_start + 1;
+    let block_end = raw[search_from..]
+        .find("\n## ")
+        .map(|index| search_from + index)
+        .unwrap_or(raw.len());
+    let mut block = raw[header_start..block_end].to_string();
+    if block.contains("\n### Spawn\n") {
+        bail!("review ledger entry already has spawn metadata for {review_id}");
+    }
+    block = block.replacen(&pending_header, &in_progress_header, 1);
+    if !block.contains("Status: pending") {
+        bail!("review ledger entry for {review_id} has no pending status");
+    }
+    block = block.replacen("Status: pending", "Status: in-progress", 1);
+    if !block.ends_with('\n') {
+        block.push('\n');
+    }
+    block.push('\n');
+    block.push_str(spawn_block);
+    if !block.ends_with('\n') {
+        block.push('\n');
+    }
+
+    let mut updated = String::with_capacity(raw.len() + spawn_block.len() + 64);
+    updated.push_str(&raw[..header_start]);
+    updated.push_str(&block);
+    updated.push_str(&raw[block_end..]);
+    replace_review_ledger_file(path, &updated)
+}
+
+fn replace_review_ledger_file(path: &Path, body: &str) -> Result<()> {
+    validate_agent_team_durable_file_path(path, "review ledger")?;
+    let temp_path = temporary_agent_team_output_path(path)?;
+    fs::write(&temp_path, body)
+        .with_context(|| format!("failed to write {}", temp_path.display()))?;
+    validate_agent_team_durable_file_path(path, "review ledger")?;
+    fs::rename(&temp_path, path).with_context(|| {
+        format!(
+            "failed to move updated review ledger from {} to {}",
+            temp_path.display(),
+            path.display()
+        )
+    })
 }
 
 fn build_agents_md(
@@ -4874,26 +5603,61 @@ async fn execute_command(client: &mut Client, opts: &GlobalOptions) -> Result<Co
             }
         }
         "review" => {
-            let payload = run_review_command(args)?;
+            let payload = run_review_command(client, args).await?;
             if opts.json_output {
                 CommandOutput::Json(payload)
             } else {
-                let request = payload
-                    .get("request_path")
+                let review_command = payload
+                    .get("review_command")
                     .and_then(Value::as_str)
-                    .unwrap_or("");
-                let ledger = payload
-                    .get("ledger_path")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                let dry_run = payload
-                    .get("dry_run")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false);
-                let prompt = payload.get("prompt").and_then(Value::as_str).unwrap_or("");
-                CommandOutput::Text(format!(
-                    "OK review prepare request={request} ledger={ledger} dry_run={dry_run}\n\n{prompt}"
-                ))
+                    .unwrap_or("prepare");
+                if review_command == "spawn" {
+                    let request = payload
+                        .get("request_path")
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let ledger = payload
+                        .get("ledger_path")
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let evidence = payload
+                        .get("evidence_path")
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let surface = payload
+                        .get("reviewer_surface_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let prompt_status = payload
+                        .get("prompt")
+                        .and_then(|value| value.get("status"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("unknown");
+                    let dry_run = payload
+                        .get("dry_run")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false);
+                    CommandOutput::Text(format!(
+                        "OK review spawn request={request} ledger={ledger} evidence={evidence} surface={surface} prompt={prompt_status} dry_run={dry_run}"
+                    ))
+                } else {
+                    let request = payload
+                        .get("request_path")
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let ledger = payload
+                        .get("ledger_path")
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let dry_run = payload
+                        .get("dry_run")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false);
+                    let prompt = payload.get("prompt").and_then(Value::as_str).unwrap_or("");
+                    CommandOutput::Text(format!(
+                        "OK review prepare request={request} ledger={ledger} dry_run={dry_run}\n\n{prompt}"
+                    ))
+                }
             }
         }
         "sidebar-state" => {
@@ -6573,9 +7337,115 @@ limux() {{
 #[cfg(test)]
 mod review_prepare_tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
+    use tokio::net::UnixListener;
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[derive(Clone, Debug)]
+    struct ReviewRecordedRequest {
+        method: String,
+        params: Value,
+    }
+
+    async fn spawn_review_fake_server(
+        socket: PathBuf,
+    ) -> (
+        Arc<Mutex<Vec<ReviewRecordedRequest>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let listener = UnixListener::bind(&socket).expect("bind fake review socket");
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let server_requests = Arc::clone(&requests);
+
+        let handle = tokio::spawn(async move {
+            loop {
+                let Ok((stream, _addr)) = listener.accept().await else {
+                    break;
+                };
+                let requests = Arc::clone(&server_requests);
+                tokio::spawn(async move {
+                    let (reader_half, mut writer_half) = stream.into_split();
+                    let mut reader = BufReader::new(reader_half);
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).await.expect("read request") == 0 {
+                        return;
+                    }
+
+                    let request: V2Request =
+                        serde_json::from_str(line.trim()).expect("parse fake request");
+                    let method = request.method.clone();
+                    let params = request.params.clone();
+                    requests
+                        .lock()
+                        .expect("lock requests")
+                        .push(ReviewRecordedRequest {
+                            method: method.clone(),
+                            params: params.clone(),
+                        });
+
+                    let response = match method.as_str() {
+                        "workspace.current" => V2Response::success(
+                            request.id.clone(),
+                            json!({ "workspace_id": "workspace:team" }),
+                        ),
+                        "surface.list" => V2Response::success(
+                            request.id.clone(),
+                            json!({
+                                "surfaces": [{
+                                    "pane_id": "pane:1",
+                                    "surface_id": "surface:1:orchestrator",
+                                    "focused": true,
+                                    "title": "orchestrator"
+                                }]
+                            }),
+                        ),
+                        "pane.create" => V2Response::success(
+                            request.id.clone(),
+                            json!({
+                                "pane_id": "pane:7",
+                                "surface_id": "surface:7:claude",
+                                "surface_ref": "surface:7:claude",
+                                "ok": true
+                            }),
+                        ),
+                        "surface.send_text" => V2Response::success(
+                            request.id.clone(),
+                            json!({
+                                "ok": true,
+                                "surface_id": params
+                                    .get("surface_id")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or("surface:unknown")
+                            }),
+                        ),
+                        "surface.send_key" => V2Response::success(
+                            request.id.clone(),
+                            json!({
+                                "ok": true,
+                                "surface_id": params
+                                    .get("surface_id")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or("surface:unknown")
+                            }),
+                        ),
+                        other => {
+                            panic!("unexpected fake review request method {other}: {params:?}")
+                        }
+                    };
+                    let mut payload = serde_json::to_string(&response).expect("encode response");
+                    payload.push('\n');
+                    writer_half
+                        .write_all(payload.as_bytes())
+                        .await
+                        .expect("write response");
+                });
+            }
+        });
+
+        (requests, handle)
     }
 
     #[test]
@@ -6967,6 +7837,217 @@ mod review_prepare_tests {
         assert_eq!(payload["dry_run"], true);
         assert_eq!(payload["review_id"], "manual-review");
         assert!(!cwd.join("reviews/manual-review.md").exists());
+    }
+
+    #[tokio::test]
+    async fn review_spawn_dry_run_uses_existing_request_without_host_contact() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        run_review_prepare(&args(&[
+            "prepare",
+            "--cwd",
+            cwd.to_str().expect("utf8 cwd"),
+            "--artifact",
+            "README.md",
+            "--reviewer",
+            "claude",
+            "--lens",
+            "correctness",
+            "--summary",
+            "Check docs",
+            "--review-id",
+            "phase5d2-dry",
+        ]))
+        .expect("prepare should create request");
+
+        let mut client = Client::new(cwd.join("missing.sock"));
+        let payload = run_review_command(
+            &mut client,
+            &args(&[
+                "spawn",
+                "--cwd",
+                cwd.to_str().expect("utf8 cwd"),
+                "--review-id",
+                "phase5d2-dry",
+                "--dry-run",
+            ]),
+        )
+        .await
+        .expect("dry-run spawn should not contact host");
+
+        let evidence_path = cwd.join("reviews/phase5d2-dry.evidence.md");
+        assert_eq!(payload["review_command"], "spawn");
+        assert_eq!(payload["dry_run"], true);
+        assert_eq!(payload["spawn"]["status"], "planned");
+        assert_eq!(payload["prompt"]["status"], "planned");
+        assert_eq!(payload["ledger"]["status"], "planned");
+        assert_eq!(payload["evidence"]["status"], "planned");
+        assert!(!evidence_path.exists());
+
+        let ledger =
+            std::fs::read_to_string(cwd.join(AGENT_TEAM_DEFAULT_LEDGER_FILE)).expect("read ledger");
+        assert!(ledger.contains("## pending - phase5d2-dry"));
+        assert!(!ledger.contains("## in-progress - phase5d2-dry"));
+    }
+
+    #[tokio::test]
+    async fn review_spawn_requires_matching_pending_ledger_entry_before_host_contact() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        run_review_prepare(&args(&[
+            "prepare",
+            "--cwd",
+            cwd.to_str().expect("utf8 cwd"),
+            "--artifact",
+            "README.md",
+            "--reviewer",
+            "claude",
+            "--lens",
+            "correctness",
+            "--summary",
+            "Check docs",
+            "--review-id",
+            "phase5d2-missing-ledger",
+        ]))
+        .expect("prepare should create request");
+        std::fs::write(
+            cwd.join(AGENT_TEAM_DEFAULT_LEDGER_FILE),
+            "manual ledger without the pending entry\n",
+        )
+        .expect("replace ledger");
+
+        let mut client = Client::new(cwd.join("missing.sock"));
+        let error = run_review_command(
+            &mut client,
+            &args(&[
+                "spawn",
+                "--cwd",
+                cwd.to_str().expect("utf8 cwd"),
+                "--review-id",
+                "phase5d2-missing-ledger",
+                "--dry-run",
+            ]),
+        )
+        .await
+        .expect_err("missing pending ledger entry should fail before host contact");
+
+        assert!(
+            error
+                .to_string()
+                .contains("review ledger has no pending entry"),
+            "unexpected error: {error:#}"
+        );
+        assert!(!cwd
+            .join("reviews/phase5d2-missing-ledger.evidence.md")
+            .exists());
+    }
+
+    #[tokio::test]
+    async fn review_spawn_launches_reviewer_sends_prompt_and_updates_ledger_entry() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        run_review_prepare(&args(&[
+            "prepare",
+            "--cwd",
+            cwd.to_str().expect("utf8 cwd"),
+            "--artifact",
+            "rust/limux-cli/src/main.rs",
+            "--reviewer",
+            "claude",
+            "--lens",
+            "security",
+            "--summary",
+            "Review Phase 5D2 wrapper",
+            "--review-id",
+            "phase5d2-live",
+        ]))
+        .expect("prepare should create request");
+        let ledger_path = cwd.join(AGENT_TEAM_DEFAULT_LEDGER_FILE);
+        {
+            let mut ledger = OpenOptions::new()
+                .append(true)
+                .open(&ledger_path)
+                .expect("open ledger");
+            ledger
+                .write_all(b"\nmanual suffix that must survive\n")
+                .expect("append sentinel");
+        }
+
+        let socket = cwd.join("limux.sock");
+        let (requests, server) = spawn_review_fake_server(socket.clone()).await;
+        let mut client = Client::new(socket);
+        let payload = run_review_command(
+            &mut client,
+            &args(&[
+                "spawn",
+                "--cwd",
+                cwd.to_str().expect("utf8 cwd"),
+                "--review-id",
+                "phase5d2-live",
+                "--direction",
+                "down",
+            ]),
+        )
+        .await
+        .expect("review spawn should complete against fake host");
+        server.abort();
+
+        let evidence_path = cwd.join("reviews/phase5d2-live.evidence.md");
+        assert_eq!(payload["review_command"], "spawn");
+        assert_eq!(payload["dry_run"], false);
+        assert_eq!(payload["spawn"]["status"], "created");
+        assert_eq!(payload["prompt"]["status"], "sent");
+        assert_eq!(payload["ledger"]["status"], "updated");
+        assert_eq!(payload["evidence"]["status"], "created");
+        assert_eq!(payload["reviewer_surface_id"], "surface:7:claude");
+        assert!(evidence_path.exists());
+
+        let requests = requests.lock().expect("lock requests").clone();
+        let pane_create = requests
+            .iter()
+            .find(|request| request.method == "pane.create")
+            .expect("pane.create request");
+        assert_eq!(pane_create.params["command"].as_str(), Some("claude"));
+        assert_eq!(pane_create.params["direction"].as_str(), Some("down"));
+        assert_eq!(
+            pane_create.params["surface_id"].as_str(),
+            Some("surface:1:orchestrator")
+        );
+
+        let send_text = requests
+            .iter()
+            .find(|request| request.method == "surface.send_text")
+            .expect("surface.send_text request");
+        assert_eq!(
+            send_text.params["surface_id"].as_str(),
+            Some("surface:7:claude")
+        );
+        let prompt = send_text.params["text"].as_str().expect("prompt text");
+        assert!(prompt.contains("Review request: phase5d2-live"));
+        assert!(prompt.contains("Reviewer: claude"));
+        assert!(prompt.contains("Lens: security"));
+
+        let send_key = requests
+            .iter()
+            .find(|request| request.method == "surface.send_key")
+            .expect("surface.send_key request");
+        assert_eq!(send_key.params["key"].as_str(), Some("enter"));
+        assert_eq!(
+            send_key.params["surface_id"].as_str(),
+            Some("surface:7:claude")
+        );
+
+        let evidence = std::fs::read_to_string(&evidence_path).expect("read evidence pointer");
+        assert!(evidence.contains("Review ID: `phase5d2-live`"));
+        assert!(evidence.contains("Reviewer surface: `surface:7:claude`"));
+        assert!(evidence.contains("Capture command: `limux read-screen --surface surface:7:claude --scrollback --lines 120`"));
+
+        let ledger = std::fs::read_to_string(&ledger_path).expect("read ledger");
+        assert!(ledger.contains("## in-progress - phase5d2-live"));
+        assert!(!ledger.contains("## pending - phase5d2-live"));
+        assert!(ledger.contains("Reviewer surface: `surface:7:claude`"));
+        assert!(ledger.contains("Evidence pointer: `"));
+        assert!(ledger.contains("manual suffix that must survive"));
     }
 
     #[test]

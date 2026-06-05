@@ -216,6 +216,25 @@ into a `notify` (and, where useful, an inline `send`). Drop-in for
   choices, overlapping request/ledger paths, dispatch, missing required
   arguments, and control-character rejection.
 
+**Shipped after Phase 5D1: Phase 5D2 — reviewer spawn/evidence pointer**
+
+- Added `limux review spawn --review-id <id>` to continue from an existing
+  generated `review prepare` request.
+- `review spawn` reads the request file, refuses `manual` reviewers, creates
+  one reviewer terminal pane through the live `pane.create` path, sends the
+  prepared prompt through `surface.send_text` plus explicit Enter, writes a
+  `reviews/<review-id>.evidence.md` pointer file, and updates the matching
+  pending ledger entry to `in-progress`.
+- `--dry-run` validates the request, ledger, evidence path, reviewer, and
+  direction without host contact. `--no-launch` creates a pane without typing
+  the reviewer command or prompt, matching the existing launch-safety pattern.
+- The evidence file records the request path, reviewer pane/surface, prompt
+  status, and suggested `limux read-screen --surface ... --scrollback --lines
+  120` capture command. It intentionally does not dump raw terminal scrollback.
+- CLI tests cover dry-run host avoidance, live fake-socket pane creation,
+  prompt send/Enter submission, evidence pointer creation, and targeted ledger
+  update while preserving unrelated ledger content.
+
 ### Phase 6 — (deferred) `limux progress`, `limux log`, `limux markdown`
 Nice polish, not blockers.
 

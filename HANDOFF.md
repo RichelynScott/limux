@@ -1,20 +1,20 @@
 # Limux Session Handoff
 
-Last updated: 2026-05-30 02:19 EDT
+Last updated: 2026-06-05 14:08 EDT
 
 ## Immediate Next Action
 
-Phase 5D1 reviewer workflow scaffold is implemented and verified. The current
-flow still writes protected generated protocol to `LIMUX_AGENTS.md`, seeds
-`LIMUX_TEAM_ROSTER.md` and `LIMUX_REVIEW_LEDGER.md` when missing, launches peer
-panes with bare agent commands, waits for pane readiness, sends each peer a
-sanitized one-line bootstrap prompt after all coordination files exist, then
-submits it with explicit Enter. `--no-bootstrap`, `--no-launch`, and
-`--dry-run` skip prompt sends. `agent-team --dry-run` still materializes the
-generated protocol and seeds missing roster/ledger files; it only skips host
-contact.
+Phase 5D2 reviewer spawn/evidence pointer wrapper is implemented and verified.
+The current `agent-team` flow still writes protected generated protocol to
+`LIMUX_AGENTS.md`, seeds `LIMUX_TEAM_ROSTER.md` and
+`LIMUX_REVIEW_LEDGER.md` when missing, launches peer panes with bare agent
+commands, waits for pane readiness, sends each peer a sanitized one-line
+bootstrap prompt after all coordination files exist, then submits it with
+explicit Enter. `--no-bootstrap`, `--no-launch`, and `--dry-run` skip prompt
+sends. `agent-team --dry-run` still materializes the generated protocol and
+seeds missing roster/ledger files; it only skips host contact.
 
-New review scaffold:
+Review workflow:
 
 ```bash
 limux review prepare \
@@ -22,6 +22,8 @@ limux review prepare \
   --reviewer <codex|claude|gemini|opencode|manual> \
   --lens <security|correctness|maintainability|ux|release> \
   --summary <short-review-goal>
+
+limux review spawn --review-id <review-id>
 ```
 
 `review prepare` creates `reviews/<review-id>.md`, appends a pending entry to
@@ -29,15 +31,23 @@ limux review prepare \
 contact the Limux host or launch reviewers. `--dry-run` previews paths,
 Markdown, and prompt text without writing files.
 
-Recommended next scoped action: **Phase 5D2 Reviewer Spawn/Capture Wrapper**.
-This should start a reviewer pane, send the Phase 5D1 prompt after readiness,
-capture or point to reviewer evidence, update the existing ledger entry without
-rewriting unrelated content, and keep hcom output to short durable pointers.
+`review spawn` reads an existing generated request, refuses `manual`
+reviewers, creates one reviewer terminal pane through the live `pane.create`
+path, sends the prepared prompt with `surface.send_text` plus explicit Enter,
+writes `reviews/<review-id>.evidence.md`, and updates only the matching pending
+ledger entry to `in-progress`. `--dry-run` validates request/ledger/evidence
+paths without host contact. `--no-launch` creates the pane without typing the
+reviewer command or prompt.
 
-End-of-night closeout status: Phase 5D1 is committed and pushed as
-`e4ce6fd feat(cli): add review prepare scaffold`. The working tree was clean at
-closeout. Resume from this handoff; do not re-run Phase 5D1 unless a regression
-is found.
+Recommended next scoped action: **Phase 5D3 Review Collect/Complete +
+Consensus Conventions**. Add a bounded path that records reviewer verdicts back
+into the existing ledger entry without rewriting unrelated content, then
+document GO/WAIT/NO-GO consensus and targeted hcom pointer conventions.
+
+Current implementation status: Phase 5D2 is in the current working tree with
+README, roadmap, workflow, handoff, and FYI updates. Commit/push status should
+be checked with `git status --short --branch` and `git log --oneline -3` before
+continuing.
 
 Historical next-step packet that selected Phase 5D1:
 
@@ -49,9 +59,9 @@ docs/LIMUX_PHASE5C_NEXT_STEPS_DECISION_PACKET_2026-05-29.html
 Recommended sequence:
 
 1. **Done:** Phase 5D1 `limux review prepare` scaffold.
-2. **Next:** Phase 5D2 full reviewer spawn/capture wrapper after the scaffold is
-   proven.
-3. **Phase 5D3:** consensus and cross-team hcom pointer conventions.
+2. **Done:** Phase 5D2 reviewer spawn/evidence pointer wrapper.
+3. **Next:** Phase 5D3 review collect/complete plus consensus and cross-team
+   hcom pointer conventions.
 4. **Later:** machine-readable roster/ledger adapters only if Markdown sidecars
    are not enough for automation.
 
@@ -60,6 +70,7 @@ Current verification baseline:
 ```bash
 cargo fmt --check
 git diff --check
+cargo test -p limux-cli review_spawn
 cargo test -p limux-cli review
 cargo test -p limux-cli agent_team
 cargo test -p limux-cli
@@ -291,14 +302,16 @@ explicit `LD_LIBRARY_PATH` prefix.
 | 2026-05-29 23:23 EDT | Phase 5C durable roster and review ledger | Added `LIMUX_TEAM_ROSTER.md` and `LIMUX_REVIEW_LEDGER.md` seeding, `--roster-path`, `--ledger-path`, `--force-roster-overwrite`, no-overwrite ledger preservation, marked-roster force replacement, symlink/nonregular/overlapping path refusal, bootstrap pointers, CLI tests, Xvfb fake-agent file-visibility proof, and refreshed workflow/decision/handoff docs. |
 | 2026-05-30 00:20 EDT | Phase 5D1 reviewer workflow scaffold | Added `limux review prepare` with durable request-file creation, append-only pending ledger entries, dry-run planning, reviewer/lens validation, leaf symlink/nonregular/overlapping target refusal, control-character prompt-field rejection, README/roadmap/workflow updates, focused CLI tests, full workspace check, release Xvfb smoke proof, and Claude adversarial review follow-up fixes. |
 | 2026-05-30 02:19 EDT | End-of-night closeout | Confirmed Phase 5D1 commit `e4ce6fd` is pushed to `main`, working tree is clean, and the next resume lane is Phase 5D2 reviewer spawn/capture wrapper. |
+| 2026-06-05 14:08 EDT | Phase 5D2 reviewer spawn/evidence pointer | Added `limux review spawn` from existing prepared requests, live reviewer pane creation, prompt send/Enter submission, evidence pointer file creation, targeted pending-ledger entry update to `in-progress`, dry-run host avoidance, README/roadmap/workflow updates, focused RED/GREEN tests, full workspace check, and Xvfb smoke proof. |
 
 ## Current State
 
 - Branch: `main`
 - Phase 5B baseline commit: `0d2597b feat(cli): bootstrap agent-team peers after launch`
-- Latest pushed commit: `e4ce6fd feat(cli): add review prepare scaffold`
-- Latest implementation in this handoff: Phase 5D1 `limux review prepare` scaffold after Phase 5C durable roster/review-ledger seeding.
-- Working tree was clean at end-of-night closeout on 2026-05-30 02:19 EDT.
+- Latest pushed commit before this session: `719be5f docs(closeout): update limux handoff`
+- Latest implementation in this handoff: Phase 5D2 `limux review spawn` wrapper after Phase 5D1 `review prepare`.
+- Working tree currently contains Phase 5D2 changes until committed; verify with
+  `git status --short --branch`.
 
 ## Architectural Decisions Locked In
 
@@ -333,15 +346,18 @@ Phase ordering:
 7. **Done:** Add Phase 5D1 reviewer workflow scaffold: review request files,
    pending ledger entries, generated reviewer prompts, dry-run planning, and
    path/prompt safety checks without launching real reviewer panes.
-8. **Next:** Add the full reviewer spawn/capture wrapper and
-   consensus/cross-team broadcast conventions.
-9. **Optional later:** Add runtime-specific `.limux/` adapters for Codex, Claude Code, Gemini, and OpenCode.
+8. **Done:** Add Phase 5D2 reviewer spawn/evidence pointer wrapper: launch a
+   reviewer pane from an existing request, send the prepared prompt, create an
+   evidence pointer, and update the matching pending ledger entry.
+9. **Next:** Add review collect/complete plus consensus/cross-team broadcast
+   conventions.
+10. **Optional later:** Add runtime-specific `.limux/` adapters for Codex, Claude Code, Gemini, and OpenCode.
 
 ## Key Files For Context
 
 | File | Purpose |
 |---|---|
-| `/home/riche/MCPs/limux/rust/limux-cli/src/main.rs` | `agent-team`, `review prepare`, protocol generation, hook setup, tests. |
+| `/home/riche/MCPs/limux/rust/limux-cli/src/main.rs` | `agent-team`, `review prepare`, `review spawn`, protocol generation, hook setup, tests. |
 | `/home/riche/MCPs/limux/rust/limux-host-linux/src/window.rs` | GTK bridge command handling; `surface.send_text` now errors if terminal injection reports not-ready. |
 | `/home/riche/MCPs/limux/rust/limux-host-linux/src/terminal.rs` | `TerminalHandle::send_text` returns `false` when the Ghostty surface is not realized. |
 | `/home/riche/MCPs/limux/docs/cmux-parity-plan.md` | Roadmap and current open bridge/protocol work. |
@@ -368,6 +384,11 @@ Phase ordering:
   overlapping request/ledger paths, and do not launch reviewers from this
   command. Use trusted output directories; parent path components are not
   recursively audited for symlinks.
+- Preserve `limux review spawn` as a continuation of an existing generated
+  request: refuse `manual` reviewers, keep `--dry-run` host-free, make
+  `--no-launch` skip prompt injection, create evidence pointers with
+  `create_new`, and update only the matching pending ledger entry rather than
+  rewriting unrelated ledger content.
 - Use `apply_patch` for manual edits.
 - Do not edit `/home/riche/.claude` from this Limux session.
 
@@ -386,12 +407,13 @@ Phase ordering:
 - Phase 5C roster/ledger files are Markdown coordination surfaces, not an
   automatic source of truth. Agents still need to keep owners, hcom names,
   related teams, and ledger entries current during work.
-- Phase 5D1 only prepares reviews. It does not launch reviewers, collect
-  outputs, update verdicts, or resolve consensus. Phase 5D2 should build those
-  pieces on top of the request file and pending ledger entry.
+- Phase 5D2 starts reviewers and points to evidence, but it does not parse
+  reviewer output, collect verdicts, update final verdicts, or resolve
+  consensus. Phase 5D3 should build collect/complete and consensus conventions
+  on top of the request/evidence/ledger surfaces.
 
 ## Morning Resume Prompt
 
 ```text
-Please resume the Limux work from HANDOFF.md. Phase 5A zero-friction protocol discovery, GTK `surface.send_text` readiness/failure reporting, shell-quoted launch snippets, typed-PTY control-character guards, Phase 5B automatic `agent-team` bootstrap, Phase 5C durable roster/review-ledger seeding, and Phase 5D1 `limux review prepare` are implemented and verified. Host prerequisites are installed, the approved Ghostty/Zig gate built `ghostty/zig-out/lib/libghostty.so`, `./scripts/check.sh`, and release Xvfb smoke pass locally. Recommended next implementation is Phase 5D2: a reviewer spawn/capture wrapper that starts a reviewer pane, sends the prepared prompt after readiness, captures or points to evidence, updates the pending ledger entry, and leaves hcom with short durable pointers only.
+Please resume the Limux work from HANDOFF.md. Phase 5A zero-friction protocol discovery, GTK `surface.send_text` readiness/failure reporting, shell-quoted launch snippets, typed-PTY control-character guards, Phase 5B automatic `agent-team` bootstrap, Phase 5C durable roster/review-ledger seeding, Phase 5D1 `limux review prepare`, and Phase 5D2 `limux review spawn` are implemented and verified. Host prerequisites are installed, the approved Ghostty/Zig gate built `ghostty/zig-out/lib/libghostty.so`, `./scripts/check.sh`, and debug Xvfb smoke pass locally. Recommended next implementation is Phase 5D3: a review collect/complete path that records reviewer verdicts back into the existing ledger entry without rewriting unrelated content, followed by GO/WAIT/NO-GO consensus and targeted hcom pointer conventions.
 ```

@@ -1,8 +1,8 @@
 # Limux + hcom Workflow Guide
 
-Last reviewed: 2026-05-30
-Repo state reviewed: `main` with Phase 5D1 `review prepare` scaffold on top of
-Phase 5C durable `agent-team` roster and review ledger seeding
+Last reviewed: 2026-06-05
+Repo state reviewed: `main` with Phase 5D2 `review spawn` on top of Phase 5D1
+`review prepare` and Phase 5C durable `agent-team` roster/review-ledger seeding
 
 ## Executive Summary
 
@@ -10,7 +10,8 @@ Limux is best used as the live local workspace layer for coding-agent teams.
 It owns panes, surfaces, workspace layout, same-project message injection,
 screen reads, GUI notifications, low-friction `agent-team` peer bootstrap
 through generated `LIMUX_AGENTS.md` protocol files, durable
-roster/review-ledger sidecars, and file-first review request preparation.
+roster/review-ledger sidecars, file-first review request preparation, and
+one-pane reviewer spawn from prepared requests.
 
 hcom is best used as the cross-session and cross-project coordination bus.
 It owns named agent discovery, direct messages across tools, event history,
@@ -23,7 +24,7 @@ Use them together like this:
 | Codex asks Claude in the same project to review a diff | `limux send --surface ...` |
 | Parent checks whether a child pane is stuck | `limux read-screen --surface ... --lines 80` |
 | Prepare a review without launching a pane | `limux review prepare --artifact <path> --reviewer claude --lens security --summary "..."` |
-| Spawn a short-lived reviewer beside the current pane | `limux agent-team --agents codex,claude --cwd "$PWD"` for a paired team, or `limux new-pane --direction right --command 'codex'` plus the prompt from `limux review prepare` for one-off panes |
+| Spawn a short-lived reviewer beside the current pane | `limux review spawn --review-id <id>` for a one-off prepared review, or `limux agent-team --agents codex,claude --cwd "$PWD"` for a paired team |
 | Get human attention inside the GUI | `limux notify ...` |
 | Tell another project team about a relevant change | `uvx hcom send @agent --intent inform --thread ... --name tipi -- "..."` |
 | Preserve decisions, plans, reviews, or handoffs | Write a durable file, then send a Limux or hcom pointer |
@@ -226,6 +227,22 @@ This writes `reviews/<review-id>.md`, appends a pending entry to
 launch or message a reviewer pane yet. Use `--dry-run` when you want to inspect
 the planned request, ledger entry, and prompt without writing files.
 
+Spawn the prepared request into a reviewer pane:
+
+```bash
+limux review spawn --review-id <review-id>
+```
+
+This reads the generated request, creates a reviewer terminal pane, sends the
+prepared prompt after pane creation, writes
+`reviews/<review-id>.evidence.md`, and updates the matching pending ledger
+entry to `in-progress`. The evidence file is a durable pointer with the
+reviewer surface and a suggested `limux read-screen --surface ... --scrollback
+--lines 120` capture command; it deliberately does not store raw scrollback.
+Use `--dry-run` for path and request validation with no host contact. Use
+`--no-launch` only when you want the pane created without typing the reviewer
+command or prompt.
+
 Good reviewer prompt shape:
 
 ```text
@@ -328,19 +345,15 @@ End of task:
 
 The highest-leverage Limux improvements for this workflow are:
 
-1. Add Phase 5D2 full reviewer spawn/capture wrapper. This should start a
-   reviewer pane, send the `review prepare` prompt after readiness, capture
-   evidence to `reviews/`, update the ledger, and print only short hcom
-   pointers.
-2. Add a `review collect` or `review complete` path that records reviewer
+1. Add a `review collect` or `review complete` path that records reviewer
    verdicts back into the existing ledger entry without rewriting unrelated
    content.
-3. Add documented conventions for consensus reports and cross-team broadcasts:
+2. Add documented conventions for consensus reports and cross-team broadcasts:
    GO, WAIT, NO-GO, accepted risk, unresolved risk, and targeted hcom pointer
    examples.
-4. Add optional runtime-specific `.limux/` adapters for Codex, Claude Code,
+3. Add optional runtime-specific `.limux/` adapters for Codex, Claude Code,
    Gemini, and OpenCode if direct protocol discovery needs deeper integration.
-5. Add a later machine-readable roster/ledger adapter if Markdown sidecars are
+4. Add a later machine-readable roster/ledger adapter if Markdown sidecars are
    not enough for automation.
 
 ## Current Prime Snapshot
@@ -365,6 +378,10 @@ As of this review:
   existing requests, leaf symlink/non-regular/overlapping targets, and
   control-character prompt fields. Use trusted output directories; parent path
   components are not recursively audited for symlinks.
+- `limux review spawn` starts one reviewer pane from an existing request, sends
+  the prepared prompt after pane creation, writes an evidence pointer file, and
+  updates the matching pending ledger entry to `in-progress`. It supports
+  `--dry-run` for no-host validation and `--no-launch` for pane-only setup.
 - Generated `new-pane --command` examples quote launch commands and avoid
   nested arbitrary prompt text.
 - Typed terminal text now rejects ESC/BEL/C1/control payloads except tab, LF,
@@ -373,6 +390,6 @@ As of this review:
 - Full `./scripts/check.sh` and `./scripts/xvfb-smoke-test.sh` pass locally
   with the local Ghostty library; the smoke script now exports the required
   `LD_LIBRARY_PATH` automatically when `ghostty/zig-out/lib` exists.
-- The next recommended implementation is the Phase 5D2 reviewer spawn/capture
-  wrapper plus documented consensus/cross-team broadcast conventions, tracked from
+- The next recommended implementation is a `review collect`/`review complete`
+  path plus documented consensus/cross-team broadcast conventions, tracked from
   [`cmux-parity-plan.md`](cmux-parity-plan.md).

@@ -211,6 +211,21 @@ non-regular ledger paths are refused at the output leaf. Use trusted output
 directories; Limux does not recursively audit every parent path component for
 symlinks.
 
+Launch a prepared reviewer request into a new pane:
+
+```bash
+limux review spawn --review-id <review-id>
+```
+
+`review spawn` reads the existing generated request, starts one reviewer
+terminal pane beside the current pane, sends the prepared prompt after pane
+creation, writes `reviews/<review-id>.evidence.md`, and updates the matching
+pending ledger entry to `in-progress`. The evidence file is a pointer to the
+live reviewer surface and a suggested `read-screen` capture command; it is not a
+raw transcript dump. Use `--dry-run` to validate the request/ledger/evidence
+paths without host contact, and `--no-launch` to create the pane without typing
+the reviewer command or prompt.
+
 Checked-in hook templates live in [`hooks/`](hooks/). They mirror
 `limux hooks setup` for Codex, Claude Code, and Gemini CLI; OpenCode is
 omitted until its hook integration is ready.
