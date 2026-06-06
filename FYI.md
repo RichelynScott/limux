@@ -408,3 +408,25 @@ passed.
 ### Related:
 `rust/limux-cli/src/main.rs` | `README.md` | `docs/cmux-parity-plan.md` |
 `docs/limux-hcom-workflow.md` | `HANDOFF.md`
+
+## 2026-06-06 - Restart-Safe Docs Closeout
+### What:
+Refreshed the Limux handoff for a PC restart after Phase 5D2 was already
+verified and closed.
+
+### Why:
+The operator reported severe RAM pressure and asked active sessions to update
+docs before restarting the machine.
+
+### How:
+Ran a local doc freshness pass, confirmed only `HANDOFF.md` is the canonical
+handoff surface in this repo, confirmed `main` was aligned with `origin/main`
+before edits, and added a restart closeout marker to `HANDOFF.md`.
+
+### Impact:
+A post-reboot successor can resume from `HANDOFF.md` without reconstructing the
+Phase 5D2 closeout. No new Limux scope was started; the next lane remains Phase
+5D3 review collect/complete plus consensus conventions.
+
+### Related:
+`HANDOFF.md` | `1f47aa1`

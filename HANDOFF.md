@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-05 14:08 EDT
+Last updated: 2026-06-06 18:58 EDT
 
 ## Immediate Next Action
 
@@ -48,6 +48,11 @@ Current implementation status: Phase 5D2 is committed and pushed as
 `20f5785 feat(cli): add review spawn wrapper`. The branch was aligned with
 `origin/main` after push; verify with `git status --short --branch` before
 continuing.
+
+Restart closeout check on 2026-06-06 18:58 EDT: no new Limux project scope has
+started after Phase 5D2 closeout. The tracked worktree was clean and `main` was
+aligned with `origin/main` before this docs refresh. If resuming after reboot,
+start with the Phase 5D3 recommendation below.
 
 Historical next-step packet that selected Phase 5D1:
 
@@ -311,7 +316,8 @@ explicit `LD_LIBRARY_PATH` prefix.
 - Latest implementation commit: `20f5785 feat(cli): add review spawn wrapper`
 - Latest implementation in this handoff: Phase 5D2 `limux review spawn` wrapper after Phase 5D1 `review prepare`.
 - Working tree was clean and aligned with `origin/main` immediately after the
-  Phase 5D2 implementation push.
+  Phase 5D2 implementation push and again before the 2026-06-06 restart docs
+  refresh.
 
 ## Architectural Decisions Locked In
 
