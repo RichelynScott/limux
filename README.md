@@ -85,11 +85,26 @@ git submodule update --init --recursive
 (cd ghostty && zig build -Dapp-runtime=none -Doptimize=ReleaseFast)
 
 # Build limux
-cargo build --release
+cargo build --release -p limux-cli --bin limux-cli
+cargo build --release -p limux-host-linux
 
-# Run (point to libghostty.so location)
-LD_LIBRARY_PATH=../ghostty/zig-out/lib:$LD_LIBRARY_PATH ./target/release/limux
+# Run from this checkout through the public CLI entrypoint.
+./scripts/limux-dev
 ```
+
+`scripts/limux-dev` launches the release CLI, points it at the sibling host
+binary, and prepends the checkout's `ghostty/zig-out/lib` directory to
+`LD_LIBRARY_PATH`. To make the checkout build available as normal shell
+commands without a sudo install, symlink it from a directory on `PATH`:
+
+```bash
+mkdir -p "$HOME/.local/bin"
+ln -s "$PWD/scripts/limux-dev" "$HOME/.local/bin/limux"
+ln -s "$PWD/scripts/limux-dev" "$HOME/.local/bin/limux-cli"
+```
+
+Use `LIMUX_LOCAL_PROFILE=debug scripts/limux-dev` when you want to run the
+debug binaries instead of the release binaries.
 
 ### Package a release tarball
 

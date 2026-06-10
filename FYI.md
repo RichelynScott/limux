@@ -430,3 +430,29 @@ Phase 5D2 closeout. No new Limux scope was started; the next lane remains Phase
 
 ### Related:
 `HANDOFF.md` | `1f47aa1`
+
+## 2026-06-10 - Local Limux Launcher Unblock
+### What:
+Added a repo-local `scripts/limux-dev` launcher and installed user-local
+`limux` / `limux-cli` symlinks in `/home/riche/.local/bin`.
+
+### Why:
+The operator resumed the Limux lane to start using the app immediately. The repo
+already built and smoked successfully, but no public `limux` command was on
+`PATH`.
+
+### How:
+Verified the current tree before setup with the full workspace check plus debug
+and release Xvfb smoke tests. Then added a strict Bash launcher that executes
+the release CLI entrypoint, points it at the sibling host binary, and prepends
+the checkout's `ghostty/zig-out/lib` path for `libghostty.so`. Avoided sudo,
+`scripts/package.sh`, package installs, generated install scripts, and system
+package mutation for this immediate unblock.
+
+### Impact:
+`limux`, `limux-cli`, and CLI workflows such as `limux agent-team --dry-run`
+now resolve from the shell. The next feature lane remains Phase 5D3 after the
+operator has had a chance to use Limux.
+
+### Related:
+`scripts/limux-dev` | `README.md` | `HANDOFF.md`

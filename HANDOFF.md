@@ -1,8 +1,47 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-06 18:58 EDT
+Last updated: 2026-06-10 12:36 EDT
 
 ## Immediate Next Action
+
+Limux setup unblock is complete for local use from this checkout. The public
+entrypoint is now available on `PATH` through user-local symlinks:
+
+```bash
+limux --help
+limux
+limux-cli --help
+```
+
+Both `/home/riche/.local/bin/limux` and
+`/home/riche/.local/bin/limux-cli` resolve to
+`/home/riche/MCPs/limux/scripts/limux-dev`. The launcher executes
+`target/release/limux-cli`, points it at `target/release/limux` through
+`LIMUX_HOST_BIN`, and prepends `ghostty/zig-out/lib` to `LD_LIBRARY_PATH`.
+`/home/riche/.local/bin` is already on `PATH`.
+
+Current verification on 2026-06-10:
+
+```bash
+LD_LIBRARY_PATH="$PWD/ghostty/zig-out/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./scripts/check.sh
+LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh
+./scripts/xvfb-smoke-test.sh
+limux --help
+limux-cli --help
+limux agent-team --dry-run --agents codex,claude --cwd /tmp/limux-launcher-check --protocol-path /tmp/limux-launcher-check/LIMUX_AGENTS.md --roster-path /tmp/limux-launcher-check/LIMUX_TEAM_ROSTER.md --ledger-path /tmp/limux-launcher-check/LIMUX_REVIEW_LEDGER.md --force-protocol-overwrite
+```
+
+All passed. Note: the first `scripts/check.sh` attempt failed only inside the
+Codex sandbox because fake Unix-socket tests could not bind (`Operation not
+permitted`); rerunning the same command outside the sandbox passed.
+
+Do not run `scripts/package.sh`, generated install scripts, or sudo/system
+install lanes for immediate use unless the operator explicitly approves that
+separate mutation/security gate. Zig is still not expected on `PATH`; the
+current runtime uses the already-built `ghostty/zig-out/lib/libghostty.so`.
+
+After the operator has had a chance to use Limux, the next feature lane remains
+**Phase 5D3 Review Collect/Complete + Consensus Conventions**.
 
 Phase 5D2 reviewer spawn/evidence pointer wrapper is implemented and verified.
 The current `agent-team` flow still writes protected generated protocol to

@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+    SOURCE_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+    TARGET="$(readlink "$SOURCE")"
+    if [[ "$TARGET" == /* ]]; then
+        SOURCE="$TARGET"
+    else
+        SOURCE="$SOURCE_DIR/$TARGET"
+    fi
+done
+
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+if [[ -n "${LIMUX_REPO_DIR:-}" ]]; then
+    ROOT_DIR="$(cd "$LIMUX_REPO_DIR" && pwd)"
+else
+    ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+fi
+PROFILE="${LIMUX_LOCAL_PROFILE:-release}"
+
+case "$PROFILE" in
+    release)
+        CARGO_PROFILE_FLAG=(--release)
+        ;;
+    debug)
+        CARGO_PROFILE_FLAG=()
+        ;;
+    *)
+        echo "limux-dev: LIMUX_LOCAL_PROFILE must be release or debug, got '$PROFILE'" >&2
+        exit 2
+        ;;
+esac
+
+BIN_DIR="$ROOT_DIR/target/$PROFILE"
+CLI_BIN="$BIN_DIR/limux-cli"
+HOST_BIN="$BIN_DIR/limux"
+LIBGHOSTTY_DIR="$ROOT_DIR/ghostty/zig-out/lib"
+
+if [[ ! -x "$CLI_BIN" || ! -x "$HOST_BIN" ]]; then
+    echo "limux-dev: missing $PROFILE Limux binaries under $BIN_DIR" >&2
+    echo "limux-dev: run: cargo build ${CARGO_PROFILE_FLAG[*]} -p limux-cli --bin limux-cli" >&2
+    echo "limux-dev: then: cargo build ${CARGO_PROFILE_FLAG[*]} -p limux-host-linux" >&2
+    exit 127
+fi
+
+if [[ ! -f "$LIBGHOSTTY_DIR/libghostty.so" ]]; then
+    echo "limux-dev: missing Ghostty library at $LIBGHOSTTY_DIR/libghostty.so" >&2
+    echo "limux-dev: build the pinned ghostty submodule before launching Limux" >&2
+    exit 127
+fi
+
+export LD_LIBRARY_PATH="$LIBGHOSTTY_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LIMUX_HOST_BIN="$HOST_BIN"
+
+exec "$CLI_BIN" "$@"
