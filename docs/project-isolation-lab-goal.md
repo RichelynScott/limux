@@ -88,6 +88,12 @@ Halo sent file-backed hcom review `#29055` to gumo. The draft is directionally
 aligned with Wave A first, but remains `WAIT`. Open findings before commit or
 freeze:
 
+Gumo acked in hcom `#29106` that he is patching those findings rather than
+accepting residual risk. A Halo recheck after that ack found the Wave A draft
+hash still unchanged at
+`004690094eac19da538f8c40bf97eec30f91d53b17fdd96334068d26b9d40a08`, so treat
+the SCS patch as in progress until gumo reports new hashes and a commit.
+
 1. Enforce frozen packet hash, approval reference, execution operator, and
    approved execution window before network or target writes.
 2. Add `curl --proto-redir '=https'` plus header/final URL/status metadata.

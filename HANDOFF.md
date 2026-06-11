@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-10 23:02 EDT
+Last updated: 2026-06-10 23:07 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -67,6 +67,14 @@ Current SCS active dirty state as of 2026-06-10 23:02 EDT:
 - Halo sent file-backed hcom review `#29055` to gumo. Decision remains
   `WAIT`: not formal `$mutation-script-wave` GO, not ISO download/use
   approval, and not host/VM/network/package/runtime approval.
+- Gumo acked in hcom `#29106`: he is patching the Wave A draft rather than
+  accepting residual risk, including approval/window/packet-hash gating,
+  HTTPS redirect/status metadata, `VALIDSIG` fingerprint binding,
+  disk-space/max-size guard, stricter target path preflight, and evidence
+  summary improvements. Halo rechecked after that ack; the Wave A draft hash
+  was still unchanged at
+  `004690094eac19da538f8c40bf97eec30f91d53b17fdd96334068d26b9d40a08`, so
+  treat the SCS patch as in progress until gumo reports new hashes/commit.
 - Findings routed to gumo before commit/freeze:
   1. Enforce frozen packet hash, approval reference, execution operator, and
      approved execution window before any network or target writes.
