@@ -1,10 +1,45 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-10 20:22 EDT
+Last updated: 2026-06-10 20:51 EDT
+
+## Active Thread Goal - Project Isolation Lab
+
+The official active goal is **not Limux feature development**. Limux is a usable
+tool and may later serve as one acceptance artifact, but the team focus is the
+cross-project isolation lab:
+
+```text
+Build a reusable Project Isolation Lab for safe work across projects: establish
+a persistent full isolated Linux VM baseline, then a disposable full Linux VM
+factory for risky package/build/install/source-execution trials, then a
+Firecracker microVM layer for fast repeatable quarantine runs after the VM
+foundations exist. Treat disposable WSL only as an ergonomics/compatibility
+companion lane, not hostile-code containment. The trusted Windows/WSL
+environment remains the control plane and should not run first-touch untrusted
+installers, package scripts, source builds, MCP startup, or global runtime
+mutation. All movement from lab to trusted host requires evidence export,
+hashes/manifests, rollback, artifact-intake review, mutation review where
+applicable, and explicit operator approval.
+```
+
+Limux-side responsibility: keep the existing repo-local/user-local Limux setup
+usable, preserve the hcom launch-mode work already shipped, and provide Limux
+only as an eventual acceptance case if the isolation-lab gates need a real GUI
+Rust/Cargo project. Do not resume Phase 5D3/internal Limux review feature work
+unless the operator explicitly redirects back to Limux product development.
+
+Canonical isolation-lab ownership remains in
+`/home/riche/Proj/SUPPLY_CHAIN_SECURITY` with gumo/SCS. This repo now has a
+local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
+alignment note, not the source of truth.
 
 ## Immediate Next Action
 
-Limux setup is unblocked for local use from this checkout. The current install
+Start from the Project Isolation Lab goal above. The next practical action for
+this Limux session is to keep Limux stable as a tool and coordinate with gumo on
+the SCS-owned lab docs, not to add more Limux features by default.
+
+Current Limux setup is unblocked for local use from this checkout. The install
 posture is still a **repo-local/user-local launcher**, not a polished system
 package. The public entrypoint is available on `PATH` through user-local
 symlinks:
@@ -57,12 +92,14 @@ install lanes for immediate use unless the operator explicitly approves that
 separate mutation/security gate. Zig is still not expected on `PATH`; the
 current runtime uses the already-built `ghostty/zig-out/lib/libghostty.so`.
 
-Gumo/SUPPLY_CHAIN_SECURITY remains read-only support for install posture. The
-safe full/near-full install direction is still: keep the current launcher as
-baseline, design a separate user-local install/rehearsal artifact with manifest
-and rollback, and defer sudo/system packages, generated `install.sh`, `.deb`,
-AppImage, AUR, and release workflows until the mutation/supply-chain gates are
-explicitly reviewed and approved.
+Gumo/SUPPLY_CHAIN_SECURITY owns the broader Project Isolation Lab lane. The safe
+direction is no longer "make Limux more complete first"; it is to build the
+reusable lab sequence: persistent full isolated Linux VM, evidence export/intake
+gate, disposable full Linux VM factory, disposable WSL ergonomics checks only
+after artifacts are no longer first-touch hostile inputs, then Firecracker
+microVMs after full VM foundations. Any later Limux near-full/user-local install
+must be handled as an acceptance case behind those gates, with manifest,
+hashes, rollback, artifact-intake review, and explicit approval.
 
 Known feature caveat from the user discussion: the colored per-terminal
 "waiting for input" border/tab marker is not implemented. Existing Limux
@@ -106,11 +143,9 @@ ledger entry to `in-progress`. `--dry-run` validates request/ledger/evidence
 paths without host contact. `--no-launch` creates the pane without typing the
 reviewer command or prompt.
 
-Recommended next scoped action for user utility: use the hcom mode in a real
-Limux workspace with the operator's normal `hcom codex` / `hcom claude`
-workflow. If it is stable, continue the install-posture lane with gumo as
-read-only SCS support. Only return to internal review/consensus features if the
-operator explicitly wants more Limux development rather than setup/use.
+Recommended next scoped action for user utility: use the current Limux launcher
+and hcom mode normally, while treating new engineering work as isolation-lab
+support unless the operator explicitly asks for Limux product development.
 
 Current implementation status: local launcher setup, env-isolated verification
 scripts, and hcom launch mode are committed and pushed through
@@ -129,7 +164,8 @@ docs/LIMUX_PHASE5C_NEXT_STEPS_DECISION_PACKET_2026-05-29.md
 docs/LIMUX_PHASE5C_NEXT_STEPS_DECISION_PACKET_2026-05-29.html
 ```
 
-Recommended sequence:
+Historical Limux feature sequence, now superseded by the Project Isolation Lab
+goal unless explicitly reactivated:
 
 1. **Done:** Phase 5D1 `limux review prepare` scaffold.
 2. **Done:** Phase 5D2 reviewer spawn/evidence pointer wrapper.

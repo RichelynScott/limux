@@ -486,3 +486,28 @@ lane.
 
 ### Related:
 `678de2c` | `a0f4e34` | `rust/limux-cli/src/main.rs` | `scripts/xvfb-smoke-test.sh` | `HANDOFF.md`
+
+## 2026-06-10 - Project Isolation Lab Goal Alignment
+### What:
+Recorded the operator-provided active goal that this lane is focused on a
+reusable Project Isolation Lab, not Limux feature development.
+
+### Why:
+The prior Limux handoff still made Phase 5D3/internal Limux feature work look
+like the default next lane. The operator clarified that the real goal is the
+full-isolation Linux lab: persistent full VM(s), disposable full VM(s), then
+Firecracker microVMs, with disposable WSL only as an ergonomics companion lane.
+
+### How:
+Updated `HANDOFF.md` with the official active goal and Limux boundary, added
+`docs/project-isolation-lab-goal.md` as a Limux-local pointer to the
+SCS-owned canonical lab docs, and left SCS-side canonical updates to gumo via
+hcom routing rather than patching another repo's owner lane.
+
+### Impact:
+Future Limux sessions should keep the current Limux launcher/hcom setup usable
+but avoid drifting into internal Limux product work unless the operator
+explicitly redirects. The cross-project isolation lab is the active priority.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md`
