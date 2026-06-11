@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-10 21:28 EDT
+Last updated: 2026-06-10 21:46 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,10 +33,10 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
-Current SCS restart pointers as of 2026-06-10 21:19 EDT:
+Current SCS restart pointers as of 2026-06-10 21:46 EDT:
 
 - SCS commit:
-  `62440b6 docs(lab): record isolation goal and hyper-v packet`
+  `937158e docs(lab): tighten hyper-v packet review gates`
 - Canonical active goal:
   `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/ACTIVE_GOAL.md`
   SHA256:
@@ -44,23 +44,25 @@ Current SCS restart pointers as of 2026-06-10 21:19 EDT:
 - Phase 1 host-mutation draft:
   `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md`
   SHA256:
-  `badc15cf44a8a6be8f56231b09899ee3c2e756ff0308dd6758b70ccd9d3ca678`
-- Packet status: `WAIT`; it is not executable. The previous WinNAT guest
-  networking gap is addressed in the draft with a guest static IP, gateway,
-  DNS, GUI setup path, netplan fallback, HNS/WSL2 NAT reconciliation checks,
-  and separate `SCSLabSwitch` / `SCSLabNAT` names.
-- Halo sent gumo a Codex single-reviewer system-mutation pre-exec review on
-  hcom thread `project-isolation-lab-goal`. Decision: `WAIT`, not formal
-  `$mutation-script-wave`. Findings sent: Path B must hard-stop after
-  `Enable-WindowsOptionalFeature -NoRestart`; documented stop conditions such
-  as free disk/RAM/edition/virtualization/BitLocker/pending-reboot/network
-  health need fail-closed enforcement or explicit manual-gate separation;
-  evidence paths should not overwrite pre-state captures on rerun; hcom/distro
-  placeholders need conservative validation before WSL/bash interpolation; Path
-  A should make first-boot network-disconnected state deterministic.
-- Formal `$mutation-script-wave`, Ubuntu ISO provenance/SHA256, unresolved
-  HIGH/CRIT convergence, and explicit operator approval/execution window have
-  not happened.
+  `3fc1404e8e5a0bcfa31fabc549a83bbb3b96bdd0f4191d561347d56c14e7c220`
+- Packet status: `WAIT`; it is not executable. Gumo folded in Halo review
+  fixes: staged PowerShell path with a hard Hyper-V reboot boundary, fail-closed
+  preflight checks, unique/fail-if-exists evidence root, conservative WSL/hcom
+  placeholder validation, deterministic offline first boot, later deliberate
+  network attachment, and `GUEST_INTERFACE` substitution for the guest netplan
+  fallback.
+- SCS review record:
+  `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_PACKET_REVIEW_RECORD_2026-06-10.md`
+  SHA256:
+  `31c216c85af3ce3580b3e7a616e82ef505ab78e4c271c39ca20819f3fa005d0e`
+- SCS HTML decision packet:
+  `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`
+  SHA256:
+  `11f5bf9afe48b78e4970077f780345d8fd961444a39ac3af1c735e63f4b1cf04`
+- Remaining gates: formal `$mutation-script-wave`, Docker/HNS/WSL2 NAT
+  coexistence decision before WinNAT, separate ISO artifact-intake/download
+  packet before downloading or attaching the ISO, freeze with SHA256, and
+  explicit operator approval/execution window.
 - Read-only placeholder discovery from this trusted WSL session found:
   `CONTROL_PLANE_WSL_DISTRO` candidate `Ubuntu`; `HCOM_CHECK_NAME` candidate
   `halo` as the hcom sender-name argument; `hcom --version --name halo`
@@ -94,6 +96,8 @@ commit/hash and then continue the formal review gate:
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY log -5 --oneline --decorate
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_PACKET_REVIEW_RECORD_2026-06-10.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html
 hcom --version --name halo
 hcom list --name halo
 wsl.exe --list --verbose

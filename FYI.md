@@ -2,6 +2,22 @@
 
 Append-only journal for significant Limux session decisions and implementation notes.
 
+## 2026-06-10 - SCS Hyper-V Packet Review Gate Pushed
+### What:
+Recorded the pushed SCS Hyper-V packet review state in Limux-local restart docs.
+
+### Why:
+Gumo landed the SCS-owned follow-up commit after Halo's read-only packet review. A resumed Limux session needs the durable SCS commit and final hashes rather than the earlier `62440b6` baseline.
+
+### How:
+Updated `HANDOFF.md` and `docs/project-isolation-lab-goal.md` with SCS commit `937158e`, packet/review-record/HTML hashes, the review-record path, and the remaining WAIT gates. Halo did not edit SCS and did not run any host, VM, WSL, network, package, or runtime mutation.
+
+### Impact:
+A successor should start from SCS commit `937158e`, packet hash `3fc1404e8e5a0bcfa31fabc549a83bbb3b96bdd0f4191d561347d56c14e7c220`, review-record hash `31c216c85af3ce3580b3e7a616e82ef505ab78e4c271c39ca20819f3fa005d0e`, and HTML packet hash `11f5bf9afe48b78e4970077f780345d8fd961444a39ac3af1c735e63f4b1cf04`.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom thread `project-isolation-lab-goal`
+
 ## 2026-06-10 - Project Isolation Lab Restart Pointers
 ### What:
 Refreshed the Limux-local handoff and goal note with the current SCS Project Isolation Lab restart pointers, including the canonical active-goal file and the Hyper-V host mutation packet draft.
