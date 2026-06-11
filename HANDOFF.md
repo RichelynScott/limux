@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-10 22:46 EDT
+Last updated: 2026-06-10 22:53 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -169,7 +169,10 @@ Verified SCS PRD/packet closeout as of 2026-06-10 22:33 EDT:
 - No host/VM/WSL/Docker/HNS/WinNAT/network/package/ISO/SCRIM/runtime mutation
   was run by Halo or reported by gumo for this docs-only commit.
 
-Live SCS mutation-wave packet draft as of 2026-06-10 22:46 EDT:
+Superseded SCS mutation-wave packet draft as of 2026-06-10 22:46 EDT:
+
+This draft state was superseded by SCS commit `7427285` recorded below. It
+remains here only as the review trail for hcom `#28584`, `#28712`, and `#28723`.
 
 - SCS is dirty again after `e8ef33a`; do not treat the `e8ef33a` hash set as
   the current frozen packet set until gumo commits/pushes or explicitly
@@ -246,22 +249,69 @@ Live SCS mutation-wave packet draft as of 2026-06-10 22:46 EDT:
   converged, ISO download/use is not approved, host/VM/network/package/runtime
   mutation is not approved, and Halo ran no such mutation.
 
+Verified SCS mutation-wave packet closeout as of 2026-06-10 22:53 EDT:
+
+- SCS commit:
+  `7427285 docs(lab): add hyperv mutation wave packet`
+- Full SCS commit SHA:
+  `7427285b267bba3d69483c3354edf504299e2956`
+- Halo verified SCS `main` aligned with `origin/main`, with only unrelated
+  untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` remaining.
+- Verified final hashes:
+  - `HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`:
+    `12622e2416addad87d4ad4fad222f3df94aa4372ed52dea2f67096a52d2c9fbb`
+  - `HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md`:
+    `bd3b053c99c555684fa198c229842f179ecd577c5985df534895811b767ca2bb`
+  - `HYPERV_DOCKER_WSL2_NAT_RECONCILIATION_PLAN_2026-06-10.md`:
+    `a4c8b6bf5a4ccc05874aa595820b1bc12d6db26ebaa67b949a77983292b96f0c`
+  - `UBUNTU_2404_ISO_ARTIFACT_INTAKE_PLAN_2026-06-10.md`:
+    `d472b0b5b555d6aa8026690b06bbb7b016d04eb6751cadd30602f3c4b55cbc32`
+  - `HYPERV_PACKET_REVIEW_RECORD_2026-06-10.md`:
+    `9cdd0923d5f2618ec9544a617f68b564bf3adecfafd75d6ff4969cf623a2d0f2`
+  - `PRD_ACCEPTANCE_REVIEW_2026-06-10.md`:
+    `c1be23fb69d96e9567865742a2a53ee1cd976e70a0ddbe3e8df65c3768814581`
+  - `ACTIVE_GOAL.md`:
+    `9b4cd6fa81326d5f7749bb2b1e35adc35b7b3c2d588a43a53673b4323fcc947f`
+  - `ACCEPTANCE_GATES.md`:
+    `a3279d7b87ca40fd6bcff74dc483dc1f92fb4372bad2730c92152345ee281404`
+  - `prd-001-hyperv-linux-vm-baseline.md`:
+    `7580a396bf2f76b507f74893dce3c40d885a3524c4836a376a640326a61ece86`
+  - `PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`:
+    `4d4cb6824b38e7592ae863025323d9c856bac810f12734a6386a3d6a42740af1`
+  - SCS `HANDOFF.md`:
+    `0f2fa08be67cd5323ec0fa33f19c4742cb4b66b8499d520a331d69b7f76497f3`
+- Gumo's hcom closeout `#28853` reported verification: `git diff --check`,
+  HTML parser, embedded JS `node --check`, `py_compile`, and unittest 18 OK.
+- Halo verification: `git diff --check`; HTML parser; embedded JS extracted to
+  `/tmp/scs_project_isolation_packet.js` and checked with `node --check`;
+  no-write Python syntax compile with `compile(...)`; `python3 -B -m unittest
+  tests.security_posture.test_supply_chain_watch -v` with 18 tests OK; commit
+  SHA and upstream SHA matched.
+- Note: direct `python3 -m py_compile ...` from Halo failed because the SCS tree
+  is read-only from this Limux sandbox and `py_compile` tried to write
+  `__pycache__`; this is why Halo used no-write compile plus `python3 -B`
+  unittest as local verification. Gumo reported normal `py_compile` passed from
+  the SCS-owned session.
+- Decision remains `WAIT`; this is not formal `$mutation-script-wave` GO, not
+  ISO download/use approval, not host/VM/network execution approval, and not a
+  package/runtime/global-config mutation approval.
+- No host/VM/WSL/Docker/HNS/WinNAT/network/package/ISO/SCRIM/global-config/
+  runtime mutation was run by Halo or reported by gumo for this docs-only
+  commit.
+
 ## Immediate Next Action
 
 Start from the Project Isolation Lab goal above. The next practical action for
 this Limux session is to keep Limux stable as a tool and coordinate with gumo on
 the SCS-owned lab docs, not to add more Limux features by default.
 
-If resuming after a restart, first verify whether gumo has committed the current
-SCS mutation-wave packet draft. If SCS remains dirty, continue from Halo
-closeout `#28712` plus gumo ack `#28723`; do not rely on `e8ef33a` or any
-dirty-draft hash above as the current frozen committed packet set. If gumo has
-pushed a newer commit, verify the new commit, hashes, and post-push status
-locally before updating Limux pointers.
-Then continue toward Wave A ISO intake packet review/freeze first; Wave B
-offline Hyper-V baseline cannot attach media without an accepted ISO evidence
-record, and Wave C network stage remains deferred behind Docker/HNS/WSL2 NAT
-reconciliation. Do not execute host/VM/network/artifact mutation from Limux.
+If resuming after a restart, first verify SCS is still aligned at `7427285` with
+the final hashes above. Then continue toward Wave A ISO intake packet
+review/freeze first. Wave A is review/freeze only until a future frozen command
+packet is written and reviewed; do not download the ISO. Wave B offline Hyper-V
+baseline cannot attach media without an accepted ISO evidence record, and Wave C
+network stage remains deferred behind Docker/HNS/WSL2 NAT reconciliation. Do
+not execute host/VM/network/artifact mutation from Limux.
 
 ```bash
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
@@ -271,6 +321,8 @@ sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPE
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/PRD_ACCEPTANCE_REVIEW_2026-06-10.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/ACCEPTANCE_GATES.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/ACTIVE_GOAL.md
 hcom --version --name halo
 hcom list --name halo
 wsl.exe --list --verbose

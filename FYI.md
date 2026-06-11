@@ -2,6 +2,22 @@
 
 Append-only journal for significant Limux session decisions and implementation notes.
 
+## 2026-06-10 - SCS Mutation-Wave Packet Commit Pushed
+### What:
+Recorded the pushed SCS docs-only WAIT closeout at `7427285`, adding `HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md` and final mutation-wave packet hashes.
+
+### Why:
+The previous Limux pointer correctly recorded a dirty SCS draft, but gumo has now committed and pushed the mutation-wave packet. A zero-context successor needs the durable commit and final hashes instead of the stale dirty-state warning.
+
+### How:
+Verified SCS `main` aligned with `origin/main`, checked final SHA256 values for the wave packet, Hyper-V packet, NAT plan, ISO plan, review record, PRD acceptance review, active goal, acceptance gates, PRD-001, HTML decision packet, and SCS handoff. Also ran `git diff --check`, HTML parse, embedded JS `node --check`, no-write Python syntax compile, and `python3 -B -m unittest tests.security_posture.test_supply_chain_watch -v` with 18 tests OK. Patched only Limux-owned restart docs. No SCS files, host, VM, WSL, Docker, HNS, WinNAT, network, package, ISO, SCRIM, global-config, or runtime mutation was performed by Halo.
+
+### Impact:
+Successors should start from SCS commit `7427285` and continue with Wave A ISO intake packet review/freeze only. The lab remains `WAIT`: no formal `$mutation-script-wave` GO, no ISO download/use approval, and no host/VM/network/package/runtime mutation approval.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | SCS commit `7427285` | hcom `#28853`
+
 ## 2026-06-10 - SCS Mutation-Wave Draft Dirty State
 ### What:
 Recorded that SCS is dirty again after `e8ef33a` with a new untracked `HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md` and tracked docs pointer edits.
