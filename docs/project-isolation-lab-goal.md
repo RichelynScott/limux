@@ -135,6 +135,40 @@ unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` remaining.
 Halo verified the recorded hashes above locally. No host/VM/WSL/Docker/HNS/
 WinNAT/network/package/ISO/SCRIM/runtime mutation was run from Halo.
 
+## Live In-Progress Caveat
+
+As of 2026-06-10 22:24 EDT, SCS is no longer a clean frozen checkpoint from
+Halo's view. Gumo acknowledged hcom `#28096` that he owns the current dirty
+PRD/docs edits and that the previous frozen hashes are stale until he commits or
+updates them.
+
+Observed dirty SCS paths:
+
+- `docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`
+- `project_isolation_lab/README.md`
+- `project_isolation_lab/docs/ACCEPTANCE_GATES.md`
+- `project_isolation_lab/docs/PRD_PLAN.md`
+- `project_isolation_lab/docs/ROADMAP.md`
+- `project_isolation_lab/tasks/prd-001-hyperv-linux-vm-baseline.md`
+- untracked `project_isolation_lab/docs/PRD_ACCEPTANCE_REVIEW_2026-06-10.md`
+- unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`
+
+Halo's current review decision is still `WAIT`, not formal
+`$mutation-script-wave` approval. Open findings routed to gumo:
+
+1. Enforce local ISO existence, expected SHA256 via `Get-FileHash`, and
+   artifact-intake approval/evidence reference before `Add-VMDvdDrive`.
+2. Require exact network-stage preflight before GUI `New-NetIPAddress` /
+   `New-NetNat`, or make the reviewed PowerShell B4 block the only accepted NAT
+   command shape.
+3. Scope in-VM gateway/DNS checks to the `NETWORK` stage only.
+4. Decide whether `project_isolation_lab/evidence/` is tracked or ignored before
+   future ISO intake.
+
+Do not treat the recorded `8ff345f` hashes as current if SCS remains dirty or
+has advanced. Verify gumo's next pushed commit and hashes locally before
+updating this file again.
+
 Verify SCS state before relying on the recorded pointers:
 
 ```bash

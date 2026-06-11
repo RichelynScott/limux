@@ -2,6 +2,22 @@
 
 Append-only journal for significant Limux session decisions and implementation notes.
 
+## 2026-06-10 - SCS Packet Hashes Stale During Gumo PRD Update
+### What:
+Recorded that the previous SCS `8ff345f` packet/hash checkpoint is no longer the current live state from Halo's view because gumo owns new uncommitted PRD/docs edits.
+
+### Why:
+A restarted Limux session must not mistake the earlier SCS hashes for a frozen packet set while gumo is actively patching the next review blockers.
+
+### How:
+Verified Limux remained clean, checked SCS dirty state, received gumo's hcom `#28096` ack, and updated Limux-owned restart docs only. No SCS files, host, VM, WSL, Docker, HNS, WinNAT, network, package, ISO, SCRIM, global-config, or runtime mutation was performed.
+
+### Impact:
+Successors should wait for or verify gumo's next SCS commit before updating hashes. Current open findings are ISO fail-closed checks before `Add-VMDvdDrive`, GUI NAT preflight scoping, network-only in-VM acceptance checks, and `project_isolation_lab/evidence/` tracking policy.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#28096` | hcom thread `project-isolation-lab-goal`
+
 ## 2026-06-10 - SCS NAT/ISO Closeout Pushed
 ### What:
 Recorded the pushed SCS docs-only WAIT closeout for the Hyper-V packet, NAT reconciliation plan, ISO artifact-intake plan, review record, and HTML decision packet.

@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-10 22:10 EDT
+Last updated: 2026-06-10 22:24 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -99,17 +99,50 @@ Verified SCS closeout as of 2026-06-10 22:10 EDT:
 - Halo verified the final SCS hashes listed above. No host/VM/WSL/Docker/HNS/
   WinNAT/network/package/ISO/SCRIM/runtime mutation was run from Halo.
 
+Live SCS in-progress state as of 2026-06-10 22:24 EDT:
+
+- SCS owner gumo acknowledged hcom `#28096` that the current SCS dirty PRD/docs
+  edits are his and that the prior frozen hashes are stale until he commits or
+  updates them.
+- Halo observed SCS dirty state after the `8ff345f` checkpoint:
+  `docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`,
+  `project_isolation_lab/README.md`,
+  `project_isolation_lab/docs/ACCEPTANCE_GATES.md`,
+  `project_isolation_lab/docs/PRD_PLAN.md`,
+  `project_isolation_lab/docs/ROADMAP.md`,
+  `project_isolation_lab/tasks/prd-001-hyperv-linux-vm-baseline.md`, plus new
+  untracked `project_isolation_lab/docs/PRD_ACCEPTANCE_REVIEW_2026-06-10.md`
+  and unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
+- Halo's latest read-only pre-exec review remains `WAIT`, not a formal
+  `$mutation-script-wave` GO. Open findings sent to gumo:
+  1. Stage B2 must fail closed on local ISO existence, expected SHA256 via
+     `Get-FileHash`, and artifact-intake approval/evidence reference before
+     `Add-VMDvdDrive`.
+  2. Optional GUI NAT stage must require exact network-stage preflight
+     immediately before `New-NetIPAddress` / `New-NetNat`, or defer to the
+     reviewed PowerShell B4 command shape only.
+  3. In-VM gateway/DNS acceptance checks such as `ping 172.29.240.1` and
+     `getent hosts archive.ubuntu.com` must be scoped to `NETWORK`; `OFFLINE_VM`
+     acceptance should not expect them to pass.
+  4. SCS should decide whether `project_isolation_lab/evidence/` is intentionally
+     tracked. If not, it needs a `.gitignore` entry before future ISO intake so
+     checksum/evidence files or accidental artifacts do not become repo noise.
+- Do not update Limux's recorded SCS hashes again until gumo reports a pushed
+  commit and Halo verifies the new hashes locally.
+
 ## Immediate Next Action
 
 Start from the Project Isolation Lab goal above. The next practical action for
 this Limux session is to keep Limux stable as a tool and coordinate with gumo on
 the SCS-owned lab docs, not to add more Limux features by default.
 
-If resuming after a restart, first verify that SCS is still at the recorded
-`8ff345f` state with the hashes above. If SCS has advanced, verify the newer
-commit and update the Limux pointers before continuing. Then continue toward
-formal `$mutation-script-wave` review of the exact frozen SCS packet set; do
-not execute host/VM/network/artifact mutation from Limux.
+If resuming after a restart, first verify whether gumo has committed the current
+SCS dirty state. If SCS is still dirty, do not rely on the `8ff345f` hashes as a
+frozen packet set; continue the read-only review/coordination with gumo from
+hcom `#28096`. If gumo has pushed a newer commit, verify the newer commit and
+hashes locally before updating Limux pointers. Then continue toward formal
+`$mutation-script-wave` review of the exact frozen SCS packet set; do not
+execute host/VM/network/artifact mutation from Limux.
 
 ```bash
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
