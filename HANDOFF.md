@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 08:44 EDT
+Last updated: 2026-06-11 08:46 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,7 +33,7 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
-Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 08:44
+Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 08:46
 EDT:
 
 - SCS V2 freeze is complete and pushed at
@@ -304,24 +304,26 @@ EDT:
   SHA256 match, `bash -n`, and Codex static no-delete scan over a dedicated
   `/tmp` copy with 0 REMOVE and 0 REVIEW.
 - Subsequent SCS WIP after `e455617...` is already present and non-durable as
-  of the 2026-06-11 08:42 EDT read-only snapshot. Current SCS status shows
+  of the 2026-06-11 08:46 EDT read-only spot-check. Current SCS status shows
   root/project docs and `project_isolation_lab/tasks/prd-003-evidence-export-intake.md` modified, an
   untracked `project_isolation_lab/docs/DATA_ONLY_EVIDENCE_INTAKE_GATE_DRAFT_2026-06-11.md`,
   and unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
-  Gumo hcom `#34691` and `#34696` confirm this Gate D/evidence-intake lane is
-  still WIP, Claude adversarial review found MEDIUM issues, gumo is patching,
-  and there is no final SCS hash set yet.
-  Snapshot hashes for the new evidence-intake lane:
+  Gumo hcom `#34691`, `#34696`, and `#34887` confirm this Gate
+  D/evidence-intake lane is still WIP, Claude adversarial review found MEDIUM
+  issues including one remaining polyglot/remote-content check issue, gumo is
+  patching, and there is no final SCS hash set yet.
+  Last-observed volatile WIP hashes for the new evidence-intake lane:
   - `DATA_ONLY_EVIDENCE_INTAKE_GATE_DRAFT_2026-06-11.md`:
-    `4db066d8f64ee45143a4e1f6f7d65a940148b323003a14494b198ce54c4df770`
+    `ed129a41a12028bf9e60bab320a514449491abca1433ea3802a3d62ccc28bb63`
   - `prd-003-evidence-export-intake.md`:
-    `5a82c04dd464461aa8f02a8aa212be568afb41b2b172d1a169fae04adac1e228`
+    `4c51fbee6abafb14bb696bd6bbe281cfd747ca7f20f995aab8a4cf17c9f2c1c4`
   - `ACCEPTANCE_GATES.md`:
-    `7be40b4b621fb2838fa09f4cbecc4c024a1b41ab988317bc50b305180e1dc460`
+    `607db367d7af031ce62c6615272d9ae8fe0296fd4b8ee31af4a63c8cebc528f5`
   - `PRD_ACCEPTANCE_REVIEW_2026-06-10.md`:
     `12f5cac630edd0e4ba28254c08709ea2032652e4b74492bb38d9f85fa6b6a118`
-  Do not treat this evidence-intake WIP as durable until SCS commits/pushes or
-  gumo issues an exact-hash review request after patching.
+  These hashes are a restart breadcrumb only, not a review target; do not treat
+  this evidence-intake WIP as durable until SCS commits/pushes or gumo issues
+  an exact-hash review request after patching.
 - Limux-side operator packet for this final checkpoint:
   `docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`.
   It is a human-readable copy-back/status packet, not an execution approval.
