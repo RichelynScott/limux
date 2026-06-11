@@ -1119,6 +1119,8 @@ status before moving Limux pointers again.
 ### How:
 Checked hcom project thread, Limux status, SCS status read-only, SCS HEAD, the
 marker-proof packet hash, and the untracked marker-proof review record hash.
+The final post-push check showed SCS still actively changing, so Limux docs now
+record the hold condition instead of treating the dirty-file list as final.
 Patched only Limux-owned restart docs. Halo did not edit SCS, run the packet,
 create markers, download/import ISO/key/checksum material, or mutate network,
 Hyper-V, VM, WSL, Limux, Cargo, package, or host/runtime state.

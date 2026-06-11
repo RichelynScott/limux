@@ -51,7 +51,7 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 07:24 EDT, SCS Wave A V2 successor and marker-proof status is:
+As of 2026-06-11 07:25 EDT, SCS Wave A V2 successor and marker-proof status is:
 
 - SCS V2 freeze is complete and pushed at
   `0c1882b23bdb0dac9617734d23024752e35af4c6`
@@ -181,9 +181,10 @@ As of 2026-06-11 07:24 EDT, SCS Wave A V2 successor and marker-proof status is:
   `EXPECTED_PACKET_SHA256`, and no host/VM/WSL/Docker/HNS/WinNAT/network/
   package/SCRIM/global-config/Limux/runtime mutation approval.
 - Post-review SCS hold state: SCS HEAD remains
-  `0c1882b23bdb0dac9617734d23024752e35af4c6`, but Halo's 07:24 EDT read-only
-  check found modified SCS docs and a new untracked marker-proof review record
-  at
+  `0c1882b23bdb0dac9617734d23024752e35af4c6`, but Halo's 07:25 EDT read-only
+  post-push check found SCS actively changing, including root docs/handoff, the
+  HTML decision packet, project-isolation-lab docs, and a new untracked
+  marker-proof review record at
   `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_DRAFT_REVIEW_2026-06-11.md`
   with SHA256
   `28726df4453fab66cc5d1f09d1ecf2a622086d656fd42771be6cebc6a0df57c9`.

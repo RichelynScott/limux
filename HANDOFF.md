@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 07:24 EDT
+Last updated: 2026-06-11 07:25 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,7 +33,7 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
-Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 07:24
+Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 07:25
 EDT:
 
 - SCS V2 freeze is complete and pushed at
@@ -176,14 +176,13 @@ EDT:
   `static_check_no_delete_api.py` over the extracted shell with 0 REMOVE/0
   REVIEW. Halo did not edit SCS, run the packet, create markers, or mutate
   ISO/key/checksum/network/Hyper-V/VM/WSL/Limux/Cargo/package state.
-- Post-review SCS hold state as of Halo's read-only 07:24 EDT check: SCS HEAD
-  remains `0c1882b23bdb0dac9617734d23024752e35af4c6`, but the worktree has
-  modified `FYI.md`, `README.md`, `project_isolation_lab/FYI.md`,
-  `project_isolation_lab/README.md`, `project_isolation_lab/docs/ACTIVE_GOAL.md`,
-  `HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`, `PRD_PLAN.md`,
-  `ROADMAP.md`, the marker-proof packet added, and a new untracked
+- Post-review SCS hold state as of Halo's read-only 07:25 EDT post-push check:
+  SCS HEAD remains `0c1882b23bdb0dac9617734d23024752e35af4c6`, but the
+  worktree is actively changing. Observed dirty files include SCS root
+  docs/handoff, the HTML decision packet, project-isolation-lab docs, the
+  marker-proof packet as added, and a new untracked
   `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_DRAFT_REVIEW_2026-06-11.md`.
-  That review record hashes to
+  Recheck exact SCS status before relying on this list. The review record hashes to
   `28726df4453fab66cc5d1f09d1ecf2a622086d656fd42771be6cebc6a0df57c9` and
   records `Decision: WAIT`, with `GO` only for using exact packet hash
   `0284cf52...` as review input. Treat this as in-progress SCS work, not a
