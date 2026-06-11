@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-10 22:24 EDT
+Last updated: 2026-06-10 22:33 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -99,7 +99,10 @@ Verified SCS closeout as of 2026-06-10 22:10 EDT:
 - Halo verified the final SCS hashes listed above. No host/VM/WSL/Docker/HNS/
   WinNAT/network/package/ISO/SCRIM/runtime mutation was run from Halo.
 
-Live SCS in-progress state as of 2026-06-10 22:24 EDT:
+Superseded SCS in-progress state as of 2026-06-10 22:24 EDT:
+
+This was superseded by the verified `e8ef33a` closeout below. It remains here
+only as the review trail for the blockers gumo fixed before committing.
 
 - SCS owner gumo acknowledged hcom `#28096` that the current SCS dirty PRD/docs
   edits are his and that the prior frozen hashes are stale until he commits or
@@ -127,8 +130,44 @@ Live SCS in-progress state as of 2026-06-10 22:24 EDT:
   4. SCS should decide whether `project_isolation_lab/evidence/` is intentionally
      tracked. If not, it needs a `.gitignore` entry before future ISO intake so
      checksum/evidence files or accidental artifacts do not become repo noise.
-- Do not update Limux's recorded SCS hashes again until gumo reports a pushed
-  commit and Halo verifies the new hashes locally.
+- At that point, Limux's recorded SCS hashes were intentionally not updated
+  until gumo reported a pushed commit and Halo verified the new hashes locally.
+
+Verified SCS PRD/packet closeout as of 2026-06-10 22:33 EDT:
+
+- SCS commit:
+  `e8ef33a docs(lab): record prd acceptance gates`
+- Full SCS commit SHA:
+  `e8ef33ab190f76f605d369412b957b6e17e74636`
+- Halo verified SCS `main` aligned with `origin/main`, with only unrelated
+  untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` remaining.
+- Verified final hashes:
+  - `ACTIVE_GOAL.md`:
+    `159d4ea1c8397a2640768017ea25dc46afe01a4b816de2462a618b5cb76dc8ad`
+  - `HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md`:
+    `bd3b053c99c555684fa198c229842f179ecd577c5985df534895811b767ca2bb`
+  - `HYPERV_DOCKER_WSL2_NAT_RECONCILIATION_PLAN_2026-06-10.md`:
+    `a4c8b6bf5a4ccc05874aa595820b1bc12d6db26ebaa67b949a77983292b96f0c`
+  - `UBUNTU_2404_ISO_ARTIFACT_INTAKE_PLAN_2026-06-10.md`:
+    `d472b0b5b555d6aa8026690b06bbb7b016d04eb6751cadd30602f3c4b55cbc32`
+  - `HYPERV_PACKET_REVIEW_RECORD_2026-06-10.md`:
+    `9cdd0923d5f2618ec9544a617f68b564bf3adecfafd75d6ff4969cf623a2d0f2`
+  - `PRD_ACCEPTANCE_REVIEW_2026-06-10.md`:
+    `c1be23fb69d96e9567865742a2a53ee1cd976e70a0ddbe3e8df65c3768814581`
+  - `prd-001-hyperv-linux-vm-baseline.md`:
+    `7580a396bf2f76b507f74893dce3c40d885a3524c4836a376a640326a61ece86`
+  - `PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`:
+    `f05a03f2f7e3a890a149a1bcbe04c4349416b97166fe8a96e86c37afea88b82e`
+- Gumo's reported verification for SCS commit `e8ef33a`: `git diff --check`;
+  HTML parser; embedded JS `node --check`; `python3 -m py_compile
+  security_posture/supply_chain_watch.py
+  tests/security_posture/test_supply_chain_watch.py`; `python3 -m unittest
+  tests.security_posture.test_supply_chain_watch -v` with 18 tests OK; and
+  `git diff --cached --check` before commit.
+- Decision remains `WAIT`; this is not a formal `$mutation-script-wave` GO, not
+  ISO download/use approval, and not execution approval.
+- No host/VM/WSL/Docker/HNS/WinNAT/network/package/ISO/SCRIM/runtime mutation
+  was run by Halo or reported by gumo for this docs-only commit.
 
 ## Immediate Next Action
 
@@ -136,19 +175,18 @@ Start from the Project Isolation Lab goal above. The next practical action for
 this Limux session is to keep Limux stable as a tool and coordinate with gumo on
 the SCS-owned lab docs, not to add more Limux features by default.
 
-If resuming after a restart, first verify whether gumo has committed the current
-SCS dirty state. If SCS is still dirty, do not rely on the `8ff345f` hashes as a
-frozen packet set; continue the read-only review/coordination with gumo from
-hcom `#28096`. If gumo has pushed a newer commit, verify the newer commit and
-hashes locally before updating Limux pointers. Then continue toward formal
-`$mutation-script-wave` review of the exact frozen SCS packet set; do not
-execute host/VM/network/artifact mutation from Limux.
+If resuming after a restart, first verify that SCS is still aligned at
+`e8ef33a` with the final hashes above. Then continue toward formal
+`$mutation-script-wave` review of the exact frozen SCS packet set and separate
+ISO artifact-intake/download packet work. Do not execute host/VM/network/
+artifact mutation from Limux.
 
 ```bash
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY log -5 --oneline --decorate
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_PACKET_REVIEW_RECORD_2026-06-10.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/PRD_ACCEPTANCE_REVIEW_2026-06-10.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html
 hcom --version --name halo
 hcom list --name halo

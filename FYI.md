@@ -2,6 +2,22 @@
 
 Append-only journal for significant Limux session decisions and implementation notes.
 
+## 2026-06-10 - SCS PRD Acceptance Gate Commit Pushed
+### What:
+Recorded the pushed SCS docs-only closeout at `e8ef33a`, including PRD acceptance gates, tightened Hyper-V packet command guards, PRD acceptance review, and refreshed final hashes.
+
+### Why:
+The previous Limux handoff correctly warned that SCS was dirty, but gumo has now committed and pushed the SCS-owned docs. A zero-context successor needs the durable commit and verified hashes, not the transient dirty-draft caveat.
+
+### How:
+Verified SCS `main` aligned with `origin/main`, checked final SHA256 values for the active goal, Hyper-V packet, NAT plan, ISO intake plan, review record, PRD acceptance review, PRD-001, and HTML decision packet, then patched Limux-owned restart docs only. No SCS files, host, VM, WSL, Docker, HNS, WinNAT, network, package, ISO, SCRIM, global-config, or runtime mutation was performed by Halo.
+
+### Impact:
+Successors should start from SCS commit `e8ef33a`. The lab remains `WAIT`: formal `$mutation-script-wave`, Docker/HNS/WSL2 NAT decision before WinNAT, a frozen ISO download/use packet, exact execution-packet freeze, and explicit operator approval remain required before any host/VM/network/artifact mutation.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | SCS commit `e8ef33a` | hcom `#28386`
+
 ## 2026-06-10 - SCS Packet Hashes Stale During Gumo PRD Update
 ### What:
 Recorded that the previous SCS `8ff345f` packet/hash checkpoint is no longer the current live state from Halo's view because gumo owns new uncommitted PRD/docs edits.

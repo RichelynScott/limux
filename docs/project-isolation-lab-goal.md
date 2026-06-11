@@ -135,7 +135,10 @@ unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` remaining.
 Halo verified the recorded hashes above locally. No host/VM/WSL/Docker/HNS/
 WinNAT/network/package/ISO/SCRIM/runtime mutation was run from Halo.
 
-## Live In-Progress Caveat
+## Superseded Live In-Progress Caveat
+
+This caveat was superseded by the verified `e8ef33a` closeout below. It remains
+as the review trail for the blockers gumo fixed before committing.
 
 As of 2026-06-10 22:24 EDT, SCS is no longer a clean frozen checkpoint from
 Halo's view. Gumo acknowledged hcom `#28096` that he owns the current dirty
@@ -165,9 +168,42 @@ Halo's current review decision is still `WAIT`, not formal
 4. Decide whether `project_isolation_lab/evidence/` is tracked or ignored before
    future ISO intake.
 
-Do not treat the recorded `8ff345f` hashes as current if SCS remains dirty or
-has advanced. Verify gumo's next pushed commit and hashes locally before
-updating this file again.
+At that point, the recorded `8ff345f` hashes were no longer current because
+SCS had advanced. Halo waited for gumo's next pushed commit and verified the
+new hashes locally before updating this file again.
+
+## Verified SCS PRD/Packet Closeout
+
+As of 2026-06-10 22:33 EDT, gumo pushed SCS commit
+`e8ef33a docs(lab): record prd acceptance gates`
+(`e8ef33ab190f76f605d369412b957b6e17e74636`). Halo verified SCS `main`
+aligned with `origin/main`, with only unrelated untracked
+`SECURITY_VM_SETUP_AND_LIMUX.code-workspace` remaining.
+
+Final verified hashes:
+
+- `ACTIVE_GOAL.md`:
+  `159d4ea1c8397a2640768017ea25dc46afe01a4b816de2462a618b5cb76dc8ad`
+- `HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md`:
+  `bd3b053c99c555684fa198c229842f179ecd577c5985df534895811b767ca2bb`
+- `HYPERV_DOCKER_WSL2_NAT_RECONCILIATION_PLAN_2026-06-10.md`:
+  `a4c8b6bf5a4ccc05874aa595820b1bc12d6db26ebaa67b949a77983292b96f0c`
+- `UBUNTU_2404_ISO_ARTIFACT_INTAKE_PLAN_2026-06-10.md`:
+  `d472b0b5b555d6aa8026690b06bbb7b016d04eb6751cadd30602f3c4b55cbc32`
+- `HYPERV_PACKET_REVIEW_RECORD_2026-06-10.md`:
+  `9cdd0923d5f2618ec9544a617f68b564bf3adecfafd75d6ff4969cf623a2d0f2`
+- `PRD_ACCEPTANCE_REVIEW_2026-06-10.md`:
+  `c1be23fb69d96e9567865742a2a53ee1cd976e70a0ddbe3e8df65c3768814581`
+- `prd-001-hyperv-linux-vm-baseline.md`:
+  `7580a396bf2f76b507f74893dce3c40d885a3524c4836a376a640326a61ece86`
+- `PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`:
+  `f05a03f2f7e3a890a149a1bcbe04c4349416b97166fe8a96e86c37afea88b82e`
+
+Status remains `WAIT`. The packet is stronger planning evidence, not approval
+to run Hyper-V, create a VM, create WinNAT, download/attach the ISO, run
+packages, grant secrets, or mutate the trusted host. Next work is formal
+`$mutation-script-wave` on the exact SCS packet set and a separate frozen ISO
+artifact-intake/download packet.
 
 Verify SCS state before relying on the recorded pointers:
 
@@ -175,6 +211,8 @@ Verify SCS state before relying on the recorded pointers:
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY log -5 --oneline --decorate
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_PACKET_REVIEW_RECORD_2026-06-10.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/PRD_ACCEPTANCE_REVIEW_2026-06-10.md
 hcom --version --name halo
 hcom list --name halo
 wsl.exe --list --verbose
