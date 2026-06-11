@@ -150,9 +150,9 @@
       <h3>Roadmap</h3>
       <div class="step done"><span class="dot"></span><div><strong>Goal aligned</strong><span>Project Isolation Lab, not Limux feature lane.</span></div></div>
       <div class="step done"><span class="dot"></span><div><strong>Marker reviews</strong><span>Review/freeze candidates only.</span></div></div>
-      <div class="step current"><span class="dot"></span><div><strong>Docs checkpoint</strong><span>Limux reflects durable SCS 388f20a state.</span></div></div>
+      <div class="step current"><span class="dot"></span><div><strong>Option 1 active</strong><span>Docs/handoff/status tracking confirmed.</span></div></div>
       <div class="step done"><span class="dot"></span><div><strong>Gate D draft</strong><span>Committed hash set received.</span></div></div>
-      <div class="step gated"><span class="dot"></span><div><strong>Data intake</strong><span>Docs-only; transfer remains WAIT.</span></div></div>
+      <div class="step done"><span class="dot"></span><div><strong>Artifact intake</strong><span>PRD-007 committed; transfer remains WAIT.</span></div></div>
       <div class="step gated"><span class="dot"></span><div><strong>Execution gates</strong><span>Operator approval and formal mutation review required.</span></div></div>
       <div class="step gated"><span class="dot"></span><div><strong>VM layers</strong><span>Persistent VM, disposable VM, Firecracker later.</span></div></div>
     </aside>
@@ -165,16 +165,16 @@
         <div class="meta">
           <div><span>Repo</span><strong>/home/riche/MCPs/limux</strong></div>
           <div><span>Author</span><strong>halo / GPT-5 Codex</strong></div>
-          <div><span>Generated</span><strong>6/11/2026 9:02 AM EDT</strong></div>
-          <div><span>Status</span><strong>WAIT for execution; Gate D draft now durable</strong></div>
+          <div><span>Generated</span><strong>6/11/2026 9:19 AM EDT</strong></div>
+          <div><span>Status</span><strong>Option 1 active; execution WAIT/NO-GO</strong></div>
         </div>
       </header>
 
       <section>
         <h2>Current Status</h2>
         <div class="grid">
-          <div class="fact"><div class="label">Limux</div><div class="value">Restart docs and this packet now capture durable SCS Gate D commit <code>388f20a</code>.</div></div>
-          <div class="fact"><div class="label">SCS</div><div class="value">Gate D data-only evidence intake draft is durable at <code>388f20a</code>. New binary-archive artifact-intake WIP exists after that commit and is not durable yet.</div></div>
+          <div class="fact"><div class="label">Limux</div><div class="value">Operator selected Option 1: keep docs/handoff/status packet current and keep future options numbered.</div></div>
+          <div class="fact"><div class="label">SCS</div><div class="value">Gate D is durable at <code>388f20a</code>; PRD-007 binary/archive artifact intake is now durable at <code>ee4f60f</code>. Both are docs-only gates.</div></div>
           <div class="fact"><div class="label">Execution</div><div class="value"><code>WAIT/NO-GO</code>. No marker, ISO, key, VM, WSL, package, runtime, or host mutation is approved.</div></div>
         </div>
       </section>
@@ -182,9 +182,9 @@
       <section>
         <h2>Verified And Gated</h2>
         <div class="grid">
-          <div class="fact"><div class="label">Done</div><div class="value">Limux handoff, goal note, FYI, and this packet record gumo <code>#35219</code> final SCS Gate D commit and hashes.</div></div>
-          <div class="fact"><div class="label">Verified</div><div class="value">Read-only checks covered Limux git status, SCS git status/log, SCS <code>git diff --check</code>, final file-backed SHA256s, SCS HTML parse, Gate D WAIT/no-execution framing, and hcom thread state. SCS extracted-JS <code>node --check</code> is gumo-reported.</div></div>
-          <div class="fact"><div class="label">Not Done</div><div class="value">No SCS edits, packet execution, marker creation, ISO/key/checksum download/import, Hyper-V/VM/WSL/network/package/runtime/global-config mutation.</div></div>
+          <div class="fact"><div class="label">Done</div><div class="value">Limux handoff, goal note, FYI, and this packet record the operator-confirmed Option 1 state plus gumo <code>#35219</code> Gate D and <code>#35791</code> PRD-007 checkpoints.</div></div>
+          <div class="fact"><div class="label">Verified</div><div class="value">Read-only checks covered Limux git status, SCS local/origin commit match, Limux launcher help, SCS <code>git diff --check</code>, final file-backed SHA256s, SCS HTML parse, PRD-007 WAIT/no-execution framing, and hcom thread state. Local <code>node</code> is unavailable.</div></div>
+          <div class="fact"><div class="label">Not Done</div><div class="value">No SCS edits, packet execution, marker creation, artifact transfer/extraction, ISO/key/checksum download/import, Hyper-V/VM/WSL/network/package/runtime/global-config mutation.</div></div>
         </div>
       </section>
 
@@ -192,9 +192,9 @@
         <div>
           <h2>Numbered Options</h2>
           <div class="decision">
-            <h3>1. Docs/handoff first <span class="rec">Recommended now</span></h3>
-            <p>Keep Limux restart docs aligned with durable SCS Gate D commit <code>388f20a</code> and later explicit SCS notices.</p>
-            <label class="option"><input type="radio" name="next" value="1" checked><span><span class="option-title">Option 1 - Maintain docs/handoff tracking</span><span class="option-detail">Current Gate D draft is durable, but execution remains WAIT.</span></span></label>
+            <h3>1. Docs/handoff first <span class="rec">Active now</span></h3>
+            <p>Keep Limux restart docs aligned with durable SCS checkpoints, currently PRD-007 artifact intake at <code>ee4f60f</code>, the operator-confirmed active goal, and later explicit SCS notices.</p>
+            <label class="option"><input type="radio" name="next" value="1" checked><span><span class="option-title">Option 1 - Maintain docs/handoff tracking</span><span class="option-detail">Selected by operator on 6/11/2026; execution remains WAIT.</span></span></label>
           </div>
           <div class="decision">
             <h3>2. SCS final V2 checkpoint</h3>
@@ -212,9 +212,9 @@
             <label class="option"><input type="radio" name="next" value="4"><span><span class="option-title">Option 4 - Treat Gate D as docs checkpoint</span><span class="option-detail">No evidence transfer, artifact import, package/runtime work, or mutation is approved.</span></span></label>
           </div>
           <div class="decision">
-            <h3>5. Post-Gate-D artifact-intake WIP</h3>
-            <p>SCS has started PRD-007 binary/archive artifact-intake work after <code>388f20a</code>, but it is not durable yet.</p>
-            <label class="option"><input type="radio" name="next" value="5"><span><span class="option-title">Option 5 - Wait for PRD-007 freeze</span><span class="option-detail">Do not treat current artifact-intake WIP as final.</span></span></label>
+            <h3>5. PRD-007 binary/archive artifact intake</h3>
+            <p>SCS PRD-007 is now durable at <code>ee4f60f</code>, but it is an intake gate only.</p>
+            <label class="option"><input type="radio" name="next" value="5"><span><span class="option-title">Option 5 - Treat PRD-007 as docs checkpoint</span><span class="option-detail">No artifact transfer, extraction, execution, install, or promotion is approved.</span></span></label>
           </div>
           <div class="decision">
             <h3>6. Marker execution gate</h3>
@@ -260,21 +260,21 @@
           <li><code>/home/riche/MCPs/limux/docs/project-isolation-lab-goal.md</code></li>
           <li><code>/home/riche/MCPs/limux/FYI.md</code></li>
           <li><code>/home/riche/Proj/SUPPLY_CHAIN_SECURITY</code> read-only status</li>
-          <li>hcom <code>#33749</code>, <code>#33763</code>, <code>#33909</code>, <code>#33923</code>, <code>#34125</code>, <code>#34336</code>, <code>#34691</code>, <code>#34696</code>, <code>#34887</code>, <code>#35006</code>, <code>#35219</code></li>
-          <li>Verification commands: Limux/SCS git status/log, hcom events, SHA256 checks, SCS diff check, SCS HTML parse, and WAIT/no-execution text search. SCS extracted-JS <code>node --check</code> is gumo-reported in hcom <code>#35219</code>.</li>
+          <li>hcom <code>#33749</code>, <code>#33763</code>, <code>#33909</code>, <code>#33923</code>, <code>#34125</code>, <code>#34336</code>, <code>#34691</code>, <code>#34696</code>, <code>#34887</code>, <code>#35006</code>, <code>#35219</code>, <code>#35791</code></li>
+          <li>Verification commands: Limux/SCS git status/log, SCS local/origin commit check, hcom events, Limux launcher help, SHA256 checks, SCS diff check, SCS HTML parse, WAIT/no-execution text search, and Limux packet HTML parse.</li>
           <li>Gate D durable checkpoint from 8:56 AM EDT: SCS commit <code>388f20a</code>, draft <code>24b8bebd...</code>, PRD-003 <code>8f90287f...</code>, gates <code>607db367...</code>, HTML packet <code>b8497c30...</code>, handoff <code>7522af0...</code>, review <code>12f5cac...</code>.</li>
-          <li>Post-Gate-D WIP from 9:02 AM EDT: binary-archive artifact-intake files are local SCS WIP, not a durable review target.</li>
+          <li>PRD-007 durable checkpoint from 9:15 AM EDT: SCS commit <code>ee4f60f</code>, artifact draft <code>17493d6...</code>, PRD-007 <code>9f899011...</code>, gates <code>064ae28f...</code>, HTML packet <code>67c5ee24...</code>, handoff <code>97cc9a44...</code>.</li>
         </ul>
       </section>
     </main>
   </div>
   <script>
     const optionText = {
-      "1": "Proceed with Option 1: keep Limux docs/handoff current against SCS Gate D commit 388f20a and later explicit SCS notices; execution remains WAIT.",
+      "1": "Proceed with Option 1: keep Limux docs/handoff/status packet current against the official Project Isolation Lab goal, SCS PRD-007 checkpoint ee4f60f, and later explicit SCS notices; keep future choices numbered; execution remains WAIT.",
       "2": "Proceed with Option 2: treat SCS e455617 as the durable V2 review/freeze checkpoint only, not execution approval.",
       "3": "Proceed with Option 3 only if gumo sends a new exact-hash review request; read-only review only.",
       "4": "Proceed with Option 4: treat SCS Gate D commit 388f20a as a durable docs checkpoint only; do not transfer evidence, import artifacts, execute packages/runtime code, or mutate host state.",
-      "5": "Proceed with Option 5: wait for SCS to patch/freeze PRD-007 binary/archive artifact intake or send a new exact-hash review request; do not treat current WIP as final.",
+      "5": "Proceed with Option 5: treat SCS PRD-007 checkpoint ee4f60f as a durable docs-only artifact-intake gate; do not transfer, extract, execute, install, or promote artifacts.",
       "6": "Do not execute now. Only consider marker execution after frozen execution packet, final mutation review, and explicit operator approval.",
       "7": "Keep later VM layers queued behind accepted Wave A evidence and separate mutation gates."
     };

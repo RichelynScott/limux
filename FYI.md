@@ -1447,6 +1447,7 @@ exact-hash review request after patching. Execution remains `WAIT/NO-GO`.
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
 `docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`
+
 | hcom `#34691` | hcom `#34696`
 
 ## 2026-06-11 - Gate D Volatile WIP Snapshot Refresh
@@ -1540,3 +1541,72 @@ remains `WAIT/NO-GO`.
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
 `docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`
+
+## 2026-06-11 - Operator Confirmed Option 1
+### What:
+Recorded the operator-confirmed active option: option 1 is to update Limux
+docs/handoff/status packet now and keep future choices numbered.
+
+### Why:
+The active goal is still the Project Isolation Lab, not Limux feature work.
+After the durable SCS Gate D checkpoint at `388f20a...`, SCS has new PRD-007 /
+binary-archive artifact-intake WIP that remained non-durable at the time of the
+09:12 EDT option confirmation. A zero-context successor needs the selected
+option and next actions stated explicitly. The later hcom `#35791` durable
+PRD-007 checkpoint supersedes that WIP state.
+
+### How:
+Updated only Limux-owned `HANDOFF.md`, `docs/project-isolation-lab-goal.md`,
+and `docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`.
+Verified current lightweight Limux launcher status with `limux --help` and
+`limux-cli --help`; both returned CLI help. Verified SCS read-only status/log:
+SCS `main` remains at durable commit `388f20a...` while PRD-007/binary-archive
+artifact-intake files are uncommitted WIP. That SCS status was accurate for the
+09:12 EDT check and is superseded by the later PRD-007 durable entry.
+
+### Impact:
+Option 1 remains active: keep Limux restart docs aligned with durable SCS
+checkpoints and explicit gumo notices. Execution remains `WAIT/NO-GO`: no
+marker creation, ISO/key/checksum download or import, VM/Hyper-V/WSL/network
+mutation, package/runtime execution, Limux install/package work,
+global-config/SCRIM mutation, or lab-to-host artifact movement without required
+reviews and explicit operator approval.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
+`docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`
+
+## 2026-06-11 - PRD-007 Artifact Intake Draft Durable
+### What:
+Updated Limux restart surfaces after SCS committed and pushed the PRD-007
+binary/archive artifact-intake draft at commit `ee4f60f...`.
+
+### Why:
+The prior Limux state correctly treated PRD-007 / binary archive intake as
+non-durable WIP. Gumo hcom `#35791` reported the final committed/pushed SCS
+state, with Claude final narrow review finding no remaining HIGH/MEDIUM
+blockers or approval-bypass contradictions after VM-scoped archive parsing
+fixes.
+
+### How:
+Read SCS status/log state and file-backed SHA256s without editing SCS. Verified
+SCS local `HEAD` and `origin/main` match `ee4f60f...`, ran SCS
+`git diff --check`, parsed the SCS HTML packet, searched the artifact-intake
+docs for `WAIT`/`NO-GO` no-execution framing, and re-ran lightweight
+`limux --help` / `limux-cli --help`. Local `node` is unavailable in this Limux
+shell, so SCS extracted-JS `node --check` remains gumo-reported in hcom
+`#35791`. Updated only Limux-owned handoff/status surfaces. Final SCS PRD-007
+hashes recorded here: artifact draft `17493d6...`, PRD-007 `9f899011...`,
+acceptance gates `064ae28f...`, HTML packet `67c5ee24...`, and SCS handoff
+`97cc9a44...`.
+
+### Impact:
+PRD-007 is now a durable docs checkpoint, not execution or transfer approval.
+Artifact transfer, archive extraction, VM/host mutation, package/runtime work,
+Limux/Cargo install, SCRIM, global-config work, and lab-to-host promotion remain
+`WAIT/NO-GO`.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
+`docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`
+| hcom `#35791`

@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 09:02 EDT
+Last updated: 2026-06-11 09:19 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,8 +33,13 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
-Current SCS Wave A V2 successor, marker-proof, and Gate D evidence-intake state
-as of 2026-06-11 09:02 EDT:
+Operator confirmation on 2026-06-11 09:12 EDT: **Option 1 is active now**.
+Keep Limux docs/handoff/status packet current, keep options numbered in future
+updates, and do not drift back into Limux feature work unless explicitly
+redirected.
+
+Current SCS Wave A V2 successor, marker-proof, Gate D evidence-intake, and
+PRD-007 artifact-intake state as of 2026-06-11 09:19 EDT:
 
 - SCS V2 freeze is complete and pushed at
   `0c1882b23bdb0dac9617734d23024752e35af4c6`
@@ -325,15 +330,26 @@ as of 2026-06-11 09:02 EDT:
     `b8497c3073187c77ef3de022a4af5f55bda94d4927b235ed11aa03bc2940894e`
   - SCS `HANDOFF.md`:
     `7522af0a36afef622e66dae1fa72db81245912d0204d1a7fb4271549d25fd101`
-- Subsequent SCS WIP after `388f20a...` is already present and non-durable as
-  of the 2026-06-11 09:02 EDT read-only check. Current SCS status shows
-  binary-archive artifact-intake work in root/project docs, `ACTIVE_GOAL`,
-  `ACCEPTANCE_GATES`, `PRD_ACCEPTANCE_REVIEW`, `PRD_PLAN`, `ROADMAP`,
-  `project_isolation_lab/tasks/prd-007-binary-archive-artifact-intake.md`, and
-  untracked `project_isolation_lab/docs/BINARY_ARCHIVE_ARTIFACT_INTAKE_GATE_DRAFT_2026-06-11.md`;
-  unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` remains.
-  Treat this post-Gate-D lane as WIP until SCS commits/pushes or gumo sends a
-  new exact-hash review request. Halo did not review or edit this WIP.
+- SCS PRD-007 binary/archive artifact intake draft is now durable and pushed at
+  `ee4f60fd5c6717fa75cd26503287c874b233eece`
+  (`docs(lab): define artifact intake gate draft`). SCS `main...origin/main`
+  is clean except unrelated untracked
+  `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`. Gumo hcom `#35791` reports
+  Claude final narrow review found no remaining HIGH/MEDIUM blockers or
+  approval-bypass contradictions after VM-scoped archive parsing fixes. This
+  remains `WAIT/NO-GO`: no artifact transfer, archive extraction, VM/host
+  mutation, package/runtime work, Limux/Cargo install, SCRIM, or global-config
+  work is approved. Final hashes from hcom `#35791`, locally verified by Halo:
+  - `BINARY_ARCHIVE_ARTIFACT_INTAKE_GATE_DRAFT_2026-06-11.md`:
+    `17493d6efeddd910c0a3e94275b198a429146ee77e462b330a744b37ccf7ca54`
+  - `prd-007-binary-archive-artifact-intake.md`:
+    `9f899011b13cab70a5ca32f174a3254f5aa6bf9a4baaa7b8fd7143f77760a5bc`
+  - `ACCEPTANCE_GATES.md`:
+    `064ae28f2da7b903ba8a0d3969d410eee038ec3422f17ae70576dd409631d727`
+  - SCS HTML decision packet:
+    `67c5ee24de6903a64c141bda9117887e385660432b806fc1211baecf4b586ac4`
+  - SCS `HANDOFF.md`:
+    `97cc9a446c224196838321d330ec8fc08c5f2ba6329ae103fd13976ad59c8458`
 - Limux-side operator packet for this final checkpoint:
   `docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`.
   It is a human-readable copy-back/status packet, not an execution approval.
@@ -347,8 +363,10 @@ as of 2026-06-11 09:02 EDT:
 Numbered options moving forward:
 
 1. **Docs/handoff first - active maintenance**: keep Limux restart docs and
-   this status packet aligned with the durable SCS `388f20a...` Gate D
-   checkpoint and later explicit SCS notices.
+   this status packet aligned with the latest durable SCS checkpoint
+   (`ee4f60f...` PRD-007 artifact intake as of hcom `#35791`) and later
+   explicit SCS notices. Operator confirmed this as the active option on
+   2026-06-11 09:12 EDT.
 2. **SCS durable V2 marker-proof checkpoint**: complete at SCS commit
    `e455617...` with V2 packet `c52377ce...`, extracted shell `3008e426...`,
    hardening review `a0ded5dc...`, approval inputs `da2a63cc...`, HTML packet
@@ -363,9 +381,12 @@ Numbered options moving forward:
    `8f90287f...`, acceptance gates `607db367...`, HTML packet `b8497c30...`,
    SCS handoff `7522af0...`, and PRD review `12f5cac...`. This is `WAIT` for
    any evidence transfer, artifact import, runtime/package work, or mutation.
-5. **Post-Gate-D binary archive artifact-intake WIP**: SCS has started this
-   lane after `388f20a...`; wait for a durable commit/hash set or explicit
-   read-only review request before updating Limux from it.
+5. **PRD-007 binary/archive artifact intake**: complete as a durable docs-only
+   draft at SCS commit `ee4f60f...` with artifact draft `17493d6...`, PRD-007
+   `9f899011...`, acceptance gates `064ae28f...`, HTML packet `67c5ee24...`,
+   and SCS handoff `97cc9a44...`. This is `WAIT/NO-GO` for artifact transfer,
+   archive extraction, VM/host mutation, package/runtime work, Limux/Cargo
+   install, SCRIM, or global-config work.
 6. **Marker execution gate**: only after frozen execution packet, final mutation
    review, explicit operator approval, execution window/operator, packet/script
    hashes, filesystem-type values, marker disposition, and residual disposition.
@@ -654,36 +675,56 @@ Verified SCS mutation-wave packet closeout as of 2026-06-10 22:53 EDT:
 
 ## Immediate Next Action
 
-Start from the Project Isolation Lab goal above. The next practical action for
-this Limux session is to keep Limux stable as a tool and coordinate with gumo on
-the SCS-owned lab docs, not to add more Limux features by default.
+Start from the Project Isolation Lab goal above. The current Limux-owned action
+is **Option 1: docs/handoff first**. Keep this repo's restart surfaces aligned
+with the SCS-owned lab state, keep all future choices numbered, and do not add
+Limux product features by default.
 
-If resuming after a restart, first verify SCS is still at or beyond
-`e455617ee84d3b86bb5739833199220076a9e8d7` and that the final V2 hashes above
-still match. That SCS checkpoint is a durable review/freeze candidate only, not
-execution approval. If SCS changes any V2 marker-proof artifact after gumo hcom
-`#34336`, treat the new hash set as unreviewed until gumo reissues an exact-hash
-request. Wave A remains review/freeze only; do not download the ISO, import
-keys, execute packet commands, create marker files, attach media, start VM work,
-run package builds, run Limux install/package workflows, or move lab artifacts
-back to the trusted host.
+As of the 2026-06-11 09:19 EDT read-only check, SCS `main` and `origin/main`
+both point to durable commit `ee4f60fd5c6717fa75cd26503287c874b233eece`
+(`docs(lab): define artifact intake gate draft`). Treat PRD-007 / binary-archive
+artifact intake as a docs-only gate checkpoint. It does not approve artifact
+transfer, archive extraction, VM/host mutation, package/runtime work,
+Limux/Cargo install, SCRIM, or global-config work.
+
+Numbered next actions for this Limux session:
+
+1. Update Limux docs/handoff/status packet when the operator confirms a new
+   goal/option state or when gumo sends a durable SCS checkpoint.
+2. If gumo sends a new exact-hash review request, review it read-only only and
+   reply with `GO`/`WAIT` scoped to that exact artifact; do not edit SCS.
+3. Wait for gumo to identify the next SCS-owned gate after PRD-007; do not
+   initiate artifact transfer, extraction, VM work, or Limux install/package
+   work from this session.
+4. Keep execution `WAIT/NO-GO`: no marker creation, ISO/key/checksum download
+   or import, VM/Hyper-V/WSL/network mutation, package/runtime execution,
+   Limux install/package work, global-config/SCRIM mutation, or lab-to-host
+   artifact movement without the required reviews and explicit operator
+   approval.
+5. Leave persistent full Linux VM baseline, disposable full Linux VM factory,
+   and Firecracker microVM work queued behind the SCS-owned gate sequence.
+
+Current lightweight Limux runtime sanity check: `limux --help` and
+`limux-cli --help` both returned CLI help successfully on 2026-06-11 09:19 EDT.
+Full `./scripts/check.sh` / Xvfb smoke was not run for this docs-only option-1
+update because the operator is managing RAM for restart.
 
 ```bash
+git -C /home/riche/MCPs/limux status --short --branch
+git -C /home/riche/MCPs/limux log -5 --oneline --decorate
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY log -5 --oneline --decorate
-sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_V2_2026-06-11.md
-sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_V2_HARDENING_REVIEW_2026-06-11.md
-sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_2026-06-11.md
-sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_V2_2026-06-11.md
-sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_V2_HARDENING_REVIEW_2026-06-11.md
-sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_EXECUTION_APPROVAL_INPUTS_2026-06-11.md
-sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/BINARY_ARCHIVE_ARTIFACT_INTAKE_GATE_DRAFT_2026-06-11.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/tasks/prd-007-binary-archive-artifact-intake.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/ACCEPTANCE_GATES.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/HANDOFF.md
 python3 - <<'PY'
 from html.parser import HTMLParser
 HTMLParser().feed(open('docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html', encoding='utf-8').read())
 PY
+limux --help
+limux-cli --help
 hcom --version --name halo
 hcom list --name halo
 hcom events --last 80 --thread project-isolation-lab-goal --name halo
