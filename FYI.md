@@ -1510,3 +1510,31 @@ and evidence transfer remain `WAIT/NO-GO`.
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
 `docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`
 | hcom `#35219`
+
+## 2026-06-11 - Post-Gate-D Binary Archive WIP Caveat
+### What:
+Recorded that SCS started a new binary-archive artifact-intake WIP lane after
+the durable Gate D commit `388f20a...`.
+
+### Why:
+The final Limux Gate D checkpoint update would otherwise imply SCS remained
+clean after the durable push. A read-only 09:02 EDT check showed new local SCS
+WIP after `388f20a...`, so the restart docs needed a caveat without treating
+that moving work as final.
+
+### How:
+Checked SCS status read-only. Updated only Limux-owned restart docs and the
+status packet. Halo did not review the new binary-archive WIP, edit SCS,
+transfer evidence, import artifacts, execute packages/runtime code, or mutate
+network, Hyper-V, VM, WSL, Limux, Cargo, package, global-config, SCRIM, or host
+runtime state.
+
+### Impact:
+The durable checkpoint remains SCS Gate D commit `388f20a...`; the new
+binary-archive artifact-intake lane should be treated as non-durable WIP until
+SCS commits/pushes or gumo sends a new exact-hash review request. Execution
+remains `WAIT/NO-GO`.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
+`docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`

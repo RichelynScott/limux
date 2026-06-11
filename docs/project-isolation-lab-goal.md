@@ -51,7 +51,7 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 08:56 EDT, SCS Wave A V2 successor, marker-proof, and Gate D
+As of 2026-06-11 09:02 EDT, SCS Wave A V2 successor, marker-proof, and Gate D
 evidence-intake status is:
 
 - SCS V2 freeze is complete and pushed at
@@ -327,6 +327,15 @@ evidence-intake status is:
     `b8497c3073187c77ef3de022a4af5f55bda94d4927b235ed11aa03bc2940894e`
   - SCS `HANDOFF.md`:
     `7522af0a36afef622e66dae1fa72db81245912d0204d1a7fb4271549d25fd101`
+- Subsequent SCS WIP after `388f20a...` is already present and non-durable as
+  of the 2026-06-11 09:02 EDT read-only check. Current SCS status shows
+  binary-archive artifact-intake work in root/project docs, `ACTIVE_GOAL`,
+  `ACCEPTANCE_GATES`, `PRD_ACCEPTANCE_REVIEW`, `PRD_PLAN`, `ROADMAP`,
+  `project_isolation_lab/tasks/prd-007-binary-archive-artifact-intake.md`, and
+  untracked `project_isolation_lab/docs/BINARY_ARCHIVE_ARTIFACT_INTAKE_GATE_DRAFT_2026-06-11.md`;
+  unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` remains.
+  Treat this post-Gate-D lane as WIP until SCS commits/pushes or gumo sends a
+  new exact-hash review request. Halo did not review or edit this WIP.
 - Limux-side operator packet for this final checkpoint:
   `docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`.
   It is a human-readable copy-back/status packet, not an execution approval.
@@ -350,15 +359,18 @@ evidence-intake status is:
    `8f90287f...`, acceptance gates `607db367...`, HTML packet `b8497c30...`,
    SCS handoff `7522af0...`, and PRD review `12f5cac...`. This is `WAIT` for
    any evidence transfer, artifact import, runtime/package work, or mutation.
-5. **Marker execution gate**: only after frozen execution packet, final mutation
+5. **Post-Gate-D binary archive artifact-intake WIP**: SCS has started this
+   lane after `388f20a...`; wait for a durable commit/hash set or explicit
+   read-only review request before updating Limux from it.
+6. **Marker execution gate**: only after frozen execution packet, final mutation
    review, explicit operator approval, execution window/operator, packet/script
    hashes, filesystem-type values, marker disposition, and residual disposition.
-6. **Prior dry-run proof packet**: exact draft `0284cf52...` is frozen in SCS commit
+7. **Prior dry-run proof packet**: exact draft `0284cf52...` is frozen in SCS commit
    `bed7d37`, and formal marker-proof review is pushed at `b8abc7d`. It is
    still `WAIT/NO-GO` for execution, marker creation, ISO/key import/download,
    package execution, and host mutation until the operator approves a concrete
    execution packet/input checklist.
-7. **Marker-proof approval inputs**: complete at SCS commit `f1272a0...` with
+8. **Marker-proof approval inputs**: complete at SCS commit `f1272a0...` with
    approval-input checklist `dfb8bbf7...`, Hyper-V mutation-wave packet
    `f20756e8...`, HTML packet `ce8600e9...`, and gumo `#33327` verification.
    It is docs-only and still `WAIT/NO-GO`; it names the missing values for any
