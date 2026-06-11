@@ -954,3 +954,27 @@ in SCS, and execution remains `WAIT`.
 
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` | this Limux commit
+
+## 2026-06-11 - SCS V2 Pointer Hold State
+### What:
+Recorded that SCS is still patching the V2 pointer set after Halo's exact-hash
+review and after the Limux numbered-options commit.
+
+### Why:
+Gumo hcom `#31589` explicitly says not to move Limux pointers again until SCS is
+committed and pushed. A restarted Halo session needs to wait for gumo's final
+commit SHA, hashes, verification commands, and post-push status instead of
+assuming the current dirty SCS files are durable.
+
+### How:
+Verified Limux is clean, read SCS status and current V2/hardening hashes
+read-only, and patched only Limux-owned restart docs. No SCS edits and no
+host/runtime/package/ISO/key/VM mutation.
+
+### Impact:
+Option 1 remains active, but further Limux docs movement is gated on SCS
+stability. Current frozen V2 packet is `36cad934...`; hardening review record
+is currently `529e15b0...`; execution remains `WAIT`.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#31589`

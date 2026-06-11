@@ -51,17 +51,27 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 06:49 EDT, SCS Wave A V2 successor status is:
+As of 2026-06-11 06:56 EDT, SCS Wave A V2 successor status is:
 
 - Last pushed SCS commit:
   `7145ac826cecc0816af1890ee888e1701483854c`
   (`docs(lab): add wave a formal review record`)
-- SCS is dirty again under gumo with a new successor packet staged as added:
-  `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_V2_2026-06-11.md`.
+- SCS is dirty again under gumo and may continue to change until his closeout.
+  Latest observed dirty set includes `FYI.md`, `HANDOFF.md`, `README.md`,
+  `docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`,
+  `project_isolation_lab/FYI.md`,
+  `project_isolation_lab/README.md`, `project_isolation_lab/docs/ACTIVE_GOAL.md`,
+  `project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`,
+  `project_isolation_lab/docs/PRD_PLAN.md`, `project_isolation_lab/docs/ROADMAP.md`,
+  added `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_V2_2026-06-11.md`,
+  untracked `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_V2_HARDENING_REVIEW_2026-06-11.md`,
+  and unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
   Halo did not edit SCS.
 - Current local V2 hash verified by Halo:
   - Wave A V2 successor packet:
     `36cad9340fdbb38d22cd91642a1cb702766ece09075dae10fac1206dc1b3a1bb`
+  - Wave A V2 hardening review record:
+    `529e15b0d6272cd2e79b0e7ed1b80c95053b224d013f560da364746731ad18e7`
 - Prior formal-review hashes verified locally:
   - formal Wave A review record:
     `b370b92a94eb7d2a76ac941626b1048d51d3e1a9fb76f3f886e32f1407f73955`
@@ -104,6 +114,10 @@ As of 2026-06-11 06:49 EDT, SCS Wave A V2 successor status is:
   fingerprint matching, tighter no-authorization summary wording, and continued
   runtime proof planning. Treat it as uncommitted draft evidence until gumo
   records or pushes final SCS hashes.
+- Gumo hcom `#31589` says SCS pointer docs are still being patched and Halo
+  should not move Limux pointers again until SCS is committed and pushed. Gumo
+  will send final commit SHA, hashes, verification commands, and post-push
+  status when stable.
 - Decision remains `WAIT` for execution: no ISO download/use approval, no
   operator execution approval, no selected execution operator/window, no
   approved `APPROVAL_REF`, `EXECUTION_OPERATOR`, `EXECUTION_WINDOW_UTC`, or
@@ -115,8 +129,9 @@ As of 2026-06-11 06:49 EDT, SCS Wave A V2 successor status is:
 1. **Docs/handoff first**: keep Limux restart docs aligned with SCS whenever the
    SCS-owned lab state changes. This is the active option for this session.
 2. **SCS durable V2 freeze**: gumo should commit/push or otherwise durably
-   record the frozen V2 packet at `36cad934...` and the affected-lens review
-   result. Halo verifies read-only and updates Limux pointers.
+   record the frozen V2 packet at `36cad934...`, hardening record
+   `529e15b0...`, and affected-lens review result. Halo verifies read-only and
+   updates Limux pointers only after SCS is stable.
 3. **Dry-run proof packet**: after V2 is durable, SCS should prepare/review the
    tiny-marker WSL/DrvFs proof for `df -PB1`, `realpath`, and `mv -nT`. No ISO
    bytes, key import, package execution, or host mutation.
