@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 07:12 EDT
+Last updated: 2026-06-11 07:19 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,7 +33,7 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
-Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 07:12
+Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 07:19
 EDT:
 
 - SCS V2 freeze is complete and pushed at
@@ -108,7 +108,7 @@ EDT:
   `unittest tests.security_posture.test_supply_chain_watch -v` with 18 tests OK.
 - SCS now has a marker-only WSL/DrvFs proof packet draft:
   `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_2026-06-11.md`
-  at SHA256 `9d49702900315249082445dc4630737cedefd363dcd168ecd70f9fcd24f01c59`.
+  at SHA256 `0284cf528d6abc53f5f96b8e87a56d0c2a51218afe217e0e0a7813d9467210c0`.
   Current SCS status shows this file as added in the worktree/index-intent
   state, plus unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
 - Gumo hcom `#32019` requested a narrow read-only Halo review of that exact
@@ -146,15 +146,39 @@ EDT:
   operator acceptance. LOW residual: the no-paste guard does not appear to fail
   closed on sourcing a reviewed script file; consider a `BASH_SOURCE[0] == $0`
   style guard if execution must be subprocess-only.
+- Gumo hcom `#32386` then superseded `9d497029...` with exact hash
+  `0284cf528d6abc53f5f96b8e87a56d0c2a51218afe217e0e0a7813d9467210c0`. Halo
+  replied: `GO` for using this exact marker-proof draft as the next formal
+  review/freeze candidate only. No unresolved CRITICAL/HIGH/MEDIUM blockers
+  were found in the requested fix-verification scope. The prior `#32203`
+  failure-order MEDIUM is closed: expected filesystem-type values are now
+  checked against existing anchors `/home/riche` and `/mnt/c` before `mkdir` or
+  path creation, child `WSL_PROOF_ROOT` and `TARGET_PARENT` filesystem types are
+  checked again after creation, `findmnt` source/type/target/options evidence is
+  recorded, `/dev/fd` and readable regular-file execution guards are present,
+  standalone executed-script SHA256 gate remains present, collision `mv -nT`
+  no-overwrite no longer fails solely on nonzero rc and records rc as evidence,
+  and the marker-scale disclaimer, minimum proof free-space gate, exact basename
+  containment, fuller `not_authorized`, blockers, and evidence outputs are
+  present.
+- LOW residuals for the future formal mutation-script review, not blockers to
+  this exact artifact: if `WSL_PROOF_PARENT` itself is an unexpected existing
+  symlink or mount point, the post-creation filesystem-type check would catch it
+  before marker movement but after evidence/proof directories may be created;
+  consider a realpath/no-symlink parent assertion if zero residual directory
+  creation before child filesystem mismatch is required. Also, the
+  standalone-file guard blocks direct paste and `/dev/fd` paths but does not
+  prohibit sourcing a regular reviewed script file; decide whether
+  subprocess-only execution matters before the formal execution packet.
 - Marker-proof review evidence from Halo was read-only only: exact SHA checks,
   SCS status, `git diff --check`, selected reads/`rg`, V2 cross-check reads,
   fenced-shell extraction to `/tmp`, `bash -n`, extracted-script SHA256, and
   `static_check_no_delete_api.py` over the extracted shell with 0 REMOVE/0
   REVIEW. Halo did not edit SCS, run the packet, create markers, or mutate
   ISO/key/checksum/network/Hyper-V/VM/WSL/Limux/Cargo/package state.
-- Next safe SCS action: patch or explicitly accept the filesystem-type
-  failure-order residual, then reissue an exact-hash review before any freeze,
-  mutation-script review, or operator approval request.
+- Next safe SCS action: gumo/SCS should durably freeze/commit the exact
+  `0284cf52...` marker-proof draft and route it into the formal
+  mutation-script review path. This does not authorize execution.
 - Decision remains `WAIT` for execution: no ISO download/use approval, no
   operator execution approval, no selected execution operator/window, no
   approved `APPROVAL_REF`, `EXECUTION_OPERATOR`, `EXECUTION_WINDOW_UTC`, or
@@ -171,12 +195,10 @@ Numbered options moving forward:
    packet `36cad934...`, hardening record `529e15b0...`, and gumo `#31842`
    verification. Halo's role was read-only verification and Limux pointer
    updates.
-3. **Dry-run proof packet**: started, but currently `WAIT`. Exact draft
-   `9d497029...` closes the prior filesystem-evidence gap but needs the
-   filesystem-type failure-order/documentation mismatch fixed or explicitly
-   accepted before it can satisfy the V2 proof requirement as a future
-   execution-review candidate. It must still avoid ISO download/key import/
-   package execution.
+3. **Dry-run proof packet**: exact draft `0284cf52...` is `GO` as the next
+   formal review/freeze candidate only. It is still `WAIT/NO-GO` for execution,
+   marker creation, ISO/key import/download, package execution, and host
+   mutation until frozen, formally mutation-reviewed, and explicitly approved.
 4. **Wave A ISO intake approval packet**: only after the dry-run proof and
    mutation review converge should SCS ask the operator for explicit approval to
    run ISO intake. No approval is implied by any current docs.
@@ -458,14 +480,14 @@ the SCS-owned lab docs, not to add more Limux features by default.
 
 If resuming after a restart, first verify SCS is still at or beyond
 `0c1882b23bdb0dac9617734d23024752e35af4c6`, that the V2/hardening hashes below
-still match, and whether gumo has revised the marker-proof draft after Halo
-`#32203`. If the marker-proof draft is still hash `9d497029...`, the next
-action is for SCS/gumo to resolve the filesystem-type failure-order/documentation
-mismatch before re-review. If the marker-proof hash differs, treat the draft as
-unreviewed until gumo reissues an exact-hash request. Wave A is review/freeze
-only; do not download the ISO, import keys, execute packet commands, create
-marker files, attach media, start VM work, run package builds, run Limux
-install/package workflows, or move lab artifacts back to the trusted host.
+still match, and whether gumo has committed or revised the marker-proof draft
+after Halo `#32386`. If the marker-proof draft is still hash `0284cf52...`, the
+next action is SCS durable freeze/commit plus formal mutation-script review; if
+the marker-proof hash differs, treat the draft as unreviewed until gumo reissues
+an exact-hash request. Wave A is review/freeze only; do not download the ISO,
+import keys, execute packet commands, create marker files, attach media, start
+VM work, run package builds, run Limux install/package workflows, or move lab
+artifacts back to the trusted host.
 
 ```bash
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch

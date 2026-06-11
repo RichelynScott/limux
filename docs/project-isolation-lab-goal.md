@@ -51,7 +51,7 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 07:12 EDT, SCS Wave A V2 successor and marker-proof status is:
+As of 2026-06-11 07:19 EDT, SCS Wave A V2 successor and marker-proof status is:
 
 - SCS V2 freeze is complete and pushed at
   `0c1882b23bdb0dac9617734d23024752e35af4c6`
@@ -117,7 +117,7 @@ As of 2026-06-11 07:12 EDT, SCS Wave A V2 successor and marker-proof status is:
   `unittest tests.security_posture.test_supply_chain_watch -v` with 18 tests OK.
 - SCS now has a marker-only WSL/DrvFs proof packet draft:
   `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_2026-06-11.md`
-  at SHA256 `9d49702900315249082445dc4630737cedefd363dcd168ecd70f9fcd24f01c59`.
+  at SHA256 `0284cf528d6abc53f5f96b8e87a56d0c2a51218afe217e0e0a7813d9467210c0`.
   Current SCS status shows this file as added in the worktree/index-intent
   state, plus unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
 - Gumo hcom `#32019` requested a narrow read-only Halo review of that exact
@@ -153,6 +153,28 @@ As of 2026-06-11 07:12 EDT, SCS Wave A V2 successor and marker-proof status is:
   before filesystem mismatch stops. If target directory creation remains before
   filesystem-type validation, make that residual state explicit and require
   operator acceptance.
+- Gumo hcom `#32386` then superseded `9d497029...` with exact hash
+  `0284cf528d6abc53f5f96b8e87a56d0c2a51218afe217e0e0a7813d9467210c0`. Halo
+  replied: `GO` for using this exact marker-proof draft as the next formal
+  review/freeze candidate only. No unresolved CRITICAL/HIGH/MEDIUM blockers
+  were found in the requested fix-verification scope. The prior `#32203`
+  failure-order MEDIUM is closed: expected filesystem-type values are now
+  checked against existing anchors `/home/riche` and `/mnt/c` before `mkdir` or
+  path creation, child `WSL_PROOF_ROOT` and `TARGET_PARENT` filesystem types are
+  checked again after creation, `findmnt` source/type/target/options evidence is
+  recorded, `/dev/fd` and readable regular-file execution guards are present,
+  standalone executed-script SHA256 gate remains present, collision `mv -nT`
+  no-overwrite no longer fails solely on nonzero rc and records rc as evidence,
+  and the marker-scale disclaimer, minimum proof free-space gate, exact basename
+  containment, fuller `not_authorized`, blockers, and evidence outputs are
+  present.
+- LOW residuals for the future formal mutation-script review, not blockers to
+  this exact artifact: if `WSL_PROOF_PARENT` itself is an unexpected existing
+  symlink or mount point, the post-creation filesystem-type check would catch it
+  before marker movement but after evidence/proof directories may be created.
+  Also, the standalone-file guard blocks direct paste and `/dev/fd` paths but
+  does not prohibit sourcing a regular reviewed script file; decide whether
+  subprocess-only execution matters before the formal execution packet.
 - Decision remains `WAIT` for execution: no ISO download/use approval, no
   operator execution approval, no selected execution operator/window, no
   approved `APPROVAL_REF`, `EXECUTION_OPERATOR`, `EXECUTION_WINDOW_UTC`, or
@@ -167,12 +189,10 @@ As of 2026-06-11 07:12 EDT, SCS Wave A V2 successor and marker-proof status is:
    packet `36cad934...`, hardening record `529e15b0...`, and gumo `#31842`
    verification. Halo verified read-only and updated Limux pointers after SCS
    stabilized.
-3. **Dry-run proof packet**: started, but currently `WAIT`. Exact draft
-   `9d497029...` closes the prior filesystem-evidence gap but needs the
-   filesystem-type failure-order/documentation mismatch fixed or explicitly
-   accepted before it can satisfy the V2 proof requirement as a future
-   execution-review candidate. No ISO bytes, key import, package execution, or
-   host mutation.
+3. **Dry-run proof packet**: exact draft `0284cf52...` is `GO` as the next
+   formal review/freeze candidate only. It is still `WAIT/NO-GO` for execution,
+   marker creation, ISO/key import/download, package execution, and host
+   mutation until frozen, formally mutation-reviewed, and explicitly approved.
 4. **Wave A ISO intake approval packet**: only after dry-run proof and mutation
    review converge should SCS request explicit operator approval to run ISO
    intake.
@@ -425,8 +445,9 @@ with 18 tests OK, and HEAD/upstream SHA alignment.
 
 Status remains `WAIT`: this is not formal `$mutation-script-wave` GO, not ISO
 download/use approval, and not host/VM/network/package/runtime approval. Next
-work is for SCS/gumo to resolve the WSL/DrvFs proof packet's filesystem-type
-failure-order/documentation mismatch after Halo's `#32203` review.
+work is for SCS/gumo to durably freeze/commit exact marker-proof draft
+`0284cf52...` and route it into formal mutation-script review after Halo's
+`#32386` review.
 
 Verify SCS state before relying on the recorded pointers:
 

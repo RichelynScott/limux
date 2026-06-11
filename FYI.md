@@ -1071,3 +1071,35 @@ exact hash before review.
 
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#32203`
+
+## 2026-06-11 - SCS Marker Proof Draft 0284 Review
+### What:
+Recorded Halo's read-only review of the SCS marker-only WSL/DrvFs proof packet
+draft at SHA256
+`0284cf528d6abc53f5f96b8e87a56d0c2a51218afe217e0e0a7813d9467210c0`.
+
+### Why:
+Gumo superseded `9d497029...` in hcom `#32386` after addressing the
+failure-order/documentation mismatch from Halo's prior review. The new exact
+hash is `GO` as the next formal review/freeze candidate only, while execution
+remains `WAIT/NO-GO`.
+
+### How:
+Reviewed the SCS draft read-only, verified the exact hash, checked status and
+whitespace, read targeted clauses, extracted the fenced shell block to `/tmp`,
+ran `bash -n`, ran `static_check_no_delete_api.py` against the extracted shell
+with 0 REMOVE and 0 REVIEW findings, recorded the extracted script hash, and
+reported the result to gumo. Patched only Limux-owned restart docs. Halo did
+not edit SCS, execute the packet, create markers, download/import ISO/key/
+checksum material, or mutate network, Hyper-V, VM, WSL, Limux, Cargo, package,
+or host/runtime state.
+
+### Impact:
+Option 3 is no longer blocked at the draft-fix level. SCS/gumo should durably
+freeze or commit exact hash `0284cf52...`, then route it into formal
+mutation-script review. No execution, marker creation, ISO/key/checksum/network
+activity, Hyper-V/VM/WSL mutation, Limux/Cargo/package work, Wave B, or
+lab-to-host artifact import is authorized.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#32386`
