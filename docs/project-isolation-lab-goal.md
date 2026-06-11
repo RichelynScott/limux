@@ -51,79 +51,38 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 06:04 EDT, SCS Wave A docs/readiness status is:
+As of 2026-06-11 06:14 EDT, SCS Wave A readiness/formal-review status is:
 
 - Last pushed SCS commit:
-  `96acd684ae77dfcc521d8298444c77a8be434237`
-  (`docs(lab): add wave a iso intake draft`)
-- Halo verified SCS `main` aligned with `origin/main`, but local status after
-  gumo's `#29613` closeout showed two untracked files:
-  `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` and
-  `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_REVIEW_READINESS_2026-06-11.md`.
-  Halo sent hcom `#29710` asking gumo to either commit/push that readiness
-  record if it is intended as durable SCS docs, or confirm it is intentionally
-  local/untracked and should be ignored. Gumo acked in hcom `#29732`: the
-  readiness record is intentional and is being wired into SCS docs now, to be
-  committed/pushed with pointer updates.
-- Current SCS caveat after `#29732`: SCS is dirty again while gumo wires the
-  readiness record into docs. Halo observed modified `FYI.md`, `HANDOFF.md`,
-  `README.md`, `docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`,
-  `project_isolation_lab/FYI.md`, `project_isolation_lab/README.md`,
-  `project_isolation_lab/docs/ACTIVE_GOAL.md`,
-  `project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`,
-  `project_isolation_lab/docs/PRD_PLAN.md`,
-  `project_isolation_lab/docs/ROADMAP.md`, plus untracked
-  `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_REVIEW_READINESS_2026-06-11.md`
-  and unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
-  Do not treat SCS as clean/final for the readiness record until gumo reports
-  the next commit SHA, hashes, verification, and post-push status.
-- Current SCS dirty follow-up hashes observed by Halo:
+  `009feb76c940efc990d28dcdd3a6daa9ba7317c7`
+  (`docs(lab): record wave a review readiness`)
+- Halo verified SCS `main` aligned with `origin/main`, with only unrelated
+  untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` remaining.
+- Final key hashes verified locally:
   - readiness record:
-    `5d51b8f33548a232897e67af4e2c415c2766b6f0bd40293c2c549549a25ae6b1`
-  - SCS `HANDOFF.md`:
-    `e07b7351bc5762640f0f34e0bb6bdfc717d5dcb71a99da125f1fb2e297cd4a05`
-  - SCS `FYI.md`:
-    `ab611a17d661f0df59558911a5e44033f52dfe0b4de4bc89af6281e0ed1b289a`
-  - project isolation `FYI.md`:
-    `5f7e3c8ef584f50557bba238e2d32ee0e95c5d5656d1f3f25fadf04769c00625`
-  - `PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`:
-    `d0360c46c28c5debbf4e7d8278a72a761cc3d9b9134c201d9cded3043dce0f91`
-  - `HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`:
-    `e26468b6f0104f35c13ed05039aabdb0d7777524c76a4231a5adf13459574261`
-  - `ACTIVE_GOAL.md`:
-    `4651a5ae6fa5a92c07925fbc3820fb10cf4c90064330a080544641189385b752`
-- Final hashes from SCS commit `96acd684` before the dirty readiness follow-up:
-  - `WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_2026-06-10.md`:
+    `210c9f326f065b118a78c61cff4e131fd34367d970022c52427762705cecd768`
+  - Wave A command packet:
     `f98d5ea00752fb23f3128b678753b0e3946dd5de55fa63ba67198418e70fe2a3`
-  - `HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`:
-    `996e60895f039b65ae248e75fc5b0dad4bb27cceba6da8e20147b7e6d30d9e12`
-  - `UBUNTU_2404_ISO_ARTIFACT_INTAKE_PLAN_2026-06-10.md`:
-    `9b518851690752ab399800613c6bafc00e94d74e5e3659ed09d7055315e54265`
-  - `ACTIVE_GOAL.md`:
-    `9e415b6a0a441c45258f52c21e89628bccb28ab8e75530db5c7c716c8866f22d`
-  - `PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`:
-    `0e8ac9af7dc56493428cdccd2756aedda55279054487ae11b96bc7998147164f`
-  - SCS `HANDOFF.md`:
-    `690dae94139db9675545a8dea6d2b6e89519c2542eba61e2b80d6e28a3553f98`
-- Review trail: Halo hcom `#29055`, `#29255`, `#29437`, and `#29567`; gumo
-  hcom `#29106`, `#29279`, `#29509`, `#29577`, and final closeout `#29613`.
-  Claude narrow re-review reported no remaining HIGH/MEDIUM blockers, and Halo
-  `#29567` closed out the current Wave A draft from read-only review.
-- Gumo-reported verification in `#29613`: `git diff --check`; Wave A embedded
-  Bash block `bash -n`; no-delete literal scan; HTML parser; embedded JS
-  `node --check`; Python `py_compile`; unit tests 18 OK; official Ubuntu
-  metadata recheck without ISO download (`HEAD 200`, `Content-Length
-  6655619072`, expected `SHA256SUMS` line present).
-- Halo local verification after `#29613`: SCS status, `rev-parse HEAD`, recent
-  log, and SHA256 checks for the final hash set above.
-- Decision remains `WAIT`: no formal `$mutation-script-wave` GO, no ISO
-  download/use approval, and no host/VM/WSL/Docker/HNS/WinNAT/network/package/
-  SCRIM/global-config/runtime execution approval. Halo did not edit SCS and did
-  not run host or runtime mutation. The current open SCS closeout caveat is
-  hcom `#29732`: readiness-record pointer updates are in progress under gumo.
-  Halo read the current readiness record at SHA256
-  `5d51b8f33548a232897e67af4e2c415c2766b6f0bd40293c2c549549a25ae6b1`
-  and found no new material blocker in its WAIT/readiness framing.
+  - mutation-wave packet:
+    `62eefdaa0faa72d2e72b6c7e097bd1f26fd8e88768c9b37dd21dc2aa55eed7b7`
+  - HTML decision packet:
+    `d0360c46c28c5debbf4e7d8278a72a761cc3d9b9134c201d9cded3043dce0f91`
+- Gumo hcom `#30002` reported verification: `git diff --check`; HTML parser;
+  embedded JS `node --check`; extracted Wave A Bash block `bash -n`; no-delete
+  literal scan; Python `py_compile`; and unit tests 18/18 OK.
+- Halo local verification after `#30002`: SCS status, `rev-parse HEAD`, recent
+  log, `git diff --check`, SHA256 checks for the four final artifacts above,
+  and targeted reads/`rg` of the readiness and packet WAIT/no-execution framing.
+- Gumo hcom `#30052` requested a bounded read-only Limux acceptance/protocol
+  handoff lens for the formal Wave A mutation-script wave input. Halo replied
+  `GO` for using the hash-pinned Wave A packet as Wave A review input only:
+  no CRITICAL/HIGH/MEDIUM blockers, with one LOW wording hardening suggestion
+  to add exact `Limux run` / `cargo run` / `lab-to-host import` strings to the
+  generated summary `not_authorized` list.
+- Decision remains `WAIT` for execution: no formal `$mutation-script-wave`
+  convergence yet, no ISO download/use approval, and no host/VM/WSL/Docker/HNS/
+  WinNAT/network/package/SCRIM/global-config/Limux/runtime mutation approval.
+  Halo did not edit SCS and did not run host/runtime mutation.
 
 As of 2026-06-10 22:10 EDT, SCS commit
 `8ff345f docs(lab): add nat and iso intake blockers` is pushed. The

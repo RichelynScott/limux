@@ -759,6 +759,35 @@ approval, and no execution approval.
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md`
 
+## 2026-06-11 - SCS Wave A Readiness Commit And Protocol Review
+### What:
+Recorded the finalized SCS Wave A readiness checkpoint at commit
+`009feb76c940efc990d28dcdd3a6daa9ba7317c7` and Halo's bounded read-only
+Limux acceptance/protocol review for hcom `#30052`.
+
+### Why:
+The previous Limux restart pointer still treated the Wave A readiness record as
+dirty/in-progress. Gumo has now committed and pushed the readiness milestone,
+then requested a narrow protocol lens before formal Wave A review input.
+
+### How:
+Verified SCS `main` aligned with `origin/main`, checked the final SHA256 values
+for the readiness record, Wave A command packet, mutation-wave packet, and HTML
+decision packet, ran SCS `git diff --check`, and read the hash-pinned Wave A
+packet plus readiness record without editing SCS or executing packet commands.
+Halo replied `GO` for using the Wave A packet as review input only, with no
+CRITICAL/HIGH/MEDIUM blockers and one LOW wording hardening suggestion.
+
+### Impact:
+Restart state now points to SCS commit `009feb76` instead of the superseded
+dirty readiness caveat. Execution remains `WAIT`: no formal
+`$mutation-script-wave` convergence, no ISO download/use approval, and no
+host/VM/WSL/Docker/HNS/WinNAT/network/package/SCRIM/global-config/Limux/runtime
+mutation approval.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#30002` | hcom `#30052`
+
 ## 2026-06-11 - Wave A ISO Intake Draft Closeout Review
 ### What:
 Recorded Halo's read-only closeout on the current SCS Wave A Ubuntu ISO intake
