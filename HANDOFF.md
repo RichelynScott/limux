@@ -379,10 +379,10 @@ Numbered options moving forward:
    `f20756e8...`, HTML packet `ce8600e9...`, and gumo `#33327` verification.
    It is docs-only and still `WAIT/NO-GO`; it names the missing values for any
    future marker-only execution packet.
-8. **Wave A ISO intake approval packet**: only after the dry-run proof and
+9. **Wave A ISO intake approval packet**: only after the dry-run proof and
    mutation review converge should SCS ask the operator for explicit approval to
    run ISO intake. No approval is implied by any current docs.
-9. **Later lab layers**: Wave B persistent VM baseline, disposable full-VM
+10. **Later lab layers**: Wave B persistent VM baseline, disposable full-VM
    factory, and Firecracker microVM layer remain downstream of accepted Wave A
    evidence and separate mutation gates.
 

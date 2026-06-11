@@ -212,14 +212,19 @@
             <label class="option"><input type="radio" name="next" value="4"><span><span class="option-title">Option 4 - Treat Gate D as docs checkpoint</span><span class="option-detail">No evidence transfer, artifact import, package/runtime work, or mutation is approved.</span></span></label>
           </div>
           <div class="decision">
-            <h3>5. Marker execution gate</h3>
-            <p>Only after frozen execution packet, final mutation review, and explicit operator approval.</p>
-            <label class="option"><input type="radio" name="next" value="5"><span><span class="option-title">Option 5 - Consider marker execution later</span><span class="option-detail">Current state remains WAIT/NO-GO.</span></span></label>
+            <h3>5. Post-Gate-D artifact-intake WIP</h3>
+            <p>SCS has started PRD-007 binary/archive artifact-intake work after <code>388f20a</code>, but it is not durable yet.</p>
+            <label class="option"><input type="radio" name="next" value="5"><span><span class="option-title">Option 5 - Wait for PRD-007 freeze</span><span class="option-detail">Do not treat current artifact-intake WIP as final.</span></span></label>
           </div>
           <div class="decision">
-            <h3>6. Later lab layers</h3>
+            <h3>6. Marker execution gate</h3>
+            <p>Only after frozen execution packet, final mutation review, and explicit operator approval.</p>
+            <label class="option"><input type="radio" name="next" value="6"><span><span class="option-title">Option 6 - Consider marker execution later</span><span class="option-detail">Current state remains WAIT/NO-GO.</span></span></label>
+          </div>
+          <div class="decision">
+            <h3>7. Later lab layers</h3>
             <p>Persistent full VM baseline, disposable full VM factory, then Firecracker microVM layer.</p>
-            <label class="option"><input type="radio" name="next" value="6"><span><span class="option-title">Option 6 - Later VM layers</span><span class="option-detail">Downstream of accepted Wave A evidence and separate mutation gates.</span></span></label>
+            <label class="option"><input type="radio" name="next" value="7"><span><span class="option-title">Option 7 - Later VM layers</span><span class="option-detail">Downstream of accepted Wave A evidence and separate mutation gates.</span></span></label>
           </div>
 
           <h2>Execution Mode</h2>
@@ -269,8 +274,9 @@
       "2": "Proceed with Option 2: treat SCS e455617 as the durable V2 review/freeze checkpoint only, not execution approval.",
       "3": "Proceed with Option 3 only if gumo sends a new exact-hash review request; read-only review only.",
       "4": "Proceed with Option 4: treat SCS Gate D commit 388f20a as a durable docs checkpoint only; do not transfer evidence, import artifacts, execute packages/runtime code, or mutate host state.",
-      "5": "Do not execute now. Only consider marker execution after frozen execution packet, final mutation review, and explicit operator approval.",
-      "6": "Keep later VM layers queued behind accepted Wave A evidence and separate mutation gates."
+      "5": "Proceed with Option 5: wait for SCS to patch/freeze PRD-007 binary/archive artifact intake or send a new exact-hash review request; do not treat current WIP as final.",
+      "6": "Do not execute now. Only consider marker execution after frozen execution packet, final mutation review, and explicit operator approval.",
+      "7": "Keep later VM layers queued behind accepted Wave A evidence and separate mutation gates."
     };
     function selected(name) {
       const el = document.querySelector('input[name="' + name + '"]:checked');

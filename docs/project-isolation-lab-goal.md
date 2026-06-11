@@ -375,10 +375,10 @@ evidence-intake status is:
    `f20756e8...`, HTML packet `ce8600e9...`, and gumo `#33327` verification.
    It is docs-only and still `WAIT/NO-GO`; it names the missing values for any
    future marker-only execution packet.
-8. **Wave A ISO intake approval packet**: only after dry-run proof and mutation
+9. **Wave A ISO intake approval packet**: only after dry-run proof and mutation
    review converge should SCS request explicit operator approval to run ISO
    intake.
-9. **Later lab layers**: persistent full Linux VM baseline, disposable full-VM
+10. **Later lab layers**: persistent full Linux VM baseline, disposable full-VM
    factory, and Firecracker microVM layer remain downstream gated work.
 
 As of 2026-06-10 22:10 EDT, SCS commit
