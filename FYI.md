@@ -1007,3 +1007,35 @@ B, and no lab-to-host artifact import.
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` | SCS commit `0c1882b` |
 hcom `#31842`
+
+## 2026-06-11 - SCS WSL/DrvFs Marker Proof Draft Reviewed
+### What:
+Recorded Halo's read-only review of the SCS marker-only WSL/DrvFs proof packet
+draft at SHA256
+`917c1753332e6a76b98c6498aba168855e088da4fa9703dd34e07046f4a4a699`.
+
+### Why:
+The completed SCS V2 freeze made the tiny-marker WSL/DrvFs proof the next gated
+step. Gumo requested a narrow read-only review in hcom `#32019`; the result in
+hcom `#32076` is `WAIT` because the draft does not yet positively capture
+filesystem-type evidence for WSL ext4 and DrvFs.
+
+### How:
+Reviewed the SCS draft read-only, checked exact hashes, status, whitespace,
+targeted clauses, V2 proof requirements, extracted the fenced shell block to
+`/tmp`, ran `bash -n`, and ran
+`static_check_no_delete_api.py` against the extracted shell with 0 REMOVE and
+0 REVIEW findings. Patched only Limux-owned restart docs. Halo did not edit SCS,
+execute the packet, create markers, download/import ISO/key/checksum material,
+or mutate network, Hyper-V, VM, WSL, Limux, Cargo, package, or host/runtime
+state.
+
+### Impact:
+Option 3 has started but remains `WAIT`. SCS/gumo should add explicit
+filesystem-type evidence, for example `stat -f`, `df -T`, `findmnt`, or
+equivalent, then reissue an exact-hash review before any freeze, formal
+mutation-script review, operator approval request, or marker-proof execution.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#32019` |
+hcom `#32076`

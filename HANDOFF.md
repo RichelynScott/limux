@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 06:59 EDT
+Last updated: 2026-06-11 07:08 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,7 +33,8 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
-Current SCS Wave A V2 successor state as of 2026-06-11 06:59 EDT:
+Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 07:08
+EDT:
 
 - SCS V2 freeze is complete and pushed at
   `0c1882b23bdb0dac9617734d23024752e35af4c6`
@@ -105,9 +106,31 @@ Current SCS Wave A V2 successor state as of 2026-06-11 06:59 EDT:
   isolated `static_check_no_delete_api.py` scan on extracted V2 shell with
   0 REMOVE/0 REVIEW; `py_compile` for watcher/tests; and
   `unittest tests.security_posture.test_supply_chain_watch -v` with 18 tests OK.
-- Next safe SCS action: prepare/review the tiny-marker WSL/DrvFs runtime proof
-  packet for `df -PB1`, `realpath`, and `mv -nT`. It must still avoid ISO
-  download, key import, package execution, and host/runtime mutation.
+- SCS now has a marker-only WSL/DrvFs proof packet draft:
+  `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_2026-06-11.md`
+  at SHA256 `917c1753332e6a76b98c6498aba168855e088da4fa9703dd34e07046f4a4a699`.
+  Current SCS status shows this file as added in the worktree/index-intent
+  state, plus unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
+- Gumo hcom `#32019` requested a narrow read-only Halo review of that exact
+  marker-proof hash. Halo replied in `#32076`: `WAIT` for the draft as a future
+  execution-review candidate. No CRITICAL/HIGH blockers were found, but one
+  MEDIUM blocker remains: the packet claims/proposes proving WSL ext4 to DrvFs
+  behavior, but the command block captures path convention/path resolution
+  (`/home/...` and `/mnt/c/...`) plus `df`/`mv` behavior without positive
+  filesystem-type evidence for the WSL proof root or DrvFs target parent.
+  Recommended fix: add explicit filesystem-type evidence, for example
+  `stat -f`, `df -T`, `findmnt`, or equivalent, record it in evidence and
+  summary, and either fail closed against reviewed expected values or require
+  explicit operator/reviewer acceptance of the observed types.
+- Marker-proof review evidence from Halo was read-only only: exact SHA checks,
+  SCS status, `git diff --check`, selected reads/`rg`, V2 cross-check reads,
+  fenced-shell extraction to `/tmp`, `bash -n`, and
+  `static_check_no_delete_api.py` over the extracted shell with 0 REMOVE/0
+  REVIEW. Halo did not edit SCS, run the packet, create markers, or mutate
+  ISO/key/checksum/network/Hyper-V/VM/WSL/Limux/Cargo/package state.
+- Next safe SCS action: patch the marker-proof draft to add positive filesystem
+  type/source evidence, then reissue an exact-hash review before any freeze,
+  mutation-script review, or operator approval request.
 - Decision remains `WAIT` for execution: no ISO download/use approval, no
   operator execution approval, no selected execution operator/window, no
   approved `APPROVAL_REF`, `EXECUTION_OPERATOR`, `EXECUTION_WINDOW_UTC`, or
@@ -124,9 +147,11 @@ Numbered options moving forward:
    packet `36cad934...`, hardening record `529e15b0...`, and gumo `#31842`
    verification. Halo's role was read-only verification and Limux pointer
    updates.
-3. **Dry-run proof packet**: after V2 is durable, SCS should prepare/review a
-   tiny-marker WSL/DrvFs runtime proof for `df -PB1`, `realpath`, and `mv -nT`.
-   This must still avoid ISO download/key import/package execution.
+3. **Dry-run proof packet**: started, but currently `WAIT`. Exact draft
+   `917c1753...` needs positive filesystem-type evidence for WSL ext4 and
+   DrvFs before it can satisfy the V2 proof requirement as a future
+   execution-review candidate. It must still avoid ISO download/key import/
+   package execution.
 4. **Wave A ISO intake approval packet**: only after the dry-run proof and
    mutation review converge should SCS ask the operator for explicit approval to
    run ISO intake. No approval is implied by any current docs.
@@ -407,17 +432,21 @@ this Limux session is to keep Limux stable as a tool and coordinate with gumo on
 the SCS-owned lab docs, not to add more Limux features by default.
 
 If resuming after a restart, first verify SCS is still at or beyond
-`0c1882b23bdb0dac9617734d23024752e35af4c6` and that the V2/hardening hashes
-below still match. Wave A is review/freeze only; do not download the ISO,
-import keys, execute packet commands, attach media, start VM work, run package
-builds, run Limux install/package workflows, or move lab artifacts back to the
-trusted host.
+`0c1882b23bdb0dac9617734d23024752e35af4c6`, that the V2/hardening hashes below
+still match, and whether gumo has revised the marker-proof draft after Halo
+`#32076`. If the marker-proof draft is still hash `917c1753...`, the next action
+is for SCS/gumo to add positive filesystem-type evidence before re-review. Wave
+A is review/freeze only; do not download the ISO, import keys, execute packet
+commands, create marker files, attach media, start VM work, run package builds,
+run Limux install/package workflows, or move lab artifacts back to the trusted
+host.
 
 ```bash
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY log -5 --oneline --decorate
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_V2_2026-06-11.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_V2_HARDENING_REVIEW_2026-06-11.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_2026-06-11.md
 hcom --version --name halo
 hcom list --name halo
 hcom events --last 80 --thread project-isolation-lab-goal --name halo

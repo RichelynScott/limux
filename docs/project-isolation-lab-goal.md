@@ -51,7 +51,7 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 06:59 EDT, SCS Wave A V2 successor status is:
+As of 2026-06-11 07:08 EDT, SCS Wave A V2 successor and marker-proof status is:
 
 - SCS V2 freeze is complete and pushed at
   `0c1882b23bdb0dac9617734d23024752e35af4c6`
@@ -115,6 +115,22 @@ As of 2026-06-11 06:59 EDT, SCS Wave A V2 successor status is:
   isolated `static_check_no_delete_api.py` scan on extracted V2 shell with
   0 REMOVE/0 REVIEW; `py_compile` for watcher/tests; and
   `unittest tests.security_posture.test_supply_chain_watch -v` with 18 tests OK.
+- SCS now has a marker-only WSL/DrvFs proof packet draft:
+  `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_2026-06-11.md`
+  at SHA256 `917c1753332e6a76b98c6498aba168855e088da4fa9703dd34e07046f4a4a699`.
+  Current SCS status shows this file as added in the worktree/index-intent
+  state, plus unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
+- Gumo hcom `#32019` requested a narrow read-only Halo review of that exact
+  marker-proof hash. Halo replied in `#32076`: `WAIT` for the draft as a future
+  execution-review candidate. No CRITICAL/HIGH blockers were found, but one
+  MEDIUM blocker remains: the packet claims/proposes proving WSL ext4 to DrvFs
+  behavior, but the command block captures path convention/path resolution
+  (`/home/...` and `/mnt/c/...`) plus `df`/`mv` behavior without positive
+  filesystem-type evidence for the WSL proof root or DrvFs target parent.
+  Recommended fix: add explicit filesystem-type evidence, for example
+  `stat -f`, `df -T`, `findmnt`, or equivalent, record it in evidence and
+  summary, and either fail closed against reviewed expected values or require
+  explicit operator/reviewer acceptance of the observed types.
 - Decision remains `WAIT` for execution: no ISO download/use approval, no
   operator execution approval, no selected execution operator/window, no
   approved `APPROVAL_REF`, `EXECUTION_OPERATOR`, `EXECUTION_WINDOW_UTC`, or
@@ -129,9 +145,11 @@ As of 2026-06-11 06:59 EDT, SCS Wave A V2 successor status is:
    packet `36cad934...`, hardening record `529e15b0...`, and gumo `#31842`
    verification. Halo verified read-only and updated Limux pointers after SCS
    stabilized.
-3. **Dry-run proof packet**: after V2 is durable, SCS should prepare/review the
-   tiny-marker WSL/DrvFs proof for `df -PB1`, `realpath`, and `mv -nT`. No ISO
-   bytes, key import, package execution, or host mutation.
+3. **Dry-run proof packet**: started, but currently `WAIT`. Exact draft
+   `917c1753...` needs positive filesystem-type evidence for WSL ext4 and
+   DrvFs before it can satisfy the V2 proof requirement as a future
+   execution-review candidate. No ISO bytes, key import, package execution, or
+   host mutation.
 4. **Wave A ISO intake approval packet**: only after dry-run proof and mutation
    review converge should SCS request explicit operator approval to run ISO
    intake.
@@ -384,7 +402,8 @@ with 18 tests OK, and HEAD/upstream SHA alignment.
 
 Status remains `WAIT`: this is not formal `$mutation-script-wave` GO, not ISO
 download/use approval, and not host/VM/network/package/runtime approval. Next
-work is the WSL/DrvFs dry-run proof packet after the completed SCS V2 freeze.
+work is for SCS/gumo to patch the WSL/DrvFs dry-run proof packet with positive
+filesystem-type evidence after Halo's `#32076` review.
 
 Verify SCS state before relying on the recorded pointers:
 
@@ -393,6 +412,7 @@ git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY log -5 --oneline --decorate
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_V2_2026-06-11.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_V2_HARDENING_REVIEW_2026-06-11.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_2026-06-11.md
 hcom --version --name halo
 hcom list --name halo
 hcom events --last 80 --thread project-isolation-lab-goal --name halo
