@@ -1338,10 +1338,10 @@ final hashes arrive.
 ### How:
 Checked Limux status, SCS status/log read-only, hcom `project-isolation-lab-goal`
 events, and SHA256 values for current SCS modified/untracked WIP files. Patched
-only Limux-owned `HANDOFF.md` and `docs/project-isolation-lab-goal.md`; no SCS
-edits, packet execution, marker creation, ISO/key/checksum/network/Hyper-V/VM/
-WSL/Limux/Cargo/package/runtime/global-config/SCRIM mutation, or lab-to-host
-artifact import was performed by Halo.
+only Limux-owned restart surfaces; no SCS edits, packet execution, marker
+creation, ISO/key/checksum/network/Hyper-V/VM/WSL/Limux/Cargo/package/runtime/
+global-config/SCRIM mutation, or lab-to-host artifact import was performed by
+Halo.
 
 ### Impact:
 Limux now has a restart-safe WIP snapshot, not a final SCS checkpoint. Execution
@@ -1350,8 +1350,9 @@ only after gumo sends the final SCS commit SHA, final hashes, verification
 commands, and post-push status.
 
 ### Related:
-`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#33923` |
-hcom `#34125`
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
+`docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html` |
+hcom `#33923` | hcom `#34125`
 
 ## 2026-06-11 - Project Isolation Lab Docs Option 1
 ### What:
@@ -1386,3 +1387,38 @@ status before replacing WIP hashes. Execution remains `WAIT/NO-GO`.
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
 `docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`
 | hcom `#33923` | hcom `#34125`
+
+## 2026-06-11 - SCS V2 Marker Proof Final Checkpoint
+### What:
+Recorded the final committed SCS V2 marker-proof review-candidate checkpoint
+after gumo pushed commit `e455617ee84d3b86bb5739833199220076a9e8d7`.
+
+### Why:
+The earlier Limux docs correctly marked the SCS V2 hardening state as moving
+WIP. Gumo hcom `#34336` then supplied the final SCS commit, final hashes,
+verification summary, and post-push status.
+
+### How:
+Verified SCS `main...origin/main` at `e455617...`, clean except unrelated
+untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`. Locally rechecked the
+final tracked-file SHA256s, extracted the V2 shell to `/tmp`, verified the
+extracted shell hash `3008e426...`, ran `bash -n`, and ran the Codex static
+no-delete scanner over a dedicated `/tmp` copy with 0 REMOVE and 0 REVIEW.
+Patched only Limux-owned docs and the HTML packet. Halo did not edit SCS,
+execute packets, create markers, download/import ISO/key/checksum material, or
+mutate network, Hyper-V, VM, WSL, Limux, Cargo, package, global-config, SCRIM,
+or host runtime state.
+
+### Impact:
+Limux now points at durable SCS commit `e455617...` instead of the earlier WIP
+snapshot. This is still a review/freeze candidate only. Execution remains
+`WAIT/NO-GO`. SCS already has subsequent non-durable evidence-intake WIP
+(`DATA_ONLY_EVIDENCE_INTAKE_GATE_DRAFT_2026-06-11.md` at
+`0ba463dbfed9c90ab984260d0fb895c04b0515db2d4b8480ae170cdd93529b58`);
+do not treat that lane as final until gumo commits/pushes or requests exact-hash
+review.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
+`docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`
+| hcom `#34336`

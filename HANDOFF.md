@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 08:22 EDT
+Last updated: 2026-06-11 08:34 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,7 +33,7 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
-Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 08:22
+Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 08:34
 EDT:
 
 - SCS V2 freeze is complete and pushed at
@@ -272,55 +272,56 @@ EDT:
   movement, but after evidence/proof/target directories may exist. Gumo hcom
   `#33763` acknowledged this stricter residual wording and kept execution
   `WAIT`.
-- Current SCS read-only status after gumo incorporated the V2 review is still
-  dirty and non-durable. Gumo hcom `#33923` acknowledged Limux snapshot
-  `2db65d0` and explicitly warned that SCS hashes may change again while he
-  patches final hash tables/HTML/HANDOFF, then said he will send the final
-  committed hash set after push. Gumo hcom `#34125` then asked Halo to hold the
-  Limux pointer state until that final SCS validation/push arrives. Do not treat
-  the following WIP hashes as durable. Observed WIP paths/hashes at
-  2026-06-11 08:22 EDT:
-  - `FYI.md`:
-    `e95b9ac0b3a4ee1fb7313368950a70902ef35078ad6c8b379a8ee592f3dc2b81`
-  - `HANDOFF.md`:
-    `414315f33144c54dc624249d760ebb559591554ee0644d2f5bdfab03049e3c49`
-  - `README.md`:
-    `344e776c5c7aab322e84cf5d8c298dc48cd08af8b8ff2b8b0e6fa45a702183cd`
-  - `docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`:
-    `8d65541e5111db042616bfe5b68098640aec2a0bb3a7806a02fc7c9c2169079b`
-  - `project_isolation_lab/docs/ACTIVE_GOAL.md`:
-    `94cb1849aa30c2522de444f31ef65c08b02f0d531f3cb0413c152f123fbd4c76`
-  - `project_isolation_lab/FYI.md`:
-    `f3a62bd43281bc4e17868cd3a31ab5ff5dd2100acc9dace88c6550a8811352dd`
-  - `project_isolation_lab/README.md`:
-    `8ec94452c7190c94657c7ea1cfebc7dee71d9fd9e9cf5a47a64568edb7ae71c0`
-  - `project_isolation_lab/docs/PRD_PLAN.md`:
-    `f704ac572f49c9b08ebc30fa52a0e266f3020f7f50bde5b4eec5c6cbdba8fe79`
-  - `project_isolation_lab/docs/ROADMAP.md`:
-    `ebd59fb5f20d98b9e87215b0a701efc4adc813d7efea17b209be20584c159258`
-  - `project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`:
-    `016652ae546200e636170381a79cf3af8cafa4c1797e479a688fbf7062af9be1`
-  - `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_DRAFT_REVIEW_2026-06-11.md`:
-    `64f2347ac45b21a5ab97c6c5388a1ab7dc723d1e89bbf607d0ab90d371bea84e`
-  - `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_EXECUTION_APPROVAL_INPUTS_2026-06-11.md`:
-    `da2a63cc670e07eeaed9749b04544a6ed7ad3d74728043973ca4900c0c0bdc5f`
-  - `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_MUTATION_WAVE_REVIEW_2026-06-11.md`:
-    `2bbe9bfe0a852a12884a7a246f2f26c1ffe8106bb66da7bd44b50fdcd8bc5c94`
-  - `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_V2_2026-06-11.md`:
+- SCS final committed/pushed V2 marker-proof review-candidate state is now
+  durable at commit `e455617ee84d3b86bb5739833199220076a9e8d7`
+  (`docs(lab): add marker proof v2 review candidate`). SCS `main...origin/main`
+  is clean except unrelated untracked
+  `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`. Halo did not edit SCS.
+- Final SCS hashes from gumo hcom `#34336`, locally verified by Halo for
+  file-backed artifacts:
+  - V2 packet:
     `c52377cefa8be15d768cbbaabe5a05ddedb2e2bed1cdcfc566708a94f2f37e39`
-  - `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_V2_HARDENING_REVIEW_2026-06-11.md`:
+  - Extracted V2 shell:
+    `3008e42671967c63221b1722187574c60e3796137c4f1d481ab58e46e53567f2`
+  - V2 hardening review:
     `a0ded5dc093c6e98ae669190bf76706fbb6dbb81248a2e29aa63667250a87e2d`
-  - unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
-- The V2 hardening review and updated approval-input checklist both still record
-  `Decision: WAIT` and no execution approval. They are not durable until SCS
-  commits/pushes or otherwise freezes them. Execution remains `WAIT/NO-GO`
-  until formal execution-scope mutation review, operator approval, execution
-  window/operator, packet/script hashes, filesystem-type values, marker
-  disposition, and residual disposition are accepted.
-- Next safe SCS action: commit/push or otherwise freeze the exact V2 draft,
-  V2 hardening review, and updated approval-input checklist. If SCS changes any
-  reviewed V2 file after Halo `#33749`, treat the new hash set as unreviewed
-  until reissued.
+  - Approval inputs:
+    `da2a63cc670e07eeaed9749b04544a6ed7ad3d74728043973ca4900c0c0bdc5f`
+  - Hyper-V review packet:
+    `016652ae546200e636170381a79cf3af8cafa4c1797e479a688fbf7062af9be1`
+  - HTML decision packet:
+    `8d65541e5111db042616bfe5b68098640aec2a0bb3a7806a02fc7c9c2169079b`
+  - SCS `HANDOFF.md`:
+    `414315f33144c54dc624249d760ebb559591554ee0644d2f5bdfab03049e3c49`
+  - `ACTIVE_GOAL.md`:
+    `94cb1849aa30c2522de444f31ef65c08b02f0d531f3cb0413c152f123fbd4c76`
+- Gumo hcom `#34336` reports verification passed: `git diff --check`, staged
+  diff check, V2 shell hash / `bash -n` / static no-delete scan, HTML parse,
+  HTML JS `node --check`, `py_compile`, and 18 watcher tests.
+- Halo local verification after `#34336`: SCS `git status --short --branch`,
+  SCS `rev-parse HEAD`, SCS `git diff --check`, tracked-file SHA256 checks for
+  the final hash set, fenced-shell extraction to `/tmp`, extracted V2 shell
+  SHA256 match, `bash -n`, and Codex static no-delete scan over a dedicated
+  `/tmp` copy with 0 REMOVE and 0 REVIEW.
+- Subsequent SCS WIP after `e455617...` is already present and non-durable as
+  of 2026-06-11 08:34 EDT. Current SCS status shows root/project docs and
+  `project_isolation_lab/tasks/prd-003-evidence-export-intake.md` modified, an
+  untracked `project_isolation_lab/docs/DATA_ONLY_EVIDENCE_INTAKE_GATE_DRAFT_2026-06-11.md`,
+  and unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
+  Snapshot hashes for the new evidence-intake lane:
+  - `DATA_ONLY_EVIDENCE_INTAKE_GATE_DRAFT_2026-06-11.md`:
+    `0ba463dbfed9c90ab984260d0fb895c04b0515db2d4b8480ae170cdd93529b58`
+  - `prd-003-evidence-export-intake.md`:
+    `bb52cefb79d6847fce914d87bfff5de944ee0a886a64d0c9fa8e63753f65fb5b`
+  - `ACCEPTANCE_GATES.md`:
+    `2cf58ff4c9f5915a01129c17e683a9f37ba2188d0be9b588cfabfab990a85422`
+  - `PRD_ACCEPTANCE_REVIEW_2026-06-10.md`:
+    `c89ba1666a19644065d4340e7574b0b80354588c29f3110f7250e27ef7e8d7c1`
+  Do not treat this evidence-intake WIP as durable until SCS commits/pushes or
+  gumo issues an exact-hash review request.
+- Limux-side operator packet for this final checkpoint:
+  `docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`.
+  It is a human-readable copy-back/status packet, not an execution approval.
 - Decision remains `WAIT` for execution: no ISO download/use approval, no
   operator execution approval, no selected execution operator/window, no
   approved `APPROVAL_REF`, `EXECUTION_OPERATOR`, `EXECUTION_WINDOW_UTC`, or
@@ -330,36 +331,38 @@ EDT:
 
 Numbered options moving forward:
 
-1. **Docs/handoff first - active now**: Limux has a restart snapshot for the
-   current state, including the fact that SCS is still dirty and that gumo said
-   final hashes may drift before push. Do not replace the WIP snapshot with a
-   final checkpoint until gumo sends a final SCS commit SHA, final hashes,
-   verification commands, and post-push status.
-2. **If gumo sends a new exact-hash review request before commit**: review it
-   read-only only. Do not edit SCS, do not execute the packet, do not create
-   markers, and do not mutate ISO/key/checksum/network/Hyper-V/VM/WSL/Limux/
-   Cargo/package/runtime/global-config/SCRIM/lab-to-host state.
-3. **After durable V2 hardening push**: update Limux docs from WIP snapshot to
-   final committed hash set, then notify gumo with the Limux commit pointer.
-4. **Dry-run proof packet**: exact draft `0284cf52...` is frozen in SCS commit
+1. **Docs/handoff first - active now**: update Limux restart docs and this
+   status packet from the durable SCS `e455617...` checkpoint, then notify gumo
+   with the Limux commit pointer.
+2. **SCS durable V2 marker-proof checkpoint**: complete at SCS commit
+   `e455617...` with V2 packet `c52377ce...`, extracted shell `3008e426...`,
+   hardening review `a0ded5dc...`, approval inputs `da2a63cc...`, HTML packet
+   `8d65541e...`, and gumo `#34336` verification. This is a review/freeze
+   candidate only, not execution approval.
+3. **If gumo sends a new exact-hash review request**: review it read-only only.
+   Do not edit SCS, do not execute the packet, do not create markers, and do not
+   mutate ISO/key/checksum/network/Hyper-V/VM/WSL/Limux/Cargo/package/runtime/
+   global-config/SCRIM/lab-to-host state.
+4. **Evidence-intake WIP**: current SCS evidence-intake draft
+   `DATA_ONLY_EVIDENCE_INTAKE_GATE_DRAFT_2026-06-11.md` is non-durable until
+   gumo commits/pushes or issues an exact-hash review request.
+5. **Marker execution gate**: only after frozen execution packet, final mutation
+   review, explicit operator approval, execution window/operator, packet/script
+   hashes, filesystem-type values, marker disposition, and residual disposition.
+6. **Prior dry-run proof packet**: exact draft `0284cf52...` is frozen in SCS commit
    `bed7d37`, and formal marker-proof review is pushed at `b8abc7d`. It is
    still `WAIT/NO-GO` for execution, marker creation, ISO/key import/download,
    package execution, and host mutation until the operator approves a concrete
    execution packet/input checklist.
-5. **Marker-proof approval inputs**: complete at SCS commit `f1272a0...` with
+7. **Marker-proof approval inputs**: complete at SCS commit `f1272a0...` with
    approval-input checklist `dfb8bbf7...`, Hyper-V mutation-wave packet
    `f20756e8...`, HTML packet `ce8600e9...`, and gumo `#33327` verification.
    It is docs-only and still `WAIT/NO-GO`; it names the missing values for any
    future marker-only execution packet.
-6. **V2 marker-proof draft**: current untracked SCS WIP
-   `WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_V2_2026-06-11.md` at
-   `c52377ce...` has Halo `#33749` GO for review/freeze candidate only.
-   Updated approval-input and V2 hardening-review WIP exist, but are not durable
-   until SCS commits/pushes. Execution remains `WAIT/NO-GO`.
-7. **Wave A ISO intake approval packet**: only after the dry-run proof and
+8. **Wave A ISO intake approval packet**: only after the dry-run proof and
    mutation review converge should SCS ask the operator for explicit approval to
    run ISO intake. No approval is implied by any current docs.
-8. **Later lab layers**: Wave B persistent VM baseline, disposable full-VM
+9. **Later lab layers**: Wave B persistent VM baseline, disposable full-VM
    factory, and Firecracker microVM layer remain downstream of accepted Wave A
    evidence and separate mutation gates.
 
@@ -636,11 +639,10 @@ this Limux session is to keep Limux stable as a tool and coordinate with gumo on
 the SCS-owned lab docs, not to add more Limux features by default.
 
 If resuming after a restart, first verify SCS is still at or beyond
-`f1272a0375e6ddc83343bba68d85c98cd6d635fc`, that the V2 WIP hashes below still
-match, and whether gumo has committed or changed the V2 marker-proof draft after
-Halo hcom `#33749`. If the V2 marker-proof draft remains `c52377ce...`, the
-next action is SCS durable freeze/commit plus formal marker-proof review. If the
-V2 draft hash differs, treat it as unreviewed until gumo reissues an exact-hash
+`e455617ee84d3b86bb5739833199220076a9e8d7` and that the final V2 hashes above
+still match. That SCS checkpoint is a durable review/freeze candidate only, not
+execution approval. If SCS changes any V2 marker-proof artifact after gumo hcom
+`#34336`, treat the new hash set as unreviewed until gumo reissues an exact-hash
 request. Wave A remains review/freeze only; do not download the ISO, import
 keys, execute packet commands, create marker files, attach media, start VM work,
 run package builds, run Limux install/package workflows, or move lab artifacts
@@ -658,6 +660,10 @@ sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/HANDOFF.md
+python3 - <<'PY'
+from html.parser import HTMLParser
+HTMLParser().feed(open('docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html', encoding='utf-8').read())
+PY
 hcom --version --name halo
 hcom list --name halo
 hcom events --last 80 --thread project-isolation-lab-goal --name halo

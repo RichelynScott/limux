@@ -150,8 +150,9 @@
       <h3>Roadmap</h3>
       <div class="step done"><span class="dot"></span><div><strong>Goal aligned</strong><span>Project Isolation Lab, not Limux feature lane.</span></div></div>
       <div class="step done"><span class="dot"></span><div><strong>Marker reviews</strong><span>Review/freeze candidates only.</span></div></div>
-      <div class="step current"><span class="dot"></span><div><strong>Docs checkpoint</strong><span>Limux reflects current SCS WIP state.</span></div></div>
-      <div class="step gated"><span class="dot"></span><div><strong>SCS final push</strong><span>Await final committed hash set from gumo.</span></div></div>
+      <div class="step current"><span class="dot"></span><div><strong>Docs checkpoint</strong><span>Limux reflects final SCS e455617 state.</span></div></div>
+      <div class="step done"><span class="dot"></span><div><strong>SCS final push</strong><span>Final committed hash set received.</span></div></div>
+      <div class="step gated"><span class="dot"></span><div><strong>Evidence WIP</strong><span>New SCS evidence-intake draft is not durable.</span></div></div>
       <div class="step gated"><span class="dot"></span><div><strong>Execution gates</strong><span>Operator approval and formal mutation review required.</span></div></div>
       <div class="step gated"><span class="dot"></span><div><strong>VM layers</strong><span>Persistent VM, disposable VM, Firecracker later.</span></div></div>
     </aside>
@@ -164,16 +165,16 @@
         <div class="meta">
           <div><span>Repo</span><strong>/home/riche/MCPs/limux</strong></div>
           <div><span>Author</span><strong>halo / GPT-5 Codex</strong></div>
-          <div><span>Generated</span><strong>6/11/2026 8:22 AM EDT</strong></div>
-          <div><span>Status</span><strong>WAIT for execution; WIP snapshot</strong></div>
+          <div><span>Generated</span><strong>6/11/2026 8:34 AM EDT</strong></div>
+          <div><span>Status</span><strong>WAIT for execution; final checkpoint plus WIP pointer</strong></div>
         </div>
       </header>
 
       <section>
         <h2>Current Status</h2>
         <div class="grid">
-          <div class="fact"><div class="label">Limux</div><div class="value">Restart docs and this packet capture a non-durable SCS WIP snapshot for commit/push.</div></div>
-          <div class="fact"><div class="label">SCS</div><div class="value">Still dirty on <code>f1272a0</code>; gumo <code>#34125</code> says final commit and hashes will follow validation/push.</div></div>
+          <div class="fact"><div class="label">Limux</div><div class="value">Restart docs and this packet capture the durable SCS <code>e455617</code> checkpoint.</div></div>
+          <div class="fact"><div class="label">SCS</div><div class="value">Durable marker-proof checkpoint is <code>e455617</code>. New evidence-intake WIP exists after that commit and is not durable yet.</div></div>
           <div class="fact"><div class="label">Execution</div><div class="value"><code>WAIT/NO-GO</code>. No marker, ISO, key, VM, WSL, package, runtime, or host mutation is approved.</div></div>
         </div>
       </section>
@@ -181,8 +182,8 @@
       <section>
         <h2>Verified And Gated</h2>
         <div class="grid">
-          <div class="fact"><div class="label">Done</div><div class="value">Limux handoff and goal note now preserve gumo <code>#33923</code> and <code>#34125</code>: SCS hashes may change before final push, and Limux should wait for final validation/push before replacing WIP hashes.</div></div>
-          <div class="fact"><div class="label">Verified</div><div class="value">Read-only checks covered Limux git status, SCS git status/log, current WIP hashes, WAIT/no-execution clauses, and hcom thread state.</div></div>
+          <div class="fact"><div class="label">Done</div><div class="value">Limux handoff, goal note, FYI, and this packet now record gumo <code>#34336</code> final SCS commit and hashes, plus the later non-durable evidence-intake WIP caveat.</div></div>
+          <div class="fact"><div class="label">Verified</div><div class="value">Read-only checks covered Limux git status, SCS git status/log, final file-backed SHA256s, extracted shell hash, bash syntax, no-delete scan, WAIT/no-execution clauses, and hcom thread state.</div></div>
           <div class="fact"><div class="label">Not Done</div><div class="value">No SCS edits, packet execution, marker creation, ISO/key/checksum download/import, Hyper-V/VM/WSL/network/package/runtime/global-config mutation.</div></div>
         </div>
       </section>
@@ -192,32 +193,37 @@
           <h2>Numbered Options</h2>
           <div class="decision">
             <h3>1. Docs/handoff first <span class="rec">Recommended now</span></h3>
-            <p>Keep Limux restart docs aligned with SCS without treating WIP hashes as final.</p>
-            <label class="option"><input type="radio" name="next" value="1" checked><span><span class="option-title">Option 1 - Continue docs/handoff tracking</span><span class="option-detail">This packet is a WIP snapshot. Wait for final SCS commit/hash set, then update Limux docs again.</span></span></label>
+            <p>Keep Limux restart docs aligned with the now-final SCS checkpoint.</p>
+            <label class="option"><input type="radio" name="next" value="1" checked><span><span class="option-title">Option 1 - Finish docs/handoff tracking</span><span class="option-detail">Commit/push this final-checkpoint plus WIP-pointer Limux update and notify gumo.</span></span></label>
           </div>
           <div class="decision">
-            <h3>2. Read-only exact-hash review</h3>
-            <p>Use this only if gumo sends a new exact hash before committing.</p>
-            <label class="option"><input type="radio" name="next" value="2"><span><span class="option-title">Option 2 - Review new exact hash</span><span class="option-detail">Read-only only; no SCS edits or packet execution.</span></span></label>
+            <h3>2. SCS final V2 checkpoint</h3>
+            <p>SCS commit e455617 is a durable review/freeze candidate only.</p>
+            <label class="option"><input type="radio" name="next" value="2"><span><span class="option-title">Option 2 - Treat e455617 as final docs checkpoint</span><span class="option-detail">Do not treat it as execution approval.</span></span></label>
           </div>
           <div class="decision">
-            <h3>3. Final SCS hash-set update</h3>
-            <p>After gumo pushes, replace WIP snapshot with committed SHA256s and verification evidence.</p>
-            <label class="option"><input type="radio" name="next" value="3"><span><span class="option-title">Option 3 - Update after durable push</span><span class="option-detail">Requires final SCS commit SHA, hashes, verification commands, and post-push status.</span></span></label>
+            <h3>3. Read-only exact-hash review</h3>
+            <p>Use only if gumo changes or supersedes the current exact hash set.</p>
+            <label class="option"><input type="radio" name="next" value="3"><span><span class="option-title">Option 3 - Review new exact hash</span><span class="option-detail">Read-only only; no SCS edits or packet execution.</span></span></label>
           </div>
           <div class="decision">
-            <h3>4. Marker execution gate</h3>
+            <h3>4. Evidence-intake WIP</h3>
+            <p>Current SCS evidence-intake draft is non-durable until gumo commits/pushes or asks for exact-hash review.</p>
+            <label class="option"><input type="radio" name="next" value="4"><span><span class="option-title">Option 4 - Wait for evidence-intake freeze</span><span class="option-detail">Do not treat current evidence WIP as final.</span></span></label>
+          </div>
+          <div class="decision">
+            <h3>5. Marker execution gate</h3>
             <p>Only after frozen execution packet, final mutation review, and explicit operator approval.</p>
-            <label class="option"><input type="radio" name="next" value="4"><span><span class="option-title">Option 4 - Consider marker execution later</span><span class="option-detail">Current state remains WAIT/NO-GO.</span></span></label>
+            <label class="option"><input type="radio" name="next" value="5"><span><span class="option-title">Option 5 - Consider marker execution later</span><span class="option-detail">Current state remains WAIT/NO-GO.</span></span></label>
           </div>
           <div class="decision">
-            <h3>5. Later lab layers</h3>
+            <h3>6. Later lab layers</h3>
             <p>Persistent full VM baseline, disposable full VM factory, then Firecracker microVM layer.</p>
-            <label class="option"><input type="radio" name="next" value="5"><span><span class="option-title">Option 5 - Later VM layers</span><span class="option-detail">Downstream of accepted Wave A evidence and separate mutation gates.</span></span></label>
+            <label class="option"><input type="radio" name="next" value="6"><span><span class="option-title">Option 6 - Later VM layers</span><span class="option-detail">Downstream of accepted Wave A evidence and separate mutation gates.</span></span></label>
           </div>
 
           <h2>Execution Mode</h2>
-          <label class="option"><input type="radio" name="mode" value="current" checked><span><span class="option-title">Current session documents and verifies</span><span class="option-detail">Best fit while SCS is still changing.</span></span></label>
+          <label class="option"><input type="radio" name="mode" value="current" checked><span><span class="option-title">Current session documents and verifies</span><span class="option-detail">Best fit for this docs-only final checkpoint.</span></span></label>
           <label class="option"><input type="radio" name="mode" value="hcom"><span><span class="option-title">hcom targeted coordination</span><span class="option-detail">Use only for short gumo pointers and final hash-set notifications.</span></span></label>
           <label class="option"><input type="radio" name="mode" value="defer"><span><span class="option-title">Defer/document only</span><span class="option-detail">Use if SCS continues changing and no stable review target exists.</span></span></label>
 
@@ -249,19 +255,21 @@
           <li><code>/home/riche/MCPs/limux/docs/project-isolation-lab-goal.md</code></li>
           <li><code>/home/riche/MCPs/limux/FYI.md</code></li>
           <li><code>/home/riche/Proj/SUPPLY_CHAIN_SECURITY</code> read-only status</li>
-          <li>hcom <code>#33749</code>, <code>#33763</code>, <code>#33909</code>, <code>#33923</code>, <code>#34125</code></li>
-          <li>Verification commands: git status/log, hcom events/subscriptions, SHA256 checks, WAIT/no-execution text search.</li>
+          <li>hcom <code>#33749</code>, <code>#33763</code>, <code>#33909</code>, <code>#33923</code>, <code>#34125</code>, <code>#34336</code></li>
+          <li>Verification commands: git status/log, hcom events/subscriptions, SHA256 checks, extracted-shell hash, bash syntax, static no-delete scan, WAIT/no-execution text search.</li>
+          <li>Evidence-intake WIP snapshot: <code>DATA_ONLY_EVIDENCE_INTAKE_GATE_DRAFT_2026-06-11.md</code> at <code>0ba463db...</code>, not durable.</li>
         </ul>
       </section>
     </main>
   </div>
   <script>
     const optionText = {
-      "1": "Proceed with Option 1: keep the Limux WIP snapshot durable, then wait for gumo's final SCS commit/hash set before replacing WIP hashes.",
-      "2": "Proceed with Option 2 only if gumo sends a new exact-hash review request before commit; read-only review only.",
-      "3": "Proceed with Option 3 after durable SCS push: update Limux docs from WIP snapshot to final committed hash set.",
-      "4": "Do not execute now. Only consider marker execution after frozen execution packet, final mutation review, and explicit operator approval.",
-      "5": "Keep later VM layers queued behind accepted Wave A evidence and separate mutation gates."
+      "1": "Proceed with Option 1: commit/push the Limux final-checkpoint plus WIP-pointer docs update and notify gumo.",
+      "2": "Proceed with Option 2: treat SCS e455617 as the durable V2 review/freeze checkpoint only, not execution approval.",
+      "3": "Proceed with Option 3 only if gumo sends a new exact-hash review request; read-only review only.",
+      "4": "Proceed with Option 4: wait for gumo to commit/push or exact-hash request the evidence-intake WIP; do not treat it as final.",
+      "5": "Do not execute now. Only consider marker execution after frozen execution packet, final mutation review, and explicit operator approval.",
+      "6": "Keep later VM layers queued behind accepted Wave A evidence and separate mutation gates."
     };
     function selected(name) {
       const el = document.querySelector('input[name="' + name + '"]:checked');
