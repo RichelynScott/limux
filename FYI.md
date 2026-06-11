@@ -2,6 +2,22 @@
 
 Append-only journal for significant Limux session decisions and implementation notes.
 
+## 2026-06-10 - SCS NAT/ISO Closeout Pushed
+### What:
+Recorded the pushed SCS docs-only WAIT closeout for the Hyper-V packet, NAT reconciliation plan, ISO artifact-intake plan, review record, and HTML decision packet.
+
+### Why:
+The operator is working toward a PC restart. A zero-context Limux successor needs the durable SCS commit and final hashes, not the earlier `937158e` state or transient uncommitted draft hashes.
+
+### How:
+Patched only Limux-owned restart surfaces after verifying SCS `main` at `8ff345f`, checking the final packet/NAT/ISO/review-record/HTML/ACTIVE_GOAL hashes, and confirming SCS is clean/aligned except unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
+
+### Impact:
+A resumed Limux session should start from SCS commit `8ff345f`. Packet/NAT/ISO remain `WAIT`; the next real gate is formal `$mutation-script-wave` on the exact frozen SCS packet set, with no execution approval implied.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | SCS commit `8ff345f` | hcom thread `project-isolation-lab-goal`
+
 ## 2026-06-10 - SCS Hyper-V Packet Review Gate Pushed
 ### What:
 Recorded the pushed SCS Hyper-V packet review state in Limux-local restart docs.

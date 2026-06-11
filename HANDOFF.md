@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-10 21:46 EDT
+Last updated: 2026-06-10 22:10 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,36 +33,45 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
-Current SCS restart pointers as of 2026-06-10 21:46 EDT:
+Current SCS restart pointers as of 2026-06-10 22:10 EDT:
 
 - SCS commit:
-  `937158e docs(lab): tighten hyper-v packet review gates`
+  `8ff345f docs(lab): add nat and iso intake blockers`
 - Canonical active goal:
   `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/ACTIVE_GOAL.md`
   SHA256:
-  `4504bed0ce5cac9bca42974f3d4655296251ddc949515af489cce6bcba732da2`
+  `5cbdea1958ed5e442911da67411d9265c7816f2550f951e6ff070401a32d0a25`
 - Phase 1 host-mutation draft:
   `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md`
   SHA256:
-  `3fc1404e8e5a0bcfa31fabc549a83bbb3b96bdd0f4191d561347d56c14e7c220`
+  `2c5a602ced61196807b58d72f82affec286d9fbe7bb3e9b8bc21b23a1f6c8597`
 - Packet status: `WAIT`; it is not executable. Gumo folded in Halo review
-  fixes: staged PowerShell path with a hard Hyper-V reboot boundary, fail-closed
-  preflight checks, unique/fail-if-exists evidence root, conservative WSL/hcom
-  placeholder validation, deterministic offline first boot, later deliberate
-  network attachment, and `GUEST_INTERFACE` substitution for the guest netplan
-  fallback.
+  fixes and the NAT/ISO blocker plans: staged PowerShell path with a hard
+  Hyper-V reboot boundary, fail-closed preflight checks, unique/fail-if-exists
+  evidence root, conservative WSL/hcom placeholder validation, deterministic
+  offline first boot, later deliberate network attachment, `GUEST_INTERFACE`
+  substitution for the guest netplan fallback, split offline-baseline vs
+  optional switch/WinNAT stages, and stage-scoped acceptance checks.
+- Docker/HNS/WSL2 NAT reconciliation plan:
+  `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_DOCKER_WSL2_NAT_RECONCILIATION_PLAN_2026-06-10.md`
+  SHA256:
+  `a4c8b6bf5a4ccc05874aa595820b1bc12d6db26ebaa67b949a77983292b96f0c`
+- Ubuntu ISO artifact-intake plan:
+  `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/UBUNTU_2404_ISO_ARTIFACT_INTAKE_PLAN_2026-06-10.md`
+  SHA256:
+  `de4ec9be126a2c5438aff6098ca06eb3d31de5fb18b996b6fd59eae69686c5dc`
 - SCS review record:
   `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_PACKET_REVIEW_RECORD_2026-06-10.md`
   SHA256:
-  `31c216c85af3ce3580b3e7a616e82ef505ab78e4c271c39ca20819f3fa005d0e`
+  `d7ba3c50cedd30c61b3c891f467cc79b3bf32650aebd5f30a5159a1fa8c426f0`
 - SCS HTML decision packet:
   `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`
   SHA256:
-  `11f5bf9afe48b78e4970077f780345d8fd961444a39ac3af1c735e63f4b1cf04`
+  `da7d795f12ccd59999bf3c5a8f9e969620d01f08123b9cd308fa8ed592f99b51`
 - Remaining gates: formal `$mutation-script-wave`, Docker/HNS/WSL2 NAT
-  coexistence decision before WinNAT, separate ISO artifact-intake/download
-  packet before downloading or attaching the ISO, freeze with SHA256, and
-  explicit operator approval/execution window.
+  coexistence decision before WinNAT, frozen reviewed ISO download/use packet
+  before downloading or attaching the ISO, exact execution-packet freeze with
+  SHA256, and explicit operator approval/execution window.
 - Read-only placeholder discovery from this trusted WSL session found:
   `CONTROL_PLANE_WSL_DISTRO` candidate `Ubuntu`; `HCOM_CHECK_NAME` candidate
   `halo` as the hcom sender-name argument; `hcom --version --name halo`
@@ -83,6 +92,13 @@ Current SCS restart pointers as of 2026-06-10 21:46 EDT:
   downloaded. Treat this as artifact-intake evidence only, not download or
   execution approval.
 
+Verified SCS closeout as of 2026-06-10 22:10 EDT:
+
+- Halo verified SCS `main` aligned with `origin/main` at `8ff345f`, with only
+  unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` remaining.
+- Halo verified the final SCS hashes listed above. No host/VM/WSL/Docker/HNS/
+  WinNAT/network/package/ISO/SCRIM/runtime mutation was run from Halo.
+
 ## Immediate Next Action
 
 Start from the Project Isolation Lab goal above. The next practical action for
@@ -90,7 +106,10 @@ this Limux session is to keep Limux stable as a tool and coordinate with gumo on
 the SCS-owned lab docs, not to add more Limux features by default.
 
 If resuming after a restart, first verify that SCS is still at the recorded
-commit/hash and then continue the formal review gate:
+`8ff345f` state with the hashes above. If SCS has advanced, verify the newer
+commit and update the Limux pointers before continuing. Then continue toward
+formal `$mutation-script-wave` review of the exact frozen SCS packet set; do
+not execute host/VM/network/artifact mutation from Limux.
 
 ```bash
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch

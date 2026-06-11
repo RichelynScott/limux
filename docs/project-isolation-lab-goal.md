@@ -51,27 +51,33 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-10 21:46 EDT, SCS commit
-`937158e docs(lab): tighten hyper-v packet review gates` is pushed. The
+As of 2026-06-10 22:10 EDT, SCS commit
+`8ff345f docs(lab): add nat and iso intake blockers` is pushed. The
 SCS-owned Hyper-V host mutation packet remains a draft with decision `WAIT`. It
 is not approved to run.
 
 Recorded hashes:
 
 - `ACTIVE_GOAL.md`:
-  `4504bed0ce5cac9bca42974f3d4655296251ddc949515af489cce6bcba732da2`
+  `5cbdea1958ed5e442911da67411d9265c7816f2550f951e6ff070401a32d0a25`
 - `HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md`:
-  `3fc1404e8e5a0bcfa31fabc549a83bbb3b96bdd0f4191d561347d56c14e7c220`
+  `2c5a602ced61196807b58d72f82affec286d9fbe7bb3e9b8bc21b23a1f6c8597`
+- `HYPERV_DOCKER_WSL2_NAT_RECONCILIATION_PLAN_2026-06-10.md`:
+  `a4c8b6bf5a4ccc05874aa595820b1bc12d6db26ebaa67b949a77983292b96f0c`
+- `UBUNTU_2404_ISO_ARTIFACT_INTAKE_PLAN_2026-06-10.md`:
+  `de4ec9be126a2c5438aff6098ca06eb3d31de5fb18b996b6fd59eae69686c5dc`
 - `HYPERV_PACKET_REVIEW_RECORD_2026-06-10.md`:
-  `31c216c85af3ce3580b3e7a616e82ef505ab78e4c271c39ca20819f3fa005d0e`
+  `d7ba3c50cedd30c61b3c891f467cc79b3bf32650aebd5f30a5159a1fa8c426f0`
 - `PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`:
-  `11f5bf9afe48b78e4970077f780345d8fd961444a39ac3af1c735e63f4b1cf04`
+  `da7d795f12ccd59999bf3c5a8f9e969620d01f08123b9cd308fa8ed592f99b51`
 
 Halo's latest Limux-side read found the packet materially safer but still
 `WAIT`: it now has staged PowerShell blocks with a hard Hyper-V reboot
 boundary, fail-closed preflight checks, unique evidence root, validated WSL/hcom
 placeholders, deterministic offline first boot, later deliberate network
-attachment, and a fail-closed `GUEST_INTERFACE` netplan substitution.
+attachment, a fail-closed `GUEST_INTERFACE` netplan substitution, NAT/ISO
+blocker plans, split offline-baseline vs optional switch/WinNAT stages, and
+stage-scoped acceptance checks.
 
 SCS has a review record at
 `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_PACKET_REVIEW_RECORD_2026-06-10.md`
@@ -118,8 +124,16 @@ Read-only Ubuntu ISO artifact-intake discovery from this session on 2026-06-10
 
 Before any execution can be considered, the packet still needs formal
 `$mutation-script-wave`, Docker/HNS/WSL2 NAT coexistence resolution before any
-WinNAT creation, a separate ISO artifact-intake/download packet, freeze +
-SHA256, and explicit operator approval for the execution window.
+WinNAT creation, a frozen reviewed ISO download/use packet before downloading
+or attaching the ISO, exact execution-packet freeze with SHA256, and explicit
+operator approval for the execution window.
+
+## Verified SCS Closeout
+
+Halo verified SCS `main` aligned with `origin/main` at `8ff345f`, with only
+unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` remaining.
+Halo verified the recorded hashes above locally. No host/VM/WSL/Docker/HNS/
+WinNAT/network/package/ISO/SCRIM/runtime mutation was run from Halo.
 
 Verify SCS state before relying on the recorded pointers:
 
