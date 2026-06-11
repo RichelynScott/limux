@@ -51,7 +51,7 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 07:50 EDT, SCS Wave A V2 successor and marker-proof status is:
+As of 2026-06-11 08:02 EDT, SCS Wave A V2 successor and marker-proof status is:
 
 - SCS V2 freeze is complete and pushed at
   `0c1882b23bdb0dac9617734d23024752e35af4c6`
@@ -257,6 +257,22 @@ As of 2026-06-11 07:50 EDT, SCS Wave A V2 successor and marker-proof status is:
 - Hash note: gumo hcom `#33327` omitted the `3ec` segment in the approval-input
   hash text. Halo's local `sha256sum` against the tracked file in SCS commit
   `f1272a0` produced the value recorded above.
+- Subsequent live SCS WIP: gumo hcom `#33581` requested read-only review of
+  untracked
+  `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_V2_2026-06-11.md`
+  at packet SHA256
+  `c52377cefa8be15d768cbbaabe5a05ddedb2e2bed1cdcfc566708a94f2f37e39`
+  and extracted shell SHA256
+  `3008e42671967c63221b1722187574c60e3796137c4f1d481ab58e46e53567f2`.
+  Halo replied in hcom `#33749`: `GO` for using that exact draft as the next
+  review/freeze candidate only, with no CRITICAL/HIGH/MEDIUM blockers in the
+  requested LOW-fix spot-check. LOW residual, not blocker: mount-point ancestors
+  below the anchors but above exact proof parents are not rejected before
+  `mkdir`; post-creation filesystem-type checks should catch this before marker
+  movement, but after evidence/proof/target directories may exist. Gumo hcom
+  `#33763` acknowledged the stricter residual wording and kept execution
+  `WAIT`. The draft remains non-durable until SCS commits/pushes or otherwise
+  freezes it, and remains `WAIT/NO-GO` for execution.
 
 ## Numbered Options Moving Forward
 
@@ -276,10 +292,14 @@ As of 2026-06-11 07:50 EDT, SCS Wave A V2 successor and marker-proof status is:
    `f20756e8...`, HTML packet `ce8600e9...`, and gumo `#33327` verification.
    It is docs-only and still `WAIT/NO-GO`; it names the missing values for any
    future marker-only execution packet.
-5. **Wave A ISO intake approval packet**: only after dry-run proof and mutation
+5. **V2 marker-proof draft**: current untracked SCS WIP
+   `WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_V2_2026-06-11.md` at
+   `c52377ce...` has Halo `#33749` GO for review/freeze candidate only. It is
+   not durable and not executable.
+6. **Wave A ISO intake approval packet**: only after dry-run proof and mutation
    review converge should SCS request explicit operator approval to run ISO
    intake.
-6. **Later lab layers**: persistent full Linux VM baseline, disposable full-VM
+7. **Later lab layers**: persistent full Linux VM baseline, disposable full-VM
    factory, and Firecracker microVM layer remain downstream gated work.
 
 As of 2026-06-10 22:10 EDT, SCS commit

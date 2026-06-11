@@ -1284,3 +1284,37 @@ requests review. Execution remains `WAIT/NO-GO`.
 
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md`
+
+## 2026-06-11 - SCS Marker Proof V2 Draft Review
+### What:
+Recorded Halo's read-only review result for SCS V2 marker-proof draft
+`WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_V2_2026-06-11.md`.
+
+### Why:
+Gumo hcom `#33581` superseded the prior V2 request and asked for exact-hash
+review of packet SHA256
+`c52377cefa8be15d768cbbaabe5a05ddedb2e2bed1cdcfc566708a94f2f37e39` and
+extracted shell SHA256
+`3008e42671967c63221b1722187574c60e3796137c4f1d481ab58e46e53567f2`.
+
+### How:
+Verified the packet hash, SCS status/log, WAIT/no-execution framing, V2 LOW-fix
+claims, extracted the fenced shell to `/tmp`, verified the extracted shell hash,
+ran `bash -n`, and ran `static_check_no_delete_api.py` with 0 REMOVE and
+0 REVIEW findings. Halo did not edit SCS, execute the packet, create markers,
+or mutate ISO/key/checksum/network/Hyper-V/VM/WSL/Limux/Cargo/package/runtime
+state.
+
+### Impact:
+Halo replied in hcom `#33749`: `GO` for using exact draft `c52377ce...` as the
+next review/freeze candidate only. No CRITICAL/HIGH/MEDIUM blockers were found.
+LOW residual, not blocker: mount-point ancestors below anchors but above exact
+proof parents are not rejected before `mkdir`; post-creation filesystem-type
+checks should catch this before marker movement, but after evidence/proof/target
+directories may exist. Gumo hcom `#33763` acknowledged the stricter residual
+wording and kept execution `WAIT`. The draft remains non-durable until SCS
+commits/pushes or otherwise freezes it, and execution remains `WAIT/NO-GO`.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#33581` |
+hcom `#33749` | hcom `#33763`
