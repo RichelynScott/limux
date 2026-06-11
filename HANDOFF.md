@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 11:03 EDT
+Last updated: 2026-06-11 11:05 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -40,7 +40,7 @@ redirected.
 
 ## Mission Brief - Project Isolation Lab Restart
 
-Author/runtime/date: worker-limux-halo / Codex GPT-5 / 2026-06-11 11:03 EDT.
+Author/runtime/date: worker-limux-halo / Codex GPT-5 / 2026-06-11 11:05 EDT.
 This is the single Limux-owned mission brief for the active cross-project
 isolation-lab goal; it is not a PRD, execution packet, or approval to mutate any
 host, VM, WSL, package-runtime, credential, SCRIM, or global-config surface.
@@ -59,10 +59,17 @@ Current checkpoint pointers:
 - Limux restart checkpoint: `aad9b7805a9a878ace59039a9a04ed3638eeead1`
   (`docs(lab): restore local node verification note`), with `main` matching
   `origin/main` before this mission-brief patch.
-- SCS canonical checkpoint: `0d4f43c95914f257bceb661b297d0143cb9b48bf`
-  (`docs(lab): define disposable wsl ergonomics gate draft`), with SCS
-  `main` matching `origin/main` and only unrelated untracked
+- SCS mission-brief checkpoint: `2dae5596a66bf439add56e047fe097dc57b31752`
+  (`docs(lab): add mission-first lab brief`), with SCS `main` matching
+  `origin/main` and only unrelated untracked
   `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
+- SCS canonical lab-gate checkpoint within that brief:
+  `0d4f43c95914f257bceb661b297d0143cb9b48bf`
+  (`docs(lab): define disposable wsl ergonomics gate draft`).
+- SCS mission brief:
+  `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/PROJECT_ISOLATION_LAB_MISSION_BRIEF_2026-06-11.md`
+  SHA256:
+  `874f73d167b9360b897d95f3c16ddc882076d49e17682bf3488816e3394c60b6`.
 - SCS PRD-004 hashes verified locally:
   - `DISPOSABLE_WSL_ERGONOMICS_GATE_DRAFT_2026-06-11.md`:
     `d1d60777021d62600a9c59d0e624a042538f02f6e6639bdb30201b53a4d222f4`
@@ -106,6 +113,7 @@ Ungated checks completed for this brief:
 - `git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY rev-parse HEAD`
 - `git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY diff --check`
 - `sha256sum` over the SCS PRD-004 files listed above.
+- `sha256sum` over the SCS mission brief after SCS advanced to `2dae559...`.
 - Targeted `rg` checks confirmed PRD-004 says `Decision: WAIT`, disposable WSL
   is not hostile-code containment, and package/runtime/artifact execution
   remains unauthorized without a future exact approval packet.
@@ -805,14 +813,18 @@ is **Option 1: docs/handoff first**. Keep this repo's restart surfaces aligned
 with the SCS-owned lab state, keep all future choices numbered, and do not add
 Limux product features by default.
 
-As of the 2026-06-11 11:03 EDT read-only check, SCS `main` and `origin/main`
-both point to durable commit `0d4f43c95914f257bceb661b297d0143cb9b48bf`
-(`docs(lab): define disposable wsl ergonomics gate draft`). Treat PRD-004
-disposable WSL ergonomics as a docs-only compatibility checkpoint. It does not
-approve WSL distro creation/import/export/unregister, VM creation/clone/
-checkpoint/revert, package/runtime work, evidence transfer, artifact movement,
-host/WSL/Hyper-V mutation, Limux/Cargo install, SCRIM, global-config work, or
-hostile-code containment claims.
+As of the 2026-06-11 11:05 EDT read-only check, SCS `main` and `origin/main`
+both point to durable commit `2dae5596a66bf439add56e047fe097dc57b31752`
+(`docs(lab): add mission-first lab brief`). That SCS mission brief parks the
+lane at Gate B / operator TTY approval for host, Hyper-V, WSL, VM, Firecracker/
+KVM, ISO/artifact, package-runtime, SCRIM, credential, global-config, or
+network-download mutation. The latest lab-gate checkpoint inside it remains
+PRD-004 disposable WSL ergonomics at commit
+`0d4f43c95914f257bceb661b297d0143cb9b48bf`, a docs-only compatibility
+checkpoint. It does not approve WSL distro creation/import/export/unregister,
+VM creation/clone/checkpoint/revert, package/runtime work, evidence transfer,
+artifact movement, host/WSL/Hyper-V mutation, Limux/Cargo install, SCRIM,
+global-config work, or hostile-code containment claims.
 
 Numbered next actions for this Limux session:
 
