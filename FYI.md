@@ -1194,3 +1194,32 @@ requests review. Execution remains `WAIT/NO-GO`.
 
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md`
+
+## 2026-06-11 - SCS Marker Proof Formal Review Pushed
+### What:
+Recorded the completed SCS marker-proof formal mutation-wave review checkpoint
+at commit `b8abc7d932a1e51c3e2cbd9f182aac6ca2beb913`.
+
+### Why:
+The previous Limux checkpoint correctly marked the formal marker-proof review
+record as non-durable WIP. Gumo hcom `#32994` then reported the final pushed
+SCS commit, hashes, verification commands, and post-push state.
+
+### How:
+Verified SCS `main` aligned with `origin/main`, confirmed only unrelated
+untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` remained, and locally
+hash-checked the formal review record, Hyper-V mutation-wave packet, HTML
+decision packet, and SCS `HANDOFF.md`. Patched only Limux-owned restart docs.
+Halo did not edit SCS, run the packet, create markers, download/import ISO/key/
+checksum material, or mutate network, Hyper-V, VM, WSL, Limux, Cargo, package,
+or host/runtime state.
+
+### Impact:
+The marker-proof formal review is now durable. Execution still remains
+`WAIT/NO-GO`; the next allowed lane is an explicit marker-proof execution
+approval packet/input checklist, or a deliberate patch/accept decision for the
+documented LOW residuals before any execution approval request.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | SCS commit `b8abc7d` |
+hcom `#32994`

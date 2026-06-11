@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 07:34 EDT
+Last updated: 2026-06-11 07:38 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,7 +33,7 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
-Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 07:34
+Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 07:38
 EDT:
 
 - SCS V2 freeze is complete and pushed at
@@ -202,20 +202,32 @@ EDT:
   0 REMOVE/0 REVIEW; `py_compile`; and
   `unittest tests.security_posture.test_supply_chain_watch -v` with 18 tests
   OK.
-- Subsequent live SCS WIP: after the `bed7d37` freeze, Halo's 07:34 EDT
-  read-only check saw active SCS root and `project_isolation_lab/` docs
-  modifications plus a new untracked
+- SCS marker-proof formal mutation-wave review is now durable and pushed at
+  `b8abc7d932a1e51c3e2cbd9f182aac6ca2beb913`
+  (`docs(lab): record marker proof formal review`); `origin/main` matches local
+  HEAD. SCS status is clean except unrelated untracked
+  `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
+- Formal marker-proof review artifacts from gumo hcom `#32994`, locally
+  verified by Halo for tracked files:
+  - Formal review record:
+    `9b1b393904cc3b976584e18703f1d7e6d9002e064674f980e600b94e83b27250`
+  - Hyper-V mutation-wave packet:
+    `95f287fa4499162c31f25c44c54bd21df0dbed680385f465c6aa06a305e0904b`
+  - HTML decision packet:
+    `562f011e8f732b791bdb41019022ea9a07f8bb81ea4c0f00f64ae330ce7a8e5c`
+  - SCS `HANDOFF.md`:
+    `e76467628c7011cdbee0230e53c93163b554987912dda6a4e793658a79117e63`
+- Formal review record:
   `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_MUTATION_WAVE_REVIEW_2026-06-11.md`
-  at SHA256 `9b1b393904cc3b976584e18703f1d7e6d9002e064674f980e600b94e83b27250`.
-  Re-run `git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch`
-  before relying on the exact SCS dirty-file set.
-  The file records `Decision: WAIT`, no execution approval, and no marker/ISO/
+  records `Decision: WAIT`, no execution approval, and no marker/ISO/
   key/checksum/network/Hyper-V/VM/WSL/Limux/Cargo/package/lab-to-host mutation
-  authorization. Gumo has not yet sent a final commit/hashes/verification
-  closeout for that WIP in hcom; do not treat it as durable until SCS commits
-  or requests review.
-- Next safe SCS action: route the exact `bed7d37` marker-proof packet into the
-  formal `$mutation-script-wave` path, or explicitly patch/accept its LOW
+  authorization.
+- Gumo hcom `#32994` reports SCS verification passed: `git diff --check`;
+  staged diff check; HTML parse; extracted JS `node --check`; marker extracted
+  shell hash / `bash -n` / static no-delete scan; `py_compile`; and 18 watcher
+  tests.
+- Next safe SCS action: prepare an explicit marker-proof execution approval
+  packet/input checklist, or explicitly patch/accept the documented LOW
   residuals before any execution approval request. This does not authorize
   execution.
 - Decision remains `WAIT` for execution: no ISO download/use approval, no
@@ -235,10 +247,10 @@ Numbered options moving forward:
    verification. Halo's role was read-only verification and Limux pointer
    updates.
 3. **Dry-run proof packet**: exact draft `0284cf52...` is frozen in SCS commit
-   `bed7d37` and is `GO` as the next formal review/freeze candidate only. It is
+   `bed7d37`, and formal marker-proof review is pushed at `b8abc7d`. It is
    still `WAIT/NO-GO` for execution, marker creation, ISO/key import/download,
-   package execution, and host mutation until formally mutation-reviewed and
-   explicitly approved.
+   package execution, and host mutation until the operator approves a concrete
+   execution packet/input checklist.
 4. **Wave A ISO intake approval packet**: only after the dry-run proof and
    mutation review converge should SCS ask the operator for explicit approval to
    run ISO intake. No approval is implied by any current docs.
