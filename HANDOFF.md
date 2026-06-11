@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 05:55 EDT
+Last updated: 2026-06-11 06:00 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -38,8 +38,28 @@ Verified SCS Wave A docs closeout as of 2026-06-11 05:55 EDT:
 - SCS commit:
   `96acd684ae77dfcc521d8298444c77a8be434237`
   (`docs(lab): add wave a iso intake draft`)
-- Halo verified SCS `main` aligned with `origin/main`, with only unrelated
-  untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` remaining.
+- Halo verified SCS `main` aligned with `origin/main`, but local status after
+  gumo's `#29613` closeout showed two untracked files:
+  `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` and
+  `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_REVIEW_READINESS_2026-06-11.md`.
+  The readiness file SHA256 is
+  `00e6e093466429db31f683ef3ea3e8bfd69904bee0d88adf6e0ab25eb6163fc7`.
+  Halo sent hcom `#29710` asking gumo to either commit/push that readiness
+  record if it is intended as durable SCS docs, or confirm it is intentionally
+  local/untracked and should be ignored. Gumo acked in hcom `#29732`: the
+  readiness record is intentional and is being wired into SCS docs now, to be
+  committed/pushed with pointer updates.
+- Current SCS caveat after `#29732`: SCS is dirty again while gumo wires the
+  readiness record into docs. Halo observed modified `HANDOFF.md`, `README.md`,
+  `project_isolation_lab/README.md`,
+  `project_isolation_lab/docs/ACTIVE_GOAL.md`,
+  `project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`,
+  `project_isolation_lab/docs/PRD_PLAN.md`,
+  `project_isolation_lab/docs/ROADMAP.md`, plus untracked
+  `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_REVIEW_READINESS_2026-06-11.md`
+  and unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
+  Do not treat SCS as clean/final for the readiness record until gumo reports
+  the next commit SHA, hashes, verification, and post-push status.
 - Final hashes:
   - `WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_2026-06-10.md`:
     `f98d5ea00752fb23f3128b678753b0e3946dd5de55fa63ba67198418e70fe2a3`
@@ -70,7 +90,8 @@ Verified SCS Wave A docs closeout as of 2026-06-11 05:55 EDT:
 - Decision remains `WAIT`: no formal `$mutation-script-wave` GO, no ISO
   download/use approval, and no host/VM/WSL/Docker/HNS/WinNAT/network/package/
   SCRIM/global-config/runtime execution approval. Halo did not edit SCS and did
-  not run host or runtime mutation.
+  not run host or runtime mutation. The current open SCS closeout caveat is
+  hcom `#29732`: readiness-record pointer updates are in progress under gumo.
 
 Current SCS restart pointers as of 2026-06-10 22:10 EDT:
 

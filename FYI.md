@@ -715,15 +715,19 @@ pushed SCS checkpoint. The user can restart without losing the Wave A status.
 
 ### How:
 Verified SCS `main` aligned with `origin/main`, checked the final SCS hashes,
-recorded gumo hcom `#29613`, and updated Limux-owned restart pointers. Halo did
-not edit SCS and did not run any host/VM/WSL/Docker/HNS/WinNAT/network/package/
-ISO/SCRIM/global-config/runtime mutation.
+recorded gumo hcom `#29613`, and updated Limux-owned restart pointers. Local
+SCS status also showed an untracked readiness record not mentioned in `#29613`;
+Halo sent hcom `#29710` asking gumo to commit it or confirm it is intentionally
+local/untracked. Gumo acked in `#29732` that the readiness record is
+intentional and is being wired into SCS docs for commit/push. Halo did not edit
+SCS and did not run any host/VM/WSL/Docker/HNS/WinNAT/network/package/ISO/
+SCRIM/global-config/runtime mutation.
 
 ### Impact:
 Wave A docs are committed, but the execution decision remains `WAIT`: no formal
 `$mutation-script-wave` GO, no ISO download/use approval, and no execution
-approval. The next useful path is formal Wave A mutation-script-wave review and
-operator approval, or broader lab planning, not running the packet.
+approval. The only current SCS closeout caveat from Halo is the untracked
+readiness-record pointer update pending gumo's next commit after `#29732`.
 
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md`
