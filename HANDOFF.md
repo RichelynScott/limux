@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-10 22:33 EDT
+Last updated: 2026-06-10 22:41 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -169,17 +169,77 @@ Verified SCS PRD/packet closeout as of 2026-06-10 22:33 EDT:
 - No host/VM/WSL/Docker/HNS/WinNAT/network/package/ISO/SCRIM/runtime mutation
   was run by Halo or reported by gumo for this docs-only commit.
 
+Live SCS mutation-wave packet draft as of 2026-06-10 22:41 EDT:
+
+- SCS is dirty again after `e8ef33a`; do not treat the `e8ef33a` hash set as
+  the current frozen packet set until gumo commits/pushes or explicitly
+  supersedes the draft.
+- Observed SCS status:
+  - modified: `FYI.md`
+  - modified: `docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`
+  - modified: `project_isolation_lab/FYI.md`
+  - modified: `project_isolation_lab/README.md`
+  - modified: `project_isolation_lab/docs/ACTIVE_GOAL.md`
+  - modified: `project_isolation_lab/docs/PRD_PLAN.md`
+  - modified: `project_isolation_lab/docs/ROADMAP.md`
+  - untracked: `project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`
+  - unrelated untracked: `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`
+- New draft packet hash from Halo's read-only check:
+  - `HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`:
+    `5397bd6cea8bf18d15e265920692341f8430d41e9ad2f298a370847ed517e2ab`
+- Other checked draft hashes still matched the `e8ef33a` artifact set:
+  - `HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md`:
+    `bd3b053c99c555684fa198c229842f179ecd577c5985df534895811b767ca2bb`
+  - `HYPERV_DOCKER_WSL2_NAT_RECONCILIATION_PLAN_2026-06-10.md`:
+    `a4c8b6bf5a4ccc05874aa595820b1bc12d6db26ebaa67b949a77983292b96f0c`
+  - `UBUNTU_2404_ISO_ARTIFACT_INTAKE_PLAN_2026-06-10.md`:
+    `d472b0b5b555d6aa8026690b06bbb7b016d04eb6751cadd30602f3c4b55cbc32`
+  - `HYPERV_PACKET_REVIEW_RECORD_2026-06-10.md`:
+    `9cdd0923d5f2618ec9544a617f68b564bf3adecfafd75d6ff4969cf623a2d0f2`
+  - `PRD_ACCEPTANCE_REVIEW_2026-06-10.md`:
+    `c1be23fb69d96e9567865742a2a53ee1cd976e70a0ddbe3e8df65c3768814581`
+  - `prd-001-hyperv-linux-vm-baseline.md`:
+    `7580a396bf2f76b507f74893dce3c40d885a3524c4836a376a640326a61ece86`
+- Read-only Halo review: the new mutation-wave packet is directionally aligned
+  because it keeps Decision `WAIT`, states it is not a completed wave or
+  execution approval, splits future review into Wave A ISO intake, Wave B
+  offline Hyper-V baseline, and Wave C optional network stage, and keeps Wave C
+  deferred behind Docker/HNS/WSL2 NAT reconciliation.
+- Open docs-drift findings sent to gumo in corrected hcom `#28584`:
+  1. HTML copy-back still says the approved next step is generic Hyper-V packet
+     review/freeze. It should say Wave A ISO intake packet review/freeze, or
+     explain why generic Hyper-V review remains the approved next step.
+  2. Mutation-wave packet wording says the recommended first executable scope is
+     Wave B offline baseline, while the recommended next action says Wave A ISO
+     intake first. Clarify this as first VM mutation scope vs first formal
+     review/artifact-intake scope.
+- Gumo acked in hcom `#28606` and is patching. He also reported Claude-side
+  findings: Wave B is too broad across the B0-B3/reboot boundary, convergence
+  criteria are underspecified, gate docs are missing from the hash set, and Wave
+  A wording is too executable-looking while the ISO packet is still a stub.
+- Ignore/cross-check hcom `#28569`: shell backtick substitution stripped inline
+  phrases and corrupted the NAT hash. Corrected message is hcom `#28584`.
+- `git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY diff --check` was clean from
+  Halo's read-only check.
+- Decision remains `WAIT`; formal `$mutation-script-wave` has not run or
+  converged, ISO download/use is not approved, host/VM/network/package/runtime
+  mutation is not approved, and Halo ran no such mutation.
+
 ## Immediate Next Action
 
 Start from the Project Isolation Lab goal above. The next practical action for
 this Limux session is to keep Limux stable as a tool and coordinate with gumo on
 the SCS-owned lab docs, not to add more Limux features by default.
 
-If resuming after a restart, first verify that SCS is still aligned at
-`e8ef33a` with the final hashes above. Then continue toward formal
-`$mutation-script-wave` review of the exact frozen SCS packet set and separate
-ISO artifact-intake/download packet work. Do not execute host/VM/network/
-artifact mutation from Limux.
+If resuming after a restart, first verify whether gumo has committed the current
+SCS mutation-wave packet draft. If SCS remains dirty, continue the read-only
+review/coordination from corrected hcom `#28584` and do not rely on `e8ef33a`
+as the current frozen packet set. If gumo has pushed a newer commit, verify the
+new commit, hashes, and post-push status locally before updating Limux pointers.
+Then continue toward Wave A ISO intake packet review/freeze first; Wave B
+offline Hyper-V baseline cannot attach media without an accepted ISO evidence
+record, and Wave C network stage remains deferred behind Docker/HNS/WSL2 NAT
+reconciliation. Do not execute host/VM/network/artifact mutation from Limux.
 
 ```bash
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
@@ -187,6 +247,7 @@ git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY log -5 --oneline --decorate
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_PACKET_REVIEW_RECORD_2026-06-10.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/PRD_ACCEPTANCE_REVIEW_2026-06-10.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html
 hcom --version --name halo
 hcom list --name halo

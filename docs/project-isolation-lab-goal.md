@@ -205,6 +205,49 @@ packages, grant secrets, or mutate the trusted host. Next work is formal
 `$mutation-script-wave` on the exact SCS packet set and a separate frozen ISO
 artifact-intake/download packet.
 
+## Live Mutation-Wave Draft Caveat
+
+As of 2026-06-10 22:41 EDT, SCS is dirty again after `e8ef33a`. Gumo appears
+to be drafting the next review input packet:
+`project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`.
+Do not treat `e8ef33a` as the current frozen packet set until gumo commits and
+pushes or explicitly supersedes this draft.
+
+Observed SCS dirty paths:
+
+- `FYI.md`
+- `docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`
+- `project_isolation_lab/FYI.md`
+- `project_isolation_lab/README.md`
+- `project_isolation_lab/docs/ACTIVE_GOAL.md`
+- `project_isolation_lab/docs/PRD_PLAN.md`
+- `project_isolation_lab/docs/ROADMAP.md`
+- untracked `project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`
+- unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`
+
+Halo's read-only review found the new packet directionally aligned: it keeps
+Decision `WAIT`, says it is not a completed wave or execution approval, splits
+future review into Wave A ISO intake, Wave B offline Hyper-V baseline, and Wave
+C optional network stage, and defers Wave C behind Docker/HNS/WSL2 NAT
+reconciliation. Open docs-drift findings were sent to gumo in corrected hcom
+`#28584`:
+
+1. HTML copy-back should name Wave A ISO intake packet review/freeze as the next
+   formal scope, or explain why generic Hyper-V packet review remains the next
+   step.
+2. Mutation-wave packet wording should clarify whether Wave B is the first VM
+   mutation scope while Wave A is the first formal review/artifact-intake scope.
+
+Gumo acked in hcom `#28606` and is patching. He also reported Claude-side
+findings: Wave B is too broad across the B0-B3/reboot boundary, convergence
+criteria are underspecified, gate docs are missing from the hash set, and Wave A
+wording is too executable-looking while the ISO packet is still a stub.
+
+Ignore hcom `#28569` except as an error trail: shell backtick substitution
+stripped inline phrases and corrupted the NAT hash. Corrected review is hcom
+`#28584`. Decision remains `WAIT`; formal `$mutation-script-wave` has not run
+or converged, and no host/VM/network/package/runtime mutation is approved.
+
 Verify SCS state before relying on the recorded pointers:
 
 ```bash
@@ -213,6 +256,7 @@ git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY log -5 --oneline --decorate
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_PACKET_REVIEW_RECORD_2026-06-10.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/PRD_ACCEPTANCE_REVIEW_2026-06-10.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md
 hcom --version --name halo
 hcom list --name halo
 wsl.exe --list --verbose
