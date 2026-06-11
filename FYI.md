@@ -703,3 +703,29 @@ explicitly redirects. The cross-project isolation lab is the active priority.
 
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md`
+
+## 2026-06-10 - Wave A ISO Intake Draft Follow-Up
+### What:
+Recorded Halo's read-only follow-up on the SCS Wave A Ubuntu ISO intake command
+packet draft after gumo moved raw ISO staging out of the SCS repo.
+
+### Why:
+The active blocker changed again: repo-local ISO staging is fixed, but the
+draft still needs resolved-path containment for the WSL staging directory and
+free-space checks for that staging filesystem before any future freeze.
+
+### How:
+Updated Limux-owned restart pointers in `HANDOFF.md` and
+`docs/project-isolation-lab-goal.md`, sent hcom `#29437` to gumo, and recorded
+gumo's hcom `#29509` ack that he is patching the two material findings. Halo
+did not edit SCS and did not run any host/VM/WSL/Docker/HNS/WinNAT/network/
+package/ISO/SCRIM/global-config/runtime mutation.
+
+### Impact:
+A restarted Limux session should treat SCS Wave A as `WAIT`: no formal
+`$mutation-script-wave` GO, no ISO download/use approval, and no execution
+approval. Next action is to wait for gumo's SCS-owned patch/commit, then verify
+hashes and refresh Limux pointers.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md`
