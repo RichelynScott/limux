@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-10 23:20 EDT
+Last updated: 2026-06-11 05:55 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,117 +33,44 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
-Current SCS active dirty state as of 2026-06-10 23:20 EDT:
+Verified SCS Wave A docs closeout as of 2026-06-11 05:55 EDT:
 
-- SCS was clean/aligned at commit
-  `7427285b267bba3d69483c3354edf504299e2956` after the mutation-wave packet
-  closeout below, but gumo has since started the next Wave A ISO intake command
-  packet draft. Do not treat the `7427285` hash set as current for Wave A until
-  gumo commits/pushes or explicitly supersedes the draft.
-- Observed dirty SCS paths:
-  - modified: `FYI.md`
-  - modified: `HANDOFF.md`
-  - modified: `README.md`
-  - modified: `docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`
-  - modified: `project_isolation_lab/FYI.md`
-  - modified: `project_isolation_lab/README.md`
-  - modified: `project_isolation_lab/docs/ACTIVE_GOAL.md`
-  - modified: `project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`
-  - modified: `project_isolation_lab/docs/PRD_PLAN.md`
-  - modified: `project_isolation_lab/docs/ROADMAP.md`
-  - modified: `project_isolation_lab/docs/UBUNTU_2404_ISO_ARTIFACT_INTAKE_PLAN_2026-06-10.md`
-  - untracked:
-    `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_2026-06-10.md`
-  - unrelated untracked: `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`
-- Current draft hashes from Halo's read-only review:
+- SCS commit:
+  `96acd684ae77dfcc521d8298444c77a8be434237`
+  (`docs(lab): add wave a iso intake draft`)
+- Halo verified SCS `main` aligned with `origin/main`, with only unrelated
+  untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` remaining.
+- Final hashes:
   - `WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_2026-06-10.md`:
-    `adf63eb53406a18ebc4c95e9b726a83cf0841021475fb0676c83bc17f9a52024`
+    `f98d5ea00752fb23f3128b678753b0e3946dd5de55fa63ba67198418e70fe2a3`
+  - `HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`:
+    `996e60895f039b65ae248e75fc5b0dad4bb27cceba6da8e20147b7e6d30d9e12`
   - `UBUNTU_2404_ISO_ARTIFACT_INTAKE_PLAN_2026-06-10.md`:
     `9b518851690752ab399800613c6bafc00e94d74e5e3659ed09d7055315e54265`
-  - `HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`:
-    `4f8ade54f8f2f20e58bda382d1bb60cde340842aed04448772aad8c86efe0aab`
   - `ACTIVE_GOAL.md`:
     `9e415b6a0a441c45258f52c21e89628bccb28ab8e75530db5c7c716c8866f22d`
-  - `PRD_PLAN.md`:
-    `81c37d69456db7ec26eea383c377b17d4ac6c65d8025dc564fb0160132cdb038`
-  - `ROADMAP.md`:
-    `fd97bb23a56bde0ac466cfa896d711860ca023388bd398bbe9d41588b10f4ff1`
   - `PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`:
     `0e8ac9af7dc56493428cdccd2756aedda55279054487ae11b96bc7998147164f`
   - SCS `HANDOFF.md`:
-    `0a476769ec8fce353bedc1726b5c10c21b31bd5e9d7b241bc2d444ef737b0245`
-- Halo sent file-backed hcom review `#29055` to gumo. Decision remains
-  `WAIT`: not formal `$mutation-script-wave` GO, not ISO download/use
-  approval, and not host/VM/network/package/runtime approval.
-- Gumo acked in hcom `#29106`: he is patching the Wave A draft rather than
-  accepting residual risk, including approval/window/packet-hash gating,
-  HTTPS redirect/status metadata, `VALIDSIG` fingerprint binding,
-  disk-space/max-size guard, stricter target path preflight, and evidence
-  summary improvements. The Wave A draft hash is now changed, and those items
-  are materially improved.
-- Halo sent follow-up hcom review `#29255`. Decision remains `WAIT`: not formal
-  `$mutation-script-wave` GO, not ISO download/use approval, and not
-  host/VM/network/package/runtime approval.
-- What looks fixed from hcom `#29055`: approval/window/operator/packet-hash
-  values now fail closed before evidence-directory creation, target-directory
-  creation, network calls, or artifact writes; `curl` now uses
-  `--proto-redir '=https'` and records headers/effective URL/status/byte count/
-  timing metadata; GPG verification parses `VALIDSIG`; target free-space and
-  `curl --max-filesize` guards exist; target path preflight is stricter; the
-  evidence summary and operator-bound no-use attestation are improved.
-- Remaining findings sent to gumo in `#29255` before commit/freeze:
-  1. HIGH: patched draft now downloads the 6.2G ISO partial into the SCS repo
-     tree at `project_isolation_lab/evidence/.../download/` before moving it to
-     `/mnt/c/VMs/SCS-Lab/ISOs/`. That conflicts with the packet's Non-Goal:
-     no movement of the ISO into a Git repo or trusted project source tree.
-     Recommended fix: keep repo-local evidence to metadata/checksums/logs only
-     and place ISO partial bytes under a reviewed non-repo intake/quarantine
-     path such as the approved target parent or sibling staging directory.
-  2. MED: effective URL and HTTP metadata are captured but not enforced. Add
-     fail-closed checks for expected `https://releases.ubuntu.com/24.04/...`
-     effective URLs or explicitly reviewed allowed redirects, plus `http_code`
-     checks.
-  3. LOW/MED: required-tool list omits `date`, `uname`, and `cat`; integer
-     validation accepts `0`. Harden those before freeze.
-- Gumo acked in hcom `#29279`: he agrees with the repo-local raw ISO conflict
-  and is patching raw ISO partial staging to a non-repo WSL state path, with
-  only metadata/hashes under `project_isolation_lab/evidence/`. He also plans
-  to enforce effective URLs/`http_code`, add `date`/`uname`/`cat` tooling, and
-  add nonzero integer validation before final verification/commit.
-- Halo sent follow-up hcom review `#29437` after gumo's `#29279` patch.
-  Decision remains `WAIT`: not formal `$mutation-script-wave` GO, not ISO
-  download/use approval, and not host/VM/network/package/runtime approval.
-- What looks fixed from hcom `#29255`: raw ISO partial now stages outside the
-  repo under `/home/riche/.local/state/scs-lab-intake`; effective URL plus
-  `http_code` are enforced; `date`, `uname`, and `cat` are required; numeric
-  knobs reject zero.
-- Remaining findings sent to gumo in `#29437` before commit/freeze:
-  1. HIGH/MED: WSL staging writes raw ISO bytes after only a string-prefix
-     check on `WSL_INTAKE_ROOT`. The script records `realpath -e` for the
-     intake root but does not fail closed that the resolved path is exactly
-     under `/home/riche/.local/state/scs-lab-intake` and not under the SCS repo
-     or another trusted tree. Add resolved-path containment checks for
-     `WSL_INTAKE_PARENT`/`WSL_INTAKE_ROOT` before network writes.
-  2. MED: free-space guard still checks only the final `/mnt/c` target, but the
-     6.2G ISO is downloaded first to `WSL_INTAKE_ROOT`. Add `df -PB1` and a
-     staging threshold before the ISO `curl`, plus before/after staging
-     evidence.
-  3. LOW optional: `assert_curl_writeout` uses `awk -F=` and `$2`, which is OK
-     for current no-query URLs but fragile for any future URL containing `=`.
-- Gumo acked in hcom `#29509`: Claude re-review also found the
-  staging-filesystem free-space gap, and gumo is patching both material
-  findings now: resolved-path containment for `WSL_INTAKE_PARENT`/root with
-  repo-escape rejection, plus `MIN_STAGING_FREE_BYTES` and WSL staging
-  before/after `df` evidence. The `awk` parser issue remains optional unless
-  touched cheaply.
-- Verification run by Halo for the patched dirty draft: targeted full read of
-  the Wave A draft, targeted diff read of changed SCS pointer docs, targeted
-  `rg` for approval/hash, redirect metadata, `VALIDSIG`, disk/max-size, path
-  preflight, WSL intake path, and attestation changes; targeted `sed` read of
-  the command block; `git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY diff
-  --check`; `git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short
-  --branch`; and SHA256 checks listed above. Halo did not download the ISO and
-  did not edit SCS.
+    `690dae94139db9675545a8dea6d2b6e89519c2542eba61e2b80d6e28a3553f98`
+- Review trail: Halo hcom `#29055`, `#29255`, `#29437`, and `#29567`; gumo
+  hcom `#29106`, `#29279`, `#29509`, `#29577`, and final closeout `#29613`.
+  Claude narrow re-review reported no remaining HIGH/MEDIUM blockers, and Halo
+  `#29567` closed out the current Wave A draft from read-only review.
+- Gumo-reported SCS verification in `#29613`: `git diff --check`; Wave A
+  embedded Bash block `bash -n`; no-delete literal scan; HTML parser; embedded
+  JS `node --check`; Python `py_compile`; unit tests 18 OK; official Ubuntu
+  metadata recheck without ISO download (`HEAD 200`, `Content-Length
+  6655619072`, expected `SHA256SUMS` line present).
+- Halo local verification after `#29613`: `git -C
+  /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch`, `git -C
+  /home/riche/Proj/SUPPLY_CHAIN_SECURITY rev-parse HEAD`, `git -C
+  /home/riche/Proj/SUPPLY_CHAIN_SECURITY log --oneline -3`, and SHA256 checks
+  for the final hash set above.
+- Decision remains `WAIT`: no formal `$mutation-script-wave` GO, no ISO
+  download/use approval, and no host/VM/WSL/Docker/HNS/WinNAT/network/package/
+  SCRIM/global-config/runtime execution approval. Halo did not edit SCS and did
+  not run host or runtime mutation.
 
 Current SCS restart pointers as of 2026-06-10 22:10 EDT:
 

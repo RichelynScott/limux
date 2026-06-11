@@ -704,6 +704,57 @@ explicitly redirects. The cross-project isolation lab is the active priority.
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md`
 
+## 2026-06-11 - SCS Wave A Docs Commit Closeout
+### What:
+Recorded the SCS Wave A docs closeout after gumo committed and pushed
+`96acd684ae77dfcc521d8298444c77a8be434237`.
+
+### Why:
+The restart state changed from dirty draft awaiting SCS commit to a verified
+pushed SCS checkpoint. The user can restart without losing the Wave A status.
+
+### How:
+Verified SCS `main` aligned with `origin/main`, checked the final SCS hashes,
+recorded gumo hcom `#29613`, and updated Limux-owned restart pointers. Halo did
+not edit SCS and did not run any host/VM/WSL/Docker/HNS/WinNAT/network/package/
+ISO/SCRIM/global-config/runtime mutation.
+
+### Impact:
+Wave A docs are committed, but the execution decision remains `WAIT`: no formal
+`$mutation-script-wave` GO, no ISO download/use approval, and no execution
+approval. The next useful path is formal Wave A mutation-script-wave review and
+operator approval, or broader lab planning, not running the packet.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md`
+
+## 2026-06-11 - Wave A ISO Intake Draft Closeout Review
+### What:
+Recorded Halo's read-only closeout on the current SCS Wave A Ubuntu ISO intake
+command packet draft after gumo patched the staging containment and staging
+free-space findings.
+
+### Why:
+The active SCS dirty draft changed from blocker-open to blocker-closed from
+Halo's review perspective, but it is still not committed and still not approved
+for execution.
+
+### How:
+Verified the current Wave A draft hash
+`f98d5ea00752fb23f3128b678753b0e3946dd5de55fa63ba67198418e70fe2a3`, ran
+`git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY diff --check`, read the relevant
+command-block sections, and sent hcom `#29567` to gumo. Updated Limux-owned
+restart pointers only.
+
+### Impact:
+No open Halo material findings remain on the current dirty Wave A draft. The
+next action is gumo SCS-owned final verification, commit, and push. The status
+remains `WAIT`: no formal `$mutation-script-wave` GO, no ISO download/use
+approval, and no execution approval.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md`
+
 ## 2026-06-10 - Wave A ISO Intake Draft Follow-Up
 ### What:
 Recorded Halo's read-only follow-up on the SCS Wave A Ubuntu ISO intake command
