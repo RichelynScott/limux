@@ -18,6 +18,22 @@ A resumed Limux session should verify gumo's SCS commit status first, then conti
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` | `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md`
 
+## 2026-06-10 - SCS Hyper-V Packet Commit And WAIT Review
+### What:
+Recorded that gumo closed and pushed the SCS Project Isolation Lab docs lane at commit `62440b6`, including the canonical `ACTIVE_GOAL.md` and Hyper-V host mutation packet draft.
+
+### Why:
+The Limux session needs an accurate restart pointer for the real active goal and must not rely on stale "verify whether SCS committed" wording after gumo's closeout.
+
+### How:
+Verified the SCS commit/hash state from the Limux session and sent gumo a Codex single-reviewer system-mutation pre-exec review. The review decision remains `WAIT`, not formal `$mutation-script-wave`, with concrete must-fix findings around staged PowerShell flow, fail-closed preflight checks, evidence overwrite risk, placeholder validation, and deterministic first-boot network posture.
+
+### Impact:
+A resumed session should start from SCS commit `62440b6` and packet SHA256 `badc15cf44a8a6be8f56231b09899ee3c2e756ff0308dd6758b70ccd9d3ca678`, then continue toward formal mutation-script-wave review and ISO provenance rather than redoing the docs closeout.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom thread `project-isolation-lab-goal`
+
 ## 2026-05-29 - Limux Agent-Team Protocol Safety And Resume Plan
 ### What:
 Fixed the highest-risk `agent-team` behavior by moving generated protocol output from `AGENTS.md` to `LIMUX_AGENTS.md` by default, added `--protocol-path`, and documented the next zero-friction protocol discovery phase.

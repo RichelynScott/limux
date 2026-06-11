@@ -51,22 +51,50 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-10 21:11 EDT, the SCS-owned Hyper-V host mutation packet exists
-as a draft with decision `WAIT`. It is not approved to run. A preliminary
-Limux-side read found the earlier WinNAT/static-guest-network gap addressed:
-the draft defines guest IP `172.29.240.10/24`, gateway `172.29.240.1`, DNS,
-GUI configuration steps, and a netplan fallback with an interface-name stop
-condition.
+As of 2026-06-10 21:19 EDT, SCS commit
+`62440b6 docs(lab): record isolation goal and hyper-v packet` is pushed. The
+SCS-owned Hyper-V host mutation packet exists as a draft with decision `WAIT`.
+It is not approved to run.
+
+Recorded hashes:
+
+- `ACTIVE_GOAL.md`:
+  `4504bed0ce5cac9bca42974f3d4655296251ddc949515af489cce6bcba732da2`
+- `HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md`:
+  `badc15cf44a8a6be8f56231b09899ee3c2e756ff0308dd6758b70ccd9d3ca678`
+
+A preliminary Limux-side read found the earlier WinNAT/static-guest-network gap
+addressed: the draft defines guest IP `172.29.240.10/24`, gateway
+`172.29.240.1`, DNS, GUI configuration steps, and a netplan fallback with an
+interface-name stop condition. Gumo also added HNS/WSL2 NAT reconciliation,
+separate switch/NAT names, control-plane distro and hcom placeholders, and
+offline install posture language.
+
+Halo sent a Codex single-reviewer system-mutation pre-exec review to gumo on
+hcom thread `project-isolation-lab-goal`. Decision: `WAIT`, not formal
+`$mutation-script-wave`. Must-fix items sent to gumo:
+
+1. Path B PowerShell block must hard-stop after
+   `Enable-WindowsOptionalFeature -NoRestart` or be split into stages.
+2. Documented stop conditions for free space, RAM, Windows edition,
+   virtualization, BitLocker recovery, pending reboot, and host network health
+   need fail-closed enforcement or explicit manual-gate separation.
+3. Evidence capture should not use reusable paths that can overwrite pre-state
+   evidence on rerun.
+4. `HCOM_CHECK_NAME` and `CONTROL_PLANE_WSL_DISTRO` need conservative
+   validation before WSL/bash interpolation.
+5. Path A should make the first-boot network-disconnected state deterministic.
 
 Before any execution can be considered, the packet still needs freeze +
 SHA256, exact Ubuntu ISO provenance and SHA256, formal `$mutation-script-wave`,
 resolution of any high/critical findings, and explicit operator approval for
 the execution window.
 
-Verify whether gumo has committed the SCS-owned docs before relying on them:
+Verify SCS state before relying on the recorded pointers:
 
 ```bash
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY log -5 --oneline --decorate
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md
 hcom events --last 80 --agent gumo --name halo
 ```

@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-10 21:11 EDT
+Last updated: 2026-06-10 21:19 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,20 +33,34 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
-Current SCS restart pointers as of 2026-06-10 21:11 EDT:
+Current SCS restart pointers as of 2026-06-10 21:19 EDT:
 
+- SCS commit:
+  `62440b6 docs(lab): record isolation goal and hyper-v packet`
 - Canonical active goal:
   `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/ACTIVE_GOAL.md`
+  SHA256:
+  `4504bed0ce5cac9bca42974f3d4655296251ddc949515af489cce6bcba732da2`
 - Phase 1 host-mutation draft:
   `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md`
+  SHA256:
+  `badc15cf44a8a6be8f56231b09899ee3c2e756ff0308dd6758b70ccd9d3ca678`
 - Packet status: `WAIT`; it is not executable. The previous WinNAT guest
   networking gap is addressed in the draft with a guest static IP, gateway,
-  DNS, GUI setup path, and netplan fallback. Formal `$mutation-script-wave`,
-  packet freeze/SHA256, Ubuntu ISO provenance/SHA256, and explicit operator
-  approval have not happened.
-- Halo sent gumo a targeted hcom closeout request to commit and push the
-  SCS-owned docs-only WAIT packet. Verify SCS `git log` and `git status` before
-  assuming that commit landed.
+  DNS, GUI setup path, netplan fallback, HNS/WSL2 NAT reconciliation checks,
+  and separate `SCSLabSwitch` / `SCSLabNAT` names.
+- Halo sent gumo a Codex single-reviewer system-mutation pre-exec review on
+  hcom thread `project-isolation-lab-goal`. Decision: `WAIT`, not formal
+  `$mutation-script-wave`. Findings sent: Path B must hard-stop after
+  `Enable-WindowsOptionalFeature -NoRestart`; documented stop conditions such
+  as free disk/RAM/edition/virtualization/BitLocker/pending-reboot/network
+  health need fail-closed enforcement or explicit manual-gate separation;
+  evidence paths should not overwrite pre-state captures on rerun; hcom/distro
+  placeholders need conservative validation before WSL/bash interpolation; Path
+  A should make first-boot network-disconnected state deterministic.
+- Formal `$mutation-script-wave`, Ubuntu ISO provenance/SHA256, unresolved
+  HIGH/CRIT convergence, and explicit operator approval/execution window have
+  not happened.
 
 ## Immediate Next Action
 
@@ -54,11 +68,13 @@ Start from the Project Isolation Lab goal above. The next practical action for
 this Limux session is to keep Limux stable as a tool and coordinate with gumo on
 the SCS-owned lab docs, not to add more Limux features by default.
 
-If resuming after a restart, first verify the SCS docs closeout:
+If resuming after a restart, first verify that SCS is still at the recorded
+commit/hash and then continue the formal review gate:
 
 ```bash
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY log -5 --oneline --decorate
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md
 hcom events --last 80 --agent gumo --name halo
 ```
 
