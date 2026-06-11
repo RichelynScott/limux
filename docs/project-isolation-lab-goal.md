@@ -51,7 +51,7 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 07:30 EDT, SCS Wave A V2 successor and marker-proof status is:
+As of 2026-06-11 07:33 EDT, SCS Wave A V2 successor and marker-proof status is:
 
 - SCS V2 freeze is complete and pushed at
   `0c1882b23bdb0dac9617734d23024752e35af4c6`
@@ -206,8 +206,9 @@ As of 2026-06-11 07:30 EDT, SCS Wave A V2 successor and marker-proof status is:
   0 REMOVE/0 REVIEW; `py_compile`; and
   `unittest tests.security_posture.test_supply_chain_watch -v` with 18 tests
   OK.
-- Subsequent live SCS WIP: after the `bed7d37` freeze, Halo's 07:29 EDT
-  read-only check saw SCS `README.md` modified and a new untracked
+- Subsequent live SCS WIP: after the `bed7d37` freeze, Halo's 07:33 EDT
+  read-only check saw SCS docs modified (`FYI.md`, `README.md`, and
+  `project_isolation_lab/FYI.md`) and a new untracked
   `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_MUTATION_WAVE_REVIEW_2026-06-11.md`
   at SHA256 `9b1b393904cc3b976584e18703f1d7e6d9002e064674f980e600b94e83b27250`.
   The file records `Decision: WAIT`, no execution approval, and no marker/ISO/
