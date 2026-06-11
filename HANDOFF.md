@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 06:00 EDT
+Last updated: 2026-06-11 06:04 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,25 +33,24 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
-Verified SCS Wave A docs closeout as of 2026-06-11 05:55 EDT:
+Current SCS Wave A docs/readiness state as of 2026-06-11 06:04 EDT:
 
-- SCS commit:
+- Last pushed SCS commit:
   `96acd684ae77dfcc521d8298444c77a8be434237`
   (`docs(lab): add wave a iso intake draft`)
 - Halo verified SCS `main` aligned with `origin/main`, but local status after
   gumo's `#29613` closeout showed two untracked files:
   `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` and
   `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_REVIEW_READINESS_2026-06-11.md`.
-  The readiness file SHA256 is
-  `00e6e093466429db31f683ef3ea3e8bfd69904bee0d88adf6e0ab25eb6163fc7`.
   Halo sent hcom `#29710` asking gumo to either commit/push that readiness
   record if it is intended as durable SCS docs, or confirm it is intentionally
   local/untracked and should be ignored. Gumo acked in hcom `#29732`: the
   readiness record is intentional and is being wired into SCS docs now, to be
   committed/pushed with pointer updates.
 - Current SCS caveat after `#29732`: SCS is dirty again while gumo wires the
-  readiness record into docs. Halo observed modified `HANDOFF.md`, `README.md`,
-  `project_isolation_lab/README.md`,
+  readiness record into docs. Halo observed modified `FYI.md`, `HANDOFF.md`,
+  `README.md`, `docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`,
+  `project_isolation_lab/FYI.md`, `project_isolation_lab/README.md`,
   `project_isolation_lab/docs/ACTIVE_GOAL.md`,
   `project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`,
   `project_isolation_lab/docs/PRD_PLAN.md`,
@@ -60,7 +59,22 @@ Verified SCS Wave A docs closeout as of 2026-06-11 05:55 EDT:
   and unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
   Do not treat SCS as clean/final for the readiness record until gumo reports
   the next commit SHA, hashes, verification, and post-push status.
-- Final hashes:
+- Current SCS dirty follow-up hashes observed by Halo:
+  - readiness record:
+    `5d51b8f33548a232897e67af4e2c415c2766b6f0bd40293c2c549549a25ae6b1`
+  - SCS `HANDOFF.md`:
+    `e07b7351bc5762640f0f34e0bb6bdfc717d5dcb71a99da125f1fb2e297cd4a05`
+  - SCS `FYI.md`:
+    `ab611a17d661f0df59558911a5e44033f52dfe0b4de4bc89af6281e0ed1b289a`
+  - project isolation `FYI.md`:
+    `5f7e3c8ef584f50557bba238e2d32ee0e95c5d5656d1f3f25fadf04769c00625`
+  - `PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`:
+    `d0360c46c28c5debbf4e7d8278a72a761cc3d9b9134c201d9cded3043dce0f91`
+  - `HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`:
+    `e26468b6f0104f35c13ed05039aabdb0d7777524c76a4231a5adf13459574261`
+  - `ACTIVE_GOAL.md`:
+    `4651a5ae6fa5a92c07925fbc3820fb10cf4c90064330a080544641189385b752`
+- Final hashes from SCS commit `96acd684` before the dirty readiness follow-up:
   - `WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_2026-06-10.md`:
     `f98d5ea00752fb23f3128b678753b0e3946dd5de55fa63ba67198418e70fe2a3`
   - `HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`:
@@ -92,6 +106,9 @@ Verified SCS Wave A docs closeout as of 2026-06-11 05:55 EDT:
   SCRIM/global-config/runtime execution approval. Halo did not edit SCS and did
   not run host or runtime mutation. The current open SCS closeout caveat is
   hcom `#29732`: readiness-record pointer updates are in progress under gumo.
+  Halo read the current readiness record at SHA256
+  `5d51b8f33548a232897e67af4e2c415c2766b6f0bd40293c2c549549a25ae6b1`
+  and found no new material blocker in its WAIT/readiness framing.
 
 Current SCS restart pointers as of 2026-06-10 22:10 EDT:
 

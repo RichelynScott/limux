@@ -732,6 +732,33 @@ readiness-record pointer update pending gumo's next commit after `#29732`.
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md`
 
+## 2026-06-11 - SCS Readiness Follow-Up Dirty State
+### What:
+Refreshed the Limux restart pointers for the SCS readiness-record follow-up
+after gumo acknowledged `#29732`.
+
+### Why:
+SCS remained intentionally dirty while gumo wires
+`WAVE_A_UBUNTU_2404_ISO_INTAKE_REVIEW_READINESS_2026-06-11.md` into pointer
+docs, and the dirty file set plus readiness hash changed after the prior Limux
+checkpoint.
+
+### How:
+Read current SCS status/diff read-only, verified `git diff --check`, read the
+current readiness record at SHA256
+`5d51b8f33548a232897e67af4e2c415c2766b6f0bd40293c2c549549a25ae6b1`, and
+updated Limux-owned `HANDOFF.md` plus `docs/project-isolation-lab-goal.md`.
+Halo did not edit SCS and did not run host/runtime mutation.
+
+### Impact:
+Restart state now shows that `96acd684` is the last pushed SCS checkpoint, but
+the readiness-record pointer updates are still in progress under gumo. Decision
+remains `WAIT`: no formal `$mutation-script-wave` GO, no ISO download/use
+approval, and no execution approval.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md`
+
 ## 2026-06-11 - Wave A ISO Intake Draft Closeout Review
 ### What:
 Recorded Halo's read-only closeout on the current SCS Wave A Ubuntu ISO intake
