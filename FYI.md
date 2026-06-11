@@ -1163,3 +1163,32 @@ approval request.
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` | SCS commit `bed7d37` |
 hcom `#32650`
+
+## 2026-06-11 - SCS Marker Proof Mutation-Wave WIP
+### What:
+Recorded that SCS has begun uncommitted marker-proof mutation-wave review WIP
+after the durable `bed7d37` marker-proof freeze.
+
+### Why:
+The committed freeze remains the last durable SCS checkpoint, but Halo's final
+read-only status check found SCS had already moved into a new untracked review
+record. A restart-safe Limux successor needs to distinguish the durable freeze
+from this live WIP.
+
+### How:
+Checked SCS status read-only, hashed the untracked mutation-wave review record,
+and read its top-level decision/no-authorization language. Patched only
+Limux-owned restart docs. Halo did not edit SCS, review the WIP as a formal
+request, run the packet, create markers, download/import ISO/key/checksum
+material, or mutate network, Hyper-V, VM, WSL, Limux, Cargo, package, or
+host/runtime state.
+
+### Impact:
+Current durable state is still SCS commit `bed7d37`; current live WIP is
+`WAVE_A_WSL_DRVFS_MARKER_PROOF_MUTATION_WAVE_REVIEW_2026-06-11.md` at SHA256
+`9b1b393904cc3b976584e18703f1d7e6d9002e064674f980e600b94e83b27250`, with
+`Decision: WAIT`. Do not treat the WIP as final until gumo commits/pushes or
+requests review. Execution remains `WAIT/NO-GO`.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md`

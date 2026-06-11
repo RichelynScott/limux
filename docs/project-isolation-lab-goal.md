@@ -51,7 +51,7 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 07:27 EDT, SCS Wave A V2 successor and marker-proof status is:
+As of 2026-06-11 07:30 EDT, SCS Wave A V2 successor and marker-proof status is:
 
 - SCS V2 freeze is complete and pushed at
   `0c1882b23bdb0dac9617734d23024752e35af4c6`
@@ -118,8 +118,9 @@ As of 2026-06-11 07:27 EDT, SCS Wave A V2 successor and marker-proof status is:
 - SCS marker-proof packet freeze is complete and pushed at
   `bed7d37ec001c251971ba29f327a0ad25778ee5c`
   (`docs(lab): add marker proof review packet`); `origin/main` matches local
-  HEAD. SCS status is clean except unrelated untracked
-  `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`. Halo did not edit SCS.
+  HEAD. Gumo hcom `#32650` reported post-push SCS status clean except unrelated
+  untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`. Halo did not edit
+  SCS.
 - Final marker-proof hashes from gumo hcom `#32650`; Halo rechecked the
   tracked-file hashes locally, and the extracted shell hash was verified during
   the read-only review:
@@ -205,6 +206,15 @@ As of 2026-06-11 07:27 EDT, SCS Wave A V2 successor and marker-proof status is:
   0 REMOVE/0 REVIEW; `py_compile`; and
   `unittest tests.security_posture.test_supply_chain_watch -v` with 18 tests
   OK.
+- Subsequent live SCS WIP: after the `bed7d37` freeze, Halo's 07:29 EDT
+  read-only check saw SCS `README.md` modified and a new untracked
+  `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_MUTATION_WAVE_REVIEW_2026-06-11.md`
+  at SHA256 `9b1b393904cc3b976584e18703f1d7e6d9002e064674f980e600b94e83b27250`.
+  The file records `Decision: WAIT`, no execution approval, and no marker/ISO/
+  key/checksum/network/Hyper-V/VM/WSL/Limux/Cargo/package/lab-to-host mutation
+  authorization. Gumo has not yet sent a final commit/hashes/verification
+  closeout for that WIP in hcom; do not treat it as durable until SCS commits
+  or requests review.
 
 ## Numbered Options Moving Forward
 
