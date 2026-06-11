@@ -1133,3 +1133,33 @@ execution approval request. Execution remains `WAIT/NO-GO`.
 
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#32420`
+
+## 2026-06-11 - SCS Marker Proof Freeze Pushed
+### What:
+Recorded the completed SCS marker-proof packet freeze at commit
+`bed7d37ec001c251971ba29f327a0ad25778ee5c`.
+
+### Why:
+Gumo hcom `#32650` reported the final SCS marker-proof commit, final hashes,
+verification commands, and clean post-push state. Limux restart docs needed to
+move from temporary hold-state to the durable freeze checkpoint.
+
+### How:
+Verified SCS `main` aligned with `origin/main`, confirmed only unrelated
+untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` remained, and locally
+hash-checked the marker-proof packet, review record, Hyper-V mutation-wave
+packet, HTML decision packet, and SCS `HANDOFF.md`. Patched only Limux-owned
+restart docs. Halo did not edit SCS, run the packet, create markers,
+download/import ISO/key/checksum material, or mutate network, Hyper-V, VM, WSL,
+Limux, Cargo, package, or host/runtime state.
+
+### Impact:
+Option 3 is now frozen as a review/freeze candidate at SCS commit `bed7d37`,
+but execution remains `WAIT/NO-GO`. Next allowed lane is formal
+`$mutation-script-wave` review around the exact marker-proof packet, or a
+deliberate patch/accept decision for its LOW residuals before any execution
+approval request.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | SCS commit `bed7d37` |
+hcom `#32650`

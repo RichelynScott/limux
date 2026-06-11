@@ -51,7 +51,7 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 07:25 EDT, SCS Wave A V2 successor and marker-proof status is:
+As of 2026-06-11 07:27 EDT, SCS Wave A V2 successor and marker-proof status is:
 
 - SCS V2 freeze is complete and pushed at
   `0c1882b23bdb0dac9617734d23024752e35af4c6`
@@ -115,11 +115,29 @@ As of 2026-06-11 07:25 EDT, SCS Wave A V2 successor and marker-proof status is:
   isolated `static_check_no_delete_api.py` scan on extracted V2 shell with
   0 REMOVE/0 REVIEW; `py_compile` for watcher/tests; and
   `unittest tests.security_posture.test_supply_chain_watch -v` with 18 tests OK.
-- SCS now has a marker-only WSL/DrvFs proof packet draft:
+- SCS marker-proof packet freeze is complete and pushed at
+  `bed7d37ec001c251971ba29f327a0ad25778ee5c`
+  (`docs(lab): add marker proof review packet`); `origin/main` matches local
+  HEAD. SCS status is clean except unrelated untracked
+  `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`. Halo did not edit SCS.
+- Final marker-proof hashes from gumo hcom `#32650`; Halo rechecked the
+  tracked-file hashes locally, and the extracted shell hash was verified during
+  the read-only review:
+  - Marker proof packet:
+    `0284cf528d6abc53f5f96b8e87a56d0c2a51218afe217e0e0a7813d9467210c0`
+  - Extracted shell block:
+    `dc6da4e436cd9ddbc02fff8597f71b4589843eb54d9617ed21ec4c7958fe7cb4`
+  - Marker proof review record:
+    `28726df4453fab66cc5d1f09d1ecf2a622086d656fd42771be6cebc6a0df57c9`
+  - HTML decision packet:
+    `de4cf538e59f4fb5692d9da98f9bff62b7eee3e6b2b130ace2cb6e8fbf4d1139`
+  - Hyper-V mutation-wave packet:
+    `633148b184d8d713091b4b328371557acf21f8bb00df1260c95531906fc7ca73`
+  - SCS `HANDOFF.md`:
+    `18e62aea969587afedba28cea5ebef8b5cb9ef1689b37d692ef73e8e164bee22`
+- Current marker-only WSL/DrvFs proof packet:
   `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_2026-06-11.md`
   at SHA256 `0284cf528d6abc53f5f96b8e87a56d0c2a51218afe217e0e0a7813d9467210c0`.
-  Current SCS status shows this file as added, plus broader in-progress SCS doc
-  edits and unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
 - Gumo hcom `#32019` requested a narrow read-only Halo review of that exact
   marker-proof hash. Halo replied in `#32076`: `WAIT` for the draft as a future
   execution-review candidate. No CRITICAL/HIGH blockers were found, but one
@@ -180,17 +198,13 @@ As of 2026-06-11 07:25 EDT, SCS Wave A V2 successor and marker-proof status is:
   approved `APPROVAL_REF`, `EXECUTION_OPERATOR`, `EXECUTION_WINDOW_UTC`, or
   `EXPECTED_PACKET_SHA256`, and no host/VM/WSL/Docker/HNS/WinNAT/network/
   package/SCRIM/global-config/Limux/runtime mutation approval.
-- Post-review SCS hold state: SCS HEAD remains
-  `0c1882b23bdb0dac9617734d23024752e35af4c6`, but Halo's 07:25 EDT read-only
-  post-push check found SCS actively changing, including root docs/handoff, the
-  HTML decision packet, project-isolation-lab docs, and a new untracked
-  marker-proof review record at
-  `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_DRAFT_REVIEW_2026-06-11.md`
-  with SHA256
-  `28726df4453fab66cc5d1f09d1ecf2a622086d656fd42771be6cebc6a0df57c9`.
-  That record says `Decision: WAIT`, with `GO` only for using exact packet hash
-  `0284cf52...` as review input. Treat this as in-progress SCS work until gumo
-  commits/pushes or reports an equivalent durable freeze.
+- Gumo hcom `#32650` reports SCS verification passed: `git diff --check`;
+  staged `git diff --cached --check`; HTMLParser parse; `node --check`
+  extracted HTML JS; `bash -n` on the extracted marker shell; isolated
+  `static_check_no_delete_api.py` scan on the extracted marker shell with
+  0 REMOVE/0 REVIEW; `py_compile`; and
+  `unittest tests.security_posture.test_supply_chain_watch -v` with 18 tests
+  OK.
 
 ## Numbered Options Moving Forward
 
@@ -200,11 +214,11 @@ As of 2026-06-11 07:25 EDT, SCS Wave A V2 successor and marker-proof status is:
    packet `36cad934...`, hardening record `529e15b0...`, and gumo `#31842`
    verification. Halo verified read-only and updated Limux pointers after SCS
    stabilized.
-3. **Dry-run proof packet**: exact draft `0284cf52...` is `GO` as the next
-   formal review/freeze candidate only. It is still not durable in SCS and is
-   `WAIT/NO-GO` for execution, marker creation, ISO/key import/download,
-   package execution, and host mutation until frozen, formally
-   mutation-reviewed, and explicitly approved.
+3. **Dry-run proof packet**: exact draft `0284cf52...` is frozen in SCS commit
+   `bed7d37` and is `GO` as the next formal review/freeze candidate only. It is
+   still `WAIT/NO-GO` for execution, marker creation, ISO/key import/download,
+   package execution, and host mutation until formally mutation-reviewed and
+   explicitly approved.
 4. **Wave A ISO intake approval packet**: only after dry-run proof and mutation
    review converge should SCS request explicit operator approval to run ISO
    intake.
