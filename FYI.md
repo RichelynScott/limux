@@ -50,6 +50,22 @@ Candidate values are `CONTROL_PLANE_WSL_DISTRO=Ubuntu` and `HCOM_CHECK_NAME=halo
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom thread `project-isolation-lab-goal`
 
+## 2026-06-10 - Ubuntu ISO Artifact-Intake Candidate
+### What:
+Recorded a read-only candidate Ubuntu ISO provenance and checksum for the Project Isolation Lab persistent VM baseline.
+
+### Why:
+The Hyper-V packet requires exact Ubuntu ISO provenance and SHA256 before formal mutation review or execution approval can be considered.
+
+### How:
+Checked official Ubuntu release sources and fetched only `SHA256SUMS` plus `SHA256SUMS.gpg` into `/tmp`. Verified the checksum file signature in an isolated `/tmp` GnuPG home using Ubuntu CD Image Automatic Signing Key (2012), key ID `D94AA3F0EFE21092`, fingerprint `8439 38DF 228D 22F7 B374 2BC0 D94A A3F0 EFE2 1092`. The ISO itself was not downloaded.
+
+### Impact:
+Candidate artifact is `ubuntu-24.04.4-desktop-amd64.iso` with SHA256 `3a4c9877b483ab46d7c3fbe165a0db275e1ae3cfe56a5657e5a47c2f99a99d1e`. This is artifact-intake evidence only, not approval to download, boot, install, or execute the ISO.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | `https://releases.ubuntu.com/24.04/` | hcom thread `project-isolation-lab-goal`
+
 ## 2026-05-29 - Limux Agent-Team Protocol Safety And Resume Plan
 ### What:
 Fixed the highest-risk `agent-team` behavior by moving generated protocol output from `AGENTS.md` to `LIMUX_AGENTS.md` by default, added `--protocol-path`, and documented the next zero-friction protocol discovery phase.

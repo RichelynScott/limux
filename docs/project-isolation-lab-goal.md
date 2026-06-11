@@ -100,6 +100,29 @@ Read-only placeholder discovery from this session on 2026-06-10 21:24 EDT:
   `HCOM_CHECK_NAME=halo`. The packet should still resolve and validate both
   immediately before execution rather than hardcoding them permanently.
 
+Read-only Ubuntu ISO artifact-intake discovery from this session on 2026-06-10
+21:28 EDT:
+
+- Official release directory:
+  `https://releases.ubuntu.com/24.04/`
+- Current title: Ubuntu 24.04.4 Noble Numbat.
+- Candidate desktop ISO: `ubuntu-24.04.4-desktop-amd64.iso`.
+- Directory listing describes it as the 64-bit PC AMD64 desktop image, size
+  6.2G, modified 2026-02-10 01:41.
+- Official `SHA256SUMS` entry:
+  `3a4c9877b483ab46d7c3fbe165a0db275e1ae3cfe56a5657e5a47c2f99a99d1e *ubuntu-24.04.4-desktop-amd64.iso`
+- `SHA256SUMS.gpg` verified successfully in an isolated `/tmp` GnuPG home after
+  importing Ubuntu CD Image Automatic Signing Key (2012), key ID
+  `D94AA3F0EFE21092`, fingerprint
+  `8439 38DF 228D 22F7 B374 2BC0 D94A A3F0 EFE2 1092`.
+- The ISO itself was not downloaded. This is artifact-intake evidence only, not
+  approval to download, mount, boot, install, or execute anything.
+- Sources used:
+  `https://releases.ubuntu.com/24.04/`,
+  `https://releases.ubuntu.com/24.04/SHA256SUMS`,
+  `https://releases.ubuntu.com/24.04/SHA256SUMS.gpg`, and
+  `https://ubuntu.com/tutorials/how-to-verify-ubuntu`.
+
 Before any execution can be considered, the packet still needs freeze +
 SHA256, exact Ubuntu ISO provenance and SHA256, formal `$mutation-script-wave`,
 resolution of any high/critical findings, and explicit operator approval for

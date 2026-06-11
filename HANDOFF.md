@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-10 21:24 EDT
+Last updated: 2026-06-10 21:28 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -70,6 +70,16 @@ Current SCS restart pointers as of 2026-06-10 21:19 EDT:
 - Important live caveat: `wsl.exe --list --verbose` also shows
   `docker-desktop` running on WSL2. Treat Docker/HNS/WSL2 NAT reconciliation as
   a live stop condition before any WinNAT creation.
+- Read-only Ubuntu ISO provenance discovery from official Ubuntu sources found
+  current candidate `ubuntu-24.04.4-desktop-amd64.iso` from
+  `https://releases.ubuntu.com/24.04/`, listed as Ubuntu 24.04.4 Noble Numbat,
+  AMD64 desktop image, size 6.2G, modified 2026-02-10 01:41. `SHA256SUMS`
+  entry: `3a4c9877b483ab46d7c3fbe165a0db275e1ae3cfe56a5657e5a47c2f99a99d1e`.
+  `SHA256SUMS.gpg` verified in an isolated `/tmp` GnuPG home with Ubuntu CD
+  Image Automatic Signing Key (2012), key ID `D94AA3F0EFE21092`, fingerprint
+  `8439 38DF 228D 22F7 B374 2BC0 D94A A3F0 EFE2 1092`. The ISO itself was not
+  downloaded. Treat this as artifact-intake evidence only, not download or
+  execution approval.
 
 ## Immediate Next Action
 
