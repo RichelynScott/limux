@@ -183,7 +183,7 @@
         <h2>Verified And Gated</h2>
         <div class="grid">
           <div class="fact"><div class="label">Done</div><div class="value">Limux handoff, goal note, FYI, and this packet record gumo <code>#35219</code> final SCS Gate D commit and hashes.</div></div>
-          <div class="fact"><div class="label">Verified</div><div class="value">Read-only checks covered Limux git status, SCS git status/log/remote, SCS <code>git diff --check</code>, final file-backed SHA256s, SCS HTML parse, extracted SCS HTML JS syntax, Gate D WAIT/no-execution framing, and hcom thread state.</div></div>
+          <div class="fact"><div class="label">Verified</div><div class="value">Read-only checks covered Limux git status, SCS git status/log, SCS <code>git diff --check</code>, final file-backed SHA256s, SCS HTML parse, Gate D WAIT/no-execution framing, and hcom thread state. SCS extracted-JS <code>node --check</code> is gumo-reported.</div></div>
           <div class="fact"><div class="label">Not Done</div><div class="value">No SCS edits, packet execution, marker creation, ISO/key/checksum download/import, Hyper-V/VM/WSL/network/package/runtime/global-config mutation.</div></div>
         </div>
       </section>
@@ -261,7 +261,7 @@
           <li><code>/home/riche/MCPs/limux/FYI.md</code></li>
           <li><code>/home/riche/Proj/SUPPLY_CHAIN_SECURITY</code> read-only status</li>
           <li>hcom <code>#33749</code>, <code>#33763</code>, <code>#33909</code>, <code>#33923</code>, <code>#34125</code>, <code>#34336</code>, <code>#34691</code>, <code>#34696</code>, <code>#34887</code>, <code>#35006</code>, <code>#35219</code></li>
-          <li>Verification commands: Limux/SCS git status/log, SCS remote check, hcom events, SHA256 checks, SCS diff check, SCS HTML parse, extracted SCS HTML JS syntax, and WAIT/no-execution text search.</li>
+          <li>Verification commands: Limux/SCS git status/log, hcom events, SHA256 checks, SCS diff check, SCS HTML parse, and WAIT/no-execution text search. SCS extracted-JS <code>node --check</code> is gumo-reported in hcom <code>#35219</code>.</li>
           <li>Gate D durable checkpoint from 8:56 AM EDT: SCS commit <code>388f20a</code>, draft <code>24b8bebd...</code>, PRD-003 <code>8f90287f...</code>, gates <code>607db367...</code>, HTML packet <code>b8497c30...</code>, handoff <code>7522af0...</code>, review <code>12f5cac...</code>.</li>
           <li>Post-Gate-D WIP from 9:02 AM EDT: binary-archive artifact-intake files are local SCS WIP, not a durable review target.</li>
         </ul>

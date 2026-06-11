@@ -1492,10 +1492,12 @@ adversarial review finding no remaining HIGH/MEDIUM blockers or
 approval-bypass contradictions.
 
 ### How:
-Read SCS status/log/remote state and file-backed SHA256s without editing SCS.
-Also ran SCS `git diff --check`, parsed the SCS HTML packet, and checked the
-extracted SCS HTML JavaScript with `node --check`. Updated only Limux-owned
-handoff/status surfaces. Final SCS Gate D hashes recorded here: draft
+Read SCS status/log state and file-backed SHA256s without editing SCS. Also ran
+SCS `git diff --check` and parsed the SCS HTML packet. The extracted SCS HTML
+JavaScript `node --check` was reported by gumo in hcom `#35219`; Halo did not
+rerun it locally because `node`/`nodejs` are not on PATH in this Limux shell.
+Updated only Limux-owned handoff/status surfaces. Final SCS Gate D hashes
+recorded here: draft
 `24b8bebd...`, PRD-003 `8f90287f...`, acceptance gates `607db367...`, HTML
 packet `b8497c30...`, SCS handoff `7522af0...`, and PRD review `12f5cac...`.
 Halo did not transfer evidence, import artifacts, execute packages/runtime
