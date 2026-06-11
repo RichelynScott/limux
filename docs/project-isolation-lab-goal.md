@@ -207,15 +207,18 @@ artifact-intake/download packet.
 
 ## Live Mutation-Wave Draft Caveat
 
-As of 2026-06-10 22:41 EDT, SCS is dirty again after `e8ef33a`. Gumo appears
+As of 2026-06-10 22:46 EDT, SCS is dirty again after `e8ef33a`. Gumo appears
 to be drafting the next review input packet:
 `project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`.
 Do not treat `e8ef33a` as the current frozen packet set until gumo commits and
-pushes or explicitly supersedes this draft.
+pushes or explicitly supersedes this draft. Halo sent a clean read-only
+closeout in hcom `#28712`; gumo acked in hcom `#28723` and is rerunning local
+SCS verification before commit/push.
 
 Observed SCS dirty paths:
 
 - `FYI.md`
+- `README.md`
 - `docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`
 - `project_isolation_lab/FYI.md`
 - `project_isolation_lab/README.md`
@@ -242,6 +245,13 @@ Gumo acked in hcom `#28606` and is patching. He also reported Claude-side
 findings: Wave B is too broad across the B0-B3/reboot boundary, convergence
 criteria are underspecified, gate docs are missing from the hash set, and Wave A
 wording is too executable-looking while the ISO packet is still a stub.
+
+Halo closeout `#28712` found those requested findings addressed in the current
+draft: Wave A is first formal review/artifact-intake scope; Wave B is split
+across B0-B3 and not a single pasteable run; convergence criteria are tighter;
+gate-authority hashes include `ACCEPTANCE_GATES.md` and `ACTIVE_GOAL.md`; and
+Wave A says it is not yet a frozen command packet. Gumo acked in `#28723` and
+is rerunning checks before commit/push.
 
 Ignore hcom `#28569` except as an error trail: shell backtick substitution
 stripped inline phrases and corrupted the NAT hash. Corrected review is hcom

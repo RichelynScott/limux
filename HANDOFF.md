@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-10 22:41 EDT
+Last updated: 2026-06-10 22:46 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -169,13 +169,18 @@ Verified SCS PRD/packet closeout as of 2026-06-10 22:33 EDT:
 - No host/VM/WSL/Docker/HNS/WinNAT/network/package/ISO/SCRIM/runtime mutation
   was run by Halo or reported by gumo for this docs-only commit.
 
-Live SCS mutation-wave packet draft as of 2026-06-10 22:41 EDT:
+Live SCS mutation-wave packet draft as of 2026-06-10 22:46 EDT:
 
 - SCS is dirty again after `e8ef33a`; do not treat the `e8ef33a` hash set as
   the current frozen packet set until gumo commits/pushes or explicitly
   supersedes the draft.
+- Gumo patched after hcom `#28606`. Halo sent a clean read-only closeout in
+  hcom `#28712`; gumo acked in hcom `#28723` and is rerunning local SCS
+  verification before commit/push. Treat hashes as current draft evidence, not
+  a frozen committed packet, until gumo reports a pushed commit.
 - Observed SCS status:
   - modified: `FYI.md`
+  - modified: `README.md`
   - modified: `docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`
   - modified: `project_isolation_lab/FYI.md`
   - modified: `project_isolation_lab/README.md`
@@ -184,9 +189,18 @@ Live SCS mutation-wave packet draft as of 2026-06-10 22:41 EDT:
   - modified: `project_isolation_lab/docs/ROADMAP.md`
   - untracked: `project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`
   - unrelated untracked: `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`
-- New draft packet hash from Halo's read-only check:
+- Draft packet hash from Halo's initial 22:41 read-only check:
   - `HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`:
     `5397bd6cea8bf18d15e265920692341f8430d41e9ad2f298a370847ed517e2ab`
+- Gumo patched after that check. Later volatile hashes observed at 22:44:
+  - `HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`:
+    `b2ce7b60b7ce429dd2c7e9db4786a01e548e6bd21b01ff730e515fb14c58e0bc`
+  - `PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`:
+    `4d4cb6824b38e7592ae863025323d9c856bac810f12734a6386a3d6a42740af1`
+  - `ACTIVE_GOAL.md`:
+    `9b4cd6fa81326d5f7749bb2b1e35adc35b7b3c2d588a43a53673b4323fcc947f`
+  - `ACCEPTANCE_GATES.md`:
+    `a3279d7b87ca40fd6bcff74dc483dc1f92fb4372bad2730c92152345ee281404`
 - Other checked draft hashes still matched the `e8ef33a` artifact set:
   - `HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md`:
     `bd3b053c99c555684fa198c229842f179ecd577c5985df534895811b767ca2bb`
@@ -217,6 +231,13 @@ Live SCS mutation-wave packet draft as of 2026-06-10 22:41 EDT:
   findings: Wave B is too broad across the B0-B3/reboot boundary, convergence
   criteria are underspecified, gate docs are missing from the hash set, and Wave
   A wording is too executable-looking while the ISO packet is still a stub.
+- Halo closeout `#28712`: requested findings appear addressed. Wave A is first
+  formal review/artifact-intake scope; Wave B is a review grouping split across
+  B0-B3, not a single pasteable run; convergence criteria require five lenses,
+  cross-family/non-converged blocker handling, timeout/failure as
+  non-convergence, zero unresolved CRITICAL/HIGH findings, and no silent GO
+  after three rounds; gate-authority hashes include `ACCEPTANCE_GATES.md` and
+  `ACTIVE_GOAL.md`; Wave A says it is not yet a frozen command packet.
 - Ignore/cross-check hcom `#28569`: shell backtick substitution stripped inline
   phrases and corrupted the NAT hash. Corrected message is hcom `#28584`.
 - `git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY diff --check` was clean from
@@ -232,10 +253,11 @@ this Limux session is to keep Limux stable as a tool and coordinate with gumo on
 the SCS-owned lab docs, not to add more Limux features by default.
 
 If resuming after a restart, first verify whether gumo has committed the current
-SCS mutation-wave packet draft. If SCS remains dirty, continue the read-only
-review/coordination from corrected hcom `#28584` and do not rely on `e8ef33a`
-as the current frozen packet set. If gumo has pushed a newer commit, verify the
-new commit, hashes, and post-push status locally before updating Limux pointers.
+SCS mutation-wave packet draft. If SCS remains dirty, continue from Halo
+closeout `#28712` plus gumo ack `#28723`; do not rely on `e8ef33a` or any
+dirty-draft hash above as the current frozen committed packet set. If gumo has
+pushed a newer commit, verify the new commit, hashes, and post-push status
+locally before updating Limux pointers.
 Then continue toward Wave A ISO intake packet review/freeze first; Wave B
 offline Hyper-V baseline cannot attach media without an accepted ISO evidence
 record, and Wave C network stage remains deferred behind Docker/HNS/WSL2 NAT

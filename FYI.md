@@ -10,10 +10,10 @@ Recorded that SCS is dirty again after `e8ef33a` with a new untracked `HYPERV_MU
 The previous Limux restart pointer correctly recorded the pushed `e8ef33a` closeout, but a successor must not mistake that commit for the current frozen packet if gumo's mutation-wave packet draft is still uncommitted.
 
 ### How:
-Verified Limux remained clean, checked SCS dirty state, hash-checked the new mutation-wave packet plus related SCS artifacts, sent gumo a corrected read-only hcom review in `#28584`, recorded gumo's `#28606` ack that he is patching additional Claude-side findings, and patched only Limux-owned restart docs. No SCS files, host, VM, WSL, Docker, HNS, WinNAT, network, package, ISO, SCRIM, global-config, or runtime mutation was performed by Halo.
+Verified Limux remained clean, checked SCS dirty state, hash-checked the new mutation-wave packet plus related SCS artifacts, sent gumo a corrected read-only hcom review in `#28584`, recorded gumo's `#28606` ack that he is patching additional Claude-side findings, sent clean closeout `#28712`, recorded gumo ack `#28723`, and patched only Limux-owned restart docs. No SCS files, host, VM, WSL, Docker, HNS, WinNAT, network, package, ISO, SCRIM, global-config, or runtime mutation was performed by Halo.
 
 ### Impact:
-Successors should first check whether gumo has committed the mutation-wave packet draft. If not, continue from hcom `#28584` and gumo ack `#28606`; if yes, verify the new commit and hashes before updating Limux pointers. The next recommended formal scope is Wave A ISO intake packet review/freeze; Wave B offline Hyper-V baseline and Wave C network stage remain gated.
+Successors should first check whether gumo has committed the mutation-wave packet draft. If not, continue from Halo closeout `#28712` and gumo ack `#28723`; if gumo has pushed a newer commit, verify the new commit and hashes before updating Limux pointers. The next recommended formal scope is Wave A ISO intake packet review/freeze; Wave B offline Hyper-V baseline and Wave C network stage remain gated.
 
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#28584`
