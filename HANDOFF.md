@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 11:23 EDT
+Last updated: 2026-06-11 11:27 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -40,7 +40,7 @@ redirected.
 
 ## Mission Brief - Project Isolation Lab Restart
 
-Author/runtime/date: worker-limux-halo / Codex GPT-5 / 2026-06-11 11:23 EDT.
+Author/runtime/date: worker-limux-halo / Codex GPT-5 / 2026-06-11 11:27 EDT.
 This is the single Limux-owned mission brief for the active cross-project
 isolation-lab goal; it is not a PRD, execution packet, or approval to mutate any
 host, VM, WSL, package-runtime, credential, SCRIM, or global-config surface.
@@ -56,21 +56,20 @@ Rust/Cargo acceptance case if the SCS-owned gates require it.
 
 Current checkpoint pointers:
 
-- Limux checkpoint before this update: `7811be6`
-  (`docs(lab): track hyperv readiness snapshot`), with `main` matching
+- Limux checkpoint before this update: `85436a1`
+  (`docs(lab): track hyperv stop conditions`), with `main` matching
   `origin/main` before this handoff refresh.
-- SCS latest checkpoint: `10c9af8e9e92e1d054207201087f5f1c2665e6a2`
-  (`docs(lab): record hyperv stop condition candidates`), with SCS `main` matching
+- SCS latest checkpoint: `af2f2d5414d9797b8541496a01ef688d6ca1457a`
+  (`docs(lab): record hyperv collision candidates`), with SCS `main` matching
   `origin/main` and only unrelated untracked
   `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
 - SCS Hyper-V host read-only capability snapshot:
   `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_HOST_READONLY_CAPABILITY_SNAPSHOT_2026-06-11.md`
   SHA256:
-  `d0be14f2ea8e5ffeaf6d7575742e3932c8cf4d525343e1101fe5e97491eda1b8`.
-- SCS Hyper-V read-only snapshot checkpoint before the stop-condition
-  candidate update:
-  `e429c38af1edea8e578eb7c888678db83e5316fc`
-  (`docs(lab): capture hyperv host readiness snapshot`).
+  `08f496a59983121dc130b66dc0e5a7c9d80aef96e781128417d1207ccd8436c0`.
+- SCS Hyper-V stop-condition candidate checkpoint before the collision update:
+  `10c9af8e9e92e1d054207201087f5f1c2665e6a2`
+  (`docs(lab): record hyperv stop condition candidates`).
 - SCS marker-proof approval-input checklist:
   `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_EXECUTION_APPROVAL_INPUTS_2026-06-11.md`
   SHA256:
@@ -144,6 +143,14 @@ Ungated checks completed for this brief:
   `266984804352` bytes, total visible memory `66944156` KiB, WSL `2.6.3.0`,
   `Get-HnsNetwork`, `hnsdiag.exe`, and `Get-NetNat` available, and
   `Get-VMSwitch` unavailable.
+- `sha256sum` over the SCS Hyper-V host read-only capability snapshot after
+  SCS advanced to `af2f2d5...`.
+- `git show` / `git grep` against SCS commit `af2f2d5...` confirmed the
+  committed snapshot records filtered target-collision facts: planned
+  `C:\VMs\SCS-Lab` paths absent, no `SCSLabNAT` or `172.29.240.0/24` WinNAT
+  collision, zero planned route/IP matches, zero `SCSLab*` or
+  `172.29.240.0/24` HNS matches, and `Get-VM` / `Get-VMSwitch` unavailable so
+  VM/switch object collision proof remains unknown.
 - Targeted `rg` checks confirmed the new Hyper-V snapshot says
   `Decision: WAIT`, records Windows 11 Pro as a Hyper-V-capable candidate,
   WSL2 `Ubuntu` and `docker-desktop` running, `vmcompute` and `hns` running,
@@ -852,18 +859,17 @@ is **Option 1: docs/handoff first**. Keep this repo's restart surfaces aligned
 with the SCS-owned lab state, keep all future choices numbered, and do not add
 Limux product features by default.
 
-As of the 2026-06-11 11:23 EDT read-only check, SCS `main` and `origin/main`
-both point to durable commit `10c9af8e9e92e1d054207201087f5f1c2665e6a2`
-(`docs(lab): record hyperv stop condition candidates`). The Hyper-V host
-read-only snapshot now adds candidate stop-condition facts: `C:` free
-`266984804352` bytes, total visible memory `66944156` KiB, WSL `2.6.3.0`,
-`Get-HnsNetwork`, `hnsdiag.exe`, and `Get-NetNat` available, and
-`Get-VMSwitch` unavailable. These are non-elevated candidate facts only and
-must be recaptured in an approved evidence root before execution. Execution
-remains `WAIT` at Gate B / operator TTY approval; elevated pre-state capture
-and host/VM/WSL/Docker/HNS mutation, package/runtime execution, ISO or artifact
-work, SCRIM, global config, artifact movement, or hostile-code containment
-claims remain unapproved.
+As of the 2026-06-11 11:27 EDT read-only check, SCS `main` and `origin/main`
+both point to durable commit `af2f2d5414d9797b8541496a01ef688d6ca1457a`
+(`docs(lab): record hyperv collision candidates`). The Hyper-V host read-only
+snapshot now adds filtered target-collision facts: planned `C:\VMs\SCS-Lab`
+paths absent, no `SCSLabNAT` or `172.29.240.0/24` WinNAT collision, zero
+planned route/IP matches, zero `SCSLab*` or `172.29.240.0/24` HNS matches, and
+`Get-VM` / `Get-VMSwitch` unavailable so VM/switch object collision proof
+remains unknown. These are non-elevated candidate facts only and must be
+recaptured in an approved evidence root before execution. Execution remains
+`WAIT` at Gate B / operator TTY approval; elevated pre-state capture and
+host/VM/WSL/Docker/HNS mutation remain unapproved.
 
 Numbered next actions for this Limux session:
 
