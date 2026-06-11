@@ -1452,19 +1452,20 @@ exact-hash review request after patching. Execution remains `WAIT/NO-GO`.
 ## 2026-06-11 - Gate D Volatile WIP Snapshot Refresh
 ### What:
 Refreshed the Limux restart surfaces with the current read-only SCS Gate D
-evidence-intake WIP spot-check as of 2026-06-11 08:46 EDT.
+evidence-intake WIP spot-check as of 2026-06-11 08:50 EDT.
 
 ### Why:
 SCS remains at durable commit `e455617...`, but gumo is actively patching Gate D
-after Claude MEDIUM findings, including one remaining polyglot/remote-content
-check issue reported in hcom `#34887`. The Gate D WIP file hashes changed after
-the previous Limux caveat entry, so the handoff needed to label them as volatile
-restart breadcrumbs rather than durable review targets.
+after Claude MEDIUM findings, including a polyglot/remote-content check issue
+reported in hcom `#34887` and a later PRD screenshot contradiction finding
+reported in hcom `#35006`. The Gate D WIP file hashes changed after the previous
+Limux caveat entry, so the handoff needed to label them as volatile restart
+breadcrumbs rather than durable review targets.
 
 ### How:
 Read SCS status and SHA256s without editing SCS. Updated only Limux-owned
 handoff/status surfaces. Last-observed non-durable WIP snapshot: draft
-`ed129a41...`, task `4c51fbee...`, acceptance gates `607db367...`, and
+`24b8bebd...`, task `8f90287f...`, acceptance gates `607db367...`, and
 acceptance review `12f5cac...`. Halo did not execute packets, create markers, download/import
 ISO/key/checksum material, or mutate network, Hyper-V, VM, WSL, Limux, Cargo,
 package, global-config, SCRIM, or host runtime state.
@@ -1477,4 +1478,4 @@ request. Execution remains `WAIT/NO-GO`.
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
 `docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`
-| hcom `#34887`
+| hcom `#34887` | hcom `#35006`

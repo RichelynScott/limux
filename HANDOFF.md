@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 08:46 EDT
+Last updated: 2026-06-11 08:50 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,7 +33,7 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
-Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 08:46
+Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 08:50
 EDT:
 
 - SCS V2 freeze is complete and pushed at
@@ -304,19 +304,20 @@ EDT:
   SHA256 match, `bash -n`, and Codex static no-delete scan over a dedicated
   `/tmp` copy with 0 REMOVE and 0 REVIEW.
 - Subsequent SCS WIP after `e455617...` is already present and non-durable as
-  of the 2026-06-11 08:46 EDT read-only spot-check. Current SCS status shows
+  of the 2026-06-11 08:50 EDT read-only spot-check. Current SCS status shows
   root/project docs and `project_isolation_lab/tasks/prd-003-evidence-export-intake.md` modified, an
   untracked `project_isolation_lab/docs/DATA_ONLY_EVIDENCE_INTAKE_GATE_DRAFT_2026-06-11.md`,
   and unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
-  Gumo hcom `#34691`, `#34696`, and `#34887` confirm this Gate
+  Gumo hcom `#34691`, `#34696`, `#34887`, and `#35006` confirm this Gate
   D/evidence-intake lane is still WIP, Claude adversarial review found MEDIUM
-  issues including one remaining polyglot/remote-content check issue, gumo is
-  patching, and there is no final SCS hash set yet.
+  issues including a polyglot/remote-content check issue and a later PRD
+  screenshot contradiction finding, gumo is patching/finalizing, and there is
+  no final SCS hash set yet.
   Last-observed volatile WIP hashes for the new evidence-intake lane:
   - `DATA_ONLY_EVIDENCE_INTAKE_GATE_DRAFT_2026-06-11.md`:
-    `ed129a41a12028bf9e60bab320a514449491abca1433ea3802a3d62ccc28bb63`
+    `24b8bebd9ee8244c154cc67e3c1893faaba4f187966953da560235ee9be91fae`
   - `prd-003-evidence-export-intake.md`:
-    `4c51fbee6abafb14bb696bd6bbe281cfd747ca7f20f995aab8a4cf17c9f2c1c4`
+    `8f90287f415c606afc34a2c10b5f8e146cd3f05c48ae4c9f3b1b216637b4f564`
   - `ACCEPTANCE_GATES.md`:
     `607db367d7af031ce62c6615272d9ae8fe0296fd4b8ee31af4a63c8cebc528f5`
   - `PRD_ACCEPTANCE_REVIEW_2026-06-10.md`:
