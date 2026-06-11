@@ -51,7 +51,7 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 07:49 EDT, SCS Wave A V2 successor and marker-proof status is:
+As of 2026-06-11 07:50 EDT, SCS Wave A V2 successor and marker-proof status is:
 
 - SCS V2 freeze is complete and pushed at
   `0c1882b23bdb0dac9617734d23024752e35af4c6`
@@ -238,7 +238,7 @@ As of 2026-06-11 07:49 EDT, SCS Wave A V2 successor and marker-proof status is:
 - Approval-input checkpoint artifacts from gumo hcom `#33327`, locally verified
   by Halo for tracked files:
   - Approval-input checklist:
-    `dfb8bbf7b3b265bee3eec65bcc99a4ab894f817391384b13cfebbbb5dcb45`
+    `dfb8bbf7b3b265bee3eec3ec65bcc99a4ab894f817391384b13cfebbbb5dcb45`
   - Hyper-V mutation-wave packet:
     `f20756e843a126fc41705e7177a9fbd5140af767c9355d51edbe30d5bf0cdcd9`
   - HTML decision packet:
@@ -254,6 +254,9 @@ As of 2026-06-11 07:49 EDT, SCS Wave A V2 successor and marker-proof status is:
   risk and hash pins were reverified. Reported verification passed: diff
   checks; HTML parse; extracted JS `node --check`; marker shell hash /
   `bash -n` / static no-delete scan; `py_compile`; and 18 watcher tests.
+- Hash note: gumo hcom `#33327` omitted the `3ec` segment in the approval-input
+  hash text. Halo's local `sha256sum` against the tracked file in SCS commit
+  `f1272a0` produced the value recorded above.
 
 ## Numbered Options Moving Forward
 
@@ -264,14 +267,19 @@ As of 2026-06-11 07:49 EDT, SCS Wave A V2 successor and marker-proof status is:
    verification. Halo verified read-only and updated Limux pointers after SCS
    stabilized.
 3. **Dry-run proof packet**: exact draft `0284cf52...` is frozen in SCS commit
-   `bed7d37`, formal marker-proof review is pushed at `b8abc7d`, and the
-   approval-input checklist is pushed at `f1272a0`. It is still `WAIT/NO-GO`
-   for execution, marker creation, ISO/key import/download, package execution,
-   and host mutation until the operator approves a concrete execution packet.
-4. **Wave A ISO intake approval packet**: only after dry-run proof and mutation
+   `bed7d37`, and formal marker-proof review is pushed at `b8abc7d`. It is
+   still `WAIT/NO-GO` for execution, marker creation, ISO/key import/download,
+   package execution, and host mutation until the operator approves a concrete
+   execution packet/input checklist.
+4. **Marker-proof approval inputs**: complete at SCS commit `f1272a0...` with
+   approval-input checklist `dfb8bbf7...`, Hyper-V mutation-wave packet
+   `f20756e8...`, HTML packet `ce8600e9...`, and gumo `#33327` verification.
+   It is docs-only and still `WAIT/NO-GO`; it names the missing values for any
+   future marker-only execution packet.
+5. **Wave A ISO intake approval packet**: only after dry-run proof and mutation
    review converge should SCS request explicit operator approval to run ISO
    intake.
-5. **Later lab layers**: persistent full Linux VM baseline, disposable full-VM
+6. **Later lab layers**: persistent full Linux VM baseline, disposable full-VM
    factory, and Firecracker microVM layer remain downstream gated work.
 
 As of 2026-06-10 22:10 EDT, SCS commit

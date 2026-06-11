@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 07:49 EDT
+Last updated: 2026-06-11 07:50 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,7 +33,7 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
-Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 07:49
+Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 07:50
 EDT:
 
 - SCS V2 freeze is complete and pushed at
@@ -234,7 +234,7 @@ EDT:
 - Approval-input checkpoint artifacts from gumo hcom `#33327`, locally verified
   by Halo for tracked files:
   - Approval-input checklist:
-    `dfb8bbf7b3b265bee3eec65bcc99a4ab894f817391384b13cfebbbb5dcb45`
+    `dfb8bbf7b3b265bee3eec3ec65bcc99a4ab894f817391384b13cfebbbb5dcb45`
   - Hyper-V mutation-wave packet:
     `f20756e843a126fc41705e7177a9fbd5140af767c9355d51edbe30d5bf0cdcd9`
   - HTML decision packet:
@@ -250,6 +250,9 @@ EDT:
   risk and hash pins were reverified. Reported verification passed: diff
   checks; HTML parse; extracted JS `node --check`; marker shell hash /
   `bash -n` / static no-delete scan; `py_compile`; and 18 watcher tests.
+- Hash note: gumo hcom `#33327` omitted the `3ec` segment in the approval-input
+  hash text. Halo's local `sha256sum` against the tracked file in SCS commit
+  `f1272a0` produced the value recorded above.
 - Next safe SCS action: the operator must either keep `WAIT`, patch LOWs first,
   or supply concrete approval inputs for a separate execution packet. Missing
   inputs remain: approval reference, execution operator/window, operator-approved
@@ -272,14 +275,19 @@ Numbered options moving forward:
    verification. Halo's role was read-only verification and Limux pointer
    updates.
 3. **Dry-run proof packet**: exact draft `0284cf52...` is frozen in SCS commit
-   `bed7d37`, formal marker-proof review is pushed at `b8abc7d`, and the
-   approval-input checklist is pushed at `f1272a0`. It is still `WAIT/NO-GO`
-   for execution, marker creation, ISO/key import/download, package execution,
-   and host mutation until the operator approves a concrete execution packet.
-4. **Wave A ISO intake approval packet**: only after the dry-run proof and
+   `bed7d37`, and formal marker-proof review is pushed at `b8abc7d`. It is
+   still `WAIT/NO-GO` for execution, marker creation, ISO/key import/download,
+   package execution, and host mutation until the operator approves a concrete
+   execution packet/input checklist.
+4. **Marker-proof approval inputs**: complete at SCS commit `f1272a0...` with
+   approval-input checklist `dfb8bbf7...`, Hyper-V mutation-wave packet
+   `f20756e8...`, HTML packet `ce8600e9...`, and gumo `#33327` verification.
+   It is docs-only and still `WAIT/NO-GO`; it names the missing values for any
+   future marker-only execution packet.
+5. **Wave A ISO intake approval packet**: only after the dry-run proof and
    mutation review converge should SCS ask the operator for explicit approval to
    run ISO intake. No approval is implied by any current docs.
-5. **Later lab layers**: Wave B persistent VM baseline, disposable full-VM
+6. **Later lab layers**: Wave B persistent VM baseline, disposable full-VM
    factory, and Firecracker microVM layer remain downstream of accepted Wave A
    evidence and separate mutation gates.
 
@@ -556,15 +564,15 @@ this Limux session is to keep Limux stable as a tool and coordinate with gumo on
 the SCS-owned lab docs, not to add more Limux features by default.
 
 If resuming after a restart, first verify SCS is still at or beyond
-`0c1882b23bdb0dac9617734d23024752e35af4c6`, that the V2/hardening hashes below
-still match, and whether gumo has committed or revised the marker-proof draft
-after Halo `#32386`. If the marker-proof draft is still hash `0284cf52...`, the
-next action is SCS durable freeze/commit plus formal mutation-script review; if
-the marker-proof hash differs, treat the draft as unreviewed until gumo reissues
-an exact-hash request. Wave A is review/freeze only; do not download the ISO,
-import keys, execute packet commands, create marker files, attach media, start
-VM work, run package builds, run Limux install/package workflows, or move lab
-artifacts back to the trusted host.
+`f1272a0375e6ddc83343bba68d85c98cd6d635fc`, that the approval-input hashes
+below still match, and whether gumo has issued a new exact-hash review request
+or committed a successor execution packet. If SCS remains at `f1272a0`, the next
+action is not Limux implementation; it is SCS/operator selection of
+`A - Keep WAIT`, `B - Patch LOWs First`, or `C - Prepare Execution Packet` with
+the missing values filled and reviewed. Wave A remains review/freeze only; do
+not download the ISO, import keys, execute packet commands, create marker files,
+attach media, start VM work, run package builds, run Limux install/package
+workflows, or move lab artifacts back to the trusted host.
 
 ```bash
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
@@ -572,6 +580,10 @@ git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY log -5 --oneline --decorate
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_V2_2026-06-11.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_V2_HARDENING_REVIEW_2026-06-11.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_2026-06-11.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_EXECUTION_APPROVAL_INPUTS_2026-06-11.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/HANDOFF.md
 hcom --version --name halo
 hcom list --name halo
 hcom events --last 80 --thread project-isolation-lab-goal --name halo

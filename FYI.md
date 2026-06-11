@@ -723,6 +723,9 @@ decision packet, and SCS `HANDOFF.md`. Patched only Limux-owned restart docs.
 Halo did not edit SCS, run the packet, create markers, download/import ISO/key/
 checksum material, or mutate network, Hyper-V, VM, WSL, Limux, Cargo, package,
 SCRIM, global-config, lab-to-host, or host/runtime state.
+The approval-input hash recorded in the docs is Halo's local `sha256sum` result
+against the tracked file in SCS commit `f1272a0`; gumo hcom `#33327` omitted
+the `3ec` segment in that hash text.
 
 ### Impact:
 The approval-input checklist is now durable, but it remains `Decision: WAIT`,
@@ -1275,7 +1278,7 @@ mutate network, Hyper-V, VM, WSL, Limux, Cargo, package, or host/runtime state.
 ### Impact:
 Current durable state is SCS commit `b8abc7d`; current live WIP is
 `WAVE_A_WSL_DRVFS_MARKER_PROOF_EXECUTION_APPROVAL_INPUTS_2026-06-11.md` at
-SHA256 `dfb8bbf7b3b265bee3eec65bcc99a4ab894f817391384b13cfebbbb5dcb45`, with
+SHA256 `dfb8bbf7b3b265bee3eec3ec65bcc99a4ab894f817391384b13cfebbbb5dcb45`, with
 `Decision: WAIT`. Do not treat the WIP as final until gumo commits/pushes or
 requests review. Execution remains `WAIT/NO-GO`.
 
