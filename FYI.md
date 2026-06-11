@@ -910,20 +910,47 @@ Read the new untracked V2 packet read-only. Its review target drifted through
 multiple hashes while gumo continued patching (`d52194...`, `12bef558...`, and
 `3df4ce...`) before gumo reissued frozen candidate
 `00ef5e18a6494c010be32b5aa8d3188fabd4111450f2400701d2d7e47d52ab21` in hcom
-`#30973`. Ran SCS `git diff --check`, targeted V2 reads, `rg` checks,
-no-index whitespace check, and exact SHA verification. Halo did not edit SCS
-and did not run host/runtime mutation.
+`#30973`; gumo later superseded that hash after final LOW/INFO patching and
+reissued hcom `#31264` for exact hash
+`36cad9340fdbb38d22cd91642a1cb702766ece09075dae10fac1206dc1b3a1bb`.
+Ran SCS `git diff --check`, `git diff --cached --check`, targeted V2 reads,
+`rg` checks, no-index whitespace check, and exact SHA verification. Halo did
+not edit SCS and did not run host/runtime mutation.
 
 ### Impact:
 Restart state now shows SCS is dirty with an uncommitted V2 draft. The draft
 claims LOW hardening for base-10 numeric validation, local reviewed public-key
 input instead of keyserver fetch, `VALIDSIG` evidence/fingerprint handling,
 Limux/cargo/artifact-import no-authorization wording, and runtime proof
-planning. Halo replied `GO` to hcom `#30973` for using exact hash
-`00ef5e18...` as the next V2 review artifact only, with no CRITICAL/HIGH/MEDIUM
-affected-LOW blocker found. The file remains untracked in SCS, so durable
+planning. Halo replied `GO` to hcom `#31264` for using exact hash
+`36cad934...` as the next V2 review artifact only, with no CRITICAL/HIGH/MEDIUM
+affected-LOW blocker found. The file is staged as added in SCS, so durable
 SCS-side commit/freeze is still needed before wider team reliance. Execution
 remains `WAIT`.
 
 ### Related:
-`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#30665` | hcom `#30689` | hcom `#30729` | hcom `#30934` | hcom `#30973`
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#30665` | hcom `#30689` | hcom `#30729` | hcom `#30934` | hcom `#30973` | hcom `#31264`
+
+## 2026-06-11 - Numbered Lab Options Added To Restart Docs
+### What:
+Added an explicit numbered next-options list to the Limux Project Isolation Lab
+restart docs and refreshed the stale `Immediate Next Action` commands.
+
+### Why:
+The operator asked for numbered options moving forward, with option 1 being
+docs/handoff updates. A zero-context successor also needed the older immediate
+next-action section to stop pointing at the superseded `7427285` checkpoint.
+
+### How:
+Patched only Limux-owned `HANDOFF.md`, `docs/project-isolation-lab-goal.md`,
+and this append-only FYI entry. The new order is: 1. docs/handoff first,
+2. SCS durable V2 freeze, 3. WSL/DrvFs dry-run proof packet, 4. Wave A ISO
+intake approval packet, 5. later persistent/disposable/Firecracker lab layers.
+
+### Impact:
+Restart state now matches the requested numbering and current SCS boundary:
+V2 hash `36cad934...` is GO as a review artifact only, staged but not committed
+in SCS, and execution remains `WAIT`.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | this Limux commit

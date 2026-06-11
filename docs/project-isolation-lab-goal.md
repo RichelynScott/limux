@@ -51,17 +51,17 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 06:40 EDT, SCS Wave A V2 successor status is:
+As of 2026-06-11 06:49 EDT, SCS Wave A V2 successor status is:
 
 - Last pushed SCS commit:
   `7145ac826cecc0816af1890ee888e1701483854c`
   (`docs(lab): add wave a formal review record`)
-- SCS is dirty again under gumo with a new untracked successor packet:
+- SCS is dirty again under gumo with a new successor packet staged as added:
   `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_V2_2026-06-11.md`.
   Halo did not edit SCS.
 - Current local V2 hash verified by Halo:
   - Wave A V2 successor packet:
-    `00ef5e18a6494c010be32b5aa8d3188fabd4111450f2400701d2d7e47d52ab21`
+    `36cad9340fdbb38d22cd91642a1cb702766ece09075dae10fac1206dc1b3a1bb`
 - Prior formal-review hashes verified locally:
   - formal Wave A review record:
     `b370b92a94eb7d2a76ac941626b1048d51d3e1a9fb76f3f886e32f1407f73955`
@@ -92,9 +92,12 @@ As of 2026-06-11 06:40 EDT, SCS Wave A V2 successor status is:
 - Gumo hcom `#30729` and `#30934` requested bounded read-only affected-LOW
   reviews of V2, but both named hashes drifted while gumo continued patching.
   Gumo reissued hcom `#30973` with frozen hash `00ef5e18...`. Halo verified the
-  exact hash and replied `GO` for using it as the next V2 review artifact only,
-  with no CRITICAL/HIGH/MEDIUM affected-LOW blocker found. The file remains
-  untracked in SCS, so SCS-side durable commit/freeze is still needed.
+  exact hash and replied `GO` for using it as the next V2 review artifact only.
+  Gumo later acknowledged that `00ef5e18...` was superseded by final LOW/INFO
+  patching and reissued hcom `#31264` for `36cad934...`. Halo verified that
+  exact hash and replied `GO` for using it as the next V2 review artifact only.
+  The file is staged as added in SCS, so SCS-side durable commit/freeze is still
+  needed.
 - The current V2 draft says it applies LOW hardening from the formal review:
   base-10 numeric validation, keyserver removal in favor of reviewed local
   public-key input, observed `VALIDSIG` evidence capture, signing-key-or-primary
@@ -106,6 +109,22 @@ As of 2026-06-11 06:40 EDT, SCS Wave A V2 successor status is:
   approved `APPROVAL_REF`, `EXECUTION_OPERATOR`, `EXECUTION_WINDOW_UTC`, or
   `EXPECTED_PACKET_SHA256`, and no host/VM/WSL/Docker/HNS/WinNAT/network/
   package/SCRIM/global-config/Limux/runtime mutation approval.
+
+## Numbered Options Moving Forward
+
+1. **Docs/handoff first**: keep Limux restart docs aligned with SCS whenever the
+   SCS-owned lab state changes. This is the active option for this session.
+2. **SCS durable V2 freeze**: gumo should commit/push or otherwise durably
+   record the frozen V2 packet at `36cad934...` and the affected-lens review
+   result. Halo verifies read-only and updates Limux pointers.
+3. **Dry-run proof packet**: after V2 is durable, SCS should prepare/review the
+   tiny-marker WSL/DrvFs proof for `df -PB1`, `realpath`, and `mv -nT`. No ISO
+   bytes, key import, package execution, or host mutation.
+4. **Wave A ISO intake approval packet**: only after dry-run proof and mutation
+   review converge should SCS request explicit operator approval to run ISO
+   intake.
+5. **Later lab layers**: persistent full Linux VM baseline, disposable full-VM
+   factory, and Firecracker microVM layer remain downstream gated work.
 
 As of 2026-06-10 22:10 EDT, SCS commit
 `8ff345f docs(lab): add nat and iso intake blockers` is pushed. The
@@ -353,22 +372,16 @@ with 18 tests OK, and HEAD/upstream SHA alignment.
 
 Status remains `WAIT`: this is not formal `$mutation-script-wave` GO, not ISO
 download/use approval, and not host/VM/network/package/runtime approval. Next
-work is Wave A ISO intake packet review/freeze only.
+work is SCS durable V2 freeze/commit, then the WSL/DrvFs dry-run proof packet.
 
 Verify SCS state before relying on the recorded pointers:
 
 ```bash
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY log -5 --oneline --decorate
-sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md
-sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_PACKET_REVIEW_RECORD_2026-06-10.md
-sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/PRD_ACCEPTANCE_REVIEW_2026-06-10.md
-sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md
-sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/ACCEPTANCE_GATES.md
-sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/ACTIVE_GOAL.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_V2_2026-06-11.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_MUTATION_WAVE_REVIEW_2026-06-11.md
 hcom --version --name halo
 hcom list --name halo
-wsl.exe --list --verbose
-wsl.exe --status
-hcom events --last 80 --agent gumo --name halo
+hcom events --last 80 --thread project-isolation-lab-goal --name halo
 ```
