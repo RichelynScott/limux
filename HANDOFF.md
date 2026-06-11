@@ -272,13 +272,29 @@ EDT:
   movement, but after evidence/proof/target directories may exist. Gumo hcom
   `#33763` acknowledged this stricter residual wording and kept execution
   `WAIT`.
-- The V2 marker-proof draft remains non-durable until SCS commits/pushes or
-  otherwise freezes it. It remains `WAIT/NO-GO` for execution until formal
-  mutation review, operator approval, execution window/operator, packet/script
-  hashes, filesystem-type values, and marker disposition are accepted.
-- Next safe SCS action: commit/push or otherwise freeze the exact V2 draft, then
-  route it through the formal marker-proof review path. If SCS changes the file
-  after Halo `#33749`, treat the new hash as unreviewed until reissued.
+- Current SCS read-only status after gumo incorporated the V2 review is dirty
+  and non-durable. Observed WIP paths/hashes at 2026-06-11 08:06 EDT:
+  - `project_isolation_lab/docs/ACTIVE_GOAL.md`:
+    `94cb1849aa30c2522de444f31ef65c08b02f0d531f3cb0413c152f123fbd4c76`
+  - `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_EXECUTION_APPROVAL_INPUTS_2026-06-11.md`:
+    `ff0e6ed037cdac8ded343e52e76bfe81f17a746863ad40f3d4f7d1a82a4b0b07`
+  - `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_MUTATION_WAVE_REVIEW_2026-06-11.md`:
+    `a9330ba284190f12431e82844087dcf36911f8382a064c4c14126a2147d72a1a`
+  - `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_V2_2026-06-11.md`:
+    `c52377cefa8be15d768cbbaabe5a05ddedb2e2bed1cdcfc566708a94f2f37e39`
+  - `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_V2_HARDENING_REVIEW_2026-06-11.md`:
+    `a0ded5dc093c6e98ae669190bf76706fbb6dbb81248a2e29aa63667250a87e2d`
+  - unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
+- The V2 hardening review and updated approval-input checklist both still record
+  `Decision: WAIT` and no execution approval. They are not durable until SCS
+  commits/pushes or otherwise freezes them. Execution remains `WAIT/NO-GO`
+  until formal execution-scope mutation review, operator approval, execution
+  window/operator, packet/script hashes, filesystem-type values, marker
+  disposition, and residual disposition are accepted.
+- Next safe SCS action: commit/push or otherwise freeze the exact V2 draft,
+  V2 hardening review, and updated approval-input checklist. If SCS changes any
+  reviewed V2 file after Halo `#33749`, treat the new hash set as unreviewed
+  until reissued.
 - Decision remains `WAIT` for execution: no ISO download/use approval, no
   operator execution approval, no selected execution operator/window, no
   approved `APPROVAL_REF`, `EXECUTION_OPERATOR`, `EXECUTION_WINDOW_UTC`, or
@@ -307,8 +323,9 @@ Numbered options moving forward:
    future marker-only execution packet.
 5. **V2 marker-proof draft**: current untracked SCS WIP
    `WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_V2_2026-06-11.md` at
-   `c52377ce...` has Halo `#33749` GO for review/freeze candidate only. It is
-   not durable and not executable.
+   `c52377ce...` has Halo `#33749` GO for review/freeze candidate only.
+   Updated approval-input and V2 hardening-review WIP exist, but are not durable
+   until SCS commits/pushes. Execution remains `WAIT/NO-GO`.
 6. **Wave A ISO intake approval packet**: only after the dry-run proof and
    mutation review converge should SCS ask the operator for explicit approval to
    run ISO intake. No approval is implied by any current docs.
@@ -589,15 +606,15 @@ this Limux session is to keep Limux stable as a tool and coordinate with gumo on
 the SCS-owned lab docs, not to add more Limux features by default.
 
 If resuming after a restart, first verify SCS is still at or beyond
-`f1272a0375e6ddc83343bba68d85c98cd6d635fc`, that the approval-input hashes
-below still match, and whether gumo has committed or changed the V2 marker-proof
-draft after Halo hcom `#33749`. If the V2 marker-proof draft remains
-`c52377ce...`, the next action is SCS durable freeze/commit plus formal
-marker-proof review. If the V2 draft hash differs, treat it as unreviewed until
-gumo reissues an exact-hash request. Wave A remains review/freeze only; do not
-download the ISO, import keys, execute packet commands, create marker files,
-attach media, start VM work, run package builds, run Limux install/package
-workflows, or move lab artifacts back to the trusted host.
+`f1272a0375e6ddc83343bba68d85c98cd6d635fc`, that the V2 WIP hashes below still
+match, and whether gumo has committed or changed the V2 marker-proof draft after
+Halo hcom `#33749`. If the V2 marker-proof draft remains `c52377ce...`, the
+next action is SCS durable freeze/commit plus formal marker-proof review. If the
+V2 draft hash differs, treat it as unreviewed until gumo reissues an exact-hash
+request. Wave A remains review/freeze only; do not download the ISO, import
+keys, execute packet commands, create marker files, attach media, start VM work,
+run package builds, run Limux install/package workflows, or move lab artifacts
+back to the trusted host.
 
 ```bash
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
@@ -606,6 +623,7 @@ sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_V2_HARDENING_REVIEW_2026-06-11.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_2026-06-11.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_V2_2026-06-11.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_V2_HARDENING_REVIEW_2026-06-11.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_EXECUTION_APPROVAL_INPUTS_2026-06-11.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html

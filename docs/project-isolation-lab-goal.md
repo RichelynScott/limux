@@ -273,6 +273,22 @@ As of 2026-06-11 08:02 EDT, SCS Wave A V2 successor and marker-proof status is:
   `#33763` acknowledged the stricter residual wording and kept execution
   `WAIT`. The draft remains non-durable until SCS commits/pushes or otherwise
   freezes it, and remains `WAIT/NO-GO` for execution.
+- Current SCS read-only status after gumo incorporated the V2 review is dirty
+  and non-durable. Observed WIP paths/hashes at 2026-06-11 08:06 EDT:
+  - `project_isolation_lab/docs/ACTIVE_GOAL.md`:
+    `94cb1849aa30c2522de444f31ef65c08b02f0d531f3cb0413c152f123fbd4c76`
+  - `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_EXECUTION_APPROVAL_INPUTS_2026-06-11.md`:
+    `ff0e6ed037cdac8ded343e52e76bfe81f17a746863ad40f3d4f7d1a82a4b0b07`
+  - `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_MUTATION_WAVE_REVIEW_2026-06-11.md`:
+    `a9330ba284190f12431e82844087dcf36911f8382a064c4c14126a2147d72a1a`
+  - `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_V2_2026-06-11.md`:
+    `c52377cefa8be15d768cbbaabe5a05ddedb2e2bed1cdcfc566708a94f2f37e39`
+  - `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_V2_HARDENING_REVIEW_2026-06-11.md`:
+    `a0ded5dc093c6e98ae669190bf76706fbb6dbb81248a2e29aa63667250a87e2d`
+  - unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
+- The V2 hardening review and updated approval-input checklist both still record
+  `Decision: WAIT` and no execution approval. They are not durable until SCS
+  commits/pushes or otherwise freezes them.
 
 ## Numbered Options Moving Forward
 
@@ -294,8 +310,9 @@ As of 2026-06-11 08:02 EDT, SCS Wave A V2 successor and marker-proof status is:
    future marker-only execution packet.
 5. **V2 marker-proof draft**: current untracked SCS WIP
    `WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_V2_2026-06-11.md` at
-   `c52377ce...` has Halo `#33749` GO for review/freeze candidate only. It is
-   not durable and not executable.
+   `c52377ce...` has Halo `#33749` GO for review/freeze candidate only.
+   Updated approval-input and V2 hardening-review WIP exist, but are not durable
+   until SCS commits/pushes. Execution remains `WAIT/NO-GO`.
 6. **Wave A ISO intake approval packet**: only after dry-run proof and mutation
    review converge should SCS request explicit operator approval to run ISO
    intake.

@@ -1312,8 +1312,12 @@ LOW residual, not blocker: mount-point ancestors below anchors but above exact
 proof parents are not rejected before `mkdir`; post-creation filesystem-type
 checks should catch this before marker movement, but after evidence/proof/target
 directories may exist. Gumo hcom `#33763` acknowledged the stricter residual
-wording and kept execution `WAIT`. The draft remains non-durable until SCS
-commits/pushes or otherwise freezes it, and execution remains `WAIT/NO-GO`.
+wording and kept execution `WAIT`. After that, SCS had non-durable WIP:
+modified active goal `94cb1849...`, updated approval-input checklist
+`ff0e6ed0...`, updated prior formal review `a9330ba2...`, V2 draft
+`c52377ce...`, and new V2 hardening review `a0ded5dc...`. The draft and
+updated review/input records remain non-durable until SCS commits/pushes or
+otherwise freezes them, and execution remains `WAIT/NO-GO`.
 
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#33581` |
