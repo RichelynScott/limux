@@ -34,6 +34,22 @@ A resumed session should start from SCS commit `62440b6` and packet SHA256 `badc
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom thread `project-isolation-lab-goal`
 
+## 2026-06-10 - Read-Only Lab Placeholder Discovery
+### What:
+Ran read-only WSL and hcom discovery for the Hyper-V packet placeholders.
+
+### Why:
+The packet still needs operator-specific values for the control-plane WSL distro and hcom sender-name check before it can move toward formal review. Resolving candidates without mutation reduces ambiguity while preserving the host-mutation gate.
+
+### How:
+Used `wsl.exe --list --verbose`, `wsl.exe --status`, `hcom --version --name halo`, and `hcom list --name halo`. No Hyper-V, VM, network, package, installer, or runtime mutation was run. A prior hcom message with shell-backtick expansion was corrected immediately in a follow-up message to gumo.
+
+### Impact:
+Candidate values are `CONTROL_PLANE_WSL_DISTRO=Ubuntu` and `HCOM_CHECK_NAME=halo`, with the caveat that `docker-desktop` is also running on WSL2 and therefore Docker/HNS/WSL2 NAT reconciliation remains a live stop condition before WinNAT creation.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom thread `project-isolation-lab-goal`
+
 ## 2026-05-29 - Limux Agent-Team Protocol Safety And Resume Plan
 ### What:
 Fixed the highest-risk `agent-team` behavior by moving generated protocol output from `AGENTS.md` to `LIMUX_AGENTS.md` by default, added `--protocol-path`, and documented the next zero-friction protocol discovery phase.

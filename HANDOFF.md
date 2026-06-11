@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-10 21:19 EDT
+Last updated: 2026-06-10 21:24 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -61,6 +61,15 @@ Current SCS restart pointers as of 2026-06-10 21:19 EDT:
 - Formal `$mutation-script-wave`, Ubuntu ISO provenance/SHA256, unresolved
   HIGH/CRIT convergence, and explicit operator approval/execution window have
   not happened.
+- Read-only placeholder discovery from this trusted WSL session found:
+  `CONTROL_PLANE_WSL_DISTRO` candidate `Ubuntu`; `HCOM_CHECK_NAME` candidate
+  `halo` as the hcom sender-name argument; `hcom --version --name halo`
+  reports `hcom 0.7.18`; `hcom list --name halo` succeeds and identifies this
+  session as `worker-limux-halo`. These are candidates only; the packet should
+  still resolve them immediately before execution.
+- Important live caveat: `wsl.exe --list --verbose` also shows
+  `docker-desktop` running on WSL2. Treat Docker/HNS/WSL2 NAT reconciliation as
+  a live stop condition before any WinNAT creation.
 
 ## Immediate Next Action
 
@@ -75,6 +84,10 @@ commit/hash and then continue the formal review gate:
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY log -5 --oneline --decorate
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md
+hcom --version --name halo
+hcom list --name halo
+wsl.exe --list --verbose
+wsl.exe --status
 hcom events --last 80 --agent gumo --name halo
 ```
 

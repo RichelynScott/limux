@@ -85,6 +85,21 @@ hcom thread `project-isolation-lab-goal`. Decision: `WAIT`, not formal
    validation before WSL/bash interpolation.
 5. Path A should make the first-boot network-disconnected state deterministic.
 
+Read-only placeholder discovery from this session on 2026-06-10 21:24 EDT:
+
+- `wsl.exe --list --verbose` shows default `Ubuntu` running on WSL2.
+- `wsl.exe --status` reports default distribution `Ubuntu` and default version
+  `2`.
+- `docker-desktop` is also running on WSL2. This is not a mutation by itself,
+  but it means the Docker/HNS/WSL2 NAT reconciliation gate is live and should
+  remain a stop condition before any WinNAT creation.
+- `hcom --version --name halo` reports `hcom 0.7.18`.
+- `hcom list --name halo` succeeds and displays this hcom identity as
+  `worker-limux-halo`.
+- Candidate values for this session: `CONTROL_PLANE_WSL_DISTRO=Ubuntu` and
+  `HCOM_CHECK_NAME=halo`. The packet should still resolve and validate both
+  immediately before execution rather than hardcoding them permanently.
+
 Before any execution can be considered, the packet still needs freeze +
 SHA256, exact Ubuntu ISO provenance and SHA256, formal `$mutation-script-wave`,
 resolution of any high/critical findings, and explicit operator approval for
@@ -96,5 +111,9 @@ Verify SCS state before relying on the recorded pointers:
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY log -5 --oneline --decorate
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md
+hcom --version --name halo
+hcom list --name halo
+wsl.exe --list --verbose
+wsl.exe --status
 hcom events --last 80 --agent gumo --name halo
 ```
