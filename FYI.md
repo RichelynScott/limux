@@ -1177,9 +1177,10 @@ from this live WIP.
 
 ### How:
 Checked SCS status read-only, hashed the untracked mutation-wave review record,
-and read its top-level decision/no-authorization language. Current SCS WIP also
-has modified `FYI.md`, `README.md`, and `project_isolation_lab/FYI.md`. Patched only
-Limux-owned restart docs. Halo did not edit SCS, review the WIP as a formal
+and read its top-level decision/no-authorization language. Current SCS WIP has
+active root and `project_isolation_lab/` docs modifications, so successors
+should re-run SCS status instead of relying on a fixed dirty-file list. Patched
+only Limux-owned restart docs. Halo did not edit SCS, review the WIP as a formal
 request, run the packet, create markers, download/import ISO/key/checksum
 material, or mutate network, Hyper-V, VM, WSL, Limux, Cargo, package, or
 host/runtime state.
