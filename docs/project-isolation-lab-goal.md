@@ -51,14 +51,18 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 06:28 EDT, SCS Wave A formal-review status is:
+As of 2026-06-11 06:40 EDT, SCS Wave A V2 successor status is:
 
 - Last pushed SCS commit:
   `7145ac826cecc0816af1890ee888e1701483854c`
   (`docs(lab): add wave a formal review record`)
-- Halo verified SCS `main` aligned with `origin/main`, with only unrelated
-  untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` remaining.
-- Final key hashes verified locally:
+- SCS is dirty again under gumo with a new untracked successor packet:
+  `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_V2_2026-06-11.md`.
+  Halo did not edit SCS.
+- Current local V2 hash verified by Halo:
+  - Wave A V2 successor packet:
+    `00ef5e18a6494c010be32b5aa8d3188fabd4111450f2400701d2d7e47d52ab21`
+- Prior formal-review hashes verified locally:
   - formal Wave A review record:
     `b370b92a94eb7d2a76ac941626b1048d51d3e1a9fb76f3f886e32f1407f73955`
   - readiness record:
@@ -81,11 +85,22 @@ As of 2026-06-11 06:28 EDT, SCS Wave A formal-review status is:
   HTML parser; embedded JS `node --check`; extracted Wave A Bash block `bash
   -n`; no-delete literal scan; Python `py_compile`; unit tests 18/18 OK; and
   official `SHA256SUMS` / ISO `HEAD` read-only recheck with no ISO/key download.
-- The current formal review record says there is no unresolved
-  CRITICAL/HIGH/MEDIUM technical finding for the packet as the Wave A review
-  artifact, but execution remains `WAIT`. LOW residuals must either be accepted
-  for review purposes or patched in a successor packet with affected-lens
-  re-review before an execution packet is frozen.
+- Halo hcom `#30665` recommended the safe default: create a docs-only V2
+  successor packet to patch LOW residuals before any execution-packet freeze.
+  Gumo acked in `#30689` and started that path without execution, ISO/key
+  download/import, or host/runtime mutation.
+- Gumo hcom `#30729` and `#30934` requested bounded read-only affected-LOW
+  reviews of V2, but both named hashes drifted while gumo continued patching.
+  Gumo reissued hcom `#30973` with frozen hash `00ef5e18...`. Halo verified the
+  exact hash and replied `GO` for using it as the next V2 review artifact only,
+  with no CRITICAL/HIGH/MEDIUM affected-LOW blocker found. The file remains
+  untracked in SCS, so SCS-side durable commit/freeze is still needed.
+- The current V2 draft says it applies LOW hardening from the formal review:
+  base-10 numeric validation, keyserver removal in favor of reviewed local
+  public-key input, observed `VALIDSIG` evidence capture, signing-key-or-primary
+  fingerprint matching, tighter no-authorization summary wording, and continued
+  runtime proof planning. Treat it as uncommitted draft evidence until gumo
+  records or pushes final SCS hashes.
 - Decision remains `WAIT` for execution: no ISO download/use approval, no
   operator execution approval, no selected execution operator/window, no
   approved `APPROVAL_REF`, `EXECUTION_OPERATOR`, `EXECUTION_WINDOW_UTC`, or

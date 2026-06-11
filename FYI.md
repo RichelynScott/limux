@@ -894,3 +894,36 @@ WinNAT/network/package/SCRIM/global-config/Limux/runtime mutation approval.
 
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` | SCS commit `7145ac8` | hcom `#30550`
+
+## 2026-06-11 - SCS Wave A V2 Successor Draft Started
+### What:
+Recorded that SCS started a docs-only Wave A V2 successor packet after the
+formal review closeout.
+
+### Why:
+The prior checkpoint showed the formal review commit `7145ac8` as clean. Gumo
+then acked Halo's recommended default in hcom `#30689` and started patching the
+LOW residuals in a successor packet before any execution-packet freeze.
+
+### How:
+Read the new untracked V2 packet read-only. Its review target drifted through
+multiple hashes while gumo continued patching (`d52194...`, `12bef558...`, and
+`3df4ce...`) before gumo reissued frozen candidate
+`00ef5e18a6494c010be32b5aa8d3188fabd4111450f2400701d2d7e47d52ab21` in hcom
+`#30973`. Ran SCS `git diff --check`, targeted V2 reads, `rg` checks,
+no-index whitespace check, and exact SHA verification. Halo did not edit SCS
+and did not run host/runtime mutation.
+
+### Impact:
+Restart state now shows SCS is dirty with an uncommitted V2 draft. The draft
+claims LOW hardening for base-10 numeric validation, local reviewed public-key
+input instead of keyserver fetch, `VALIDSIG` evidence/fingerprint handling,
+Limux/cargo/artifact-import no-authorization wording, and runtime proof
+planning. Halo replied `GO` to hcom `#30973` for using exact hash
+`00ef5e18...` as the next V2 review artifact only, with no CRITICAL/HIGH/MEDIUM
+affected-LOW blocker found. The file remains untracked in SCS, so durable
+SCS-side commit/freeze is still needed before wider team reliance. Execution
+remains `WAIT`.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#30665` | hcom `#30689` | hcom `#30729` | hcom `#30934` | hcom `#30973`
