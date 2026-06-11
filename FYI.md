@@ -1039,3 +1039,35 @@ mutation-script review, operator approval request, or marker-proof execution.
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#32019` |
 hcom `#32076`
+
+## 2026-06-11 - SCS Marker Proof Draft Reissued At 9d497
+### What:
+Recorded Halo's read-only review of the superseding SCS marker-only WSL/DrvFs
+proof packet draft at SHA256
+`9d49702900315249082445dc4630737cedefd363dcd168ecd70f9fcd24f01c59`.
+
+### Why:
+Gumo superseded the prior `917c1753...` draft in hcom `#32203` after addressing
+Halo/Claude findings. The new exact-hash review closes the previous missing
+filesystem-evidence blocker, but a new failure-order/documentation mismatch
+keeps the draft at `WAIT`.
+
+### How:
+Reviewed the SCS draft read-only, checked exact hash, status, whitespace,
+targeted clauses, extracted the fenced shell block to `/tmp`, ran `bash -n`,
+ran `static_check_no_delete_api.py` against the extracted shell with 0 REMOVE
+and 0 REVIEW findings, and recorded the extracted script hash. Patched only
+Limux-owned restart docs. Halo did not edit SCS, execute the packet, create
+markers, download/import ISO/key/checksum material, or mutate network, Hyper-V,
+VM, WSL, Limux, Cargo, package, or host/runtime state.
+
+### Impact:
+Option 3 remains `WAIT`. SCS/gumo should either move filesystem-type checks
+earlier, using existing parents such as `/mnt/c` and a reviewed WSL parent
+before creating child/evidence directories, or revise Failure Behavior and
+approval text to explicitly accept the residual directories that may be created
+before a filesystem-type mismatch stops. Any next draft must be reissued by
+exact hash before review.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#32203`

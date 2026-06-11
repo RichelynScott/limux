@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 07:08 EDT
+Last updated: 2026-06-11 07:12 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,7 +33,7 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
-Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 07:08
+Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 07:12
 EDT:
 
 - SCS V2 freeze is complete and pushed at
@@ -108,7 +108,7 @@ EDT:
   `unittest tests.security_posture.test_supply_chain_watch -v` with 18 tests OK.
 - SCS now has a marker-only WSL/DrvFs proof packet draft:
   `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_2026-06-11.md`
-  at SHA256 `917c1753332e6a76b98c6498aba168855e088da4fa9703dd34e07046f4a4a699`.
+  at SHA256 `9d49702900315249082445dc4630737cedefd363dcd168ecd70f9fcd24f01c59`.
   Current SCS status shows this file as added in the worktree/index-intent
   state, plus unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
 - Gumo hcom `#32019` requested a narrow read-only Halo review of that exact
@@ -122,14 +122,38 @@ EDT:
   `stat -f`, `df -T`, `findmnt`, or equivalent, record it in evidence and
   summary, and either fail closed against reviewed expected values or require
   explicit operator/reviewer acceptance of the observed types.
+  That `917c1753...` hash was superseded by gumo hcom `#32203`.
+- Gumo hcom `#32203` reissued exact hash `9d497029...` after adding explicit
+  `stat -f` filesystem-type evidence, expected WSL/DrvFs filesystem-type
+  values, standalone executed-script SHA256 gate, no-direct-stdin/paste guard,
+  `mv -nT` exit-code capture, marker-scale disclaimer, minimum proof
+  free-space gate, exact basename containment, fuller `not_authorized`, and
+  updated blockers/evidence outputs. Halo replied: `WAIT`. The prior
+  filesystem-evidence MEDIUM is closed in substance, but a new MEDIUM blocker
+  remains: the Failure Behavior section says wrong expected filesystem-type
+  values stop before creating evidence, WSL marker, or DrvFs target paths, while
+  the script creates `EVIDENCE_ROOT`, `WSL_PROOF_ROOT`, and `TARGET_PARENT`
+  before comparing `WSL_FS_TYPE_BEFORE` / `TARGET_FS_TYPE_BEFORE` to expected
+  values. If `TARGET_PARENT` was absent, a wrong filesystem expectation can
+  still leave a newly created DrvFs target directory despite the documented
+  fail-before-target-path claim.
+- Recommended fix for `9d497029...`: either move filesystem-type checks earlier
+  using existing parents such as `/mnt/c` and a reviewed WSL parent before
+  creating child/evidence directories, or revise Failure Behavior / approval
+  text to accurately state which parent/evidence directories may be created
+  before filesystem mismatch stops. If target directory creation remains before
+  filesystem-type validation, make that residual state explicit and require
+  operator acceptance. LOW residual: the no-paste guard does not appear to fail
+  closed on sourcing a reviewed script file; consider a `BASH_SOURCE[0] == $0`
+  style guard if execution must be subprocess-only.
 - Marker-proof review evidence from Halo was read-only only: exact SHA checks,
   SCS status, `git diff --check`, selected reads/`rg`, V2 cross-check reads,
-  fenced-shell extraction to `/tmp`, `bash -n`, and
+  fenced-shell extraction to `/tmp`, `bash -n`, extracted-script SHA256, and
   `static_check_no_delete_api.py` over the extracted shell with 0 REMOVE/0
   REVIEW. Halo did not edit SCS, run the packet, create markers, or mutate
   ISO/key/checksum/network/Hyper-V/VM/WSL/Limux/Cargo/package state.
-- Next safe SCS action: patch the marker-proof draft to add positive filesystem
-  type/source evidence, then reissue an exact-hash review before any freeze,
+- Next safe SCS action: patch or explicitly accept the filesystem-type
+  failure-order residual, then reissue an exact-hash review before any freeze,
   mutation-script review, or operator approval request.
 - Decision remains `WAIT` for execution: no ISO download/use approval, no
   operator execution approval, no selected execution operator/window, no
@@ -148,8 +172,9 @@ Numbered options moving forward:
    verification. Halo's role was read-only verification and Limux pointer
    updates.
 3. **Dry-run proof packet**: started, but currently `WAIT`. Exact draft
-   `917c1753...` needs positive filesystem-type evidence for WSL ext4 and
-   DrvFs before it can satisfy the V2 proof requirement as a future
+   `9d497029...` closes the prior filesystem-evidence gap but needs the
+   filesystem-type failure-order/documentation mismatch fixed or explicitly
+   accepted before it can satisfy the V2 proof requirement as a future
    execution-review candidate. It must still avoid ISO download/key import/
    package execution.
 4. **Wave A ISO intake approval packet**: only after the dry-run proof and
@@ -434,12 +459,13 @@ the SCS-owned lab docs, not to add more Limux features by default.
 If resuming after a restart, first verify SCS is still at or beyond
 `0c1882b23bdb0dac9617734d23024752e35af4c6`, that the V2/hardening hashes below
 still match, and whether gumo has revised the marker-proof draft after Halo
-`#32076`. If the marker-proof draft is still hash `917c1753...`, the next action
-is for SCS/gumo to add positive filesystem-type evidence before re-review. Wave
-A is review/freeze only; do not download the ISO, import keys, execute packet
-commands, create marker files, attach media, start VM work, run package builds,
-run Limux install/package workflows, or move lab artifacts back to the trusted
-host.
+`#32203`. If the marker-proof draft is still hash `9d497029...`, the next
+action is for SCS/gumo to resolve the filesystem-type failure-order/documentation
+mismatch before re-review. If the marker-proof hash differs, treat the draft as
+unreviewed until gumo reissues an exact-hash request. Wave A is review/freeze
+only; do not download the ISO, import keys, execute packet commands, create
+marker files, attach media, start VM work, run package builds, run Limux
+install/package workflows, or move lab artifacts back to the trusted host.
 
 ```bash
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
