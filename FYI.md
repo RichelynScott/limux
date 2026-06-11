@@ -1223,3 +1223,30 @@ documented LOW residuals before any execution approval request.
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` | SCS commit `b8abc7d` |
 hcom `#32994`
+
+## 2026-06-11 - SCS Marker Proof Approval-Inputs WIP
+### What:
+Recorded that SCS has begun uncommitted marker-proof execution-approval inputs
+WIP after the durable `b8abc7d` formal review checkpoint.
+
+### Why:
+The formal review is now durable, but gumo immediately started the next gate:
+a docs-only approval-input checklist. A restart-safe Limux successor needs to
+distinguish the durable `b8abc7d` checkpoint from this live WIP.
+
+### How:
+Checked SCS status read-only, hashed the untracked approval-input record, and
+read its top-level decision/no-authorization language. Patched only Limux-owned
+restart docs. Halo did not edit SCS, review the WIP as a formal request, run
+the packet, create markers, download/import ISO/key/checksum material, or
+mutate network, Hyper-V, VM, WSL, Limux, Cargo, package, or host/runtime state.
+
+### Impact:
+Current durable state is SCS commit `b8abc7d`; current live WIP is
+`WAVE_A_WSL_DRVFS_MARKER_PROOF_EXECUTION_APPROVAL_INPUTS_2026-06-11.md` at
+SHA256 `dfb8bbf7b3b265bee3eec65bcc99a4ab894f817391384b13cfebbbb5dcb45`, with
+`Decision: WAIT`. Do not treat the WIP as final until gumo commits/pushes or
+requests review. Execution remains `WAIT/NO-GO`.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md`

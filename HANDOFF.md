@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 07:38 EDT
+Last updated: 2026-06-11 07:43 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,7 +33,7 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
-Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 07:38
+Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 07:43
 EDT:
 
 - SCS V2 freeze is complete and pushed at
@@ -226,6 +226,15 @@ EDT:
   staged diff check; HTML parse; extracted JS `node --check`; marker extracted
   shell hash / `bash -n` / static no-delete scan; `py_compile`; and 18 watcher
   tests.
+- Subsequent live SCS WIP: after the `b8abc7d` formal review checkpoint, Halo's
+  07:43 EDT read-only check saw active SCS root and `project_isolation_lab/`
+  docs modifications plus a new untracked
+  `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_EXECUTION_APPROVAL_INPUTS_2026-06-11.md`
+  at SHA256 `dfb8bbf7b3b265bee3eec3ec65bcc99a4ab894f817391384b13cfebbbb5dcb45`.
+  The file records `Decision: WAIT`, says it is docs-only, not an execution
+  packet, contains no command block, and does not authorize marker creation or
+  runtime mutation. Do not treat it as durable until SCS commits/pushes or
+  requests review.
 - Next safe SCS action: prepare an explicit marker-proof execution approval
   packet/input checklist, or explicitly patch/accept the documented LOW
   residuals before any execution approval request. This does not authorize
