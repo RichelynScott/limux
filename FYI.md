@@ -1103,3 +1103,31 @@ lab-to-host artifact import is authorized.
 
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#32386`
+
+## 2026-06-11 - SCS Marker Proof Review Hold State
+### What:
+Recorded that SCS has in-progress marker-proof docs after Halo's `0284cf52...`
+review-artifact GO.
+
+### Why:
+Halo's review result is stable for the exact marker-proof packet hash, but SCS
+has not yet committed/pushed the marker-proof freeze. A restart-safe Limux
+successor needs to know the current SCS worktree is dirty and must wait for
+gumo's final commit SHA, final hashes, verification commands, and post-push
+status before moving Limux pointers again.
+
+### How:
+Checked hcom project thread, Limux status, SCS status read-only, SCS HEAD, the
+marker-proof packet hash, and the untracked marker-proof review record hash.
+Patched only Limux-owned restart docs. Halo did not edit SCS, run the packet,
+create markers, download/import ISO/key/checksum material, or mutate network,
+Hyper-V, VM, WSL, Limux, Cargo, package, or host/runtime state.
+
+### Impact:
+Option 1 remains active. SCS should commit/push or otherwise durably freeze the
+exact `0284cf52...` marker-proof draft, the `28726df4...` review record, and
+the current SCS pointer docs before any formal mutation-script review or
+execution approval request. Execution remains `WAIT/NO-GO`.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#32420`

@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 07:19 EDT
+Last updated: 2026-06-11 07:24 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,7 +33,7 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
-Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 07:19
+Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 07:24
 EDT:
 
 - SCS V2 freeze is complete and pushed at
@@ -109,8 +109,8 @@ EDT:
 - SCS now has a marker-only WSL/DrvFs proof packet draft:
   `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_2026-06-11.md`
   at SHA256 `0284cf528d6abc53f5f96b8e87a56d0c2a51218afe217e0e0a7813d9467210c0`.
-  Current SCS status shows this file as added in the worktree/index-intent
-  state, plus unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
+  Current SCS status shows this file as added, plus broader in-progress SCS doc
+  edits and unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
 - Gumo hcom `#32019` requested a narrow read-only Halo review of that exact
   marker-proof hash. Halo replied in `#32076`: `WAIT` for the draft as a future
   execution-review candidate. No CRITICAL/HIGH blockers were found, but one
@@ -176,9 +176,23 @@ EDT:
   `static_check_no_delete_api.py` over the extracted shell with 0 REMOVE/0
   REVIEW. Halo did not edit SCS, run the packet, create markers, or mutate
   ISO/key/checksum/network/Hyper-V/VM/WSL/Limux/Cargo/package state.
-- Next safe SCS action: gumo/SCS should durably freeze/commit the exact
-  `0284cf52...` marker-proof draft and route it into the formal
-  mutation-script review path. This does not authorize execution.
+- Post-review SCS hold state as of Halo's read-only 07:24 EDT check: SCS HEAD
+  remains `0c1882b23bdb0dac9617734d23024752e35af4c6`, but the worktree has
+  modified `FYI.md`, `README.md`, `project_isolation_lab/FYI.md`,
+  `project_isolation_lab/README.md`, `project_isolation_lab/docs/ACTIVE_GOAL.md`,
+  `HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`, `PRD_PLAN.md`,
+  `ROADMAP.md`, the marker-proof packet added, and a new untracked
+  `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_DRAFT_REVIEW_2026-06-11.md`.
+  That review record hashes to
+  `28726df4453fab66cc5d1f09d1ecf2a622086d656fd42771be6cebc6a0df57c9` and
+  records `Decision: WAIT`, with `GO` only for using exact packet hash
+  `0284cf52...` as review input. Treat this as in-progress SCS work, not a
+  durable SCS freeze.
+- Next safe SCS action: gumo/SCS should commit/push or otherwise durably freeze
+  the exact `0284cf52...` marker-proof draft, the `28726df4...` review record,
+  and the current SCS pointer docs, then report final commit SHA, final hashes,
+  verification commands, and post-push status. This does not authorize
+  execution.
 - Decision remains `WAIT` for execution: no ISO download/use approval, no
   operator execution approval, no selected execution operator/window, no
   approved `APPROVAL_REF`, `EXECUTION_OPERATOR`, `EXECUTION_WINDOW_UTC`, or

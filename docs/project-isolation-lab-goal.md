@@ -51,7 +51,7 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 07:19 EDT, SCS Wave A V2 successor and marker-proof status is:
+As of 2026-06-11 07:24 EDT, SCS Wave A V2 successor and marker-proof status is:
 
 - SCS V2 freeze is complete and pushed at
   `0c1882b23bdb0dac9617734d23024752e35af4c6`
@@ -118,8 +118,8 @@ As of 2026-06-11 07:19 EDT, SCS Wave A V2 successor and marker-proof status is:
 - SCS now has a marker-only WSL/DrvFs proof packet draft:
   `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_2026-06-11.md`
   at SHA256 `0284cf528d6abc53f5f96b8e87a56d0c2a51218afe217e0e0a7813d9467210c0`.
-  Current SCS status shows this file as added in the worktree/index-intent
-  state, plus unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
+  Current SCS status shows this file as added, plus broader in-progress SCS doc
+  edits and unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
 - Gumo hcom `#32019` requested a narrow read-only Halo review of that exact
   marker-proof hash. Halo replied in `#32076`: `WAIT` for the draft as a future
   execution-review candidate. No CRITICAL/HIGH blockers were found, but one
@@ -180,6 +180,16 @@ As of 2026-06-11 07:19 EDT, SCS Wave A V2 successor and marker-proof status is:
   approved `APPROVAL_REF`, `EXECUTION_OPERATOR`, `EXECUTION_WINDOW_UTC`, or
   `EXPECTED_PACKET_SHA256`, and no host/VM/WSL/Docker/HNS/WinNAT/network/
   package/SCRIM/global-config/Limux/runtime mutation approval.
+- Post-review SCS hold state: SCS HEAD remains
+  `0c1882b23bdb0dac9617734d23024752e35af4c6`, but Halo's 07:24 EDT read-only
+  check found modified SCS docs and a new untracked marker-proof review record
+  at
+  `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_DRAFT_REVIEW_2026-06-11.md`
+  with SHA256
+  `28726df4453fab66cc5d1f09d1ecf2a622086d656fd42771be6cebc6a0df57c9`.
+  That record says `Decision: WAIT`, with `GO` only for using exact packet hash
+  `0284cf52...` as review input. Treat this as in-progress SCS work until gumo
+  commits/pushes or reports an equivalent durable freeze.
 
 ## Numbered Options Moving Forward
 
@@ -190,9 +200,10 @@ As of 2026-06-11 07:19 EDT, SCS Wave A V2 successor and marker-proof status is:
    verification. Halo verified read-only and updated Limux pointers after SCS
    stabilized.
 3. **Dry-run proof packet**: exact draft `0284cf52...` is `GO` as the next
-   formal review/freeze candidate only. It is still `WAIT/NO-GO` for execution,
-   marker creation, ISO/key import/download, package execution, and host
-   mutation until frozen, formally mutation-reviewed, and explicitly approved.
+   formal review/freeze candidate only. It is still not durable in SCS and is
+   `WAIT/NO-GO` for execution, marker creation, ISO/key import/download,
+   package execution, and host mutation until frozen, formally
+   mutation-reviewed, and explicitly approved.
 4. **Wave A ISO intake approval packet**: only after dry-run proof and mutation
    review converge should SCS request explicit operator approval to run ISO
    intake.
