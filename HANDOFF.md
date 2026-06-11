@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 09:35 EDT
+Last updated: 2026-06-11 09:39 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -40,7 +40,7 @@ redirected.
 
 Current SCS Wave A V2 successor, marker-proof, Gate D evidence-intake,
 PRD-007 artifact-intake, and Gate C disposable-VM-factory state as of
-2026-06-11 09:35 EDT:
+2026-06-11 09:39 EDT:
 
 - SCS V2 freeze is complete and pushed at
   `0c1882b23bdb0dac9617734d23024752e35af4c6`
@@ -709,7 +709,7 @@ is **Option 1: docs/handoff first**. Keep this repo's restart surfaces aligned
 with the SCS-owned lab state, keep all future choices numbered, and do not add
 Limux product features by default.
 
-As of the 2026-06-11 09:35 EDT read-only check, SCS `main` and `origin/main`
+As of the 2026-06-11 09:39 EDT read-only check, SCS `main` and `origin/main`
 both point to durable commit `b15485863424af06c481f91a1f3acee52bb00e07`
 (`docs(lab): define disposable vm factory gate draft`). Treat Gate C disposable
 VM factory as a docs-only gate checkpoint. It does not approve VM creation,
@@ -717,9 +717,11 @@ clone, checkpoint, revert, package/runtime work, evidence transfer, artifact
 movement, host/WSL/Hyper-V mutation, Limux/Cargo install, SCRIM, or
 global-config work.
 
-SCS already has newer disposable-WSL-ergonomics WIP after `b154858...`; treat
-that lane as non-durable until gumo sends a committed/pushed checkpoint or
-exact-hash review request.
+SCS currently has post-Gate-C disposable-WSL ergonomics WIP in its working tree.
+Treat that as non-durable compatibility-lane work, not hostile-code containment
+and not a substitute for persistent full VM / disposable full VM execution
+gates, until gumo sends a committed/pushed checkpoint or exact-hash review
+request.
 
 Numbered next actions for this Limux session:
 
@@ -740,7 +742,7 @@ Numbered next actions for this Limux session:
    behind the SCS-owned gate sequence.
 
 Current lightweight Limux runtime sanity check: `limux --help` and
-`limux-cli --help` both returned CLI help successfully on 2026-06-11 09:19 EDT.
+`limux-cli --help` both returned CLI help successfully on 2026-06-11 09:39 EDT.
 Full `./scripts/check.sh` / Xvfb smoke was not run for this docs-only option-1
 update because the operator is managing RAM for restart.
 

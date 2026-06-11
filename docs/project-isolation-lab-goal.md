@@ -55,7 +55,7 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 09:35 EDT, SCS Wave A V2 successor, marker-proof, Gate D
+As of 2026-06-11 09:39 EDT, SCS Wave A V2 successor, marker-proof, Gate D
 evidence-intake, PRD-007 artifact-intake, and Gate C disposable-VM-factory
 status is:
 
@@ -450,7 +450,13 @@ status is:
    disposable VM lifecycle execution, and Firecracker microVM work queued
    behind the SCS-owned gate sequence.
 
-Lightweight Limux runtime sanity check on 2026-06-11 09:19 EDT:
+As of the 2026-06-11 09:39 EDT read-only check, SCS has post-Gate-C
+disposable-WSL ergonomics WIP in its working tree. Treat that as non-durable
+compatibility-lane work, not hostile-code containment and not a substitute for
+persistent full VM / disposable full VM execution gates, until gumo sends a
+committed/pushed checkpoint or exact-hash review request.
+
+Lightweight Limux runtime sanity check on 2026-06-11 09:39 EDT:
 `limux --help` and `limux-cli --help` both returned CLI help successfully.
 Full `./scripts/check.sh` / Xvfb smoke was not run for this docs-only option-1
 update because the operator is managing RAM for restart.

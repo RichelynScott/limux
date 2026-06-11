@@ -1631,9 +1631,7 @@ this Limux shell, so Limux packet JavaScript was not checked locally. Updated
 only Limux-owned handoff/status surfaces. Final SCS Gate C hashes recorded
 here: Gate C draft `73526618...`, PRD-002
 `dbf993ef...`, acceptance gates `eb48e89f...`, HTML packet `7612bae1...`, and
-SCS handoff `07458d16...`. Current read-only SCS status after `b154858...`
-already shows disposable-WSL-ergonomics WIP; treat that as non-durable until
-gumo commits/pushes or sends an exact-hash review request.
+SCS handoff `07458d16...`.
 
 ### Impact:
 Gate C is now a durable docs checkpoint, not VM execution approval. VM creation,
