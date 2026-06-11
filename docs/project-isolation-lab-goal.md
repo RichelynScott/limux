@@ -51,27 +51,24 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 06:56 EDT, SCS Wave A V2 successor status is:
+As of 2026-06-11 06:59 EDT, SCS Wave A V2 successor status is:
 
-- Last pushed SCS commit:
-  `7145ac826cecc0816af1890ee888e1701483854c`
-  (`docs(lab): add wave a formal review record`)
-- SCS is dirty again under gumo and may continue to change until his closeout.
-  Latest observed dirty set includes `FYI.md`, `HANDOFF.md`, `README.md`,
-  `docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`,
-  `project_isolation_lab/FYI.md`,
-  `project_isolation_lab/README.md`, `project_isolation_lab/docs/ACTIVE_GOAL.md`,
-  `project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`,
-  `project_isolation_lab/docs/PRD_PLAN.md`, `project_isolation_lab/docs/ROADMAP.md`,
-  added `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_V2_2026-06-11.md`,
-  untracked `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_V2_HARDENING_REVIEW_2026-06-11.md`,
-  and unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
-  Halo did not edit SCS.
-- Current local V2 hash verified by Halo:
+- SCS V2 freeze is complete and pushed at
+  `0c1882b23bdb0dac9617734d23024752e35af4c6`
+  (`docs(lab): add wave a v2 hardening packet`); `origin/main` matches local
+  HEAD. SCS status is clean except unrelated untracked
+  `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`. Halo did not edit SCS.
+- Final SCS hashes from gumo hcom `#31842`, locally verified by Halo:
   - Wave A V2 successor packet:
     `36cad9340fdbb38d22cd91642a1cb702766ece09075dae10fac1206dc1b3a1bb`
   - Wave A V2 hardening review record:
     `529e15b0d6272cd2e79b0e7ed1b80c95053b224d013f560da364746731ad18e7`
+  - HTML decision packet:
+    `8791c4abd2415534e3b46098d28c8611ae2704f7edc4731bffe90fbc9414e06f`
+  - Hyper-V mutation-wave packet:
+    `03dbf27488045a95fc99b654f6ab246dc64e93133d5689c3c9171a53310586f5`
+  - SCS `HANDOFF.md`:
+    `dcbd6808523e12d2c2abfcc331b90a23ff222a930a333351e5b33fa59bb4d4b3`
 - Prior formal-review hashes verified locally:
   - formal Wave A review record:
     `b370b92a94eb7d2a76ac941626b1048d51d3e1a9fb76f3f886e32f1407f73955`
@@ -106,18 +103,18 @@ As of 2026-06-11 06:56 EDT, SCS Wave A V2 successor status is:
   Gumo later acknowledged that `00ef5e18...` was superseded by final LOW/INFO
   patching and reissued hcom `#31264` for `36cad934...`. Halo verified that
   exact hash and replied `GO` for using it as the next V2 review artifact only.
-  The file is staged as added in SCS, so SCS-side durable commit/freeze is still
-  needed.
+  SCS later committed/pushed the freeze at `0c1882b23...`.
 - The current V2 draft says it applies LOW hardening from the formal review:
   base-10 numeric validation, keyserver removal in favor of reviewed local
   public-key input, observed `VALIDSIG` evidence capture, signing-key-or-primary
   fingerprint matching, tighter no-authorization summary wording, and continued
-  runtime proof planning. Treat it as uncommitted draft evidence until gumo
-  records or pushes final SCS hashes.
-- Gumo hcom `#31589` says SCS pointer docs are still being patched and Halo
-  should not move Limux pointers again until SCS is committed and pushed. Gumo
-  will send final commit SHA, hashes, verification commands, and post-push
-  status when stable.
+  runtime proof planning.
+- Gumo hcom `#31842` reports SCS verification passed: `git diff --check`;
+  staged `git diff --cached --check` before commit; HTMLParser parse;
+  `node --check` on extracted HTML JS; `bash -n` on extracted V2 command;
+  isolated `static_check_no_delete_api.py` scan on extracted V2 shell with
+  0 REMOVE/0 REVIEW; `py_compile` for watcher/tests; and
+  `unittest tests.security_posture.test_supply_chain_watch -v` with 18 tests OK.
 - Decision remains `WAIT` for execution: no ISO download/use approval, no
   operator execution approval, no selected execution operator/window, no
   approved `APPROVAL_REF`, `EXECUTION_OPERATOR`, `EXECUTION_WINDOW_UTC`, or
@@ -128,10 +125,10 @@ As of 2026-06-11 06:56 EDT, SCS Wave A V2 successor status is:
 
 1. **Docs/handoff first**: keep Limux restart docs aligned with SCS whenever the
    SCS-owned lab state changes. This is the active option for this session.
-2. **SCS durable V2 freeze**: gumo should commit/push or otherwise durably
-   record the frozen V2 packet at `36cad934...`, hardening record
-   `529e15b0...`, and affected-lens review result. Halo verifies read-only and
-   updates Limux pointers only after SCS is stable.
+2. **SCS durable V2 freeze**: complete at SCS commit `0c1882b23...` with V2
+   packet `36cad934...`, hardening record `529e15b0...`, and gumo `#31842`
+   verification. Halo verified read-only and updated Limux pointers after SCS
+   stabilized.
 3. **Dry-run proof packet**: after V2 is durable, SCS should prepare/review the
    tiny-marker WSL/DrvFs proof for `df -PB1`, `realpath`, and `mv -nT`. No ISO
    bytes, key import, package execution, or host mutation.
@@ -387,7 +384,7 @@ with 18 tests OK, and HEAD/upstream SHA alignment.
 
 Status remains `WAIT`: this is not formal `$mutation-script-wave` GO, not ISO
 download/use approval, and not host/VM/network/package/runtime approval. Next
-work is SCS durable V2 freeze/commit, then the WSL/DrvFs dry-run proof packet.
+work is the WSL/DrvFs dry-run proof packet after the completed SCS V2 freeze.
 
 Verify SCS state before relying on the recorded pointers:
 
@@ -395,7 +392,7 @@ Verify SCS state before relying on the recorded pointers:
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY log -5 --oneline --decorate
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_V2_2026-06-11.md
-sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_MUTATION_WAVE_REVIEW_2026-06-11.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_V2_HARDENING_REVIEW_2026-06-11.md
 hcom --version --name halo
 hcom list --name halo
 hcom events --last 80 --thread project-isolation-lab-goal --name halo

@@ -978,3 +978,32 @@ is currently `529e15b0...`; execution remains `WAIT`.
 
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#31589`
+
+## 2026-06-11 - SCS V2 Freeze Pushed
+### What:
+Recorded the completed SCS Wave A V2 freeze at commit
+`0c1882b23bdb0dac9617734d23024752e35af4c6`.
+
+### Why:
+The previous Limux checkpoint correctly held pointers while gumo was still
+patching SCS. Gumo then sent hcom `#31842` with the final commit, hashes,
+verification commands, and post-push status, so Limux restart docs needed to
+move from "wait for SCS commit" to the durable freeze state.
+
+### How:
+Verified SCS `main` aligned with `origin/main`, confirmed only unrelated
+untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` remained, and locally
+hash-checked the V2 packet, V2 hardening review, HTML decision packet, Hyper-V
+mutation-wave packet, and SCS `HANDOFF.md`. Patched only Limux-owned restart
+docs. Halo did not edit SCS and did not run host/runtime/package/ISO/key/VM
+mutation.
+
+### Impact:
+Option 2, the SCS durable V2 freeze, is complete. The next gated work is the
+tiny-marker WSL/DrvFs proof packet. Execution remains `WAIT`: no ISO/key
+download/import, no host/runtime mutation, no Limux/Cargo/package work, no Wave
+B, and no lab-to-host artifact import.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | SCS commit `0c1882b` |
+hcom `#31842`
