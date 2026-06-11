@@ -1,11 +1,13 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-10 12:36 EDT
+Last updated: 2026-06-10 20:22 EDT
 
 ## Immediate Next Action
 
-Limux setup unblock is complete for local use from this checkout. The public
-entrypoint is now available on `PATH` through user-local symlinks:
+Limux setup is unblocked for local use from this checkout. The current install
+posture is still a **repo-local/user-local launcher**, not a polished system
+package. The public entrypoint is available on `PATH` through user-local
+symlinks:
 
 ```bash
 limux --help
@@ -20,38 +22,64 @@ Both `/home/riche/.local/bin/limux` and
 `LIMUX_HOST_BIN`, and prepends `ghostty/zig-out/lib` to `LD_LIBRARY_PATH`.
 `/home/riche/.local/bin` is already on `PATH`.
 
-Current verification on 2026-06-10:
+New user-facing behavior added on 2026-06-10:
 
 ```bash
-LD_LIBRARY_PATH="$PWD/ghostty/zig-out/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./scripts/check.sh
-LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh
-./scripts/xvfb-smoke-test.sh
-limux --help
-limux-cli --help
-limux agent-team --dry-run --agents codex,claude --cwd /tmp/limux-launcher-check --protocol-path /tmp/limux-launcher-check/LIMUX_AGENTS.md --roster-path /tmp/limux-launcher-check/LIMUX_TEAM_ROSTER.md --ledger-path /tmp/limux-launcher-check/LIMUX_REVIEW_LEDGER.md --force-protocol-overwrite
+limux agent-team --agents codex,claude --launch-mode hcom --cwd "$PWD"
+limux review spawn --review-id <review-id> --launch-mode hcom
 ```
 
-All passed. Note: the first `scripts/check.sh` attempt failed only inside the
-Codex sandbox because fake Unix-socket tests could not bind (`Operation not
-permitted`); rerunning the same command outside the sandbox passed.
+`--launch-mode hcom` keeps the Limux pane model but starts peers as
+`hcom codex --run-here`, `hcom claude --run-here`, etc. Default behavior is
+unchanged: without the flag, Limux launches bare `codex`, `claude`, `opencode`,
+or `gemini`. The hcom mode is committed and pushed as
+`a0f4e34 feat(cli): add hcom launch mode`.
+
+Current verification on 2026-06-10 after the hcom-mode work:
+
+```bash
+./scripts/xvfb-smoke-test.sh
+LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh
+./scripts/check.sh
+limux --help
+limux agent-team --dry-run --agents codex,claude --launch-mode hcom --cwd /tmp/limux-hcom-dry-run-check --protocol-path /tmp/limux-hcom-dry-run-check/LIMUX_AGENTS.md --roster-path /tmp/limux-hcom-dry-run-check/LIMUX_TEAM_ROSTER.md --ledger-path /tmp/limux-hcom-dry-run-check/LIMUX_REVIEW_LEDGER.md --force-protocol-overwrite --force-roster-overwrite
+rg -n "hcom codex --run-here|hcom claude --run-here" /tmp/limux-hcom-dry-run-check/LIMUX_AGENTS.md
+```
+
+All passed. The earlier `./scripts/check.sh` and Xvfb smoke failures in a live
+Limux pane were caused by inherited `LIMUX_*` variables pointing tests at the
+operator's real pane. That is fixed and pushed as
+`678de2c fix(scripts): isolate verification from live limux env`; the scripts
+now clear inherited live pane/socket env before running isolated checks.
 
 Do not run `scripts/package.sh`, generated install scripts, or sudo/system
 install lanes for immediate use unless the operator explicitly approves that
 separate mutation/security gate. Zig is still not expected on `PATH`; the
 current runtime uses the already-built `ghostty/zig-out/lib/libghostty.so`.
 
-After the operator has had a chance to use Limux, the next feature lane remains
-**Phase 5D3 Review Collect/Complete + Consensus Conventions**.
+Gumo/SUPPLY_CHAIN_SECURITY remains read-only support for install posture. The
+safe full/near-full install direction is still: keep the current launcher as
+baseline, design a separate user-local install/rehearsal artifact with manifest
+and rollback, and defer sudo/system packages, generated `install.sh`, `.deb`,
+AppImage, AUR, and release workflows until the mutation/supply-chain gates are
+explicitly reviewed and approved.
+
+Known feature caveat from the user discussion: the colored per-terminal
+"waiting for input" border/tab marker is not implemented. Existing Limux
+support is workspace/sidebar unread attention via `limux notify` and agent hook
+notification translation. Treat a true per-tab/per-pane waiting marker as a
+future feature, not current product behavior.
 
 Phase 5D2 reviewer spawn/evidence pointer wrapper is implemented and verified.
 The current `agent-team` flow still writes protected generated protocol to
 `LIMUX_AGENTS.md`, seeds `LIMUX_TEAM_ROSTER.md` and
-`LIMUX_REVIEW_LEDGER.md` when missing, launches peer panes with bare agent
-commands, waits for pane readiness, sends each peer a sanitized one-line
-bootstrap prompt after all coordination files exist, then submits it with
-explicit Enter. `--no-bootstrap`, `--no-launch`, and `--dry-run` skip prompt
-sends. `agent-team --dry-run` still materializes the generated protocol and
-seeds missing roster/ledger files; it only skips host contact.
+`LIMUX_REVIEW_LEDGER.md` when missing, launches peer panes with bare commands
+by default or hcom run-here commands when requested, waits for pane readiness,
+sends each peer a sanitized one-line bootstrap prompt after all coordination
+files exist, then submits it with explicit Enter. `--no-bootstrap`,
+`--no-launch`, and `--dry-run` skip prompt sends. `agent-team --dry-run` still
+materializes the generated protocol and seeds missing roster/ledger files; it
+only skips host contact.
 
 Review workflow:
 
@@ -78,15 +106,16 @@ ledger entry to `in-progress`. `--dry-run` validates request/ledger/evidence
 paths without host contact. `--no-launch` creates the pane without typing the
 reviewer command or prompt.
 
-Recommended next scoped action: **Phase 5D3 Review Collect/Complete +
-Consensus Conventions**. Add a bounded path that records reviewer verdicts back
-into the existing ledger entry without rewriting unrelated content, then
-document GO/WAIT/NO-GO consensus and targeted hcom pointer conventions.
+Recommended next scoped action for user utility: use the hcom mode in a real
+Limux workspace with the operator's normal `hcom codex` / `hcom claude`
+workflow. If it is stable, continue the install-posture lane with gumo as
+read-only SCS support. Only return to internal review/consensus features if the
+operator explicitly wants more Limux development rather than setup/use.
 
-Current implementation status: Phase 5D2 is committed and pushed as
-`20f5785 feat(cli): add review spawn wrapper`. The branch was aligned with
-`origin/main` after push; verify with `git status --short --branch` before
-continuing.
+Current implementation status: local launcher setup, env-isolated verification
+scripts, and hcom launch mode are committed and pushed through
+`a0f4e34 feat(cli): add hcom launch mode`. Verify with
+`git status --short --branch` before continuing.
 
 Restart closeout check on 2026-06-06 18:58 EDT: no new Limux project scope has
 started after Phase 5D2 closeout. The tracked worktree was clean and `main` was

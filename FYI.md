@@ -456,3 +456,33 @@ operator has had a chance to use Limux.
 
 ### Related:
 `scripts/limux-dev` | `README.md` | `HANDOFF.md`
+
+## 2026-06-10 - Hcom Launch Mode And Verification Isolation
+### What:
+Added `--launch-mode hcom` for `limux agent-team` and `limux review spawn`, and
+fixed verification scripts so they do not inherit a live Limux pane's `LIMUX_*`
+environment while running isolated checks.
+
+### Why:
+The operator normally starts agents through hcom (`hcom codex`, `hcom claude`)
+and needs those sessions to stay inside Limux panes rather than opening
+separate external terminals. The first verification run from inside Limux also
+showed the test and smoke scripts could accidentally target the user's real
+pane/workspace.
+
+### How:
+Used TDD around `agent-team` and `review spawn`, added explicit launch-mode
+parsing with `direct` as the default and `hcom` mapping to
+`hcom <agent> --run-here`, updated README/workflow/parity docs, and added a
+smoke dry-run check for hcom launch-mode protocol generation. The scripts now
+clear inherited live Limux pane/socket env before isolated test runs.
+
+### Impact:
+Users can start a Limux team with
+`limux agent-team --agents codex,claude --launch-mode hcom --cwd "$PWD"`.
+The local launcher and verification path are more reliable when operated from
+inside Limux itself. Full/system install remains a separate gated supply-chain
+lane.
+
+### Related:
+`678de2c` | `a0f4e34` | `rust/limux-cli/src/main.rs` | `scripts/xvfb-smoke-test.sh` | `HANDOFF.md`
