@@ -51,6 +51,68 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
+As of 2026-06-10 23:02 EDT, SCS is dirty again after the verified `7427285`
+mutation-wave packet closeout. Gumo is drafting the next Wave A Ubuntu ISO
+intake command packet:
+
+`/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_2026-06-10.md`
+
+Observed SCS dirty paths from Halo:
+
+- `README.md`
+- `project_isolation_lab/README.md`
+- `project_isolation_lab/docs/ACTIVE_GOAL.md`
+- `project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`
+- `project_isolation_lab/docs/PRD_PLAN.md`
+- `project_isolation_lab/docs/ROADMAP.md`
+- `project_isolation_lab/docs/UBUNTU_2404_ISO_ARTIFACT_INTAKE_PLAN_2026-06-10.md`
+- untracked `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_2026-06-10.md`
+- unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`
+
+Current draft hashes from Halo's read-only review:
+
+- `WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_2026-06-10.md`:
+  `004690094eac19da538f8c40bf97eec30f91d53b17fdd96334068d26b9d40a08`
+- `UBUNTU_2404_ISO_ARTIFACT_INTAKE_PLAN_2026-06-10.md`:
+  `9b518851690752ab399800613c6bafc00e94d74e5e3659ed09d7055315e54265`
+- `HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`:
+  `37cda93c7e3f4d8b16d927ebe68275febc65ccba8bcf75b1bc366caa610c0208`
+- `ACTIVE_GOAL.md`:
+  `9e415b6a0a441c45258f52c21e89628bccb28ab8e75530db5c7c716c8866f22d`
+- `PRD_PLAN.md`:
+  `81c37d69456db7ec26eea383c377b17d4ac6c65d8025dc564fb0160132cdb038`
+- `ROADMAP.md`:
+  `fd97bb23a56bde0ac466cfa896d711860ca023388bd398bbe9d41588b10f4ff1`
+
+Halo sent file-backed hcom review `#29055` to gumo. The draft is directionally
+aligned with Wave A first, but remains `WAIT`. Open findings before commit or
+freeze:
+
+1. Enforce frozen packet hash, approval reference, execution operator, and
+   approved execution window before network or target writes.
+2. Add `curl --proto-redir '=https'` plus header/final URL/status metadata.
+3. Parse GPG status for exact `VALIDSIG` or equivalent fingerprint binding.
+4. Add disk-space and oversized-download guards before writing a 6.2G ISO to
+   `/mnt/c`.
+5. Tighten or justify target-parent path checks before `mkdir -p`.
+6. Add explicit evidence hashes for checksum/signature files, key material,
+   release page or ISO HEAD metadata, resolved paths, and target directory stat.
+7. Make the no-use attestation operator-bound, or record why static prose is
+   sufficient for the draft.
+
+Halo verified official Ubuntu sources again without downloading the ISO: the
+24.04.4 release page still lists `ubuntu-24.04.4-desktop-amd64.iso` at 6.2G /
+2026-02-10 01:41; official `SHA256SUMS` still maps
+`3a4c9877b483ab46d7c3fbe165a0db275e1ae3cfe56a5657e5a47c2f99a99d1e` to
+`*ubuntu-24.04.4-desktop-amd64.iso`; Ubuntu verification docs still describe
+GPG verification of `SHA256SUMS.gpg`, the expected 2012 signing-key
+fingerprint, and ISO hash comparison.
+
+Do not rely on the prior `7427285` hash set for current Wave A work until gumo
+commits/pushes or explicitly supersedes this draft. No host/VM/WSL/Docker/HNS/
+WinNAT/network/package/ISO/SCRIM/global-config/runtime mutation was run by
+Halo.
+
 As of 2026-06-10 22:10 EDT, SCS commit
 `8ff345f docs(lab): add nat and iso intake blockers` is pushed. The
 SCS-owned Hyper-V host mutation packet remains a draft with decision `WAIT`. It

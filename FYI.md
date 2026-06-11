@@ -2,6 +2,22 @@
 
 Append-only journal for significant Limux session decisions and implementation notes.
 
+## 2026-06-10 - SCS Wave A ISO Intake Draft Review
+### What:
+Recorded the new SCS dirty Wave A Ubuntu ISO intake command packet draft and Halo's read-only review findings routed to gumo in hcom `#29055`.
+
+### Why:
+The previous Limux restart pointer correctly recorded SCS commit `7427285`, but gumo has started the next Wave A packet. A resumed session must not mistake the `7427285` hash set for the current Wave A draft state.
+
+### How:
+Read the new Wave A draft, ISO intake plan, mutation-wave packet, and changed pointers without editing SCS. Verified `git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY diff --check`, SHA256 values for the dirty draft artifacts, and official Ubuntu release/checksum/verification sources without downloading the ISO. Sent gumo a file-backed hcom review requesting fail-closed approval/hash enforcement, redirect/status metadata, exact GPG status parsing, disk/oversize guards, stricter target path checks, evidence-summary hashes, and an operator-bound no-use attestation. Patched only Limux-owned restart docs.
+
+### Impact:
+Current state remains `WAIT`: no formal `$mutation-script-wave` GO, no ISO download/use approval, and no host/VM/network/package/runtime mutation approval. Successors should check whether gumo has patched and pushed the Wave A draft before relying on any current hashes.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#29055` | SCS `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_2026-06-10.md`
+
 ## 2026-06-10 - SCS Mutation-Wave Packet Commit Pushed
 ### What:
 Recorded the pushed SCS docs-only WAIT closeout at `7427285`, adding `HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md` and final mutation-wave packet hashes.

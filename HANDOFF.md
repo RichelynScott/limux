@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-10 22:53 EDT
+Last updated: 2026-06-10 23:02 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -32,6 +32,66 @@ Canonical isolation-lab ownership remains in
 `/home/riche/Proj/SUPPLY_CHAIN_SECURITY` with gumo/SCS. This repo now has a
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
+
+Current SCS active dirty state as of 2026-06-10 23:02 EDT:
+
+- SCS was clean/aligned at commit
+  `7427285b267bba3d69483c3354edf504299e2956` after the mutation-wave packet
+  closeout below, but gumo has since started the next Wave A ISO intake command
+  packet draft. Do not treat the `7427285` hash set as current for Wave A until
+  gumo commits/pushes or explicitly supersedes the draft.
+- Observed dirty SCS paths:
+  - modified: `README.md`
+  - modified: `project_isolation_lab/README.md`
+  - modified: `project_isolation_lab/docs/ACTIVE_GOAL.md`
+  - modified: `project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`
+  - modified: `project_isolation_lab/docs/PRD_PLAN.md`
+  - modified: `project_isolation_lab/docs/ROADMAP.md`
+  - modified: `project_isolation_lab/docs/UBUNTU_2404_ISO_ARTIFACT_INTAKE_PLAN_2026-06-10.md`
+  - untracked:
+    `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_2026-06-10.md`
+  - unrelated untracked: `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`
+- Current draft hashes from Halo's read-only review:
+  - `WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_2026-06-10.md`:
+    `004690094eac19da538f8c40bf97eec30f91d53b17fdd96334068d26b9d40a08`
+  - `UBUNTU_2404_ISO_ARTIFACT_INTAKE_PLAN_2026-06-10.md`:
+    `9b518851690752ab399800613c6bafc00e94d74e5e3659ed09d7055315e54265`
+  - `HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`:
+    `37cda93c7e3f4d8b16d927ebe68275febc65ccba8bcf75b1bc366caa610c0208`
+  - `ACTIVE_GOAL.md`:
+    `9e415b6a0a441c45258f52c21e89628bccb28ab8e75530db5c7c716c8866f22d`
+  - `PRD_PLAN.md`:
+    `81c37d69456db7ec26eea383c377b17d4ac6c65d8025dc564fb0160132cdb038`
+  - `ROADMAP.md`:
+    `fd97bb23a56bde0ac466cfa896d711860ca023388bd398bbe9d41588b10f4ff1`
+- Halo sent file-backed hcom review `#29055` to gumo. Decision remains
+  `WAIT`: not formal `$mutation-script-wave` GO, not ISO download/use
+  approval, and not host/VM/network/package/runtime approval.
+- Findings routed to gumo before commit/freeze:
+  1. Enforce frozen packet hash, approval reference, execution operator, and
+     approved execution window before any network or target writes.
+  2. Add `curl --proto-redir '=https'` plus header/final URL/status metadata
+     capture for checksum/signature/ISO downloads.
+  3. Parse GPG machine-readable status for exact `VALIDSIG` or equivalent
+     fingerprint binding to
+     `843938DF228D22F7B3742BC0D94AA3F0EFE21092`.
+  4. Add disk-space and oversized-download guards before writing a 6.2G ISO to
+     `/mnt/c`.
+  5. Tighten or justify target-parent path-component checks before `mkdir -p`.
+  6. Add evidence hashes for checksum/signature files, key material, release
+     page or ISO HEAD metadata, resolved paths, and target directory stat.
+  7. Make the no-use attestation operator-bound, or record why static prose is
+     sufficient for this draft.
+- Verification run by Halo for this dirty draft: targeted SCS reads,
+  `git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY diff --check`, SHA256 checks
+  listed above, and official Ubuntu source recheck without ISO download. The
+  official release page still lists `ubuntu-24.04.4-desktop-amd64.iso` at 6.2G
+  with modified time 2026-02-10 01:41; official `SHA256SUMS` still maps
+  `3a4c9877b483ab46d7c3fbe165a0db275e1ae3cfe56a5657e5a47c2f99a99d1e` to
+  `*ubuntu-24.04.4-desktop-amd64.iso`; Ubuntu verification docs still describe
+  GPG verification of `SHA256SUMS.gpg`, fingerprint check for
+  `843938DF228D22F7B3742BC0D94AA3F0EFE21092`, and ISO hash comparison.
+  Halo did not download the ISO.
 
 Current SCS restart pointers as of 2026-06-10 22:10 EDT:
 
