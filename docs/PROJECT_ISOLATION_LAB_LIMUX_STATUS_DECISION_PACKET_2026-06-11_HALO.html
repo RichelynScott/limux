@@ -150,9 +150,9 @@
       <h3>Roadmap</h3>
       <div class="step done"><span class="dot"></span><div><strong>Goal aligned</strong><span>Project Isolation Lab, not Limux feature lane.</span></div></div>
       <div class="step done"><span class="dot"></span><div><strong>Marker reviews</strong><span>Review/freeze candidates only.</span></div></div>
-      <div class="step current"><span class="dot"></span><div><strong>Docs checkpoint</strong><span>Limux reflects final SCS e455617 state.</span></div></div>
-      <div class="step done"><span class="dot"></span><div><strong>SCS final push</strong><span>Final committed hash set received.</span></div></div>
-      <div class="step gated"><span class="dot"></span><div><strong>Gate D WIP</strong><span>Claude MEDIUM findings are being patched.</span></div></div>
+      <div class="step current"><span class="dot"></span><div><strong>Docs checkpoint</strong><span>Limux reflects durable SCS 388f20a state.</span></div></div>
+      <div class="step done"><span class="dot"></span><div><strong>Gate D draft</strong><span>Committed hash set received.</span></div></div>
+      <div class="step gated"><span class="dot"></span><div><strong>Data intake</strong><span>Docs-only; transfer remains WAIT.</span></div></div>
       <div class="step gated"><span class="dot"></span><div><strong>Execution gates</strong><span>Operator approval and formal mutation review required.</span></div></div>
       <div class="step gated"><span class="dot"></span><div><strong>VM layers</strong><span>Persistent VM, disposable VM, Firecracker later.</span></div></div>
     </aside>
@@ -165,16 +165,16 @@
         <div class="meta">
           <div><span>Repo</span><strong>/home/riche/MCPs/limux</strong></div>
           <div><span>Author</span><strong>halo / GPT-5 Codex</strong></div>
-          <div><span>Generated</span><strong>6/11/2026 8:50 AM EDT</strong></div>
-          <div><span>Status</span><strong>WAIT for execution; final checkpoint plus WIP pointer</strong></div>
+          <div><span>Generated</span><strong>6/11/2026 8:56 AM EDT</strong></div>
+          <div><span>Status</span><strong>WAIT for execution; Gate D draft now durable</strong></div>
         </div>
       </header>
 
       <section>
         <h2>Current Status</h2>
         <div class="grid">
-          <div class="fact"><div class="label">Limux</div><div class="value">Restart docs and this packet capture the durable SCS <code>e455617</code> checkpoint.</div></div>
-          <div class="fact"><div class="label">SCS</div><div class="value">Durable marker-proof checkpoint is <code>e455617</code>. Gate D/evidence-intake WIP exists after that commit; Claude found MEDIUM issues including polyglot/remote-content and PRD screenshot contradiction findings, and gumo is patching.</div></div>
+          <div class="fact"><div class="label">Limux</div><div class="value">Restart docs and this packet now capture durable SCS Gate D commit <code>388f20a</code>.</div></div>
+          <div class="fact"><div class="label">SCS</div><div class="value">Gate D data-only evidence intake draft is durable at <code>388f20a</code>. Claude final narrow review found no remaining HIGH/MEDIUM blockers or approval-bypass contradictions.</div></div>
           <div class="fact"><div class="label">Execution</div><div class="value"><code>WAIT/NO-GO</code>. No marker, ISO, key, VM, WSL, package, runtime, or host mutation is approved.</div></div>
         </div>
       </section>
@@ -182,8 +182,8 @@
       <section>
         <h2>Verified And Gated</h2>
         <div class="grid">
-          <div class="fact"><div class="label">Done</div><div class="value">Limux handoff, goal note, FYI, and this packet now record gumo <code>#34336</code> final SCS commit and hashes, plus the later Gate D WIP caveat from <code>#34691</code>/<code>#34696</code>/<code>#34887</code>/<code>#35006</code>.</div></div>
-          <div class="fact"><div class="label">Verified</div><div class="value">Read-only checks covered Limux git status, SCS git status/log, final file-backed SHA256s, extracted shell hash, bash syntax, no-delete scan, WAIT/no-execution clauses, and hcom thread state.</div></div>
+          <div class="fact"><div class="label">Done</div><div class="value">Limux handoff, goal note, FYI, and this packet record gumo <code>#35219</code> final SCS Gate D commit and hashes.</div></div>
+          <div class="fact"><div class="label">Verified</div><div class="value">Read-only checks covered Limux git status, SCS git status/log/remote, SCS <code>git diff --check</code>, final file-backed SHA256s, SCS HTML parse, extracted SCS HTML JS syntax, Gate D WAIT/no-execution framing, and hcom thread state.</div></div>
           <div class="fact"><div class="label">Not Done</div><div class="value">No SCS edits, packet execution, marker creation, ISO/key/checksum download/import, Hyper-V/VM/WSL/network/package/runtime/global-config mutation.</div></div>
         </div>
       </section>
@@ -193,8 +193,8 @@
           <h2>Numbered Options</h2>
           <div class="decision">
             <h3>1. Docs/handoff first <span class="rec">Recommended now</span></h3>
-            <p>Keep Limux restart docs aligned with the durable SCS checkpoint and latest non-durable Gate D WIP caveat.</p>
-            <label class="option"><input type="radio" name="next" value="1" checked><span><span class="option-title">Option 1 - Maintain docs/handoff tracking</span><span class="option-detail">Keep Limux docs current without treating Gate D WIP as final.</span></span></label>
+            <p>Keep Limux restart docs aligned with durable SCS Gate D commit <code>388f20a</code> and later explicit SCS notices.</p>
+            <label class="option"><input type="radio" name="next" value="1" checked><span><span class="option-title">Option 1 - Maintain docs/handoff tracking</span><span class="option-detail">Current Gate D draft is durable, but execution remains WAIT.</span></span></label>
           </div>
           <div class="decision">
             <h3>2. SCS final V2 checkpoint</h3>
@@ -207,9 +207,9 @@
             <label class="option"><input type="radio" name="next" value="3"><span><span class="option-title">Option 3 - Review new exact hash</span><span class="option-detail">Read-only only; no SCS edits or packet execution.</span></span></label>
           </div>
           <div class="decision">
-            <h3>4. Gate D evidence-intake WIP</h3>
-            <p>Current SCS evidence-intake draft is non-durable; gumo is patching Claude MEDIUM findings.</p>
-            <label class="option"><input type="radio" name="next" value="4"><span><span class="option-title">Option 4 - Wait for Gate D patch/freeze</span><span class="option-detail">Do not treat current evidence WIP as final.</span></span></label>
+            <h3>4. Gate D data-only evidence intake</h3>
+            <p>SCS Gate D draft is now durable at <code>388f20a</code>, but it is a data-only planning gate.</p>
+            <label class="option"><input type="radio" name="next" value="4"><span><span class="option-title">Option 4 - Treat Gate D as docs checkpoint</span><span class="option-detail">No evidence transfer, artifact import, package/runtime work, or mutation is approved.</span></span></label>
           </div>
           <div class="decision">
             <h3>5. Marker execution gate</h3>
@@ -255,19 +255,19 @@
           <li><code>/home/riche/MCPs/limux/docs/project-isolation-lab-goal.md</code></li>
           <li><code>/home/riche/MCPs/limux/FYI.md</code></li>
           <li><code>/home/riche/Proj/SUPPLY_CHAIN_SECURITY</code> read-only status</li>
-          <li>hcom <code>#33749</code>, <code>#33763</code>, <code>#33909</code>, <code>#33923</code>, <code>#34125</code>, <code>#34336</code>, <code>#34691</code>, <code>#34696</code>, <code>#34887</code>, <code>#35006</code></li>
-          <li>Verification commands: git status/log, hcom events/subscriptions, SHA256 checks, extracted-shell hash, bash syntax, static no-delete scan, WAIT/no-execution text search.</li>
-          <li>Gate D evidence-intake WIP spot-check from 8:50 AM EDT: draft <code>24b8bebd...</code>, task <code>8f90287f...</code>, gates <code>607db367...</code>, review <code>12f5cac...</code>. This is a volatile breadcrumb, not a durable review target; Claude MEDIUM findings are being patched.</li>
+          <li>hcom <code>#33749</code>, <code>#33763</code>, <code>#33909</code>, <code>#33923</code>, <code>#34125</code>, <code>#34336</code>, <code>#34691</code>, <code>#34696</code>, <code>#34887</code>, <code>#35006</code>, <code>#35219</code></li>
+          <li>Verification commands: Limux/SCS git status/log, SCS remote check, hcom events, SHA256 checks, SCS diff check, SCS HTML parse, extracted SCS HTML JS syntax, and WAIT/no-execution text search.</li>
+          <li>Gate D durable checkpoint from 8:56 AM EDT: SCS commit <code>388f20a</code>, draft <code>24b8bebd...</code>, PRD-003 <code>8f90287f...</code>, gates <code>607db367...</code>, HTML packet <code>b8497c30...</code>, handoff <code>7522af0...</code>, review <code>12f5cac...</code>.</li>
         </ul>
       </section>
     </main>
   </div>
   <script>
     const optionText = {
-      "1": "Proceed with Option 1: keep Limux docs/handoff current against SCS e455617 and latest non-durable Gate D WIP caveats; do not treat Gate D as final.",
+      "1": "Proceed with Option 1: keep Limux docs/handoff current against SCS Gate D commit 388f20a and later explicit SCS notices; execution remains WAIT.",
       "2": "Proceed with Option 2: treat SCS e455617 as the durable V2 review/freeze checkpoint only, not execution approval.",
       "3": "Proceed with Option 3 only if gumo sends a new exact-hash review request; read-only review only.",
-      "4": "Proceed with Option 4: wait for gumo to patch Claude MEDIUM findings and then commit/push or exact-hash request the Gate D evidence-intake WIP; do not treat it as final.",
+      "4": "Proceed with Option 4: treat SCS Gate D commit 388f20a as a durable docs checkpoint only; do not transfer evidence, import artifacts, execute packages/runtime code, or mutate host state.",
       "5": "Do not execute now. Only consider marker execution after frozen execution packet, final mutation review, and explicit operator approval.",
       "6": "Keep later VM layers queued behind accepted Wave A evidence and separate mutation gates."
     };

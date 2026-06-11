@@ -51,7 +51,8 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 08:50 EDT, SCS Wave A V2 successor and marker-proof status is:
+As of 2026-06-11 08:56 EDT, SCS Wave A V2 successor, marker-proof, and Gate D
+evidence-intake status is:
 
 - SCS V2 freeze is complete and pushed at
   `0c1882b23bdb0dac9617734d23024752e35af4c6`
@@ -304,17 +305,16 @@ As of 2026-06-11 08:50 EDT, SCS Wave A V2 successor and marker-proof status is:
   for the final hash set, fenced-shell extraction to `/tmp`, extracted V2 shell
   SHA256 match, `bash -n`, and Codex static no-delete scan over a dedicated
   `/tmp` copy with 0 REMOVE and 0 REVIEW.
-- Subsequent SCS WIP after `e455617...` is already present and non-durable as
-  of the 2026-06-11 08:50 EDT read-only spot-check. Current SCS status shows
-  root/project docs and `project_isolation_lab/tasks/prd-003-evidence-export-intake.md` modified, an
-  untracked `project_isolation_lab/docs/DATA_ONLY_EVIDENCE_INTAKE_GATE_DRAFT_2026-06-11.md`,
-  and unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
-  Gumo hcom `#34691`, `#34696`, `#34887`, and `#35006` confirm this Gate
-  D/evidence-intake lane is still WIP, Claude adversarial review found MEDIUM
-  issues including a polyglot/remote-content check issue and a later PRD
-  screenshot contradiction finding, gumo is patching/finalizing, and there is
-  no final SCS hash set yet.
-  Last-observed volatile WIP hashes for the new evidence-intake lane:
+- SCS Gate D data-only evidence intake draft is now durable and pushed at
+  `388f20af5369a47b11849fe72d1dbfb3b34cb307`
+  (`docs(lab): define gate d evidence intake draft`). SCS `main...origin/main`
+  is clean except unrelated untracked
+  `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`. Gumo hcom `#35219` reports
+  Claude final narrow adversarial review found no remaining HIGH/MEDIUM
+  blockers or approval-bypass contradictions. This remains a docs-only
+  `WAIT` gate: no evidence transfer, mutation, artifact import, Limux/Cargo
+  install, package/runtime execution, or host runtime change is approved.
+  Final hashes from hcom `#35219`, locally verified by Halo:
   - `DATA_ONLY_EVIDENCE_INTAKE_GATE_DRAFT_2026-06-11.md`:
     `24b8bebd9ee8244c154cc67e3c1893faaba4f187966953da560235ee9be91fae`
   - `prd-003-evidence-export-intake.md`:
@@ -323,9 +323,10 @@ As of 2026-06-11 08:50 EDT, SCS Wave A V2 successor and marker-proof status is:
     `607db367d7af031ce62c6615272d9ae8fe0296fd4b8ee31af4a63c8cebc528f5`
   - `PRD_ACCEPTANCE_REVIEW_2026-06-10.md`:
     `12f5cac630edd0e4ba28254c08709ea2032652e4b74492bb38d9f85fa6b6a118`
-  These hashes are a restart breadcrumb only, not a review target; do not treat
-  this evidence-intake WIP as durable until SCS commits/pushes or gumo issues
-  an exact-hash review request after patching.
+  - SCS HTML decision packet:
+    `b8497c3073187c77ef3de022a4af5f55bda94d4927b235ed11aa03bc2940894e`
+  - SCS `HANDOFF.md`:
+    `7522af0a36afef622e66dae1fa72db81245912d0204d1a7fb4271549d25fd101`
 - Limux-side operator packet for this final checkpoint:
   `docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`.
   It is a human-readable copy-back/status packet, not an execution approval.
@@ -333,8 +334,8 @@ As of 2026-06-11 08:50 EDT, SCS Wave A V2 successor and marker-proof status is:
 ## Numbered Options Moving Forward
 
 1. **Docs/handoff first - active maintenance**: keep Limux restart docs and
-   this status packet aligned with the durable SCS `e455617...` checkpoint and
-   the latest explicitly non-durable Gate D WIP caveats.
+   this status packet aligned with the durable SCS `388f20a...` Gate D
+   checkpoint and later explicit SCS notices.
 2. **SCS durable V2 marker-proof checkpoint**: complete at SCS commit
    `e455617...` with V2 packet `c52377ce...`, extracted shell `3008e426...`,
    hardening review `a0ded5dc...`, approval inputs `da2a63cc...`, HTML packet
@@ -344,10 +345,11 @@ As of 2026-06-11 08:50 EDT, SCS Wave A V2 successor and marker-proof status is:
    Do not edit SCS, run packets, create markers, or mutate
    ISO/key/checksum/network/Hyper-V/VM/WSL/Limux/Cargo/package/runtime/global-
    config/SCRIM/lab-to-host state.
-4. **Evidence-intake WIP**: current SCS Gate D/evidence-intake draft
-   `DATA_ONLY_EVIDENCE_INTAKE_GATE_DRAFT_2026-06-11.md` is non-durable. Gumo is
-   patching Claude MEDIUM findings; wait for commit/push or a new exact-hash
-   review request.
+4. **Gate D data-only evidence intake**: complete as a durable docs-only draft
+   at SCS commit `388f20a...` with draft `24b8bebd...`, PRD-003
+   `8f90287f...`, acceptance gates `607db367...`, HTML packet `b8497c30...`,
+   SCS handoff `7522af0...`, and PRD review `12f5cac...`. This is `WAIT` for
+   any evidence transfer, artifact import, runtime/package work, or mutation.
 5. **Marker execution gate**: only after frozen execution packet, final mutation
    review, explicit operator approval, execution window/operator, packet/script
    hashes, filesystem-type values, marker disposition, and residual disposition.

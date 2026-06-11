@@ -1479,3 +1479,34 @@ request. Execution remains `WAIT/NO-GO`.
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
 `docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`
 | hcom `#34887` | hcom `#35006`
+
+## 2026-06-11 - Gate D Data-Only Evidence Intake Draft Durable
+### What:
+Updated Limux restart surfaces after SCS committed and pushed the Gate D
+data-only evidence intake draft at commit `388f20a...`.
+
+### Why:
+The prior Limux state correctly treated Gate D as volatile WIP. Gumo hcom
+`#35219` reported the final committed/pushed SCS state, with Claude final narrow
+adversarial review finding no remaining HIGH/MEDIUM blockers or
+approval-bypass contradictions.
+
+### How:
+Read SCS status/log/remote state and file-backed SHA256s without editing SCS.
+Also ran SCS `git diff --check`, parsed the SCS HTML packet, and checked the
+extracted SCS HTML JavaScript with `node --check`. Updated only Limux-owned
+handoff/status surfaces. Final SCS Gate D hashes recorded here: draft
+`24b8bebd...`, PRD-003 `8f90287f...`, acceptance gates `607db367...`, HTML
+packet `b8497c30...`, SCS handoff `7522af0...`, and PRD review `12f5cac...`.
+Halo did not transfer evidence, import artifacts, execute packages/runtime
+code, edit SCS, or mutate network, Hyper-V, VM, WSL, Limux, Cargo, package,
+global-config, SCRIM, or host runtime state.
+
+### Impact:
+Gate D is now a durable docs checkpoint, not an execution approval. Execution
+and evidence transfer remain `WAIT/NO-GO`.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
+`docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`
+| hcom `#35219`
