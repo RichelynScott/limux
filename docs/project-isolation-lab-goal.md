@@ -40,9 +40,33 @@ session back to Limux product development.
 
 ## Source Pointers
 
+- `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/ACTIVE_GOAL.md`
+- `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md`
 - `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/README.md`
 - `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/PRD_PLAN.md`
 - `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/ROADMAP.md`
 - `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/ACCEPTANCE_GATES.md`
 - `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/docs/PROJECT_ISOLATION_LAB_STRATEGY_2026-06-10.md`
 - `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/docs/LIMUX_INSTALL_VM_LAB_STRATEGY_2026-06-10.md`
+
+## Current Restart Checkpoint
+
+As of 2026-06-10 21:11 EDT, the SCS-owned Hyper-V host mutation packet exists
+as a draft with decision `WAIT`. It is not approved to run. A preliminary
+Limux-side read found the earlier WinNAT/static-guest-network gap addressed:
+the draft defines guest IP `172.29.240.10/24`, gateway `172.29.240.1`, DNS,
+GUI configuration steps, and a netplan fallback with an interface-name stop
+condition.
+
+Before any execution can be considered, the packet still needs freeze +
+SHA256, exact Ubuntu ISO provenance and SHA256, formal `$mutation-script-wave`,
+resolution of any high/critical findings, and explicit operator approval for
+the execution window.
+
+Verify whether gumo has committed the SCS-owned docs before relying on them:
+
+```bash
+git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
+git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY log -5 --oneline --decorate
+hcom events --last 80 --agent gumo --name halo
+```

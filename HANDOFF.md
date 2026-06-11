@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-10 20:51 EDT
+Last updated: 2026-06-10 21:11 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,11 +33,34 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
+Current SCS restart pointers as of 2026-06-10 21:11 EDT:
+
+- Canonical active goal:
+  `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/ACTIVE_GOAL.md`
+- Phase 1 host-mutation draft:
+  `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md`
+- Packet status: `WAIT`; it is not executable. The previous WinNAT guest
+  networking gap is addressed in the draft with a guest static IP, gateway,
+  DNS, GUI setup path, and netplan fallback. Formal `$mutation-script-wave`,
+  packet freeze/SHA256, Ubuntu ISO provenance/SHA256, and explicit operator
+  approval have not happened.
+- Halo sent gumo a targeted hcom closeout request to commit and push the
+  SCS-owned docs-only WAIT packet. Verify SCS `git log` and `git status` before
+  assuming that commit landed.
+
 ## Immediate Next Action
 
 Start from the Project Isolation Lab goal above. The next practical action for
 this Limux session is to keep Limux stable as a tool and coordinate with gumo on
 the SCS-owned lab docs, not to add more Limux features by default.
+
+If resuming after a restart, first verify the SCS docs closeout:
+
+```bash
+git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
+git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY log -5 --oneline --decorate
+hcom events --last 80 --agent gumo --name halo
+```
 
 Current Limux setup is unblocked for local use from this checkout. The install
 posture is still a **repo-local/user-local launcher**, not a polished system

@@ -2,6 +2,22 @@
 
 Append-only journal for significant Limux session decisions and implementation notes.
 
+## 2026-06-10 - Project Isolation Lab Restart Pointers
+### What:
+Refreshed the Limux-local handoff and goal note with the current SCS Project Isolation Lab restart pointers, including the canonical active-goal file and the Hyper-V host mutation packet draft.
+
+### Why:
+The operator is preparing for a PC restart and needs zero-context continuity around the real active goal: full isolated Linux VM baseline, disposable full Linux VM factory, and later Firecracker microVM quarantine, with Limux only as a tool/acceptance case.
+
+### How:
+Kept SCS ownership intact and patched only Limux-owned docs. Recorded that the Hyper-V packet remains `WAIT`, that the WinNAT guest-network gap is now addressed in the draft, and that formal mutation review, packet hash, ISO provenance/hash, and explicit approval remain required.
+
+### Impact:
+A resumed Limux session should verify gumo's SCS commit status first, then continue coordination on the Project Isolation Lab instead of drifting back into Limux feature work.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_HOST_MUTATION_PACKET_DRAFT_2026-06-10.md`
+
 ## 2026-05-29 - Limux Agent-Team Protocol Safety And Resume Plan
 ### What:
 Fixed the highest-risk `agent-team` behavior by moving generated protocol output from `AGENTS.md` to `LIMUX_AGENTS.md` by default, added `--protocol-path`, and documented the next zero-friction protocol discovery phase.
