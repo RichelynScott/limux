@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 11:13 EDT
+Last updated: 2026-06-11 11:20 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -40,7 +40,7 @@ redirected.
 
 ## Mission Brief - Project Isolation Lab Restart
 
-Author/runtime/date: worker-limux-halo / Codex GPT-5 / 2026-06-11 11:13 EDT.
+Author/runtime/date: worker-limux-halo / Codex GPT-5 / 2026-06-11 11:20 EDT.
 This is the single Limux-owned mission brief for the active cross-project
 isolation-lab goal; it is not a PRD, execution packet, or approval to mutate any
 host, VM, WSL, package-runtime, credential, SCRIM, or global-config surface.
@@ -56,13 +56,20 @@ Rust/Cargo acceptance case if the SCS-owned gates require it.
 
 Current checkpoint pointers:
 
-- Limux checkpoint before this update: `29071b3f`
-  (`docs(lab): refresh mission brief checkpoint`), with `main` matching
+- Limux checkpoint before this update: `a97512e`
+  (`docs(lab): track marker runtime candidates`), with `main` matching
   `origin/main` before this handoff refresh.
-- SCS latest checkpoint: `709469440cdb5193b496874a8d7857aa3e78d7d8`
-  (`docs(lab): record marker proof runtime candidates`), with SCS `main` matching
+- SCS latest checkpoint: `e429c38af1edea8e578eb7c888678db83e5316fc`
+  (`docs(lab): capture hyperv host readiness snapshot`), with SCS `main` matching
   `origin/main` and only unrelated untracked
   `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
+- SCS Hyper-V host read-only capability snapshot:
+  `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/HYPERV_HOST_READONLY_CAPABILITY_SNAPSHOT_2026-06-11.md`
+  SHA256:
+  `7b924225ee5a0ab78f15725255fc7d4f5950ab517a0a020cfa462fbfadf055ca`.
+- SCS marker runtime-candidate checkpoint before the Hyper-V snapshot:
+  `709469440cdb5193b496874a8d7857aa3e78d7d8`
+  (`docs(lab): record marker proof runtime candidates`).
 - SCS marker-proof approval-input checklist:
   `/home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_EXECUTION_APPROVAL_INPUTS_2026-06-11.md`
   SHA256:
@@ -127,6 +134,13 @@ Ungated checks completed for this brief:
 - `sha256sum` over the SCS mission brief after SCS advanced to `2dae559...`.
 - `sha256sum` over the SCS marker-proof approval-input checklist and Hyper-V
   review index after SCS advanced to `7094694...`.
+- `sha256sum` over the SCS Hyper-V host read-only capability snapshot after
+  SCS advanced to `e429c38...`.
+- Targeted `rg` checks confirmed the new Hyper-V snapshot says
+  `Decision: WAIT`, records Windows 11 Pro as a Hyper-V-capable candidate,
+  WSL2 `Ubuntu` and `docker-desktop` running, `vmcompute` and `hns` running,
+  Hyper-V feature/BCD state elevation-gated, and Hyper-V management surfaces
+  absent/not visible from the non-elevated context.
 - Targeted `rg` checks confirmed the new marker-proof approval-input checklist
   still says `Decision: WAIT`, records `/home/riche` as read-only candidate
   `ext2/ext3`, `/mnt/c` as read-only candidate `v9fs`, and states the exact WSL
@@ -830,16 +844,17 @@ is **Option 1: docs/handoff first**. Keep this repo's restart surfaces aligned
 with the SCS-owned lab state, keep all future choices numbered, and do not add
 Limux product features by default.
 
-As of the 2026-06-11 11:13 EDT read-only check, SCS `main` and `origin/main`
-both point to durable commit `709469440cdb5193b496874a8d7857aa3e78d7d8`
-(`docs(lab): record marker proof runtime candidates`). The updated
-marker-proof approval-input checklist records read-only candidate WSL/DrvFs
-anchor facts only: `/home/riche` reports `stat -f -c %T` as `ext2/ext3`,
-`/mnt/c` reports `v9fs`, and the exact WSL proof parent plus DrvFs target
-parent are still missing/not created. Execution remains `WAIT` at Gate B /
-operator TTY approval; this does not approve marker creation, ISO work, VM/WSL
-mutation, package runtime, SCRIM, global config, artifact movement, or
-hostile-code containment claims.
+As of the 2026-06-11 11:20 EDT read-only check, SCS `main` and `origin/main`
+both point to durable commit `e429c38af1edea8e578eb7c888678db83e5316fc`
+(`docs(lab): capture hyperv host readiness snapshot`). The new Hyper-V host
+read-only capability snapshot records Windows 11 Pro as a Hyper-V-capable
+candidate, WSL2 `Ubuntu` and WSL2 `docker-desktop` running, `vmcompute` and
+`hns` running, Hyper-V optional-feature and BCD state elevation-gated, and
+Hyper-V management surfaces absent/not visible from the non-elevated context.
+Execution remains `WAIT` at Gate B / operator TTY approval; this does not
+approve host/VM/WSL/Docker/HNS mutation, package/runtime execution, ISO or
+artifact work, SCRIM, global config, artifact movement, or hostile-code
+containment claims.
 
 Numbered next actions for this Limux session:
 
