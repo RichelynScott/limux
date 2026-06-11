@@ -75,13 +75,14 @@ into a `notify` (and, where useful, an inline `send`). Drop-in for
 `~/.claude/settings.json` hooks blocks.
 
 ### Phase 5 — `limux agent-team` + generated protocol file ✅
-`limux agent-team [--agents codex,claude[,opencode,gemini]] [--cwd <path>]
-[--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>]
-[--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch]
-[--no-bootstrap] [--dry-run]`:
+`limux agent-team [--agents codex,claude[,opencode,gemini]]
+[--launch-mode direct|hcom] [--cwd <path>] [--protocol-path <path>]
+[--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite]
+[--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]`:
 
 - Splits the active workspace into one terminal pane per agent and launches
-  each agent CLI unless `--no-launch` is set.
+  each agent CLI unless `--no-launch` is set. `--launch-mode hcom` launches
+  peers as `hcom <agent> --run-here`, keeping hcom sessions inside Limux panes.
 - After the generated protocol file is written, sends each launched peer a
   short bootstrap prompt that tells it to read `LIMUX_AGENTS.md` and the
   authoritative instruction sources listed there. Use `--no-bootstrap` to
@@ -160,8 +161,9 @@ into a `notify` (and, where useful, an inline `send`). Drop-in for
 
 **Shipped after typed-PTY guard: Phase 5B — automatic bootstrap**
 
-- `agent-team` now keeps `pane.create.command` to the bare launcher binary
-  (`codex`, `claude`, etc.) and does not embed prompt text in launch shell
+- `agent-team` now keeps `pane.create.command` to the launcher only: bare agent
+  binaries by default (`codex`, `claude`, etc.) or `hcom <agent> --run-here`
+  with `--launch-mode hcom`. It does not embed prompt text in launch shell
   commands.
 - Generated bootstrap prompts are single-line text with escaped dynamic values
   and no CR, tab, LF, bidi formatting, or zero-width display-spoofing

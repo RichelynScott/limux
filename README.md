@@ -150,6 +150,10 @@ echo '{"event":"finished"}' | limux gemini-hook --event finished
 # when missing, then sends each peer a short bootstrap prompt:
 limux agent-team --agents codex,claude --cwd "$PWD"
 # Use --no-bootstrap if you want panes launched but no post-launch prompt.
+# Use --launch-mode hcom when your normal entrypoint is hcom:
+limux agent-team --agents codex,claude --launch-mode hcom --cwd "$PWD"
+# This launches peer panes with `hcom codex --run-here` and
+# `hcom claude --run-here`, keeping those sessions inside Limux panes.
 # → Codex and Claude can now do:
 #   limux send --surface "<peer-surface-id>" \
 #     $'<agent-msg from="codex" to="claude" id="…" ts="…">…</agent-msg>\n'
@@ -200,6 +204,11 @@ default; use `--roster-path <path>`, `--ledger-path <path>`, and
 `--force-roster-overwrite` only when an intentional alternate path or marked
 roster reset is needed. Symlink and non-regular roster/ledger targets are
 refused.
+
+If you normally start agents with hcom, add `--launch-mode hcom` to
+`agent-team` or `review spawn`. Limux will create normal terminal panes, but the
+pane command becomes `hcom <agent> --run-here` so hcom registers the session
+without opening a separate external terminal window.
 
 `--dry-run` does not contact a running Limux host, but it still materializes the
 generated protocol and seeds missing roster/ledger files so agents can inspect

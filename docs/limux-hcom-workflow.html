@@ -414,7 +414,7 @@
             </tr>
             <tr>
               <td>Spawn a short-lived reviewer beside the current pane</td>
-              <td><code>limux agent-team --agents codex,claude --cwd "$PWD"</code>, or <code>limux new-pane --direction right --command 'codex'</code> plus the prompt from <code>limux review prepare</code></td>
+              <td><code>limux agent-team --agents codex,claude --cwd "$PWD"</code>, <code>limux agent-team --agents codex,claude --launch-mode hcom --cwd "$PWD"</code>, or <code>limux new-pane --direction right --command 'codex'</code> plus the prompt from <code>limux review prepare</code></td>
             </tr>
             <tr>
               <td>Get human attention inside the GUI</td>
@@ -646,6 +646,14 @@ Parent surface if blocked: &lt;surface-id&gt;.</code></pre>
           Repo instructions remain protected from the previous default clobber
           path.
         </div>
+        <p>
+          If your normal entrypoint is hcom, use
+          <code>limux agent-team --agents codex,claude --launch-mode hcom --cwd "$PWD"</code>.
+          Limux still creates normal panes, but the pane commands become
+          <code>hcom codex --run-here</code> and
+          <code>hcom claude --run-here</code>, so hcom registers the sessions
+          without opening another terminal window.
+        </p>
 
         <p>
           Do not treat <code>LIMUX_AGENTS.md</code> as an inherited or merged
@@ -729,7 +737,7 @@ Parent surface if blocked: &lt;surface-id&gt;.</code></pre>
           <li><code>agent-team</code> seeds <code>LIMUX_TEAM_ROSTER.md</code> and <code>LIMUX_REVIEW_LEDGER.md</code> when missing and supports <code>--roster-path</code>, <code>--ledger-path</code>, and <code>--force-roster-overwrite</code>.</li>
           <li>Existing repo <code>AGENTS.md</code> files are not written by default.</li>
           <li>Generated <code>LIMUX_AGENTS.md</code> files include a generated marker, instruction sources, durable roster/ledger pointers, sidecar policy guidance, and no-overwrite protection for unmarked sidecars.</li>
-          <li>Live <code>agent-team</code> launches peer panes with bare agent commands, writes the protocol, roster, and ledger before bootstrap, then submits a sanitized one-line bootstrap prompt with explicit Enter. <code>--no-bootstrap</code> and <code>--no-launch</code> skip prompt sends.</li>
+          <li>Live <code>agent-team</code> launches peer panes with bare agent commands by default, or <code>hcom &lt;agent&gt; --run-here</code> with <code>--launch-mode hcom</code>. It writes the protocol, roster, and ledger before bootstrap, then submits a sanitized one-line bootstrap prompt with explicit Enter. <code>--no-bootstrap</code> and <code>--no-launch</code> skip prompt sends.</li>
           <li><code>limux review prepare</code> creates durable review request files, appends pending <code>LIMUX_REVIEW_LEDGER.md</code> entries, supports dry-run planning, and refuses existing requests, leaf symlink/non-regular/overlapping targets, and control-character prompt fields. Use trusted output directories; parent path components are not recursively audited for symlinks.</li>
           <li>Generated <code>new-pane --command</code> examples quote launch commands and avoid nested arbitrary prompt text.</li>
           <li>Typed terminal text now rejects ESC/BEL/C1/control payloads except tab, LF, and CR across CLI, bridge/core, and host send-sink paths.</li>

@@ -221,13 +221,13 @@ fn parse_global_args() -> Result<GlobalOptions> {
 
 fn print_help() {
     println!(
-        "limux CLI\n\nUsage: limux [--socket <path>] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the active workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, writes LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md\n      plus LIMUX_REVIEW_LEDGER.md when missing so peers can coordinate via\n      durable files and `limux send --surface <peer-surface-id> <envelope>`.\n  review prepare --artifact <path-or-ref> --reviewer <agent|manual> --lens <name> --summary <text> [--cwd <path>] [--ledger-path <path>] [--reviews-dir <path>] [--review-id <id>] [--dry-run]\n      Creates a durable review request file, appends a pending review-ledger\n      entry, and prints the reviewer prompt without launching a reviewer pane.\n"
+        "limux CLI\n\nUsage: limux [--socket <path>] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--launch-mode direct|hcom] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the active workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, or hcom with --run-here when requested, writes\n      LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md plus\n      LIMUX_REVIEW_LEDGER.md when missing so peers can coordinate via durable\n      files and `limux send --surface <peer-surface-id> <envelope>`.\n  review prepare --artifact <path-or-ref> --reviewer <agent|manual> --lens <name> --summary <text> [--cwd <path>] [--ledger-path <path>] [--reviews-dir <path>] [--review-id <id>] [--dry-run]\n      Creates a durable review request file, appends a pending review-ledger\n      entry, and prints the reviewer prompt without launching a reviewer pane.\n"
     );
     println!(
         "  agent-team extra flags: --no-bootstrap skips the post-launch bootstrap prompt while still launching panes; --dry-run skips host contact but still materializes the protocol and seeds missing roster/ledger files."
     );
     println!(
-        "  review spawn: review spawn --review-id <id> [--cwd <path>] [--reviews-dir <path>] [--ledger-path <path>] [--evidence-path <path>] [--workspace <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--no-launch] [--dry-run]"
+        "  review spawn: review spawn --review-id <id> [--cwd <path>] [--reviews-dir <path>] [--ledger-path <path>] [--evidence-path <path>] [--workspace <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--launch-mode direct|hcom] [--no-launch] [--dry-run]"
     );
 }
 
@@ -2070,13 +2070,57 @@ async fn run_new_workspace(client: &mut Client, args: &[String]) -> Result<Value
 /// actually has installed (see README); the launch command is what gets
 /// typed into the new workspace's terminal, so it also works as a fallback
 /// shell command if the CLI isn't in PATH yet.
-fn agent_launch_command(agent: &str) -> Option<(&'static str, String)> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AgentLaunchMode {
+    Direct,
+    Hcom,
+}
+
+impl AgentLaunchMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Direct => "direct",
+            Self::Hcom => "hcom",
+        }
+    }
+}
+
+fn parse_agent_launch_mode(args: &[String], command_name: &str) -> Result<AgentLaunchMode> {
+    match parse_opt(args, "--launch-mode")
+        .unwrap_or_else(|| "direct".to_string())
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "direct" => Ok(AgentLaunchMode::Direct),
+        "hcom" => Ok(AgentLaunchMode::Hcom),
+        other => bail!("{command_name}: --launch-mode must be one of direct|hcom, got {other:?}"),
+    }
+}
+
+fn agent_launch_command_for_mode(
+    agent: &str,
+    launch_mode: AgentLaunchMode,
+) -> Option<(&'static str, String)> {
     match agent.to_lowercase().as_str() {
-        "codex" => Some(("codex", "codex".to_string())),
-        "claude" | "claude-code" => Some(("claude", "claude".to_string())),
-        "opencode" => Some(("opencode", "opencode".to_string())),
-        "gemini" | "gemini-cli" => Some(("gemini", "gemini".to_string())),
+        "codex" => Some(("codex", agent_launch_command_text("codex", launch_mode))),
+        "claude" | "claude-code" => {
+            Some(("claude", agent_launch_command_text("claude", launch_mode)))
+        }
+        "opencode" => Some((
+            "opencode",
+            agent_launch_command_text("opencode", launch_mode),
+        )),
+        "gemini" | "gemini-cli" => {
+            Some(("gemini", agent_launch_command_text("gemini", launch_mode)))
+        }
         _ => None,
+    }
+}
+
+fn agent_launch_command_text(agent: &str, launch_mode: AgentLaunchMode) -> String {
+    match launch_mode {
+        AgentLaunchMode::Direct => agent.to_string(),
+        AgentLaunchMode::Hcom => format!("hcom {agent} --run-here"),
     }
 }
 
@@ -2180,6 +2224,7 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
     let dry_run = parse_flag(args, "--dry-run");
     let force_protocol_overwrite = parse_flag(args, "--force-protocol-overwrite");
     let force_roster_overwrite = parse_flag(args, "--force-roster-overwrite");
+    let launch_mode = parse_agent_launch_mode(args, "agent-team")?;
     let bootstrap_enabled = !no_launch && !no_bootstrap;
 
     // Resolve the agent list up front so --dry-run can build a deterministic
@@ -2187,11 +2232,12 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
     let resolved: Vec<(String, &'static str, String)> = agents
         .iter()
         .filter_map(|agent| {
-            agent_launch_command(agent).map(|(name, launch)| (agent.clone(), name, launch))
+            agent_launch_command_for_mode(agent, launch_mode)
+                .map(|(name, launch)| (agent.clone(), name, launch))
         })
         .collect();
     for agent in &agents {
-        if agent_launch_command(agent).is_none() {
+        if agent_launch_command_for_mode(agent, launch_mode).is_none() {
             eprintln!("agent-team: unknown agent '{agent}', skipping");
         }
     }
@@ -2268,6 +2314,7 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
             },
             "dry_run": true,
             "no_launch": no_launch,
+            "launch_mode": launch_mode.as_str(),
             "bootstrap": {
                 "enabled": false,
                 "status": "skipped",
@@ -2481,6 +2528,7 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
         },
         "dry_run": false,
         "no_launch": no_launch,
+        "launch_mode": launch_mode.as_str(),
         "bootstrap": {
             "enabled": bootstrap_enabled,
             "status": bootstrap_status,
@@ -3240,6 +3288,7 @@ async fn run_review_spawn(client: &mut Client, raw_args: &[String]) -> Result<Va
     validate_review_id(&review_id)?;
     let dry_run = parse_flag(args, "--dry-run");
     let no_launch = parse_flag(args, "--no-launch");
+    let launch_mode = parse_agent_launch_mode(args, "review spawn")?;
     let direction = parse_opt(args, "--direction")
         .unwrap_or_else(|| "right".to_string())
         .to_ascii_lowercase();
@@ -3262,12 +3311,13 @@ async fn run_review_spawn(client: &mut Client, raw_args: &[String]) -> Result<Va
             "review spawn cannot launch manual reviews; use review prepare for manual review files"
         );
     }
-    let (_, launch_command) = agent_launch_command(&request.reviewer).ok_or_else(|| {
-        anyhow!(
-            "review spawn: reviewer {} is not launchable",
-            request.reviewer
-        )
-    })?;
+    let (_, launch_command) = agent_launch_command_for_mode(&request.reviewer, launch_mode)
+        .ok_or_else(|| {
+            anyhow!(
+                "review spawn: reviewer {} is not launchable",
+                request.reviewer
+            )
+        })?;
 
     let ledger_path = parse_opt(args, "--ledger-path")
         .map(PathBuf::from)
@@ -3316,6 +3366,7 @@ async fn run_review_spawn(client: &mut Client, raw_args: &[String]) -> Result<Va
             "review_command": "spawn",
             "dry_run": true,
             "no_launch": no_launch,
+            "launch_mode": launch_mode.as_str(),
             "cwd": cwd_string,
             "review_id": request.review_id,
             "artifact": request.artifact,
@@ -3393,6 +3444,7 @@ async fn run_review_spawn(client: &mut Client, raw_args: &[String]) -> Result<Va
         "review_command": "spawn",
         "dry_run": false,
         "no_launch": no_launch,
+        "launch_mode": launch_mode.as_str(),
         "cwd": cwd_string,
         "review_id": request.review_id,
         "artifact": request.artifact,
@@ -6225,7 +6277,7 @@ mod agent_team_tests {
             "gemini-cli",
         ] {
             assert!(
-                agent_launch_command(agent).is_some(),
+                agent_launch_command_for_mode(agent, AgentLaunchMode::Direct).is_some(),
                 "expected '{agent}' to be a known agent"
             );
         }
@@ -6233,7 +6285,103 @@ mod agent_team_tests {
 
     #[test]
     fn agent_launch_unknown_returns_none() {
-        assert!(agent_launch_command("nonsense-cli").is_none());
+        assert!(agent_launch_command_for_mode("nonsense-cli", AgentLaunchMode::Direct).is_none());
+    }
+
+    #[tokio::test]
+    async fn agent_team_dry_run_hcom_launch_mode_uses_run_here_commands() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let args = vec![
+            "--dry-run".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+            "--agents".to_string(),
+            "codex,claude".to_string(),
+            "--launch-mode".to_string(),
+            "hcom".to_string(),
+        ];
+        let mut client = Client::new(cwd.join("unused.sock"));
+
+        let payload = run_agent_team(&mut client, &args)
+            .await
+            .expect("dry run should not contact host");
+
+        assert_eq!(payload["launch_mode"], "hcom");
+        assert_eq!(
+            payload["peers"][0]["launch_command"],
+            "hcom codex --run-here"
+        );
+        assert_eq!(
+            payload["peers"][1]["launch_command"],
+            "hcom claude --run-here"
+        );
+
+        let md = std::fs::read_to_string(cwd.join("LIMUX_AGENTS.md")).expect("read protocol");
+        assert!(md.contains("| `codex` | `<dry-run-pane-0>` | `<dry-run-surface-codex>` | `hcom codex --run-here` |"));
+        assert!(md.contains("| `claude` | `<dry-run-pane-1>` | `<dry-run-surface-claude>` | `hcom claude --run-here` |"));
+    }
+
+    #[tokio::test]
+    async fn agent_team_hcom_launch_mode_launches_run_here_commands() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let socket = cwd.join("limux.sock");
+        let protocol_path = cwd.join("LIMUX_AGENTS.md");
+        let (requests, server) =
+            spawn_agent_team_fake_server(socket.clone(), protocol_path.clone()).await;
+        let mut client = Client::new(socket);
+        let args = vec![
+            "--agents".to_string(),
+            "codex,claude".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+            "--launch-mode".to_string(),
+            "hcom".to_string(),
+        ];
+
+        let payload = run_agent_team(&mut client, &args)
+            .await
+            .expect("agent-team should complete against fake host");
+        server.abort();
+
+        assert_eq!(payload["launch_mode"], "hcom");
+        let requests = requests.lock().expect("lock requests").clone();
+        let pane_creates: Vec<_> = requests
+            .iter()
+            .filter(|request| request.method == "pane.create")
+            .collect();
+        assert_eq!(pane_creates.len(), 2);
+        assert_eq!(
+            pane_creates[0].params["command"].as_str(),
+            Some("hcom codex --run-here")
+        );
+        assert_eq!(
+            pane_creates[1].params["command"].as_str(),
+            Some("hcom claude --run-here")
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_team_rejects_unknown_launch_mode() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let args = vec![
+            "--dry-run".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+            "--launch-mode".to_string(),
+            "spaceship".to_string(),
+        ];
+        let mut client = Client::new(cwd.join("unused.sock"));
+
+        let err = run_agent_team(&mut client, &args)
+            .await
+            .expect_err("unknown launch mode should fail");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("--launch-mode"), "unexpected error: {msg}");
+        assert!(msg.contains("direct"), "unexpected error: {msg}");
+        assert!(msg.contains("hcom"), "unexpected error: {msg}");
     }
 
     async fn spawn_agent_team_fake_server(
@@ -7891,6 +8039,49 @@ mod review_prepare_tests {
     }
 
     #[tokio::test]
+    async fn review_spawn_dry_run_hcom_launch_mode_reports_run_here_command() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        run_review_prepare(&args(&[
+            "prepare",
+            "--cwd",
+            cwd.to_str().expect("utf8 cwd"),
+            "--artifact",
+            "README.md",
+            "--reviewer",
+            "claude",
+            "--lens",
+            "correctness",
+            "--summary",
+            "Check docs",
+            "--review-id",
+            "phase5d2-hcom",
+        ]))
+        .expect("prepare should create request");
+
+        let mut client = Client::new(cwd.join("missing.sock"));
+        let payload = run_review_command(
+            &mut client,
+            &args(&[
+                "spawn",
+                "--cwd",
+                cwd.to_str().expect("utf8 cwd"),
+                "--review-id",
+                "phase5d2-hcom",
+                "--launch-mode",
+                "hcom",
+                "--dry-run",
+            ]),
+        )
+        .await
+        .expect("dry-run spawn should not contact host");
+
+        assert_eq!(payload["launch_mode"], "hcom");
+        assert_eq!(payload["launch_command"], "hcom claude --run-here");
+        assert_eq!(payload["spawn"]["status"], "planned");
+    }
+
+    #[tokio::test]
     async fn review_spawn_requires_matching_pending_ledger_entry_before_host_contact() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let cwd = tmp.path();
@@ -7984,6 +8175,10 @@ mod review_prepare_tests {
                 cwd.to_str().expect("utf8 cwd"),
                 "--review-id",
                 "phase5d2-live",
+                "--workspace",
+                "workspace:team",
+                "--surface",
+                "surface:1:orchestrator",
                 "--direction",
                 "down",
             ]),

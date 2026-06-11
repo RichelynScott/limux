@@ -285,6 +285,16 @@ It sends each peer a short bootstrap prompt after those coordination files are
 written. This is safer than the previous `AGENTS.md` behavior and protects
 load-bearing repo instructions.
 
+If your normal agent entrypoint is hcom, use:
+
+```bash
+limux agent-team --agents codex,claude --launch-mode hcom --cwd "$PWD"
+```
+
+That keeps the panes inside Limux but launches them as
+`hcom codex --run-here` and `hcom claude --run-here`, so hcom owns the session
+registration without opening another terminal window.
+
 Important remaining rule: do not treat `LIMUX_AGENTS.md` as an inherited or
 merged copy of `AGENTS.md`. Repo instruction files such as `AGENTS.md`,
 `CLAUDE.md`, and `GEMINI.md` remain authoritative. `LIMUX_AGENTS.md` should
@@ -369,8 +379,9 @@ As of this review:
 - Generated `LIMUX_AGENTS.md` files include a generated marker, instruction
   sources, durable roster/ledger pointers, sidecar policy guidance, and
   no-overwrite protection for unmarked sidecars.
-- Live `agent-team` launches peer panes with bare agent commands, writes the
-  protocol, roster, and ledger before bootstrap, then submits a sanitized
+- Live `agent-team` launches peer panes with bare agent commands by default, or
+  with `hcom <agent> --run-here` when `--launch-mode hcom` is set. It writes
+  the protocol, roster, and ledger before bootstrap, then submits a sanitized
   one-line bootstrap prompt with explicit Enter. `--no-bootstrap` and
   `--no-launch` skip prompt sends.
 - `limux review prepare` creates durable review request files, appends pending

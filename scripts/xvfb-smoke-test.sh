@@ -152,6 +152,25 @@ grep -F -q '| `current` | peer | `opencode`' "$DEMO_DIR/stage0-team-roster.md" \
   || { echo "FAIL: stage 0 roster missing opencode peer"; exit 1; }
 echo "stage 0: OK"
 
+echo
+echo "== stage 0b: agent-team --dry-run hcom launch-mode (no host) =="
+"$LIMUX_CLI" agent-team --dry-run \
+  --agents codex,claude \
+  --launch-mode hcom \
+  --cwd "$DEMO_DIR" \
+  --protocol-path "$DEMO_DIR/stage0b-LIMUX_AGENTS.md" \
+  --roster-path "$DEMO_DIR/stage0b-team-roster.md" \
+  --ledger-path "$DEMO_DIR/stage0b-review-ledger.md" \
+  2>&1 | tee "$LOG_DIR/stage0b-hcom.txt"
+
+grep -q "peers=\[codex, claude\]" "$LOG_DIR/stage0b-hcom.txt" \
+  || { echo "FAIL: stage 0b dry-run did not report expected hcom peers"; exit 1; }
+grep -q 'hcom codex --run-here' "$DEMO_DIR/stage0b-LIMUX_AGENTS.md" \
+  || { echo "FAIL: stage 0b protocol missing hcom codex launch command"; exit 1; }
+grep -q 'hcom claude --run-here' "$DEMO_DIR/stage0b-LIMUX_AGENTS.md" \
+  || { echo "FAIL: stage 0b protocol missing hcom claude launch command"; exit 1; }
+echo "stage 0b: OK"
+
 # --- 4. Launch the live host under Xvfb ----------------------------------
 # Each smoke run gets its own socket path so we don't collide with the
 # user's real limux session.
