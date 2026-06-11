@@ -1422,3 +1422,29 @@ review.
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
 `docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`
 | hcom `#34336`
+
+## 2026-06-11 - Gate D Evidence-Intake WIP Caveat
+### What:
+Recorded that SCS Gate D/evidence-intake remains non-durable WIP after the
+durable marker-proof V2 checkpoint.
+
+### Why:
+Gumo hcom `#34691` and `#34696` confirmed Claude adversarial review found MEDIUM
+issues in the Gate D evidence-intake lane, gumo is patching, and there is no
+final SCS hash set yet.
+
+### How:
+Checked Limux status, SCS status/log read-only, hcom thread state, and the
+current SCS WIP file list. Patched only Limux-owned docs and the existing HTML
+packet. Halo did not edit SCS, execute packets, create markers, download/import
+ISO/key/checksum material, or mutate network, Hyper-V, VM, WSL, Limux, Cargo,
+package, global-config, SCRIM, or host runtime state.
+
+### Impact:
+Next safe action is to wait for gumo to commit/push Gate D or issue a new
+exact-hash review request after patching. Execution remains `WAIT/NO-GO`.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
+`docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`
+| hcom `#34691` | hcom `#34696`

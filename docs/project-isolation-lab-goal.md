@@ -51,7 +51,7 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 08:34 EDT, SCS Wave A V2 successor and marker-proof status is:
+As of 2026-06-11 08:39 EDT, SCS Wave A V2 successor and marker-proof status is:
 
 - SCS V2 freeze is complete and pushed at
   `0c1882b23bdb0dac9617734d23024752e35af4c6`
@@ -305,10 +305,13 @@ As of 2026-06-11 08:34 EDT, SCS Wave A V2 successor and marker-proof status is:
   SHA256 match, `bash -n`, and Codex static no-delete scan over a dedicated
   `/tmp` copy with 0 REMOVE and 0 REVIEW.
 - Subsequent SCS WIP after `e455617...` is already present and non-durable as
-  of 2026-06-11 08:34 EDT. Current SCS status shows root/project docs and
+  of 2026-06-11 08:39 EDT. Current SCS status shows root/project docs and
   `project_isolation_lab/tasks/prd-003-evidence-export-intake.md` modified, an
   untracked `project_isolation_lab/docs/DATA_ONLY_EVIDENCE_INTAKE_GATE_DRAFT_2026-06-11.md`,
   and unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
+  Gumo hcom `#34691` and `#34696` confirm this Gate D/evidence-intake lane is
+  still WIP, Claude adversarial review found MEDIUM issues, gumo is patching,
+  and there is no final SCS hash set yet.
   Snapshot hashes for the new evidence-intake lane:
   - `DATA_ONLY_EVIDENCE_INTAKE_GATE_DRAFT_2026-06-11.md`:
     `0ba463dbfed9c90ab984260d0fb895c04b0515db2d4b8480ae170cdd93529b58`
@@ -319,7 +322,7 @@ As of 2026-06-11 08:34 EDT, SCS Wave A V2 successor and marker-proof status is:
   - `PRD_ACCEPTANCE_REVIEW_2026-06-10.md`:
     `c89ba1666a19644065d4340e7574b0b80354588c29f3110f7250e27ef7e8d7c1`
   Do not treat this evidence-intake WIP as durable until SCS commits/pushes or
-  gumo issues an exact-hash review request.
+  gumo issues an exact-hash review request after patching.
 - Limux-side operator packet for this final checkpoint:
   `docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`.
   It is a human-readable copy-back/status packet, not an execution approval.
@@ -338,9 +341,10 @@ As of 2026-06-11 08:34 EDT, SCS Wave A V2 successor and marker-proof status is:
    Do not edit SCS, run packets, create markers, or mutate
    ISO/key/checksum/network/Hyper-V/VM/WSL/Limux/Cargo/package/runtime/global-
    config/SCRIM/lab-to-host state.
-4. **Evidence-intake WIP**: current SCS evidence-intake draft
-   `DATA_ONLY_EVIDENCE_INTAKE_GATE_DRAFT_2026-06-11.md` is non-durable until
-   gumo commits/pushes or issues an exact-hash review request.
+4. **Evidence-intake WIP**: current SCS Gate D/evidence-intake draft
+   `DATA_ONLY_EVIDENCE_INTAKE_GATE_DRAFT_2026-06-11.md` is non-durable. Gumo is
+   patching Claude MEDIUM findings; wait for commit/push or a new exact-hash
+   review request.
 5. **Marker execution gate**: only after frozen execution packet, final mutation
    review, explicit operator approval, execution window/operator, packet/script
    hashes, filesystem-type values, marker disposition, and residual disposition.
