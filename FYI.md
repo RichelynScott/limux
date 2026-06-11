@@ -1448,3 +1448,31 @@ exact-hash review request after patching. Execution remains `WAIT/NO-GO`.
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
 `docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`
 | hcom `#34691` | hcom `#34696`
+
+## 2026-06-11 - Gate D WIP Hash Snapshot Refresh
+### What:
+Refreshed the Limux restart surfaces with the current read-only SCS Gate D
+evidence-intake WIP hashes as of 2026-06-11 08:42 EDT.
+
+### Why:
+SCS remains at durable commit `e455617...`, but gumo is actively patching Gate D
+after Claude MEDIUM findings. The Gate D WIP file hashes changed after the
+previous Limux caveat entry, so the handoff needed to avoid carrying stale
+"current" hashes into a restart.
+
+### How:
+Read SCS status and SHA256s without editing SCS. Updated only Limux-owned
+handoff/status surfaces. Current non-durable WIP snapshot: draft `4db066d8...`,
+task `5a82c04...`, acceptance gates `7be40b4...`, and acceptance review
+`12f5cac...`. Halo did not execute packets, create markers, download/import
+ISO/key/checksum material, or mutate network, Hyper-V, VM, WSL, Limux, Cargo,
+package, global-config, SCRIM, or host runtime state.
+
+### Impact:
+The durable SCS checkpoint remains `e455617...`; Gate D remains WIP and should
+not be treated as final until gumo commits/pushes or issues an exact-hash review
+request. Execution remains `WAIT/NO-GO`.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
+`docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`

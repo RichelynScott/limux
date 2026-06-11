@@ -165,7 +165,7 @@
         <div class="meta">
           <div><span>Repo</span><strong>/home/riche/MCPs/limux</strong></div>
           <div><span>Author</span><strong>halo / GPT-5 Codex</strong></div>
-          <div><span>Generated</span><strong>6/11/2026 8:39 AM EDT</strong></div>
+          <div><span>Generated</span><strong>6/11/2026 8:44 AM EDT</strong></div>
           <div><span>Status</span><strong>WAIT for execution; final checkpoint plus WIP pointer</strong></div>
         </div>
       </header>
@@ -193,8 +193,8 @@
           <h2>Numbered Options</h2>
           <div class="decision">
             <h3>1. Docs/handoff first <span class="rec">Recommended now</span></h3>
-            <p>Keep Limux restart docs aligned with the now-final SCS checkpoint.</p>
-            <label class="option"><input type="radio" name="next" value="1" checked><span><span class="option-title">Option 1 - Finish docs/handoff tracking</span><span class="option-detail">Commit/push this final-checkpoint plus WIP-pointer Limux update and notify gumo.</span></span></label>
+            <p>Keep Limux restart docs aligned with the durable SCS checkpoint and latest non-durable Gate D WIP caveat.</p>
+            <label class="option"><input type="radio" name="next" value="1" checked><span><span class="option-title">Option 1 - Maintain docs/handoff tracking</span><span class="option-detail">Keep Limux docs current without treating Gate D WIP as final.</span></span></label>
           </div>
           <div class="decision">
             <h3>2. SCS final V2 checkpoint</h3>
@@ -257,14 +257,14 @@
           <li><code>/home/riche/Proj/SUPPLY_CHAIN_SECURITY</code> read-only status</li>
           <li>hcom <code>#33749</code>, <code>#33763</code>, <code>#33909</code>, <code>#33923</code>, <code>#34125</code>, <code>#34336</code>, <code>#34691</code>, <code>#34696</code></li>
           <li>Verification commands: git status/log, hcom events/subscriptions, SHA256 checks, extracted-shell hash, bash syntax, static no-delete scan, WAIT/no-execution text search.</li>
-          <li>Gate D evidence-intake WIP snapshot: <code>DATA_ONLY_EVIDENCE_INTAKE_GATE_DRAFT_2026-06-11.md</code> at <code>0ba463db...</code>, not durable; Claude MEDIUM findings are being patched.</li>
+          <li>Gate D evidence-intake WIP snapshot from 8:42 AM EDT: draft <code>4db066d8...</code>, task <code>5a82c04...</code>, gates <code>7be40b4...</code>, review <code>12f5cac...</code>. This is not durable; Claude MEDIUM findings are being patched.</li>
         </ul>
       </section>
     </main>
   </div>
   <script>
     const optionText = {
-      "1": "Proceed with Option 1: commit/push the Limux final-checkpoint plus WIP-pointer docs update and notify gumo.",
+      "1": "Proceed with Option 1: keep Limux docs/handoff current against SCS e455617 and latest non-durable Gate D WIP caveats; do not treat Gate D as final.",
       "2": "Proceed with Option 2: treat SCS e455617 as the durable V2 review/freeze checkpoint only, not execution approval.",
       "3": "Proceed with Option 3 only if gumo sends a new exact-hash review request; read-only review only.",
       "4": "Proceed with Option 4: wait for gumo to patch Claude MEDIUM findings and then commit/push or exact-hash request the Gate D evidence-intake WIP; do not treat it as final.",
