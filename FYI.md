@@ -1593,12 +1593,12 @@ Read SCS status/log state and file-backed SHA256s without editing SCS. Verified
 SCS local `HEAD` and `origin/main` match `ee4f60f...`, ran SCS
 `git diff --check`, parsed the SCS HTML packet, searched the artifact-intake
 docs for `WAIT`/`NO-GO` no-execution framing, and re-ran lightweight
-`limux --help` / `limux-cli --help`. Local `node` is unavailable in this Limux
-shell, so Limux packet JavaScript was not checked locally; SCS extracted-JS
-`node --check` remains gumo-reported in hcom `#35791`. Updated only Limux-owned
-handoff/status surfaces. Final SCS PRD-007 hashes recorded here: artifact draft
-`17493d6...`, PRD-007 `9f899011...`, acceptance gates `064ae28f...`, HTML
-packet `67c5ee24...`, and SCS handoff `97cc9a44...`.
+`limux --help` / `limux-cli --help`. Local `node` is available in this Limux
+shell (`v24.15.0`), and the Limux packet JavaScript check passed locally; SCS
+extracted-JS `node --check` remains gumo-reported in hcom `#35791`. Updated
+only Limux-owned handoff/status surfaces. Final SCS PRD-007 hashes recorded
+here: artifact draft `17493d6...`, PRD-007 `9f899011...`, acceptance gates
+`064ae28f...`, HTML packet `67c5ee24...`, and SCS handoff `97cc9a44...`.
 
 ### Impact:
 PRD-007 is now a durable docs checkpoint, not execution or transfer approval.
@@ -1626,10 +1626,10 @@ HIGH/MEDIUM findings and approving it as draft-only after LOW wording fixes.
 Read SCS status/log state and file-backed SHA256s without editing SCS. Verified
 SCS local `HEAD` and `origin/main` match `b154858...`, ran SCS
 `git diff --check`, parsed the SCS HTML packet, searched the Gate C and PRD-002
-docs for `WAIT`/`NO-GO` no-execution framing. Local `node` is unavailable in
-this Limux shell, so Limux packet JavaScript was not checked locally. Updated
-only Limux-owned handoff/status surfaces. Final SCS Gate C hashes recorded
-here: Gate C draft `73526618...`, PRD-002
+docs for `WAIT`/`NO-GO` no-execution framing, and verified the Limux packet
+JavaScript with local Node `v24.15.0`. Updated only Limux-owned
+handoff/status surfaces. Final SCS Gate C hashes recorded here: Gate C draft
+`73526618...`, PRD-002
 `dbf993ef...`, acceptance gates `eb48e89f...`, HTML packet `7612bae1...`, and
 SCS handoff `07458d16...`.
 
