@@ -1322,3 +1322,67 @@ otherwise freezes them, and execution remains `WAIT/NO-GO`.
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#33581` |
 hcom `#33749` | hcom `#33763`
+
+## 2026-06-11 - SCS V2 Hardening WIP Restart Snapshot
+### What:
+Recorded the current non-durable SCS V2 hardening WIP snapshot in Limux restart
+docs while gumo continues validation and hash-table/HANDOFF/HTML updates.
+
+### Why:
+The operator is preparing for a possible PC restart. A zero-context Limux
+successor needs to know that the last durable SCS commit is still `f1272a0`,
+that current V2 hardening files are moving WIP, and that gumo hcom `#34125`
+asked Halo to hold final pointer replacement until the pushed SCS commit and
+final hashes arrive.
+
+### How:
+Checked Limux status, SCS status/log read-only, hcom `project-isolation-lab-goal`
+events, and SHA256 values for current SCS modified/untracked WIP files. Patched
+only Limux-owned `HANDOFF.md` and `docs/project-isolation-lab-goal.md`; no SCS
+edits, packet execution, marker creation, ISO/key/checksum/network/Hyper-V/VM/
+WSL/Limux/Cargo/package/runtime/global-config/SCRIM mutation, or lab-to-host
+artifact import was performed by Halo.
+
+### Impact:
+Limux now has a restart-safe WIP snapshot, not a final SCS checkpoint. Execution
+remains `WAIT/NO-GO`. The next Limux doc update should replace this snapshot
+only after gumo sends the final SCS commit SHA, final hashes, verification
+commands, and post-push status.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#33923` |
+hcom `#34125`
+
+## 2026-06-11 - Project Isolation Lab Docs Option 1
+### What:
+Updated the Limux-owned handoff, goal note, and an HTML decision packet for the
+active Project Isolation Lab goal after the operator selected option 1:
+docs/handoff first.
+
+### Why:
+SCS/gumo is still patching final V2 marker-proof hardening docs. Gumo hcom
+`#33923` says SCS hashes may change before final push and that gumo will send
+the final committed hash set afterward. Gumo hcom `#34125` then asked Halo to
+hold Limux pointer state until final SCS validation/push. The operator still
+selected option 1, so Limux restart docs needed to make the non-durable status
+explicit without treating WIP hashes as final.
+
+### How:
+Checked Limux git status, SCS git status/log, hcom thread and subscription
+state, current SCS WIP SHA256s as of 2026-06-11 08:22 EDT, and current
+WAIT/no-execution language. Patched only Limux-owned files. Created
+`docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`
+as the operator-facing numbered-options packet. Halo did not edit SCS, execute
+packets, create markers, download/import ISO/key/checksum material, or mutate
+network, Hyper-V, VM, WSL, Limux, Cargo, package, global-config, SCRIM, or host
+runtime state.
+
+### Impact:
+Option 1 is recorded as active: keep docs/handoff current and wait for gumo's
+final SCS commit SHA, final hashes, verification commands, and post-push
+status before replacing WIP hashes. Execution remains `WAIT/NO-GO`.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
+`docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`
+| hcom `#33923` | hcom `#34125`

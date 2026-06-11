@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 08:02 EDT
+Last updated: 2026-06-11 08:22 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,7 +33,7 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
-Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 08:02
+Current SCS Wave A V2 successor and marker-proof state as of 2026-06-11 08:22
 EDT:
 
 - SCS V2 freeze is complete and pushed at
@@ -272,14 +272,40 @@ EDT:
   movement, but after evidence/proof/target directories may exist. Gumo hcom
   `#33763` acknowledged this stricter residual wording and kept execution
   `WAIT`.
-- Current SCS read-only status after gumo incorporated the V2 review is dirty
-  and non-durable. Observed WIP paths/hashes at 2026-06-11 08:06 EDT:
+- Current SCS read-only status after gumo incorporated the V2 review is still
+  dirty and non-durable. Gumo hcom `#33923` acknowledged Limux snapshot
+  `2db65d0` and explicitly warned that SCS hashes may change again while he
+  patches final hash tables/HTML/HANDOFF, then said he will send the final
+  committed hash set after push. Gumo hcom `#34125` then asked Halo to hold the
+  Limux pointer state until that final SCS validation/push arrives. Do not treat
+  the following WIP hashes as durable. Observed WIP paths/hashes at
+  2026-06-11 08:22 EDT:
+  - `FYI.md`:
+    `e95b9ac0b3a4ee1fb7313368950a70902ef35078ad6c8b379a8ee592f3dc2b81`
+  - `HANDOFF.md`:
+    `414315f33144c54dc624249d760ebb559591554ee0644d2f5bdfab03049e3c49`
+  - `README.md`:
+    `344e776c5c7aab322e84cf5d8c298dc48cd08af8b8ff2b8b0e6fa45a702183cd`
+  - `docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`:
+    `8d65541e5111db042616bfe5b68098640aec2a0bb3a7806a02fc7c9c2169079b`
   - `project_isolation_lab/docs/ACTIVE_GOAL.md`:
     `94cb1849aa30c2522de444f31ef65c08b02f0d531f3cb0413c152f123fbd4c76`
+  - `project_isolation_lab/FYI.md`:
+    `f3a62bd43281bc4e17868cd3a31ab5ff5dd2100acc9dace88c6550a8811352dd`
+  - `project_isolation_lab/README.md`:
+    `8ec94452c7190c94657c7ea1cfebc7dee71d9fd9e9cf5a47a64568edb7ae71c0`
+  - `project_isolation_lab/docs/PRD_PLAN.md`:
+    `f704ac572f49c9b08ebc30fa52a0e266f3020f7f50bde5b4eec5c6cbdba8fe79`
+  - `project_isolation_lab/docs/ROADMAP.md`:
+    `ebd59fb5f20d98b9e87215b0a701efc4adc813d7efea17b209be20584c159258`
+  - `project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`:
+    `016652ae546200e636170381a79cf3af8cafa4c1797e479a688fbf7062af9be1`
+  - `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_DRAFT_REVIEW_2026-06-11.md`:
+    `64f2347ac45b21a5ab97c6c5388a1ab7dc723d1e89bbf607d0ab90d371bea84e`
   - `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_EXECUTION_APPROVAL_INPUTS_2026-06-11.md`:
-    `ff0e6ed037cdac8ded343e52e76bfe81f17a746863ad40f3d4f7d1a82a4b0b07`
+    `da2a63cc670e07eeaed9749b04544a6ed7ad3d74728043973ca4900c0c0bdc5f`
   - `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_MUTATION_WAVE_REVIEW_2026-06-11.md`:
-    `a9330ba284190f12431e82844087dcf36911f8382a064c4c14126a2147d72a1a`
+    `2bbe9bfe0a852a12884a7a246f2f26c1ffe8106bb66da7bd44b50fdcd8bc5c94`
   - `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_V2_2026-06-11.md`:
     `c52377cefa8be15d768cbbaabe5a05ddedb2e2bed1cdcfc566708a94f2f37e39`
   - `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_V2_HARDENING_REVIEW_2026-06-11.md`:
@@ -304,32 +330,36 @@ EDT:
 
 Numbered options moving forward:
 
-1. **Docs/handoff first**: keep Limux restart docs aligned with the SCS-owned
-   lab state whenever SCS commits, freezes, or changes the next review artifact.
-   This is the active option for this session.
-2. **SCS durable V2 freeze**: complete at SCS commit `0c1882b23...` with V2
-   packet `36cad934...`, hardening record `529e15b0...`, and gumo `#31842`
-   verification. Halo's role was read-only verification and Limux pointer
-   updates.
-3. **Dry-run proof packet**: exact draft `0284cf52...` is frozen in SCS commit
+1. **Docs/handoff first - active now**: Limux has a restart snapshot for the
+   current state, including the fact that SCS is still dirty and that gumo said
+   final hashes may drift before push. Do not replace the WIP snapshot with a
+   final checkpoint until gumo sends a final SCS commit SHA, final hashes,
+   verification commands, and post-push status.
+2. **If gumo sends a new exact-hash review request before commit**: review it
+   read-only only. Do not edit SCS, do not execute the packet, do not create
+   markers, and do not mutate ISO/key/checksum/network/Hyper-V/VM/WSL/Limux/
+   Cargo/package/runtime/global-config/SCRIM/lab-to-host state.
+3. **After durable V2 hardening push**: update Limux docs from WIP snapshot to
+   final committed hash set, then notify gumo with the Limux commit pointer.
+4. **Dry-run proof packet**: exact draft `0284cf52...` is frozen in SCS commit
    `bed7d37`, and formal marker-proof review is pushed at `b8abc7d`. It is
    still `WAIT/NO-GO` for execution, marker creation, ISO/key import/download,
    package execution, and host mutation until the operator approves a concrete
    execution packet/input checklist.
-4. **Marker-proof approval inputs**: complete at SCS commit `f1272a0...` with
+5. **Marker-proof approval inputs**: complete at SCS commit `f1272a0...` with
    approval-input checklist `dfb8bbf7...`, Hyper-V mutation-wave packet
    `f20756e8...`, HTML packet `ce8600e9...`, and gumo `#33327` verification.
    It is docs-only and still `WAIT/NO-GO`; it names the missing values for any
    future marker-only execution packet.
-5. **V2 marker-proof draft**: current untracked SCS WIP
+6. **V2 marker-proof draft**: current untracked SCS WIP
    `WAVE_A_WSL_DRVFS_MARKER_PROOF_PACKET_DRAFT_V2_2026-06-11.md` at
    `c52377ce...` has Halo `#33749` GO for review/freeze candidate only.
    Updated approval-input and V2 hardening-review WIP exist, but are not durable
    until SCS commits/pushes. Execution remains `WAIT/NO-GO`.
-6. **Wave A ISO intake approval packet**: only after the dry-run proof and
+7. **Wave A ISO intake approval packet**: only after the dry-run proof and
    mutation review converge should SCS ask the operator for explicit approval to
    run ISO intake. No approval is implied by any current docs.
-7. **Later lab layers**: Wave B persistent VM baseline, disposable full-VM
+8. **Later lab layers**: Wave B persistent VM baseline, disposable full-VM
    factory, and Firecracker microVM layer remain downstream of accepted Wave A
    evidence and separate mutation gates.
 

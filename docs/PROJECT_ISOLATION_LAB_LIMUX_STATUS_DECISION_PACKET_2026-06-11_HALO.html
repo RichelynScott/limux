@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project Isolation Lab - Limux Status Packet</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101317;
+      --panel: #171c22;
+      --panel2: #20272e;
+      --line: #33404b;
+      --text: #eef3f7;
+      --muted: #a9b4be;
+      --faint: #7d8994;
+      --ok: #72b978;
+      --warn: #d3a33f;
+      --danger: #d66f68;
+      --accent: #5db8aa;
+      --code: #0b0e11;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      line-height: 1.5;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 250px minmax(0, 1fr);
+      gap: 18px;
+      width: min(1320px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 24px 0 44px;
+    }
+    aside, section, .copybox, .meta {
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+    aside {
+      position: sticky;
+      top: 16px;
+      align-self: start;
+      padding: 16px;
+    }
+    .step {
+      display: grid;
+      grid-template-columns: 18px 1fr;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+    .step:last-child { border-bottom: 0; }
+    .dot { width: 10px; height: 10px; margin-top: 6px; background: var(--faint); }
+    .step.done .dot { background: var(--ok); }
+    .step.current .dot { background: var(--accent); box-shadow: 0 0 0 4px rgba(93,184,170,.15); }
+    .step.gated .dot { background: var(--warn); }
+    .step.blocked .dot { background: var(--danger); }
+    .step strong { display: block; font-size: 12px; }
+    .step span { display: block; color: var(--muted); font-size: 11px; }
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+      gap: 16px;
+      align-items: end;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    h1, h2, h3 { margin: 0; line-height: 1.15; letter-spacing: 0; }
+    h1 { font-size: clamp(28px, 4.5vw, 52px); }
+    h2 { font-size: 22px; margin-bottom: 12px; }
+    h3 { font-size: 14px; color: var(--warn); margin: 0 0 8px; text-transform: uppercase; }
+    p { margin: 0 0 12px; color: var(--muted); }
+    .meta { padding: 14px; display: grid; gap: 8px; }
+    .meta div { display: flex; justify-content: space-between; gap: 14px; color: var(--muted); font-size: 12px; }
+    .meta strong { color: var(--text); text-align: right; overflow-wrap: anywhere; }
+    section { margin-top: 18px; padding: 18px; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .fact, .decision {
+      border: 1px solid var(--line);
+      background: var(--panel2);
+      padding: 14px;
+      overflow-wrap: anywhere;
+    }
+    .label { color: var(--faint); font-size: 11px; text-transform: uppercase; }
+    .value { margin-top: 8px; }
+    .decision { margin-bottom: 12px; }
+    label.option {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr);
+      gap: 10px;
+      padding: 10px;
+      margin-top: 8px;
+      background: rgba(11,14,17,.55);
+      border: 1px solid transparent;
+      cursor: pointer;
+    }
+    label.option:hover { border-color: var(--line); }
+    input[type="radio"], input[type="checkbox"] { accent-color: var(--accent); margin-top: 3px; }
+    .option-title { display: block; color: var(--text); font-weight: 800; font-size: 13px; }
+    .option-detail { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .rec { color: var(--accent); font-size: 11px; text-transform: uppercase; margin-left: 6px; }
+    .decision-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 430px);
+      gap: 16px;
+      align-items: start;
+    }
+    .copybox { position: sticky; top: 16px; padding: 16px; }
+    textarea, input[type="text"], select {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: var(--code);
+      color: var(--text);
+      padding: 10px;
+      font: inherit;
+    }
+    textarea { min-height: 120px; resize: vertical; }
+    #payload { min-height: 350px; }
+    .field { margin-top: 12px; }
+    .field label { display: block; margin-bottom: 6px; color: var(--text); font-weight: 800; font-size: 12px; }
+    button {
+      width: 100%;
+      margin-top: 10px;
+      border: 1px solid var(--line);
+      background: var(--accent);
+      color: #06110f;
+      font: inherit;
+      font-weight: 900;
+      padding: 11px;
+      cursor: pointer;
+    }
+    code { background: var(--code); border: 1px solid #283039; padding: 2px 5px; overflow-wrap: anywhere; }
+    ul { margin: 0; padding-left: 20px; color: var(--muted); }
+    li { margin: 7px 0; overflow-wrap: anywhere; }
+    .source-list { columns: 2; }
+    @media (max-width: 960px) {
+      .layout, header, .grid, .decision-layout { grid-template-columns: 1fr; }
+      aside, .copybox { position: static; }
+      .source-list { columns: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside>
+      <h3>Roadmap</h3>
+      <div class="step done"><span class="dot"></span><div><strong>Goal aligned</strong><span>Project Isolation Lab, not Limux feature lane.</span></div></div>
+      <div class="step done"><span class="dot"></span><div><strong>Marker reviews</strong><span>Review/freeze candidates only.</span></div></div>
+      <div class="step current"><span class="dot"></span><div><strong>Docs checkpoint</strong><span>Limux reflects current SCS WIP state.</span></div></div>
+      <div class="step gated"><span class="dot"></span><div><strong>SCS final push</strong><span>Await final committed hash set from gumo.</span></div></div>
+      <div class="step gated"><span class="dot"></span><div><strong>Execution gates</strong><span>Operator approval and formal mutation review required.</span></div></div>
+      <div class="step gated"><span class="dot"></span><div><strong>VM layers</strong><span>Persistent VM, disposable VM, Firecracker later.</span></div></div>
+    </aside>
+    <main>
+      <header>
+        <div>
+          <h1>Project Isolation Lab - Limux Status</h1>
+          <p>Limux-local checkpoint for the active isolation-lab goal. This packet does not authorize marker creation, ISO/key import, VM/WSL/Hyper-V/network mutation, package execution, Limux install work, SCRIM/global-config work, or lab-to-host artifact import.</p>
+        </div>
+        <div class="meta">
+          <div><span>Repo</span><strong>/home/riche/MCPs/limux</strong></div>
+          <div><span>Author</span><strong>halo / GPT-5 Codex</strong></div>
+          <div><span>Generated</span><strong>6/11/2026 8:22 AM EDT</strong></div>
+          <div><span>Status</span><strong>WAIT for execution; WIP snapshot</strong></div>
+        </div>
+      </header>
+
+      <section>
+        <h2>Current Status</h2>
+        <div class="grid">
+          <div class="fact"><div class="label">Limux</div><div class="value">Restart docs and this packet capture a non-durable SCS WIP snapshot for commit/push.</div></div>
+          <div class="fact"><div class="label">SCS</div><div class="value">Still dirty on <code>f1272a0</code>; gumo <code>#34125</code> says final commit and hashes will follow validation/push.</div></div>
+          <div class="fact"><div class="label">Execution</div><div class="value"><code>WAIT/NO-GO</code>. No marker, ISO, key, VM, WSL, package, runtime, or host mutation is approved.</div></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Verified And Gated</h2>
+        <div class="grid">
+          <div class="fact"><div class="label">Done</div><div class="value">Limux handoff and goal note now preserve gumo <code>#33923</code> and <code>#34125</code>: SCS hashes may change before final push, and Limux should wait for final validation/push before replacing WIP hashes.</div></div>
+          <div class="fact"><div class="label">Verified</div><div class="value">Read-only checks covered Limux git status, SCS git status/log, current WIP hashes, WAIT/no-execution clauses, and hcom thread state.</div></div>
+          <div class="fact"><div class="label">Not Done</div><div class="value">No SCS edits, packet execution, marker creation, ISO/key/checksum download/import, Hyper-V/VM/WSL/network/package/runtime/global-config mutation.</div></div>
+        </div>
+      </section>
+
+      <section class="decision-layout">
+        <div>
+          <h2>Numbered Options</h2>
+          <div class="decision">
+            <h3>1. Docs/handoff first <span class="rec">Recommended now</span></h3>
+            <p>Keep Limux restart docs aligned with SCS without treating WIP hashes as final.</p>
+            <label class="option"><input type="radio" name="next" value="1" checked><span><span class="option-title">Option 1 - Continue docs/handoff tracking</span><span class="option-detail">This packet is a WIP snapshot. Wait for final SCS commit/hash set, then update Limux docs again.</span></span></label>
+          </div>
+          <div class="decision">
+            <h3>2. Read-only exact-hash review</h3>
+            <p>Use this only if gumo sends a new exact hash before committing.</p>
+            <label class="option"><input type="radio" name="next" value="2"><span><span class="option-title">Option 2 - Review new exact hash</span><span class="option-detail">Read-only only; no SCS edits or packet execution.</span></span></label>
+          </div>
+          <div class="decision">
+            <h3>3. Final SCS hash-set update</h3>
+            <p>After gumo pushes, replace WIP snapshot with committed SHA256s and verification evidence.</p>
+            <label class="option"><input type="radio" name="next" value="3"><span><span class="option-title">Option 3 - Update after durable push</span><span class="option-detail">Requires final SCS commit SHA, hashes, verification commands, and post-push status.</span></span></label>
+          </div>
+          <div class="decision">
+            <h3>4. Marker execution gate</h3>
+            <p>Only after frozen execution packet, final mutation review, and explicit operator approval.</p>
+            <label class="option"><input type="radio" name="next" value="4"><span><span class="option-title">Option 4 - Consider marker execution later</span><span class="option-detail">Current state remains WAIT/NO-GO.</span></span></label>
+          </div>
+          <div class="decision">
+            <h3>5. Later lab layers</h3>
+            <p>Persistent full VM baseline, disposable full VM factory, then Firecracker microVM layer.</p>
+            <label class="option"><input type="radio" name="next" value="5"><span><span class="option-title">Option 5 - Later VM layers</span><span class="option-detail">Downstream of accepted Wave A evidence and separate mutation gates.</span></span></label>
+          </div>
+
+          <h2>Execution Mode</h2>
+          <label class="option"><input type="radio" name="mode" value="current" checked><span><span class="option-title">Current session documents and verifies</span><span class="option-detail">Best fit while SCS is still changing.</span></span></label>
+          <label class="option"><input type="radio" name="mode" value="hcom"><span><span class="option-title">hcom targeted coordination</span><span class="option-detail">Use only for short gumo pointers and final hash-set notifications.</span></span></label>
+          <label class="option"><input type="radio" name="mode" value="defer"><span><span class="option-title">Defer/document only</span><span class="option-detail">Use if SCS continues changing and no stable review target exists.</span></span></label>
+
+          <h2>Skill Checklist</h2>
+          <label class="option"><input type="checkbox" checked><span><span class="option-title">$handoff</span><span class="option-detail">Required for docs/handoff freshness.</span></span></label>
+          <label class="option"><input type="checkbox" checked><span><span class="option-title">$hcom</span><span class="option-detail">Required for gumo coordination checks.</span></span></label>
+          <label class="option"><input type="checkbox"><span><span class="option-title">$mutation-script-wave</span><span class="option-detail">Use only before authoring/staging/executing mutation scripts.</span></span></label>
+          <label class="option"><input type="checkbox"><span><span class="option-title">Dedicated skill-ranking subagent</span><span class="option-detail">Not needed for the current docs-only update.</span></span></label>
+          <div class="field">
+            <label for="extraSkill">Additional skill</label>
+            <input id="extraSkill" type="text" placeholder="Optional skill name">
+          </div>
+          <div class="field">
+            <label for="notes">Operator notes</label>
+            <textarea id="notes" placeholder="Optional notes for the next session"></textarea>
+          </div>
+        </div>
+        <div class="copybox">
+          <h2>Copy-Back Payload</h2>
+          <textarea id="payload" readonly></textarea>
+          <button id="copyBtn" type="button">Copy Payload</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Sources And Evidence</h2>
+        <ul class="source-list">
+          <li><code>/home/riche/MCPs/limux/HANDOFF.md</code></li>
+          <li><code>/home/riche/MCPs/limux/docs/project-isolation-lab-goal.md</code></li>
+          <li><code>/home/riche/MCPs/limux/FYI.md</code></li>
+          <li><code>/home/riche/Proj/SUPPLY_CHAIN_SECURITY</code> read-only status</li>
+          <li>hcom <code>#33749</code>, <code>#33763</code>, <code>#33909</code>, <code>#33923</code>, <code>#34125</code></li>
+          <li>Verification commands: git status/log, hcom events/subscriptions, SHA256 checks, WAIT/no-execution text search.</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+  <script>
+    const optionText = {
+      "1": "Proceed with Option 1: keep the Limux WIP snapshot durable, then wait for gumo's final SCS commit/hash set before replacing WIP hashes.",
+      "2": "Proceed with Option 2 only if gumo sends a new exact-hash review request before commit; read-only review only.",
+      "3": "Proceed with Option 3 after durable SCS push: update Limux docs from WIP snapshot to final committed hash set.",
+      "4": "Do not execute now. Only consider marker execution after frozen execution packet, final mutation review, and explicit operator approval.",
+      "5": "Keep later VM layers queued behind accepted Wave A evidence and separate mutation gates."
+    };
+    function selected(name) {
+      const el = document.querySelector('input[name="' + name + '"]:checked');
+      return el ? el.value : "";
+    }
+    function updatePayload() {
+      const option = selected("next") || "1";
+      const mode = selected("mode") || "current";
+      const extraSkill = document.getElementById("extraSkill").value.trim();
+      const notes = document.getElementById("notes").value.trim();
+      const lines = [
+        optionText[option],
+        "Execution mode: " + mode + ".",
+        "Keep execution WAIT/NO-GO: no marker creation, ISO/key/checksum/network/Hyper-V/VM/WSL/Limux/Cargo/package/runtime/global-config/SCRIM/lab-to-host mutation without explicit operator approval and required review gates."
+      ];
+      if (extraSkill) lines.push("Additional skill requested: " + extraSkill + ".");
+      if (notes) lines.push("Operator notes: " + notes);
+      document.getElementById("payload").value = lines.join("\n");
+    }
+    document.querySelectorAll("input, textarea").forEach((el) => el.addEventListener("input", updatePayload));
+    document.getElementById("copyBtn").addEventListener("click", async () => {
+      const payload = document.getElementById("payload");
+      payload.select();
+      try {
+        await navigator.clipboard.writeText(payload.value);
+      } catch (err) {
+        document.execCommand("copy");
+      }
+    });
+    updatePayload();
+  </script>
+</body>
+</html>
