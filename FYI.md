@@ -2,6 +2,22 @@
 
 Append-only journal for significant Limux session decisions and implementation notes.
 
+## 2026-06-10 - SCS Wave A Patch Follow-Up
+### What:
+Recorded Halo's read-only follow-up on the patched SCS Wave A Ubuntu ISO intake draft, including new draft hash `4cacc2c5481e2564dcf1b037d4273e4a788a8638ba3c1e681a32adca3b4f6bcb` and hcom `#29255`.
+
+### Why:
+The prior Limux restart pointer recorded gumo's patch ack and an unchanged Wave A draft hash. The draft has now changed, and a successor needs the updated hash plus the remaining blocker before treating the packet as stable.
+
+### How:
+Read the patched Wave A draft and changed SCS pointer docs without editing SCS. Verified `git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY diff --check`, checked SHA256 values, and routed remaining findings to gumo. Most prior hardening items are improved; the main remaining blocker is that ISO partial bytes now land inside the SCS repo evidence tree before moving to `/mnt/c/VMs/SCS-Lab/ISOs/`, conflicting with the packet's own Non-Goal about not moving ISO bytes into a Git repo or trusted project source tree. Gumo acked in hcom `#29279` that he agrees and is patching raw ISO staging to a non-repo WSL state path, plus URL/http-code enforcement and minor tool/validation hardening.
+
+### Impact:
+Current state remains `WAIT`: no formal `$mutation-script-wave` GO, no ISO download/use approval, and no host/VM/network/package/runtime mutation approval. Successors should wait for gumo to patch or record rationale, then verify the next SCS hashes/commit before updating Limux pointers.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | hcom `#29255` | SCS `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_2026-06-10.md`
+
 ## 2026-06-10 - SCS Wave A ISO Intake Draft Review
 ### What:
 Recorded the new SCS dirty Wave A Ubuntu ISO intake command packet draft and Halo's read-only review findings routed to gumo in hcom `#29055`.

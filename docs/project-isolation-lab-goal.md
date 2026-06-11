@@ -51,7 +51,7 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-10 23:02 EDT, SCS is dirty again after the verified `7427285`
+As of 2026-06-10 23:13 EDT, SCS is dirty again after the verified `7427285`
 mutation-wave packet closeout. Gumo is drafting the next Wave A Ubuntu ISO
 intake command packet:
 
@@ -72,7 +72,7 @@ Observed SCS dirty paths from Halo:
 Current draft hashes from Halo's read-only review:
 
 - `WAVE_A_UBUNTU_2404_ISO_INTAKE_COMMAND_PACKET_DRAFT_2026-06-10.md`:
-  `004690094eac19da538f8c40bf97eec30f91d53b17fdd96334068d26b9d40a08`
+  `4cacc2c5481e2564dcf1b037d4273e4a788a8638ba3c1e681a32adca3b4f6bcb`
 - `UBUNTU_2404_ISO_ARTIFACT_INTAKE_PLAN_2026-06-10.md`:
   `9b518851690752ab399800613c6bafc00e94d74e5e3659ed09d7055315e54265`
 - `HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`:
@@ -89,30 +89,32 @@ aligned with Wave A first, but remains `WAIT`. Open findings before commit or
 freeze:
 
 Gumo acked in hcom `#29106` that he is patching those findings rather than
-accepting residual risk. A Halo recheck after that ack found the Wave A draft
-hash still unchanged at
-`004690094eac19da538f8c40bf97eec30f91d53b17fdd96334068d26b9d40a08`, so treat
-the SCS patch as in progress until gumo reports new hashes and a commit.
+accepting residual risk. The Wave A draft hash has now changed and most
+`#29055` findings look materially improved: approval/window/operator/packet hash
+fail closed before writes, redirect/status metadata is captured, `VALIDSIG` is
+bound to the expected fingerprint, disk/max-size guards exist, target path
+preflight is stricter, and the no-use attestation is operator-bound.
 
-1. Enforce frozen packet hash, approval reference, execution operator, and
-   approved execution window before network or target writes.
-2. Add `curl --proto-redir '=https'` plus header/final URL/status metadata.
-3. Parse GPG status for exact `VALIDSIG` or equivalent fingerprint binding.
-4. Add disk-space and oversized-download guards before writing a 6.2G ISO to
-   `/mnt/c`.
-5. Tighten or justify target-parent path checks before `mkdir -p`.
-6. Add explicit evidence hashes for checksum/signature files, key material,
-   release page or ISO HEAD metadata, resolved paths, and target directory stat.
-7. Make the no-use attestation operator-bound, or record why static prose is
-   sufficient for the draft.
+Halo sent follow-up hcom review `#29255`. Remaining findings before commit or
+freeze:
 
-Halo verified official Ubuntu sources again without downloading the ISO: the
-24.04.4 release page still lists `ubuntu-24.04.4-desktop-amd64.iso` at 6.2G /
-2026-02-10 01:41; official `SHA256SUMS` still maps
-`3a4c9877b483ab46d7c3fbe165a0db275e1ae3cfe56a5657e5a47c2f99a99d1e` to
-`*ubuntu-24.04.4-desktop-amd64.iso`; Ubuntu verification docs still describe
-GPG verification of `SHA256SUMS.gpg`, the expected 2012 signing-key
-fingerprint, and ISO hash comparison.
+1. HIGH: patched draft downloads the 6.2G ISO partial into
+   `project_isolation_lab/evidence/.../download/` inside the SCS repo before
+   moving it to `/mnt/c/VMs/SCS-Lab/ISOs/`. That conflicts with the packet's
+   Non-Goal forbidding ISO movement into a Git repo/trusted project source
+   tree. Keep repo-local evidence to metadata/checksums/logs only and place ISO
+   partial bytes under a reviewed non-repo intake/quarantine path.
+2. MED: effective URL and HTTP metadata are captured but not enforced. Add
+   fail-closed checks for expected Ubuntu effective URLs or explicitly reviewed
+   allowed redirects, plus `http_code` checks.
+3. LOW/MED: required-tool list omits `date`, `uname`, and `cat`; integer
+   validation accepts `0`.
+
+Gumo acked in hcom `#29279`: he agrees with the repo-local raw ISO conflict
+and is patching raw ISO partial staging to a non-repo WSL state path, with only
+metadata/hashes under `project_isolation_lab/evidence/`. He also plans to
+enforce effective URLs/`http_code`, add `date`/`uname`/`cat` tooling, and add
+nonzero integer validation before final verification/commit.
 
 Do not rely on the prior `7427285` hash set for current Wave A work until gumo
 commits/pushes or explicitly supersedes this draft. No host/VM/WSL/Docker/HNS/
