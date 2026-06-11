@@ -704,6 +704,37 @@ explicitly redirects. The cross-project isolation lab is the active priority.
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md`
 
+## 2026-06-11 - SCS Marker Proof Approval Inputs Pushed
+### What:
+Recorded the completed SCS marker-proof execution approval-input checkpoint at
+commit `f1272a0375e6ddc83343bba68d85c98cd6d635fc`.
+
+### Why:
+The previous Limux checkpoint correctly marked the approval-input checklist as
+non-durable WIP. Gumo hcom `#33327` then reported the final pushed SCS commit,
+hashes, verification commands, Claude adversarial review result, and post-push
+state.
+
+### How:
+Verified SCS `main` aligned with `origin/main`, confirmed only unrelated
+untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` remained, and locally
+hash-checked the approval-input checklist, Hyper-V mutation-wave packet, HTML
+decision packet, and SCS `HANDOFF.md`. Patched only Limux-owned restart docs.
+Halo did not edit SCS, run the packet, create markers, download/import ISO/key/
+checksum material, or mutate network, Hyper-V, VM, WSL, Limux, Cargo, package,
+SCRIM, global-config, lab-to-host, or host/runtime state.
+
+### Impact:
+The approval-input checklist is now durable, but it remains `Decision: WAIT`,
+docs-only, not an execution packet, and not authorization for marker creation or
+runtime mutation. The next gate is operator choice: keep `WAIT`, patch LOWs
+first, or supply concrete approval inputs for a separately reviewed execution
+packet.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | SCS commit `f1272a0` |
+hcom `#33327`
+
 ## 2026-06-11 - SCS Wave A Docs Commit Closeout
 ### What:
 Recorded the SCS Wave A docs closeout after gumo committed and pushed

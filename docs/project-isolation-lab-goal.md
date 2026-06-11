@@ -51,7 +51,7 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 07:43 EDT, SCS Wave A V2 successor and marker-proof status is:
+As of 2026-06-11 07:49 EDT, SCS Wave A V2 successor and marker-proof status is:
 
 - SCS V2 freeze is complete and pushed at
   `0c1882b23bdb0dac9617734d23024752e35af4c6`
@@ -230,15 +230,30 @@ As of 2026-06-11 07:43 EDT, SCS Wave A V2 successor and marker-proof status is:
   staged diff check; HTML parse; extracted JS `node --check`; marker extracted
   shell hash / `bash -n` / static no-delete scan; `py_compile`; and 18 watcher
   tests.
-- Subsequent live SCS WIP: after the `b8abc7d` formal review checkpoint, Halo's
-  07:43 EDT read-only check saw active SCS root and `project_isolation_lab/`
-  docs modifications plus a new untracked
+- SCS marker-proof execution approval-input checklist is now durable and pushed
+  at `f1272a0375e6ddc83343bba68d85c98cd6d635fc`
+  (`docs(lab): add marker proof approval inputs`); `origin/main` matches local
+  HEAD. SCS status is clean except unrelated untracked
+  `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`. Halo did not edit SCS.
+- Approval-input checkpoint artifacts from gumo hcom `#33327`, locally verified
+  by Halo for tracked files:
+  - Approval-input checklist:
+    `dfb8bbf7b3b265bee3eec65bcc99a4ab894f817391384b13cfebbbb5dcb45`
+  - Hyper-V mutation-wave packet:
+    `f20756e843a126fc41705e7177a9fbd5140af767c9355d51edbe30d5bf0cdcd9`
+  - HTML decision packet:
+    `ce8600e94f840968b0c90efd0ddb60b2c86da608e498735dcd6523e77a3ab209`
+  - SCS `HANDOFF.md`:
+    `dd1d234ba0b362e703206b50d27c41feb84d71f95954a223981ced347727cafc`
+- Approval-input record:
   `project_isolation_lab/docs/WAVE_A_WSL_DRVFS_MARKER_PROOF_EXECUTION_APPROVAL_INPUTS_2026-06-11.md`
-  at SHA256 `dfb8bbf7b3b265bee3eec65bcc99a4ab894f817391384b13cfebbbb5dcb45`.
-  The file records `Decision: WAIT`, says it is docs-only, not an execution
-  packet, contains no command block, and does not authorize marker creation or
-  runtime mutation. Do not treat it as durable until SCS commits/pushes or
-  requests review.
+  records `Decision: WAIT`, says it is docs-only, not an execution packet,
+  contains no command block, and does not authorize marker creation or runtime
+  mutation.
+- Gumo hcom `#33327` reports Claude adversarial review found no mutation/bypass
+  risk and hash pins were reverified. Reported verification passed: diff
+  checks; HTML parse; extracted JS `node --check`; marker shell hash /
+  `bash -n` / static no-delete scan; `py_compile`; and 18 watcher tests.
 
 ## Numbered Options Moving Forward
 
@@ -249,10 +264,10 @@ As of 2026-06-11 07:43 EDT, SCS Wave A V2 successor and marker-proof status is:
    verification. Halo verified read-only and updated Limux pointers after SCS
    stabilized.
 3. **Dry-run proof packet**: exact draft `0284cf52...` is frozen in SCS commit
-   `bed7d37`, and formal marker-proof review is pushed at `b8abc7d`. It is
-   still `WAIT/NO-GO` for execution, marker creation, ISO/key import/download,
-   package execution, and host mutation until the operator approves a concrete
-   execution packet/input checklist.
+   `bed7d37`, formal marker-proof review is pushed at `b8abc7d`, and the
+   approval-input checklist is pushed at `f1272a0`. It is still `WAIT/NO-GO`
+   for execution, marker creation, ISO/key import/download, package execution,
+   and host mutation until the operator approves a concrete execution packet.
 4. **Wave A ISO intake approval packet**: only after dry-run proof and mutation
    review converge should SCS request explicit operator approval to run ISO
    intake.
