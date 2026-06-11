@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 09:39 EDT
+Last updated: 2026-06-11 11:03 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -37,6 +37,102 @@ Operator confirmation on 2026-06-11 09:12 EDT: **Option 1 is active now**.
 Keep Limux docs/handoff/status packet current, keep options numbered in future
 updates, and do not drift back into Limux feature work unless explicitly
 redirected.
+
+## Mission Brief - Project Isolation Lab Restart
+
+Author/runtime/date: worker-limux-halo / Codex GPT-5 / 2026-06-11 11:03 EDT.
+This is the single Limux-owned mission brief for the active cross-project
+isolation-lab goal; it is not a PRD, execution packet, or approval to mutate any
+host, VM, WSL, package-runtime, credential, SCRIM, or global-config surface.
+
+Deliverable: keep the reusable Project Isolation Lab lane pointed at the real
+target outcome, then stop at the first operator/TTY gate. The target outcome is
+a persistent full isolated Linux VM baseline, followed by a disposable full
+Linux VM factory for risky package/build/install/source-execution trials, then a
+later Firecracker layer after the VM foundations exist. Disposable WSL remains a
+compatibility/ergonomics companion only and is not hostile-code containment.
+Limux's role is to stay usable as a tool and later serve as a realistic GUI
+Rust/Cargo acceptance case if the SCS-owned gates require it.
+
+Current checkpoint pointers:
+
+- Limux restart checkpoint: `aad9b7805a9a878ace59039a9a04ed3638eeead1`
+  (`docs(lab): restore local node verification note`), with `main` matching
+  `origin/main` before this mission-brief patch.
+- SCS canonical checkpoint: `0d4f43c95914f257bceb661b297d0143cb9b48bf`
+  (`docs(lab): define disposable wsl ergonomics gate draft`), with SCS
+  `main` matching `origin/main` and only unrelated untracked
+  `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
+- SCS PRD-004 hashes verified locally:
+  - `DISPOSABLE_WSL_ERGONOMICS_GATE_DRAFT_2026-06-11.md`:
+    `d1d60777021d62600a9c59d0e624a042538f02f6e6639bdb30201b53a4d222f4`
+  - `prd-004-disposable-wsl-ergonomics-lane.md`:
+    `b89b1103d9b04bd6bfb6ac16ba9b969af658c12631842730206fec908ee9eb16`
+  - `ACCEPTANCE_GATES.md`:
+    `6907ad5b040392bc6cebc7cc00c8e4e3b622b2ba682dafe2e3ae8ef206032c8f`
+  - `PRD_PLAN.md`:
+    `ccd01816bee3f5e709a64b7aa54f5c52faa5735ceaeb1525b96fd70f43adb6ee`
+  - `ROADMAP.md`:
+    `26fef82973aa8754275fa3f85a5344b3480572719bf86a71e9aeeabe131d3f77`
+  - SCS HTML decision packet:
+    `a9625e80cdf7ede91a2fda25926cc57b90216c4251dfa1b0bbfbba3d1dd55dcb`
+  - SCS `HANDOFF.md`:
+    `819667df3ec7ca50115e4508badc7aa8857aca541ea4199cc386bfb887c98482`
+
+Definition of done for the next executable session:
+
+1. Use this brief plus the SCS canonical docs as the restart source; do not
+   start another PRD/planning loop unless the operator explicitly asks.
+2. Verify current Limux and SCS git state, checkpoint commits, and PRD-004
+   hashes before making claims.
+3. Confirm disposable WSL is documented as ergonomics-only and does not promote
+   host, package-runtime, artifact, or hostile-code trust.
+4. Execute only ungated read-only/docs-only checks from this repo unless the
+   operator explicitly approves a mutation from their TTY.
+5. At the first real gate, write one minimal runbook/checklist if needed, report
+   the exact gate, and park.
+
+Ungated checks completed for this brief:
+
+- `pwd`
+- `git status --short --branch`
+- `git remote -v`
+- `git log --oneline --decorate -10`
+- `rg --files -g 'AGENTS.md' -g 'README.md' -g 'HANDOFF*.md' -g '*HANDOFF*.md' -g 'FYI.md' -g 'PROJECT_INDEX.json' -g '*INBOX*' -g 'docs/**'`
+- `hcom events --sql 'id=36928' --name halo`
+- `hcom list -v --name halo`
+- `git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch`
+- `git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY log --oneline --decorate -5`
+- `git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY rev-parse HEAD`
+- `git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY diff --check`
+- `sha256sum` over the SCS PRD-004 files listed above.
+- Targeted `rg` checks confirmed PRD-004 says `Decision: WAIT`, disposable WSL
+  is not hostile-code containment, and package/runtime/artifact execution
+  remains unauthorized without a future exact approval packet.
+
+Operator/TTY gate map:
+
+- Hyper-V enablement or management: operator/admin TTY gate.
+- WSL distro create/import/export/unregister or WSL config/mount/interop/PATH
+  changes: operator TTY plus reviewed packet gate.
+- KVM, Firecracker, full VM creation, VM boot, checkpoint, revert, snapshot, or
+  network attachment: operator TTY plus mutation-review gate.
+- Package-manager installs, package scripts, source builds, Limux/Cargo/Node
+  runtime builds, generated installers, MCP startup, or package-runtime use:
+  approved lab wrapper/container/VM/microVM gate plus operator approval.
+- ISO/artifact download, import, extraction, quarantine, or lab-to-host transfer:
+  artifact-intake/evidence gate plus operator approval.
+- SCRIM grants, credentials, auth tokens, secrets, or global Codex/Claude config:
+  owner/handshake gate plus operator approval.
+- Any sudo/root/admin command, Windows mutation, evidence transfer into the lab,
+  or mutation outside this repo: operator TTY gate.
+
+STOP/PARK gate: no host, VM, WSL, package-runtime, credential, SCRIM, or
+global-config mutation is authorized unless the operator explicitly approves
+that exact action from their TTY. When a required next step touches one of those
+surfaces, produce one minimal runbook/checklist if it does not already exist,
+report `BLOCKED on <gate>`, stop the hcom/goal loop, and do not orbit the gate
+with another PRD, status packet, or planning wave.
 
 Current SCS Wave A V2 successor, marker-proof, Gate D evidence-intake,
 PRD-007 artifact-intake, and Gate C disposable-VM-factory state as of
@@ -709,19 +805,14 @@ is **Option 1: docs/handoff first**. Keep this repo's restart surfaces aligned
 with the SCS-owned lab state, keep all future choices numbered, and do not add
 Limux product features by default.
 
-As of the 2026-06-11 09:39 EDT read-only check, SCS `main` and `origin/main`
-both point to durable commit `b15485863424af06c481f91a1f3acee52bb00e07`
-(`docs(lab): define disposable vm factory gate draft`). Treat Gate C disposable
-VM factory as a docs-only gate checkpoint. It does not approve VM creation,
-clone, checkpoint, revert, package/runtime work, evidence transfer, artifact
-movement, host/WSL/Hyper-V mutation, Limux/Cargo install, SCRIM, or
-global-config work.
-
-SCS currently has post-Gate-C disposable-WSL ergonomics WIP in its working tree.
-Treat that as non-durable compatibility-lane work, not hostile-code containment
-and not a substitute for persistent full VM / disposable full VM execution
-gates, until gumo sends a committed/pushed checkpoint or exact-hash review
-request.
+As of the 2026-06-11 11:03 EDT read-only check, SCS `main` and `origin/main`
+both point to durable commit `0d4f43c95914f257bceb661b297d0143cb9b48bf`
+(`docs(lab): define disposable wsl ergonomics gate draft`). Treat PRD-004
+disposable WSL ergonomics as a docs-only compatibility checkpoint. It does not
+approve WSL distro creation/import/export/unregister, VM creation/clone/
+checkpoint/revert, package/runtime work, evidence transfer, artifact movement,
+host/WSL/Hyper-V mutation, Limux/Cargo install, SCRIM, global-config work, or
+hostile-code containment claims.
 
 Numbered next actions for this Limux session:
 
@@ -729,9 +820,11 @@ Numbered next actions for this Limux session:
    goal/option state or when gumo sends a durable SCS checkpoint.
 2. If gumo sends a new exact-hash review request, review it read-only only and
    reply with `GO`/`WAIT` scoped to that exact artifact; do not edit SCS.
-3. Wait for gumo to identify the next SCS-owned gate after Gate C; do not
-   initiate VM creation/clone/checkpoint/revert, evidence transfer, artifact
-   movement/extraction, or Limux install/package work from this session.
+3. Treat PRD-004 disposable WSL ergonomics as docs-only and wait for SCS or the
+   operator to provide an approved exact packet for the next real gate; do not
+   initiate WSL distro work, VM creation/clone/checkpoint/revert, evidence
+   transfer, artifact movement/extraction, or Limux install/package work from
+   this session.
 4. Keep execution `WAIT/NO-GO`: no marker creation, ISO/key/checksum download
    or import, VM/Hyper-V/WSL/network mutation, package/runtime execution,
    Limux install/package work, global-config/SCRIM mutation, or lab-to-host
