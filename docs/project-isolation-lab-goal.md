@@ -419,6 +419,10 @@ evidence-intake, and PRD-007 artifact-intake status is:
 6. Leave persistent full Linux VM baseline, disposable full Linux VM factory,
    and Firecracker microVM work queued behind the SCS-owned gate sequence.
 
+As of the 2026-06-11 09:19 EDT read-only check, SCS already has newer
+disposable-VM-factory WIP after `ee4f60f...`; treat that lane as non-durable
+until gumo sends a committed/pushed checkpoint or exact-hash review request.
+
 Lightweight Limux runtime sanity check on 2026-06-11 09:19 EDT:
 `limux --help` and `limux-cli --help` both returned CLI help successfully.
 Full `./scripts/check.sh` / Xvfb smoke was not run for this docs-only option-1

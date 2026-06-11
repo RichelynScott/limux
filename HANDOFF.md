@@ -687,6 +687,10 @@ artifact intake as a docs-only gate checkpoint. It does not approve artifact
 transfer, archive extraction, VM/host mutation, package/runtime work,
 Limux/Cargo install, SCRIM, or global-config work.
 
+SCS already has newer disposable-VM-factory WIP after `ee4f60f...`; treat that
+lane as non-durable until gumo sends a committed/pushed checkpoint or exact-hash
+review request.
+
 Numbered next actions for this Limux session:
 
 1. Update Limux docs/handoff/status packet when the operator confirms a new
