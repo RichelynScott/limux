@@ -51,38 +51,43 @@ session back to Limux product development.
 
 ## Current Restart Checkpoint
 
-As of 2026-06-11 06:14 EDT, SCS Wave A readiness/formal-review status is:
+As of 2026-06-11 06:22 EDT, SCS Wave A formal-review status is:
 
-- Last pushed SCS commit:
+- Last pushed SCS commit remains:
   `009feb76c940efc990d28dcdd3a6daa9ba7317c7`
   (`docs(lab): record wave a review readiness`)
-- Halo verified SCS `main` aligned with `origin/main`, with only unrelated
-  untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` remaining.
-- Final key hashes verified locally:
+- SCS is dirty again under gumo with tracked pointer/doc updates plus untracked
+  `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_MUTATION_WAVE_REVIEW_2026-06-11.md`.
+  Halo did not edit SCS.
+- Current dirty hashes verified locally:
+  - formal Wave A review record:
+    `2c22d1c07499259d386c1c8b6f6e0e389613fd56b75398c2348393a58b85094d`
   - readiness record:
-    `210c9f326f065b118a78c61cff4e131fd34367d970022c52427762705cecd768`
+    `e7eb7997159d2426d5e38ec5d8beca9cb2c4830ea807c68d5c5ae068776281c2`
   - Wave A command packet:
     `f98d5ea00752fb23f3128b678753b0e3946dd5de55fa63ba67198418e70fe2a3`
   - mutation-wave packet:
-    `62eefdaa0faa72d2e72b6c7e097bd1f26fd8e88768c9b37dd21dc2aa55eed7b7`
+    `51684fc549768f192fce054078049dbb1f8602408b5d6d9803dd5f3ee502e28d`
+  - active goal:
+    `4ab4c02b02a426fffa7a1ea16b7eb63cf3e39744ec238697157a678af29784fa`
   - HTML decision packet:
-    `d0360c46c28c5debbf4e7d8278a72a761cc3d9b9134c201d9cded3043dce0f91`
-- Gumo hcom `#30002` reported verification: `git diff --check`; HTML parser;
-  embedded JS `node --check`; extracted Wave A Bash block `bash -n`; no-delete
-  literal scan; Python `py_compile`; and unit tests 18/18 OK.
-- Halo local verification after `#30002`: SCS status, `rev-parse HEAD`, recent
-  log, `git diff --check`, SHA256 checks for the four final artifacts above,
-  and targeted reads/`rg` of the readiness and packet WAIT/no-execution framing.
+    `223f6e44f021d7ffc8edbd88dee0fd628a7dab31b518078d4a0539f09867d94c`
 - Gumo hcom `#30052` requested a bounded read-only Limux acceptance/protocol
   handoff lens for the formal Wave A mutation-script wave input. Halo replied
   `GO` for using the hash-pinned Wave A packet as Wave A review input only:
   no CRITICAL/HIGH/MEDIUM blockers, with one LOW wording hardening suggestion
   to add exact `Limux run` / `cargo run` / `lab-to-host import` strings to the
   generated summary `not_authorized` list.
-- Decision remains `WAIT` for execution: no formal `$mutation-script-wave`
-  convergence yet, no ISO download/use approval, and no host/VM/WSL/Docker/HNS/
-  WinNAT/network/package/SCRIM/global-config/Limux/runtime mutation approval.
-  Halo did not edit SCS and did not run host/runtime mutation.
+- The current dirty formal review record says there is no unresolved
+  CRITICAL/HIGH/MEDIUM technical finding for the packet as the Wave A review
+  artifact, but execution remains `WAIT`. LOW residuals must either be accepted
+  for review purposes or patched in a successor packet with affected-lens
+  re-review before an execution packet is frozen.
+- Decision remains `WAIT` for execution: no ISO download/use approval, no
+  operator execution approval, no selected execution operator/window, no
+  approved `APPROVAL_REF`, `EXECUTION_OPERATOR`, `EXECUTION_WINDOW_UTC`, or
+  `EXPECTED_PACKET_SHA256`, and no host/VM/WSL/Docker/HNS/WinNAT/network/
+  package/SCRIM/global-config/Limux/runtime mutation approval.
 
 As of 2026-06-10 22:10 EDT, SCS commit
 `8ff345f docs(lab): add nat and iso intake blockers` is pushed. The

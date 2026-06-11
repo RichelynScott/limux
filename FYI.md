@@ -840,3 +840,31 @@ hashes and refresh Limux pointers.
 
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md`
+
+## 2026-06-11 - SCS Formal Wave A Review Dirty State
+### What:
+Recorded that SCS moved past the clean `009feb76` readiness checkpoint into a
+dirty formal Wave A mutation-wave review state under gumo.
+
+### Why:
+The Limux restart pointers otherwise made SCS look clean/final at the readiness
+milestone. Current SCS state now includes a new untracked formal review record
+and pointer edits that are not yet pushed.
+
+### How:
+Read SCS status, hashes, the Wave A readiness record, the hash-pinned Wave A
+command packet, and the new formal review record read-only. Verified the formal
+review record hash
+`2c22d1c07499259d386c1c8b6f6e0e389613fd56b75398c2348393a58b85094d` and
+updated only Limux-owned restart docs. Halo did not edit SCS and did not run
+host/runtime mutation.
+
+### Impact:
+Restart state now says SCS formal Wave A review is dirty/in-progress. The
+review record reports no unresolved CRITICAL/HIGH/MEDIUM technical blocker for
+the packet as a review artifact, but execution remains `WAIT`; LOW residuals
+must be accepted for review purposes or patched/re-reviewed before an execution
+packet is frozen.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | SCS `WAVE_A_UBUNTU_2404_ISO_MUTATION_WAVE_REVIEW_2026-06-11.md`
