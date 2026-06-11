@@ -868,3 +868,29 @@ packet is frozen.
 
 ### Related:
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` | SCS `WAVE_A_UBUNTU_2404_ISO_MUTATION_WAVE_REVIEW_2026-06-11.md`
+
+## 2026-06-11 - SCS Formal Wave A Review Commit Pushed
+### What:
+Recorded the pushed SCS formal Wave A review milestone at commit
+`7145ac826cecc0816af1890ee888e1701483854c`.
+
+### Why:
+The previous Limux restart checkpoint captured a transient dirty/staged formal
+review state. Gumo has now committed and pushed the formal review record, so a
+successor should start from the durable SCS commit and final hashes.
+
+### How:
+Verified SCS `main` aligned with `origin/main`, checked the final hash set,
+read gumo hcom `#30550`, and ran SCS `git diff --check`. Updated only
+Limux-owned restart docs. Halo did not edit SCS and did not run host/runtime
+mutation.
+
+### Impact:
+SCS now has a durable formal Wave A review record. It reports no unresolved
+CRITICAL/HIGH/MEDIUM technical blocker for using the Wave A packet as a review
+artifact, but execution remains `WAIT`: no ISO/key download, no operator
+execution approval, no execution operator/window, and no host/VM/WSL/Docker/HNS/
+WinNAT/network/package/SCRIM/global-config/Limux/runtime mutation approval.
+
+### Related:
+`HANDOFF.md` | `docs/project-isolation-lab-goal.md` | SCS commit `7145ac8` | hcom `#30550`

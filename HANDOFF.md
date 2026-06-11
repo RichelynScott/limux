@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 06:22 EDT
+Last updated: 2026-06-11 06:28 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -33,44 +33,34 @@ Canonical isolation-lab ownership remains in
 local pointer at `docs/project-isolation-lab-goal.md`; treat it as a Limux
 alignment note, not the source of truth.
 
-Current SCS Wave A formal-review dirty state as of 2026-06-11 06:22 EDT:
+Current SCS Wave A formal-review state as of 2026-06-11 06:28 EDT:
 
-- Last pushed SCS commit remains:
-  `009feb76c940efc990d28dcdd3a6daa9ba7317c7`
-  (`docs(lab): record wave a review readiness`)
-- SCS is dirty again under gumo with tracked pointer/doc updates plus a new
-  untracked formal review record:
-  `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_MUTATION_WAVE_REVIEW_2026-06-11.md`.
-  Halo did not edit SCS.
-- Current SCS dirty paths observed by Halo:
-  `FYI.md`, `HANDOFF.md`, `README.md`,
-  `docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html`,
-  `project_isolation_lab/FYI.md`, `project_isolation_lab/README.md`,
-  `project_isolation_lab/docs/ACTIVE_GOAL.md`,
-  `project_isolation_lab/docs/HYPERV_MUTATION_SCRIPT_WAVE_REVIEW_PACKET_2026-06-10.md`,
-  `project_isolation_lab/docs/PRD_PLAN.md`,
-  `project_isolation_lab/docs/ROADMAP.md`,
-  `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_INTAKE_REVIEW_READINESS_2026-06-11.md`,
-  untracked
-  `project_isolation_lab/docs/WAVE_A_UBUNTU_2404_ISO_MUTATION_WAVE_REVIEW_2026-06-11.md`,
-  and unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`.
-- Current dirty hashes verified locally:
+- Last pushed SCS commit:
+  `7145ac826cecc0816af1890ee888e1701483854c`
+  (`docs(lab): add wave a formal review record`)
+- Halo verified SCS `main` aligned with `origin/main` at that commit, with only
+  unrelated untracked `SECURITY_VM_SETUP_AND_LIMUX.code-workspace` remaining.
+- Final key hashes verified locally:
   - formal Wave A review record:
-    `2c22d1c07499259d386c1c8b6f6e0e389613fd56b75398c2348393a58b85094d`
+    `b370b92a94eb7d2a76ac941626b1048d51d3e1a9fb76f3f886e32f1407f73955`
   - readiness record:
-    `e7eb7997159d2426d5e38ec5d8beca9cb2c4830ea807c68d5c5ae068776281c2`
+    `7d16ecbd2e2f87c666cb4735f2f084e351cb7c20b9fb837fa698d4851429484a`
   - Wave A command packet:
     `f98d5ea00752fb23f3128b678753b0e3946dd5de55fa63ba67198418e70fe2a3`
   - mutation-wave packet:
-    `51684fc549768f192fce054078049dbb1f8602408b5d6d9803dd5f3ee502e28d`
+    `5ae62ae9b8633067c93e7aa367bec10a1da7b1268ba14b0c06b6dd4519925077`
   - active goal:
     `4ab4c02b02a426fffa7a1ea16b7eb63cf3e39744ec238697157a678af29784fa`
   - HTML decision packet:
     `223f6e44f021d7ffc8edbd88dee0fd628a7dab31b518078d4a0539f09867d94c`
-- Gumo hcom `#30002` reported the prior clean readiness milestone and
-  verification: `git diff --check`; HTML parser; embedded JS `node --check`;
-  extracted Wave A Bash block `bash -n`; no-delete literal scan; Python
-  `py_compile`; and unit tests 18/18 OK.
+- Gumo hcom `#30550` reported verification for `7145ac8`: `git diff --check`;
+  HTML parser; embedded JS `node --check`; extracted Wave A Bash block `bash
+  -n`; no-delete literal scan; Python `py_compile`; unit tests 18/18 OK; and
+  official `SHA256SUMS` / ISO `HEAD` read-only recheck with no ISO/key download.
+- Halo local verification after `#30550`: SCS `git status --short --branch`,
+  `rev-parse HEAD`, recent log, `git diff --check`, SHA256 checks for the final
+  hash set above, and targeted reads/`rg` of the formal review `WAIT`
+  no-execution framing.
 - Gumo hcom `#30052` then requested a bounded read-only Limux
   acceptance/protocol handoff lens for the formal Wave A mutation-script wave
   input. Halo replied with `GO` for using the hash-pinned Wave A packet as Wave
@@ -80,13 +70,13 @@ Current SCS Wave A formal-review dirty state as of 2026-06-11 06:22 EDT:
   That LOW is not a blocker because the packet already says Wave A cannot
   approve Wave B Hyper-V attachment/boot, Wave C networking, Limux install,
   package runtime, or lab-to-host artifact import.
-- Current dirty formal review record says no unresolved CRITICAL/HIGH/MEDIUM
+- Current formal review record says no unresolved CRITICAL/HIGH/MEDIUM
   technical finding for the packet as the Wave A review artifact, but execution
-  remains `WAIT`. LOW residuals: `VALIDSIG` primary/subkey false-negative risk,
-  Bash octal numeric override behavior, live keyserver dependency, Halo's
-  wording hardening suggestion, and unproven WSL/DrvFs runtime behavior for
-  `df -PB1`, `realpath`, and `mv -nT`.
-- Next safe SCS action recorded by the dirty formal review: decide whether to
+  remains `WAIT`. LOW residuals remain: `VALIDSIG` primary/subkey
+  false-negative risk, Bash octal numeric override behavior, live keyserver
+  dependency, Halo's wording hardening suggestion, and unproven WSL/DrvFs
+  runtime behavior for `df -PB1`, `realpath`, and `mv -nT`.
+- Next safe SCS action recorded by the formal review: decide whether to
   keep the current packet hash with LOW residuals accepted for review purposes,
   or create a successor packet applying LOW hardening items and re-run affected
   review lenses.
