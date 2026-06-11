@@ -153,6 +153,7 @@
       <div class="step current"><span class="dot"></span><div><strong>Option 1 active</strong><span>Docs/handoff/status tracking confirmed.</span></div></div>
       <div class="step done"><span class="dot"></span><div><strong>Gate D draft</strong><span>Committed hash set received.</span></div></div>
       <div class="step done"><span class="dot"></span><div><strong>Artifact intake</strong><span>PRD-007 committed; transfer remains WAIT.</span></div></div>
+      <div class="step done"><span class="dot"></span><div><strong>Gate C draft</strong><span>Disposable VM factory docs checkpoint received.</span></div></div>
       <div class="step gated"><span class="dot"></span><div><strong>Execution gates</strong><span>Operator approval and formal mutation review required.</span></div></div>
       <div class="step gated"><span class="dot"></span><div><strong>VM layers</strong><span>Persistent VM, disposable VM, Firecracker later.</span></div></div>
     </aside>
@@ -165,7 +166,7 @@
         <div class="meta">
           <div><span>Repo</span><strong>/home/riche/MCPs/limux</strong></div>
           <div><span>Author</span><strong>halo / GPT-5 Codex</strong></div>
-          <div><span>Generated</span><strong>6/11/2026 9:19 AM EDT</strong></div>
+          <div><span>Generated</span><strong>6/11/2026 9:35 AM EDT</strong></div>
           <div><span>Status</span><strong>Option 1 active; execution WAIT/NO-GO</strong></div>
         </div>
       </header>
@@ -174,7 +175,7 @@
         <h2>Current Status</h2>
         <div class="grid">
           <div class="fact"><div class="label">Limux</div><div class="value">Operator selected Option 1: keep docs/handoff/status packet current and keep future options numbered.</div></div>
-          <div class="fact"><div class="label">SCS</div><div class="value">Gate D is durable at <code>388f20a</code>; PRD-007 binary/archive artifact intake is now durable at <code>ee4f60f</code>. Both are docs-only gates.</div></div>
+          <div class="fact"><div class="label">SCS</div><div class="value">Gate D is durable at <code>388f20a</code>; PRD-007 artifact intake is durable at <code>ee4f60f</code>; Gate C disposable VM factory is durable at <code>b154858</code>. New disposable WSL ergonomics work is WIP, not durable.</div></div>
           <div class="fact"><div class="label">Execution</div><div class="value"><code>WAIT/NO-GO</code>. No marker, ISO, key, VM, WSL, package, runtime, or host mutation is approved.</div></div>
         </div>
       </section>
@@ -182,9 +183,9 @@
       <section>
         <h2>Verified And Gated</h2>
         <div class="grid">
-          <div class="fact"><div class="label">Done</div><div class="value">Limux handoff, goal note, FYI, and this packet record the operator-confirmed Option 1 state plus gumo <code>#35219</code> Gate D and <code>#35791</code> PRD-007 checkpoints.</div></div>
-          <div class="fact"><div class="label">Verified</div><div class="value">Read-only checks covered Limux git status, SCS local/origin commit match, Limux launcher help, SCS <code>git diff --check</code>, final file-backed SHA256s, SCS HTML parse, PRD-007 WAIT/no-execution framing, hcom thread state, and this packet's HTML/JS syntax. SCS extracted-JS <code>node --check</code> is gumo-reported in <code>#35791</code>.</div></div>
-          <div class="fact"><div class="label">Not Done</div><div class="value">No SCS edits, packet execution, marker creation, artifact transfer/extraction, ISO/key/checksum download/import, Hyper-V/VM/WSL/network/package/runtime/global-config mutation.</div></div>
+          <div class="fact"><div class="label">Done</div><div class="value">Limux handoff, goal note, FYI, and this packet record the operator-confirmed Option 1 state plus gumo <code>#35219</code> Gate D, <code>#35791</code> PRD-007, and <code>#36155</code> Gate C checkpoints.</div></div>
+          <div class="fact"><div class="label">Verified</div><div class="value">Read-only checks covered Limux git status, SCS local/origin commit match, Limux launcher help, SCS <code>git diff --check</code>, final file-backed SHA256s, SCS HTML parse, Gate C WAIT/no-execution framing, hcom thread state, and this packet's HTML parse. Local <code>node</code> is unavailable; SCS extracted-JS <code>node --check</code> is gumo-reported in <code>#36155</code>.</div></div>
+          <div class="fact"><div class="label">Not Done</div><div class="value">No SCS edits, packet execution, marker creation, VM creation/clone/checkpoint/revert, artifact transfer/extraction, ISO/key/checksum download/import, Hyper-V/VM/WSL/network/package/runtime/global-config mutation.</div></div>
         </div>
       </section>
 
@@ -193,7 +194,7 @@
           <h2>Numbered Options</h2>
           <div class="decision">
             <h3>1. Docs/handoff first <span class="rec">Active now</span></h3>
-            <p>Keep Limux restart docs aligned with durable SCS checkpoints, currently PRD-007 artifact intake at <code>ee4f60f</code>, the operator-confirmed active goal, and later explicit SCS notices.</p>
+            <p>Keep Limux restart docs aligned with durable SCS checkpoints, currently Gate C disposable VM factory at <code>b154858</code>, the operator-confirmed active goal, and later explicit SCS notices.</p>
             <label class="option"><input type="radio" name="next" value="1" checked><span><span class="option-title">Option 1 - Maintain docs/handoff tracking</span><span class="option-detail">Selected by operator on 6/11/2026; execution remains WAIT.</span></span></label>
           </div>
           <div class="decision">
@@ -217,14 +218,19 @@
             <label class="option"><input type="radio" name="next" value="5"><span><span class="option-title">Option 5 - Treat PRD-007 as docs checkpoint</span><span class="option-detail">No artifact transfer, extraction, execution, install, or promotion is approved.</span></span></label>
           </div>
           <div class="decision">
-            <h3>6. Marker execution gate</h3>
-            <p>Only after frozen execution packet, final mutation review, and explicit operator approval.</p>
-            <label class="option"><input type="radio" name="next" value="6"><span><span class="option-title">Option 6 - Consider marker execution later</span><span class="option-detail">Current state remains WAIT/NO-GO.</span></span></label>
+            <h3>6. Gate C disposable VM factory</h3>
+            <p>SCS Gate C is durable at <code>b154858</code>, but it is a factory-design gate only.</p>
+            <label class="option"><input type="radio" name="next" value="6"><span><span class="option-title">Option 6 - Treat Gate C as docs checkpoint</span><span class="option-detail">No VM creation, clone, checkpoint, revert, package/runtime work, or evidence transfer is approved.</span></span></label>
           </div>
           <div class="decision">
-            <h3>7. Later lab layers</h3>
+            <h3>7. Marker execution gate</h3>
+            <p>Only after frozen execution packet, final mutation review, and explicit operator approval.</p>
+            <label class="option"><input type="radio" name="next" value="7"><span><span class="option-title">Option 7 - Consider marker execution later</span><span class="option-detail">Current state remains WAIT/NO-GO.</span></span></label>
+          </div>
+          <div class="decision">
+            <h3>8. Later lab layers</h3>
             <p>Persistent full VM baseline, disposable full VM factory, then Firecracker microVM layer.</p>
-            <label class="option"><input type="radio" name="next" value="7"><span><span class="option-title">Option 7 - Later VM layers</span><span class="option-detail">Downstream of accepted Wave A evidence and separate mutation gates.</span></span></label>
+            <label class="option"><input type="radio" name="next" value="8"><span><span class="option-title">Option 8 - Later VM layers</span><span class="option-detail">Downstream of accepted docs gates and separate mutation gates.</span></span></label>
           </div>
 
           <h2>Execution Mode</h2>
@@ -260,23 +266,26 @@
           <li><code>/home/riche/MCPs/limux/docs/project-isolation-lab-goal.md</code></li>
           <li><code>/home/riche/MCPs/limux/FYI.md</code></li>
           <li><code>/home/riche/Proj/SUPPLY_CHAIN_SECURITY</code> read-only status</li>
-          <li>hcom <code>#33749</code>, <code>#33763</code>, <code>#33909</code>, <code>#33923</code>, <code>#34125</code>, <code>#34336</code>, <code>#34691</code>, <code>#34696</code>, <code>#34887</code>, <code>#35006</code>, <code>#35219</code>, <code>#35791</code></li>
+          <li>hcom <code>#33749</code>, <code>#33763</code>, <code>#33909</code>, <code>#33923</code>, <code>#34125</code>, <code>#34336</code>, <code>#34691</code>, <code>#34696</code>, <code>#34887</code>, <code>#35006</code>, <code>#35219</code>, <code>#35791</code>, <code>#36155</code></li>
           <li>Verification commands: Limux/SCS git status/log, SCS local/origin commit check, hcom events, Limux launcher help, SHA256 checks, SCS diff check, SCS HTML parse, WAIT/no-execution text search, and Limux packet HTML parse.</li>
           <li>Gate D durable checkpoint from 8:56 AM EDT: SCS commit <code>388f20a</code>, draft <code>24b8bebd...</code>, PRD-003 <code>8f90287f...</code>, gates <code>607db367...</code>, HTML packet <code>b8497c30...</code>, handoff <code>7522af0...</code>, review <code>12f5cac...</code>.</li>
           <li>PRD-007 durable checkpoint from 9:15 AM EDT: SCS commit <code>ee4f60f</code>, artifact draft <code>17493d6...</code>, PRD-007 <code>9f899011...</code>, gates <code>064ae28f...</code>, HTML packet <code>67c5ee24...</code>, handoff <code>97cc9a44...</code>.</li>
+          <li>Gate C durable checkpoint from 9:28 AM EDT: SCS commit <code>b154858</code>, Gate C draft <code>73526618...</code>, PRD-002 <code>dbf993ef...</code>, gates <code>eb48e89f...</code>, HTML packet <code>7612bae1...</code>, handoff <code>07458d16...</code>.</li>
+          <li>Post-Gate-C WIP from 9:30 AM EDT: disposable WSL ergonomics files are local SCS WIP, not a durable review target.</li>
         </ul>
       </section>
     </main>
   </div>
   <script>
     const optionText = {
-      "1": "Proceed with Option 1: keep Limux docs/handoff/status packet current against the official Project Isolation Lab goal, SCS PRD-007 checkpoint ee4f60f, and later explicit SCS notices; keep future choices numbered; execution remains WAIT.",
+      "1": "Proceed with Option 1: keep Limux docs/handoff/status packet current against the official Project Isolation Lab goal, SCS Gate C checkpoint b154858, and later explicit SCS notices; keep future choices numbered; execution remains WAIT.",
       "2": "Proceed with Option 2: treat SCS e455617 as the durable V2 review/freeze checkpoint only, not execution approval.",
       "3": "Proceed with Option 3 only if gumo sends a new exact-hash review request; read-only review only.",
       "4": "Proceed with Option 4: treat SCS Gate D commit 388f20a as a durable docs checkpoint only; do not transfer evidence, import artifacts, execute packages/runtime code, or mutate host state.",
       "5": "Proceed with Option 5: treat SCS PRD-007 checkpoint ee4f60f as a durable docs-only artifact-intake gate; do not transfer, extract, execute, install, or promote artifacts.",
-      "6": "Do not execute now. Only consider marker execution after frozen execution packet, final mutation review, and explicit operator approval.",
-      "7": "Keep later VM layers queued behind accepted Wave A evidence and separate mutation gates."
+      "6": "Proceed with Option 6: treat SCS Gate C checkpoint b154858 as a durable docs-only disposable-VM-factory gate; do not create, clone, checkpoint, revert, or run VM/package work.",
+      "7": "Do not execute now. Only consider marker execution after frozen execution packet, final mutation review, and explicit operator approval.",
+      "8": "Keep later VM layers queued behind accepted docs gates and separate mutation gates."
     };
     function selected(name) {
       const el = document.querySelector('input[name="' + name + '"]:checked');

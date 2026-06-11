@@ -1,6 +1,6 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 09:19 EDT
+Last updated: 2026-06-11 09:35 EDT
 
 ## Active Thread Goal - Project Isolation Lab
 
@@ -38,8 +38,9 @@ Keep Limux docs/handoff/status packet current, keep options numbered in future
 updates, and do not drift back into Limux feature work unless explicitly
 redirected.
 
-Current SCS Wave A V2 successor, marker-proof, Gate D evidence-intake, and
-PRD-007 artifact-intake state as of 2026-06-11 09:19 EDT:
+Current SCS Wave A V2 successor, marker-proof, Gate D evidence-intake,
+PRD-007 artifact-intake, and Gate C disposable-VM-factory state as of
+2026-06-11 09:35 EDT:
 
 - SCS V2 freeze is complete and pushed at
   `0c1882b23bdb0dac9617734d23024752e35af4c6`
@@ -350,6 +351,27 @@ PRD-007 artifact-intake state as of 2026-06-11 09:19 EDT:
     `67c5ee24de6903a64c141bda9117887e385660432b806fc1211baecf4b586ac4`
   - SCS `HANDOFF.md`:
     `97cc9a446c224196838321d330ec8fc08c5f2ba6329ae103fd13976ad59c8458`
+- SCS Gate C disposable VM factory draft is now durable and pushed at
+  `b15485863424af06c481f91a1f3acee52bb00e07`
+  (`docs(lab): define disposable vm factory gate draft`). SCS
+  `main...origin/main` is clean except unrelated untracked
+  `SECURITY_VM_SETUP_AND_LIMUX.code-workspace`. Gumo hcom `#36155` reports
+  Claude adversarial review found 0 HIGH/MEDIUM findings and approved it as
+  draft-only after LOW wording fixes. This remains `WAIT/NO-GO`: no VM
+  creation, clone, checkpoint, revert, package/runtime work, evidence transfer,
+  artifact movement, host/WSL/Hyper-V mutation, Limux/Cargo install, SCRIM, or
+  global-config work is approved. Final hashes from hcom `#36155`, locally
+  verified by Halo:
+  - `DISPOSABLE_VM_FACTORY_GATE_DRAFT_2026-06-11.md`:
+    `73526618437e75587d6357b907495e0115a0e440fbd09d613db8e02468f42c22`
+  - `prd-002-disposable-linux-vm-factory.md`:
+    `dbf993effdc0e9c78a9feeb5f5bc30fe5c9842d5e35c51e66924495f4f8a4df0`
+  - `ACCEPTANCE_GATES.md`:
+    `eb48e89ff5acc0ffb17bf0551de218300293e72270d7a4593301eb46e56172ab`
+  - SCS HTML decision packet:
+    `7612bae1e3cccf746d9fd3831402eadd18aa96d3d6e9ea573dc22faeede80b13`
+  - SCS `HANDOFF.md`:
+    `07458d16b518d21f659d594a57640b18f906dc6d73972b2ad5f1077891d10dd8`
 - Limux-side operator packet for this final checkpoint:
   `docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`.
   It is a human-readable copy-back/status packet, not an execution approval.
@@ -364,7 +386,7 @@ Numbered options moving forward:
 
 1. **Docs/handoff first - active maintenance**: keep Limux restart docs and
    this status packet aligned with the latest durable SCS checkpoint
-   (`ee4f60f...` PRD-007 artifact intake as of hcom `#35791`) and later
+   (`b154858...` Gate C disposable VM factory as of hcom `#36155`) and later
    explicit SCS notices. Operator confirmed this as the active option on
    2026-06-11 09:12 EDT.
 2. **SCS durable V2 marker-proof checkpoint**: complete at SCS commit
@@ -387,23 +409,30 @@ Numbered options moving forward:
    and SCS handoff `97cc9a44...`. This is `WAIT/NO-GO` for artifact transfer,
    archive extraction, VM/host mutation, package/runtime work, Limux/Cargo
    install, SCRIM, or global-config work.
-6. **Marker execution gate**: only after frozen execution packet, final mutation
+6. **Gate C disposable VM factory**: complete as a durable docs-only draft at
+   SCS commit `b154858...` with Gate C draft `73526618...`, PRD-002
+   `dbf993ef...`, acceptance gates `eb48e89f...`, HTML packet `7612bae1...`,
+   and SCS handoff `07458d16...`. This is `WAIT/NO-GO` for VM creation, clone,
+   checkpoint, revert, package/runtime work, evidence transfer, artifact
+   movement, host/WSL/Hyper-V mutation, Limux/Cargo install, SCRIM, or
+   global-config work.
+7. **Marker execution gate**: only after frozen execution packet, final mutation
    review, explicit operator approval, execution window/operator, packet/script
    hashes, filesystem-type values, marker disposition, and residual disposition.
-7. **Prior dry-run proof packet**: exact draft `0284cf52...` is frozen in SCS commit
+8. **Prior dry-run proof packet**: exact draft `0284cf52...` is frozen in SCS commit
    `bed7d37`, and formal marker-proof review is pushed at `b8abc7d`. It is
    still `WAIT/NO-GO` for execution, marker creation, ISO/key import/download,
    package execution, and host mutation until the operator approves a concrete
    execution packet/input checklist.
-8. **Marker-proof approval inputs**: complete at SCS commit `f1272a0...` with
+9. **Marker-proof approval inputs**: complete at SCS commit `f1272a0...` with
    approval-input checklist `dfb8bbf7...`, Hyper-V mutation-wave packet
    `f20756e8...`, HTML packet `ce8600e9...`, and gumo `#33327` verification.
    It is docs-only and still `WAIT/NO-GO`; it names the missing values for any
    future marker-only execution packet.
-9. **Wave A ISO intake approval packet**: only after the dry-run proof and
+10. **Wave A ISO intake approval packet**: only after the dry-run proof and
    mutation review converge should SCS ask the operator for explicit approval to
    run ISO intake. No approval is implied by any current docs.
-10. **Later lab layers**: Wave B persistent VM baseline, disposable full-VM
+11. **Later lab layers**: Wave B persistent VM baseline, disposable full-VM
    factory, and Firecracker microVM layer remain downstream of accepted Wave A
    evidence and separate mutation gates.
 
@@ -680,16 +709,17 @@ is **Option 1: docs/handoff first**. Keep this repo's restart surfaces aligned
 with the SCS-owned lab state, keep all future choices numbered, and do not add
 Limux product features by default.
 
-As of the 2026-06-11 09:19 EDT read-only check, SCS `main` and `origin/main`
-both point to durable commit `ee4f60fd5c6717fa75cd26503287c874b233eece`
-(`docs(lab): define artifact intake gate draft`). Treat PRD-007 / binary-archive
-artifact intake as a docs-only gate checkpoint. It does not approve artifact
-transfer, archive extraction, VM/host mutation, package/runtime work,
-Limux/Cargo install, SCRIM, or global-config work.
+As of the 2026-06-11 09:35 EDT read-only check, SCS `main` and `origin/main`
+both point to durable commit `b15485863424af06c481f91a1f3acee52bb00e07`
+(`docs(lab): define disposable vm factory gate draft`). Treat Gate C disposable
+VM factory as a docs-only gate checkpoint. It does not approve VM creation,
+clone, checkpoint, revert, package/runtime work, evidence transfer, artifact
+movement, host/WSL/Hyper-V mutation, Limux/Cargo install, SCRIM, or
+global-config work.
 
-SCS already has newer disposable-VM-factory WIP after `ee4f60f...`; treat that
-lane as non-durable until gumo sends a committed/pushed checkpoint or exact-hash
-review request.
+SCS already has newer disposable-WSL-ergonomics WIP after `b154858...`; treat
+that lane as non-durable until gumo sends a committed/pushed checkpoint or
+exact-hash review request.
 
 Numbered next actions for this Limux session:
 
@@ -697,16 +727,17 @@ Numbered next actions for this Limux session:
    goal/option state or when gumo sends a durable SCS checkpoint.
 2. If gumo sends a new exact-hash review request, review it read-only only and
    reply with `GO`/`WAIT` scoped to that exact artifact; do not edit SCS.
-3. Wait for gumo to identify the next SCS-owned gate after PRD-007; do not
-   initiate artifact transfer, extraction, VM work, or Limux install/package
-   work from this session.
+3. Wait for gumo to identify the next SCS-owned gate after Gate C; do not
+   initiate VM creation/clone/checkpoint/revert, evidence transfer, artifact
+   movement/extraction, or Limux install/package work from this session.
 4. Keep execution `WAIT/NO-GO`: no marker creation, ISO/key/checksum download
    or import, VM/Hyper-V/WSL/network mutation, package/runtime execution,
    Limux install/package work, global-config/SCRIM mutation, or lab-to-host
    artifact movement without the required reviews and explicit operator
    approval.
-5. Leave persistent full Linux VM baseline, disposable full Linux VM factory,
-   and Firecracker microVM work queued behind the SCS-owned gate sequence.
+5. Leave persistent full Linux VM baseline execution/acceptance, actual
+   disposable VM lifecycle execution, and Firecracker microVM work queued
+   behind the SCS-owned gate sequence.
 
 Current lightweight Limux runtime sanity check: `limux --help` and
 `limux-cli --help` both returned CLI help successfully on 2026-06-11 09:19 EDT.
@@ -718,8 +749,8 @@ git -C /home/riche/MCPs/limux status --short --branch
 git -C /home/riche/MCPs/limux log -5 --oneline --decorate
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY status --short --branch
 git -C /home/riche/Proj/SUPPLY_CHAIN_SECURITY log -5 --oneline --decorate
-sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/BINARY_ARCHIVE_ARTIFACT_INTAKE_GATE_DRAFT_2026-06-11.md
-sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/tasks/prd-007-binary-archive-artifact-intake.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/DISPOSABLE_VM_FACTORY_GATE_DRAFT_2026-06-11.md
+sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/tasks/prd-002-disposable-linux-vm-factory.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/project_isolation_lab/docs/ACCEPTANCE_GATES.md
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/docs/PROJECT_ISOLATION_LAB_DECISION_PACKET_2026-06-10.html
 sha256sum /home/riche/Proj/SUPPLY_CHAIN_SECURITY/HANDOFF.md
