@@ -1200,41 +1200,25 @@ const SIDEBAR_HANDLE_CURSOR_NAME: &str = "col-resize";
 const SIDEBAR_RESIZE_HANDLE_WIDTH_PX: i32 = 3;
 
 const BASE_CSS: &str = r#"
-:root {
-    --limux-host-entry-bg: rgba(255, 255, 255, 0.98);
-    --limux-host-entry-fg: rgba(15, 23, 42, 0.96);
-    --limux-host-entry-border: rgba(15, 23, 42, 0.16);
-    --limux-host-entry-border-focus: rgba(0, 145, 255, 0.72);
-    --limux-host-entry-placeholder: rgba(15, 23, 42, 0.5);
-}
-@media (prefers-color-scheme: dark) {
-    :root {
-        --limux-host-entry-bg: rgba(44, 44, 48, 0.98);
-        --limux-host-entry-fg: rgba(255, 255, 255, 0.96);
-        --limux-host-entry-border: rgba(255, 255, 255, 0.14);
-        --limux-host-entry-border-focus: rgba(0, 145, 255, 0.78);
-        --limux-host-entry-placeholder: rgba(255, 255, 255, 0.48);
-    }
-}
 .limux-host-entry {
-    background-color: var(--limux-host-entry-bg);
-    color: var(--limux-host-entry-fg);
-    border: 1px solid var(--limux-host-entry-border);
+    background-color: alpha(@window_bg_color, 0.98);
+    color: @window_fg_color;
+    border: 1px solid alpha(@window_fg_color, 0.16);
     border-radius: 6px;
-    caret-color: currentColor;
+    caret-color: @window_fg_color;
 }
 .limux-host-entry:focus-within {
-    border-color: var(--limux-host-entry-border-focus);
+    border-color: alpha(@accent_bg_color, 0.72);
 }
 .limux-host-entry text {
     background-color: transparent;
-    color: var(--limux-host-entry-fg);
+    color: @window_fg_color;
 }
 .limux-host-entry text placeholder {
-    color: var(--limux-host-entry-placeholder);
+    color: alpha(@window_fg_color, 0.5);
 }
 .limux-host-entry image {
-    color: var(--limux-host-entry-placeholder);
+    color: alpha(@window_fg_color, 0.5);
 }
 .limux-sidebar {
     background-color: @window_bg_color;
@@ -3802,45 +3786,12 @@ fn show_workspace_path_dialog(state: &State) {
 
     let entry_for_browse = entry.clone();
     let error_label_for_browse = error_label.clone();
-    let browse_button_for_browse = browse_button.clone();
     let transient_for_browse = active_window(state);
     browse_button.connect_clicked(move |_| {
-        error_label_for_browse.set_visible(false);
-        browse_button_for_browse.set_sensitive(false);
-
-        let picker = gtk::FileDialog::builder()
-            .title("Choose Workspace Folder")
-            .accept_label("Choose")
-            .modal(true)
-            .build();
-
-        if let Ok(selection) = validate_workspace_folder_input(entry_for_browse.text().as_str()) {
-            picker.set_initial_folder(Some(&gio::File::for_path(selection.path_text)));
-        }
-
-        let entry_for_result = entry_for_browse.clone();
-        let error_label_for_result = error_label_for_browse.clone();
-        let browse_button_for_result = browse_button_for_browse.clone();
-        picker.select_folder(
+        show_workspace_folder_picker(
+            &entry_for_browse,
+            &error_label_for_browse,
             transient_for_browse.as_ref(),
-            None::<&gio::Cancellable>,
-            move |result| {
-                browse_button_for_result.set_sensitive(true);
-                match result {
-                    Ok(file) => {
-                        if let Some(path) = file.path() {
-                            entry_for_result.set_text(&path.to_string_lossy());
-                            entry_for_result.grab_focus();
-                            entry_for_result.set_position(-1);
-                        }
-                    }
-                    Err(err) if is_workspace_picker_cancel(&err) => {}
-                    Err(err) => {
-                        error_label_for_result.set_label(&format!("Folder picker failed: {err}"));
-                        error_label_for_result.set_visible(true);
-                    }
-                }
-            },
         );
     });
 
@@ -3852,11 +3803,47 @@ fn show_workspace_path_dialog(state: &State) {
     dialog.present();
 }
 
-fn is_workspace_picker_cancel(err: &glib::Error) -> bool {
-    matches!(
-        err.kind::<gtk::DialogError>(),
-        Some(gtk::DialogError::Cancelled | gtk::DialogError::Dismissed)
-    )
+#[allow(deprecated)]
+fn show_workspace_folder_picker(
+    entry: &gtk::Entry,
+    error_label: &gtk::Label,
+    transient_for: Option<&gtk::Window>,
+) {
+    error_label.set_visible(false);
+
+    let picker = gtk::FileChooserDialog::new(
+        Some("Choose Workspace Folder"),
+        transient_for,
+        gtk::FileChooserAction::SelectFolder,
+        &[
+            ("Cancel", gtk::ResponseType::Cancel),
+            ("Choose", gtk::ResponseType::Accept),
+        ],
+    );
+    picker.set_modal(true);
+
+    if let Ok(selection) = validate_workspace_folder_input(entry.text().as_str()) {
+        let _ = picker.set_file(&gio::File::for_path(selection.path_text));
+    }
+
+    let entry_for_result = entry.clone();
+    let error_label_for_result = error_label.clone();
+    picker.run_async(move |dialog, response| {
+        if response == gtk::ResponseType::Accept {
+            match dialog.file().and_then(|file| file.path()) {
+                Some(path) => {
+                    entry_for_result.set_text(&path.to_string_lossy());
+                    entry_for_result.grab_focus();
+                    entry_for_result.set_position(-1);
+                }
+                None => {
+                    error_label_for_result.set_label("Folder picker did not return a local path");
+                    error_label_for_result.set_visible(true);
+                }
+            }
+        }
+        dialog.close();
+    });
 }
 
 #[derive(Debug)]
@@ -6256,12 +6243,21 @@ mod tests {
 
     #[test]
     fn base_css_defines_theme_aware_host_entry_styles() {
-        assert!(BASE_CSS.contains(":root"));
-        assert!(BASE_CSS.contains("@media (prefers-color-scheme: dark)"));
         assert!(BASE_CSS.contains(".limux-host-entry"));
         assert!(BASE_CSS.contains(".limux-host-entry text"));
         assert!(BASE_CSS.contains(".limux-host-entry text placeholder"));
-        assert!(BASE_CSS.contains("caret-color: currentColor;"));
+        assert!(BASE_CSS.contains("background-color: alpha(@window_bg_color, 0.98);"));
+        assert!(BASE_CSS.contains("color: @window_fg_color;"));
+        assert!(BASE_CSS.contains("border-color: alpha(@accent_bg_color, 0.72);"));
+        assert!(BASE_CSS.contains("caret-color: @window_fg_color;"));
+    }
+
+    #[test]
+    fn base_css_avoids_web_only_css_constructs() {
+        assert!(!BASE_CSS.contains(":root"));
+        assert!(!BASE_CSS.contains("@media"));
+        assert!(!BASE_CSS.contains("var("));
+        assert!(!BASE_CSS.contains("--limux"));
     }
 
     #[test]
