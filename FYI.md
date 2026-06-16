@@ -1643,3 +1643,29 @@ work, and lab-to-host promotion remain `WAIT/NO-GO`.
 `HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
 `docs/PROJECT_ISOLATION_LAB_LIMUX_STATUS_DECISION_PACKET_2026-06-11_HALO.html`
 | hcom `#36155`
+
+## 2026-06-16 - cmux Upstream Watch Added
+### What:
+Added a Limux project note that treats `manaflow-ai/cmux` as the fast-moving
+upstream inspiration feed for substantial Limux product work.
+
+### Why:
+The operator wants Limux to mine cmux releases and pull requests for ideas and
+concepts because cmux is actively updated while the configured Limux upstream is
+comparatively quiet.
+
+### How:
+Updated `docs/cmux-parity-plan.md` with source links, a 2026-06-16 activity
+snapshot, and guardrails to translate concepts into Rust/GTK/Linux-native
+designs rather than copying source. Added an `AGENTS.md` pointer so future
+agents see the cmux-watch policy during repo orientation.
+
+### Impact:
+Future Limux feature planning should check cmux releases and recently updated
+PRs before inventing new product direction, while still preserving Limux's
+Linux architecture and requiring separate license review before copying any
+source or assets.
+
+### Related:
+`AGENTS.md` | `docs/cmux-parity-plan.md` |
+<https://github.com/manaflow-ai/cmux/releases>

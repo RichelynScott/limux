@@ -1,5 +1,42 @@
 # cmux-parity plan (revised after architectural discovery)
 
+## cmux upstream watch
+
+Limux should be treated as the Linux-oriented counterpart to
+[`manaflow-ai/cmux`](https://github.com/manaflow-ai/cmux), not as an isolated
+feature island. Before planning substantial Limux product work, especially
+workspace, pane, terminal, browser, notification, agent-orchestration, review,
+remote-session, or command-palette work, check cmux upstream for recent product
+direction:
+
+- Releases: <https://github.com/manaflow-ai/cmux/releases>
+- Open pull requests, recently updated first:
+  <https://github.com/manaflow-ai/cmux/pulls?q=is%3Apr+is%3Aopen+sort%3Aupdated-desc>
+- Repository: <https://github.com/manaflow-ai/cmux>
+
+Snapshot as of 2026-06-16:
+
+- cmux latest GitHub release is `v0.64.16`, published 2026-06-15.
+- cmux repository activity is current: GitHub reports `pushed_at` on
+  2026-06-16 and 1,461 open PRs via the GitHub search API.
+- Recent cmux release/PR themes worth mining for Limux ideas include terminal
+  renderer memory reclamation, notification focus/DND behavior, sidebar
+  performance and unread state, terminal-core and Ghostty-engine decomposition,
+  workspace custom titles, window-title templates, command palette extraction,
+  remote/cloud-VM connectivity, workspace/pane canvas layout, per-workspace
+  environment variables, AI auto-naming, browser recovery, and long-session
+  memory diagnostics.
+- The configured Limux upstream remote (`https://github.com/am-will/limux.git`)
+  is quieter than cmux; `upstream/main` was observed at commit `9ffc934`
+  dated 2026-05-13. Re-check this date before making a public age/staleness
+  claim.
+
+Use cmux as an inspiration and prioritization feed, not as a code-copy source.
+cmux is Swift/AppKit/macOS while Limux is Rust/GTK/libadwaita/Linux, so each
+candidate should be translated into a Limux-native design and verified against
+the existing Limux architecture. Copying source, assets, or implementation
+details requires a separate license and compatibility review.
+
 ## Architecture discovery
 
 Limux has **two control servers**:

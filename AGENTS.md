@@ -10,6 +10,13 @@ Limux is a GTK4 + libadwaita terminal workspace manager for Linux. Terminal
 rendering is embedded Ghostty (`libghostty.so`), and external automation drives
 the running app through a Unix socket and the `limux-cli` crate.
 
+Limux is also the Linux-oriented counterpart to the faster-moving
+[`manaflow-ai/cmux`](https://github.com/manaflow-ai/cmux) project. When shaping
+substantial Limux product work, use cmux releases and pull requests as an idea
+and prioritization feed, then translate concepts into Rust/GTK/Linux-native
+designs. See `docs/cmux-parity-plan.md` for the current upstream-watch policy
+and source links.
+
 ## Crates
 
 | Crate | Role |
