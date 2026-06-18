@@ -414,15 +414,7 @@ fn option_takes_safe_value(arg: &str) -> bool {
 }
 
 fn option_is_safe_flag_or_assignment(arg: &str) -> bool {
-    if matches!(
-        arg,
-        "--dangerously-bypass-approvals-and-sandbox"
-            | "--dangerously-skip-permissions"
-            | "--full-auto"
-            | "--search"
-            | "--no-search"
-            | "--yolo"
-    ) {
+    if matches!(arg, "--search" | "--no-search") {
         return true;
     }
 
@@ -508,6 +500,8 @@ mod tests {
             "resume".to_string(),
             "old-session".to_string(),
             "--dangerously-bypass-approvals-and-sandbox".to_string(),
+            "--full-auto".to_string(),
+            "--search".to_string(),
             "write a prompt".to_string(),
         ];
 
@@ -519,7 +513,7 @@ mod tests {
                 "codex".to_string(),
                 "--model".to_string(),
                 "gpt-5.5".to_string(),
-                "--dangerously-bypass-approvals-and-sandbox".to_string(),
+                "--search".to_string(),
             ]
         );
     }

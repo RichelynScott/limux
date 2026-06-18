@@ -20,6 +20,9 @@ Options:
   --install-id <id>        Install id under limux-reviewed (default: git sha)
   --desktop-entry          Install a user desktop entry under ~/.local/share/applications
   --no-desktop-entry       Do not install a desktop entry (default)
+  --ghostty-share <path>   Ghostty share dir containing shell-integration
+  --ghostty-terminfo <path>
+                           Terminfo dir containing g/ghostty or x/xterm-ghostty
   --manifest-out <path>    Also write the dry-run manifest to this path
   -h, --help               Show this help
 EOF_USAGE
@@ -43,6 +46,8 @@ prefix="${LIMUX_USER_PREFIX:-${HOME}/.local}"
 install_id=""
 desktop_entry="false"
 manifest_out=""
+ghostty_share_override="${LIMUX_GHOSTTY_SHARE_DIR:-}"
+ghostty_terminfo_override="${LIMUX_GHOSTTY_TERMINFO_DIR:-}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -76,6 +81,16 @@ while [[ $# -gt 0 ]]; do
         --no-desktop-entry)
             desktop_entry="false"
             shift
+            ;;
+        --ghostty-share)
+            [[ $# -ge 2 ]] || die "--ghostty-share requires a value"
+            ghostty_share_override="$2"
+            shift 2
+            ;;
+        --ghostty-terminfo)
+            [[ $# -ge 2 ]] || die "--ghostty-terminfo requires a value"
+            ghostty_terminfo_override="$2"
+            shift 2
             ;;
         --manifest-out)
             [[ $# -ge 2 ]] || die "--manifest-out requires a value"
@@ -131,11 +146,13 @@ fi
 
 ghostty_share_src=""
 for candidate in \
+    "$ghostty_share_override" \
     "${repo_root}/ghostty/zig-out/share/ghostty" \
     "/usr/local/share/ghostty" \
     "/usr/share/ghostty"
 do
-    if [[ -d "$candidate/themes" && -d "$candidate/shell-integration" ]]; then
+    [[ -n "$candidate" ]] || continue
+    if [[ -d "$candidate/shell-integration" ]]; then
         ghostty_share_src="$candidate"
         break
     fi
@@ -143,10 +160,12 @@ done
 
 ghostty_terminfo_src=""
 for candidate in \
+    "$ghostty_terminfo_override" \
     "${repo_root}/ghostty/zig-out/share/terminfo" \
     "/usr/local/share/terminfo" \
     "/usr/share/terminfo"
 do
+    [[ -n "$candidate" ]] || continue
     if [[ -f "$candidate/g/ghostty" || -f "$candidate/x/xterm-ghostty" ]]; then
         ghostty_terminfo_src="$candidate"
         break

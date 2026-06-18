@@ -40,11 +40,7 @@ fn has_ghostty_terminfo(path: &Path) -> bool {
 }
 
 fn is_ghostty_resources_dir(path: &Path) -> bool {
-    path.is_dir()
-        && ["themes", "shell-integration"]
-            .iter()
-            .all(|entry| path.join(entry).is_dir())
-        && has_ghostty_terminfo(path)
+    path.is_dir() && path.join("shell-integration").is_dir() && has_ghostty_terminfo(path)
 }
 
 fn ghostty_resources_candidates(exe_dir: &Path) -> Vec<PathBuf> {
@@ -267,6 +263,24 @@ mod tests {
         let terminfo_file = root.join("share/limux/terminfo/g/ghostty");
         fs::create_dir_all(&exe_dir).unwrap();
         fs::create_dir_all(&themes_dir).unwrap();
+        fs::create_dir_all(&shell_integration_dir).unwrap();
+        fs::create_dir_all(terminfo_file.parent().unwrap()).unwrap();
+        fs::write(&terminfo_file, b"ghostty").unwrap();
+
+        let exe = exe_dir.join("limux");
+        let resolved = resolve_ghostty_resources_dir(&exe).unwrap();
+        assert_eq!(resolved, root.join("share/limux/ghostty"));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn resolves_resources_without_optional_themes() {
+        let root = temp_path("resources-no-themes");
+        let exe_dir = root.join("bin");
+        let shell_integration_dir = root.join("share/limux/ghostty/shell-integration");
+        let terminfo_file = root.join("share/limux/terminfo/g/ghostty");
+        fs::create_dir_all(&exe_dir).unwrap();
         fs::create_dir_all(&shell_integration_dir).unwrap();
         fs::create_dir_all(terminfo_file.parent().unwrap()).unwrap();
         fs::write(&terminfo_file, b"ghostty").unwrap();

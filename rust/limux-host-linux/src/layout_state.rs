@@ -879,10 +879,7 @@ fn option_takes_safe_value(arg: &str) -> bool {
 }
 
 fn option_is_safe_flag_or_assignment(arg: &str) -> bool {
-    if matches!(
-        arg,
-        "--dangerously-bypass-approvals-and-sandbox" | "--dangerously-skip-permissions"
-    ) {
+    if matches!(arg, "--search" | "--no-search") {
         return true;
     }
     let Some((name, _)) = arg.split_once('=') else {
@@ -1518,6 +1515,37 @@ mod tests {
         assert!(command.contains("cd '/tmp/project' && 'codex' 'resume' 'sess-123'"));
         assert!(command.contains("hooks codex cleanup"));
         assert!(command.contains("exec \"${SHELL:-/bin/sh}\" -l"));
+    }
+
+    #[test]
+    fn restorable_agent_resume_command_drops_dangerous_launch_flags() {
+        let agent = RestorableAgentState {
+            kind: RestorableAgentKind::Codex,
+            session_id: "sess-123".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            launch_command: Some(AgentLaunchCommandState {
+                executable: "codex".to_string(),
+                arguments: vec![
+                    "codex".to_string(),
+                    "--model".to_string(),
+                    "gpt-5.5".to_string(),
+                    "--dangerously-bypass-approvals-and-sandbox".to_string(),
+                    "--dangerously-skip-permissions".to_string(),
+                    "--search".to_string(),
+                    "prompt text".to_string(),
+                ],
+                cwd: Some("/tmp/project".to_string()),
+                environment: Default::default(),
+                captured_at: Some(12.0),
+            }),
+            restore_on_startup: true,
+        };
+
+        let command = agent.resume_command().expect("resume command");
+        assert!(command.contains("'--model' 'gpt-5.5'"));
+        assert!(command.contains("'--search'"));
+        assert!(!command.contains("dangerously"));
+        assert!(!command.contains("prompt text"));
     }
 
     #[test]

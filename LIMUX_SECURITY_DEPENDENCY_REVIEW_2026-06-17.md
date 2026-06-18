@@ -338,6 +338,19 @@ For your immediate goal of using Limux to manage multiple sessions:
 
 This is not saying Limux is unusable. It is saying the current safe lane is a real repo-local app launcher, while the risky lane is the global installer/system packaging path plus currently-lagging WebKitGTK.
 
+## Post-Remediation Update - 2026-06-18
+
+The remaining repo-controlled limitations identified in this review were narrowed:
+
+- Agent hook resume safety: fixed. Limux no longer preserves dangerous agent launch flags such as `--dangerously-bypass-approvals-and-sandbox`, `--dangerously-skip-permissions`, `--full-auto`, or `--yolo` when capturing/restoring agent resume commands. Benign search toggles remain preservable. Covered by CLI and host restore tests.
+- Ghostty resource recognition/staging: improved. Themes are now treated as optional; a valid bundle only needs shell integration plus Ghostty terminfo. The user-local installer also accepts explicit `--ghostty-share` and `--ghostty-terminfo` paths so a generated resource bundle can be staged without a global install.
+- Browser/WebKit exposure: reduced by default. Embedded browser tabs are now runtime opt-in via `LIMUX_ENABLE_WEBKIT_BROWSER=1`; without that explicit opt-in, the browser button is hidden and browser tab creation is skipped. This keeps terminal/session management usable while WebKitGTK remains on the separate risk gate.
+
+What remains genuinely gated:
+
+- This machine currently has no `zig` binary and no installed `xterm-ghostty` terminfo database, so Ghostty terminfo could not be generated or copied during this remediation without a package-manager/toolchain install. The installer path is ready for a generated bundle, but the real bundle still requires either Zig availability or another trusted Ghostty terminfo source.
+- WebKitGTK was not globally updated or replaced. Until the system package catches up or the operator explicitly accepts the browser risk, embedded browser use should stay disabled.
+
 ## Verification Commands Run
 
 ```text

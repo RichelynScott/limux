@@ -123,6 +123,27 @@ const BROWSER_WEB_VIEW_CSS_CLASS: &str = "limux-browser-web-view";
 pub(crate) const MIN_PANE_WIDTH: i32 = 260;
 pub(crate) const MIN_PANE_HEIGHT: i32 = 160;
 
+fn browser_feature_enabled_value(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
+fn embedded_browser_enabled() -> bool {
+    #[cfg(feature = "webkit")]
+    {
+        std::env::var("LIMUX_ENABLE_WEBKIT_BROWSER")
+            .ok()
+            .is_some_and(|value| browser_feature_enabled_value(&value))
+    }
+
+    #[cfg(not(feature = "webkit"))]
+    {
+        false
+    }
+}
+
 pub fn is_tab_dragging() -> bool {
     TAB_DRAGGING.with(|value| value.get())
 }
@@ -499,6 +520,9 @@ pub fn create_pane(
         "limux-globe-symbolic",
         &pane_action_tooltip(&shortcuts, "New browser tab", None),
     );
+    if !embedded_browser_enabled() {
+        new_browser_btn.set_visible(false);
+    }
     let split_h_btn = icon_button(
         "limux-split-horizontal-symbolic",
         &pane_action_tooltip(&shortcuts, "Split right", Some(ShortcutId::SplitRight)),
@@ -1320,6 +1344,10 @@ fn add_terminal_tab_inner(
 }
 
 fn add_browser_tab_inner(internals: &Rc<PaneInternals>, options: Option<BrowserTabOptions<'_>>) {
+    if !embedded_browser_enabled() {
+        return;
+    }
+
     let tab_id = options
         .as_ref()
         .and_then(|value| value.id.map(|id| id.to_string()))
@@ -3420,12 +3448,13 @@ fn create_browser_widget(
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_content_drop_zone, content_drop_preview_rect, effective_drop_target_dimensions,
-        is_localhost_input, next_active_after_tab_removal, normalize_browser_entry_input,
-        normalize_reorder_insert_index, pane_action_tooltip, surface_hint_matches, ContentDropZone,
-        TabDragPayload, BROWSER_SEARCH_ENTRY_CSS_CLASS, BROWSER_SEARCH_ENTRY_CSS_CLASSES,
-        BROWSER_URL_ENTRY_CSS_CLASS, BROWSER_URL_ENTRY_CSS_CLASSES, HOST_ENTRY_CSS_CLASS, PANE_CSS,
-        TAB_RENAME_ENTRY_CSS_CLASS, TAB_RENAME_ENTRY_CSS_CLASSES,
+        browser_feature_enabled_value, classify_content_drop_zone, content_drop_preview_rect,
+        effective_drop_target_dimensions, is_localhost_input, next_active_after_tab_removal,
+        normalize_browser_entry_input, normalize_reorder_insert_index, pane_action_tooltip,
+        surface_hint_matches, ContentDropZone, TabDragPayload, BROWSER_SEARCH_ENTRY_CSS_CLASS,
+        BROWSER_SEARCH_ENTRY_CSS_CLASSES, BROWSER_URL_ENTRY_CSS_CLASS,
+        BROWSER_URL_ENTRY_CSS_CLASSES, HOST_ENTRY_CSS_CLASS, PANE_CSS, TAB_RENAME_ENTRY_CSS_CLASS,
+        TAB_RENAME_ENTRY_CSS_CLASSES,
     };
     #[cfg(feature = "webkit")]
     use super::{
@@ -3713,6 +3742,16 @@ mod tests {
 
         for (input, expected) in cases {
             assert_eq!(normalize_browser_entry_input(input), expected, "{input}");
+        }
+    }
+
+    #[test]
+    fn embedded_browser_runtime_gate_requires_explicit_truthy_opt_in() {
+        for value in ["1", "true", "TRUE", "yes", "on"] {
+            assert!(browser_feature_enabled_value(value), "{value}");
+        }
+        for value in ["", "0", "false", "no", "off", "anything-else"] {
+            assert!(!browser_feature_enabled_value(value), "{value}");
         }
     }
 }
