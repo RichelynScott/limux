@@ -2310,10 +2310,10 @@ fn adw_color_scheme_for(scheme: app_config::ColorScheme) -> adw::ColorScheme {
 }
 
 fn gnome_interface_settings() -> Option<gio::Settings> {
-    if !compiled_gsettings_schema_available() {
-        return None;
-    }
-    let schema = gio::SettingsSchemaSource::default()?.lookup(GNOME_INTERFACE_SCHEMA, true)?;
+    let schema = compiled_gsettings_schema_dirs()
+        .into_iter()
+        .filter_map(|dir| gio::SettingsSchemaSource::from_directory(&dir, None, true).ok())
+        .find_map(|source| source.lookup(GNOME_INTERFACE_SCHEMA, true))?;
     if !schema.has_key(GNOME_COLOR_SCHEME_KEY) {
         return None;
     }
@@ -2325,24 +2325,25 @@ fn gnome_interface_settings() -> Option<gio::Settings> {
     ))
 }
 
-fn compiled_gsettings_schema_available() -> bool {
+fn compiled_gsettings_schema_dirs() -> Vec<PathBuf> {
     if let Some(schema_dir) = std::env::var_os("GSETTINGS_SCHEMA_DIR") {
-        return !schema_dir.is_empty()
-            && PathBuf::from(schema_dir)
-                .join("gschemas.compiled")
-                .is_file();
+        let schema_dir = PathBuf::from(schema_dir);
+        return schema_dir
+            .join("gschemas.compiled")
+            .is_file()
+            .then_some(schema_dir)
+            .into_iter()
+            .collect();
     }
 
     let data_dirs = std::env::var_os("XDG_DATA_DIRS")
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "/usr/local/share:/usr/share".into());
 
-    std::env::split_paths(&data_dirs).any(|dir| {
-        dir.join("glib-2.0")
-            .join("schemas")
-            .join("gschemas.compiled")
-            .is_file()
-    })
+    std::env::split_paths(&data_dirs)
+        .map(|dir| dir.join("glib-2.0").join("schemas"))
+        .filter(|dir| dir.join("gschemas.compiled").is_file())
+        .collect()
 }
 
 fn gnome_prefers_dark_from_raw(raw: &str) -> Option<bool> {

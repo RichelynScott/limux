@@ -12,10 +12,17 @@ mod window;
 
 use adw::prelude::*;
 use libadwaita as adw;
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
+use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 
 pub(crate) const APP_ID: &str = "dev.limux.linux";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+const HOST_LOG_ENV: &str = "LIMUX_HOST_LOG";
+const HOST_LOG_PATH_ENV: &str = "LIMUX_HOST_LOG_PATH";
+const HOST_LOG_DIR_NAME: &str = "limux/logs";
+const HOST_LOG_FILE_NAME: &str = "limux-host.log";
 
 /// Append a value to an environment variable (comma-separated), or set it.
 fn append_env(key: &str, value: &str) {
@@ -123,6 +130,72 @@ fn sanitize_terminal_child_env() {
     std::env::remove_var("NO_COLOR");
 }
 
+fn ensure_xdg_data_dirs_defaults() {
+    let mut entries = Vec::new();
+    if let Some(existing) = std::env::var_os("XDG_DATA_DIRS") {
+        for entry in std::env::split_paths(&existing) {
+            if !entry.as_os_str().is_empty() && !entries.iter().any(|item| item == &entry) {
+                entries.push(entry);
+            }
+        }
+    }
+
+    for fallback in ["/usr/local/share", "/usr/share"] {
+        let fallback = PathBuf::from(fallback);
+        if !entries.iter().any(|entry| entry == &fallback) {
+            entries.push(fallback);
+        }
+    }
+
+    if let Ok(value) = std::env::join_paths(entries) {
+        std::env::set_var("XDG_DATA_DIRS", value);
+    }
+}
+
+fn host_log_path() -> Option<PathBuf> {
+    std::env::var_os(HOST_LOG_PATH_ENV)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            dirs::state_dir().map(|dir| dir.join(HOST_LOG_DIR_NAME).join(HOST_LOG_FILE_NAME))
+        })
+}
+
+#[cfg(unix)]
+fn install_host_stderr_log() -> io::Result<Option<PathBuf>> {
+    if std::env::var_os(HOST_LOG_ENV).is_some_and(|value| value == "off" || value == "0") {
+        return Ok(None);
+    }
+
+    let Some(path) = host_log_path() else {
+        return Ok(None);
+    };
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let mut file = OpenOptions::new().create(true).append(true).open(&path)?;
+    writeln!(
+        file,
+        "\n--- limux-host start version={} pid={} ---",
+        VERSION,
+        std::process::id()
+    )?;
+    file.flush()?;
+
+    let rc = unsafe { libc::dup2(file.as_raw_fd(), libc::STDERR_FILENO) };
+    if rc < 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    Ok(Some(path))
+}
+
+#[cfg(not(unix))]
+fn install_host_stderr_log() -> io::Result<Option<PathBuf>> {
+    Ok(None)
+}
+
 fn gtk_runtime_version() -> (u32, u32, u32) {
     unsafe {
         (
@@ -142,6 +215,12 @@ fn main() {
     if std::env::args().any(|a| a == "--version" || a == "-v") {
         println!("Limux {VERSION}");
         return;
+    }
+
+    ensure_xdg_data_dirs_defaults();
+
+    if let Err(err) = install_host_stderr_log() {
+        eprintln!("limux: failed to initialize host log: {err}");
     }
 
     // Ghostty requires desktop OpenGL, not GLES. Must set the GTK renderer
@@ -251,6 +330,28 @@ mod tests {
         match original {
             Some(value) => std::env::set_var("NO_COLOR", value),
             None => std::env::remove_var("NO_COLOR"),
+        }
+    }
+
+    #[test]
+    fn ensure_xdg_data_dirs_defaults_preserves_inherited_and_adds_system_dirs() {
+        let _lock = GHOSTTY_ENV_LOCK
+            .lock()
+            .expect("ghostty env test lock poisoned");
+        let original = std::env::var_os("XDG_DATA_DIRS");
+        std::env::set_var("XDG_DATA_DIRS", "/tmp/limux-private-share");
+
+        ensure_xdg_data_dirs_defaults();
+
+        let updated = std::env::var_os("XDG_DATA_DIRS").expect("updated xdg data dirs");
+        let entries = std::env::split_paths(&updated).collect::<Vec<_>>();
+        assert!(entries.contains(&PathBuf::from("/tmp/limux-private-share")));
+        assert!(entries.contains(&PathBuf::from("/usr/local/share")));
+        assert!(entries.contains(&PathBuf::from("/usr/share")));
+
+        match original {
+            Some(value) => std::env::set_var("XDG_DATA_DIRS", value),
+            None => std::env::remove_var("XDG_DATA_DIRS"),
         }
     }
 
