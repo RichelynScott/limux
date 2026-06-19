@@ -1,6 +1,7 @@
 use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -404,6 +405,7 @@ pub fn normalize_layout(layout: &mut LayoutNodeState, working_directory: Option<
                 *pane = PaneState::fallback(working_directory);
                 return;
             }
+            normalize_pane_tab_ids(pane);
             let mut active_exists = false;
             for tab in &pane.tabs {
                 if pane.active_tab_id.as_deref() == Some(tab.id.as_str()) {
@@ -419,6 +421,29 @@ pub fn normalize_layout(layout: &mut LayoutNodeState, working_directory: Option<
             split.ratio = clamp_split_ratio(split.ratio);
             normalize_layout(&mut split.start, working_directory);
             normalize_layout(&mut split.end, working_directory);
+        }
+    }
+}
+
+fn normalize_pane_tab_ids(pane: &mut PaneState) {
+    let mut used = HashSet::new();
+    for tab in &mut pane.tabs {
+        let base = if tab.id.trim().is_empty() {
+            "tab".to_string()
+        } else {
+            tab.id.clone()
+        };
+        if used.insert(base.clone()) {
+            tab.id = base;
+            continue;
+        }
+
+        for suffix in 1.. {
+            let candidate = format!("{base}-{suffix}");
+            if used.insert(candidate.clone()) {
+                tab.id = candidate;
+                break;
+            }
         }
     }
 }
@@ -1582,6 +1607,43 @@ mod tests {
             panic!("expected pane");
         };
         assert_eq!(pane.active_tab_id.as_deref(), Some("browser-1"));
+    }
+
+    #[test]
+    fn normalize_layout_renames_duplicate_tab_ids_within_pane() {
+        let mut layout = LayoutNodeState::Pane(PaneState {
+            pane_id: Some(15),
+            active_tab_id: Some("terminal-0".to_string()),
+            tabs: vec![
+                TabState::terminal("terminal-0", Some("/tmp/first")),
+                TabState::terminal("terminal-0", Some("/tmp/second")),
+                TabState::terminal("terminal-0-1", Some("/tmp/third")),
+                TabState::terminal("", Some("/tmp/fourth")),
+                TabState::terminal("", Some("/tmp/fifth")),
+            ],
+        });
+
+        normalize_layout(&mut layout, None);
+
+        let LayoutNodeState::Pane(pane) = layout else {
+            panic!("expected pane");
+        };
+        let tab_ids = pane
+            .tabs
+            .iter()
+            .map(|tab| tab.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            tab_ids,
+            vec![
+                "terminal-0",
+                "terminal-0-1",
+                "terminal-0-1-1",
+                "tab",
+                "tab-1"
+            ]
+        );
+        assert_eq!(pane.active_tab_id.as_deref(), Some("terminal-0"));
     }
 
     #[test]

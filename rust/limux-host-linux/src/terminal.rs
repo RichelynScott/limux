@@ -1607,48 +1607,45 @@ pub fn create_terminal(
     // Mouse buttons (also handles click-to-focus) — skip right-click (handled below)
     {
         let surface_cell = surface_cell.clone();
+        let active_mouse_button = Rc::new(Cell::new(GHOSTTY_MOUSE_UNKNOWN));
         let open_url_external_for_press = open_url_external.clone();
         let open_url_external_for_release = open_url_external.clone();
         let click = gtk::GestureClick::new();
         click.set_button(0); // all buttons
         let sc = surface_cell.clone();
         let gl_for_focus = gl_area.clone();
-        let had_focus = had_focus.clone();
+        let had_focus_for_click = had_focus.clone();
+        let active_mouse_button_for_press = active_mouse_button.clone();
         click.connect_pressed(move |gesture, _n, x, y| {
             let btn = gesture.current_button();
             // Grab keyboard focus on any click
-            request_terminal_focus(&gl_for_focus, &had_focus);
+            request_terminal_focus(&gl_for_focus, &had_focus_for_click);
             // Skip right-click — context menu handles it
             if btn == 3 {
                 return;
             }
             if let Some(surface) = *sc.borrow() {
-                let button = match btn {
-                    1 => GHOSTTY_MOUSE_LEFT,
-                    2 => GHOSTTY_MOUSE_MIDDLE,
-                    _ => GHOSTTY_MOUSE_UNKNOWN,
-                };
+                let button = ghostty_mouse_button_from_gdk(btn);
                 let mods = translate_mouse_mods(gesture.current_event_state());
                 unsafe {
+                    release_active_mouse_button(surface, &active_mouse_button_for_press, mods);
                     ghostty_surface_mouse_pos(surface, x, y, mods);
                     open_url_external_for_press.set(mods & GHOSTTY_MODS_CTRL != 0);
                     ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, button, mods);
                     open_url_external_for_press.set(false);
                 }
+                active_mouse_button_for_press.set(button);
             }
         });
         let sc2 = surface_cell.clone();
+        let active_mouse_button_for_release = active_mouse_button.clone();
         click.connect_released(move |gesture, _n, x, y| {
             let btn = gesture.current_button();
             if btn == 3 {
                 return;
             }
             if let Some(surface) = *sc2.borrow() {
-                let button = match btn {
-                    1 => GHOSTTY_MOUSE_LEFT,
-                    2 => GHOSTTY_MOUSE_MIDDLE,
-                    _ => GHOSTTY_MOUSE_UNKNOWN,
-                };
+                let button = ghostty_mouse_button_from_gdk(btn);
                 let mods = translate_mouse_mods(gesture.current_event_state());
                 unsafe {
                     ghostty_surface_mouse_pos(surface, x, y, mods);
@@ -1656,13 +1653,34 @@ pub fn create_terminal(
                     ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, button, mods);
                     open_url_external_for_release.set(false);
                 }
+                if active_mouse_button_for_release.get() == button {
+                    active_mouse_button_for_release.set(GHOSTTY_MOUSE_UNKNOWN);
+                }
+            }
+        });
+        let sc_cancel = surface_cell.clone();
+        let active_mouse_button_for_cancel = active_mouse_button.clone();
+        click.connect_cancel(move |gesture, _| {
+            if let Some(surface) = *sc_cancel.borrow() {
+                let mods = translate_mouse_mods(gesture.current_event_state());
+                unsafe {
+                    release_active_mouse_button(surface, &active_mouse_button_for_cancel, mods);
+                }
+            }
+        });
+        let sc_stopped = surface_cell.clone();
+        let active_mouse_button_for_stopped = active_mouse_button.clone();
+        click.connect_stopped(move |gesture| {
+            if let Some(surface) = *sc_stopped.borrow() {
+                let mods = translate_mouse_mods(gesture.current_event_state());
+                unsafe {
+                    release_active_mouse_button(surface, &active_mouse_button_for_stopped, mods);
+                }
             }
         });
         gl_area.add_controller(click);
-    }
 
-    // Right-click context menu
-    {
+        // Right-click context menu
         let sc = surface_cell.clone();
         let callbacks = callbacks.clone();
         let gl = gl_area.clone();
@@ -1675,31 +1693,41 @@ pub fn create_terminal(
             gesture.set_state(gtk::EventSequenceState::Claimed);
         });
         gl_area.add_controller(right_click);
-    }
 
-    // Mouse motion
-    {
+        // Mouse motion
         let surface_cell = surface_cell.clone();
         let surface_cell_for_enter = surface_cell.clone();
         let gl_for_focus = gl_area.clone();
-        let had_focus = had_focus.clone();
+        let had_focus_for_motion = had_focus.clone();
+        let active_mouse_button_for_enter = active_mouse_button.clone();
         let motion = gtk::EventControllerMotion::new();
         motion.connect_enter(move |ctrl, x, y| {
             if (hover_focus)() {
                 // Match common Hyprland/Omarchy-style focus-follows-mouse behavior:
                 // as soon as the pointer enters a terminal, focus it so typing works
                 // immediately without an extra click.
-                request_terminal_focus(&gl_for_focus, &had_focus);
+                request_terminal_focus(&gl_for_focus, &had_focus_for_motion);
             }
 
             if let Some(surface) = *surface_cell_for_enter.borrow() {
+                release_mouse_button_if_physical_button_is_up(
+                    surface,
+                    &active_mouse_button_for_enter,
+                    ctrl.current_event_state(),
+                );
                 let mods = translate_mouse_mods(ctrl.current_event_state());
                 unsafe { ghostty_surface_mouse_pos(surface, x, y, mods) };
             }
         });
         let surface_cell = surface_cell.clone();
+        let active_mouse_button_for_motion = active_mouse_button.clone();
         motion.connect_motion(move |ctrl, x, y| {
             if let Some(surface) = *surface_cell.borrow() {
+                release_mouse_button_if_physical_button_is_up(
+                    surface,
+                    &active_mouse_button_for_motion,
+                    ctrl.current_event_state(),
+                );
                 let mods = translate_mouse_mods(ctrl.current_event_state());
                 unsafe { ghostty_surface_mouse_pos(surface, x, y, mods) };
             }
@@ -2288,6 +2316,47 @@ fn translate_mouse_mods(state: gtk::gdk::ModifierType) -> c_int {
         mods |= GHOSTTY_MODS_SUPER;
     }
     mods
+}
+
+fn ghostty_mouse_button_from_gdk(button: u32) -> c_int {
+    match button {
+        1 => GHOSTTY_MOUSE_LEFT,
+        2 => GHOSTTY_MOUSE_MIDDLE,
+        _ => GHOSTTY_MOUSE_UNKNOWN,
+    }
+}
+
+fn mouse_button_is_still_pressed(button: c_int, state: gtk::gdk::ModifierType) -> bool {
+    match button {
+        GHOSTTY_MOUSE_LEFT => state.contains(gtk::gdk::ModifierType::BUTTON1_MASK),
+        GHOSTTY_MOUSE_MIDDLE => state.contains(gtk::gdk::ModifierType::BUTTON2_MASK),
+        _ => false,
+    }
+}
+
+unsafe fn release_active_mouse_button(
+    surface: ghostty_surface_t,
+    active_button: &Cell<c_int>,
+    mods: c_int,
+) {
+    let button = active_button.replace(GHOSTTY_MOUSE_UNKNOWN);
+    if button != GHOSTTY_MOUSE_UNKNOWN {
+        ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, button, mods);
+    }
+}
+
+fn release_mouse_button_if_physical_button_is_up(
+    surface: ghostty_surface_t,
+    active_button: &Cell<c_int>,
+    state: gtk::gdk::ModifierType,
+) {
+    let button = active_button.get();
+    if button != GHOSTTY_MOUSE_UNKNOWN && !mouse_button_is_still_pressed(button, state) {
+        let mods = translate_mouse_mods(state);
+        unsafe {
+            release_active_mouse_button(surface, active_button, mods);
+        }
+    }
 }
 
 #[cfg(test)]

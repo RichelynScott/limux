@@ -239,7 +239,7 @@ set -euo pipefail
 INSTALL_ROOT="${root}"
 export LD_LIBRARY_PATH="\${INSTALL_ROOT}/lib\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
 export LIMUX_HOST_BIN="\${INSTALL_ROOT}/libexec/limux-host"
-export XDG_DATA_DIRS="\${INSTALL_ROOT}/share\${XDG_DATA_DIRS:+:\${XDG_DATA_DIRS}}"
+export XDG_DATA_DIRS="\${INSTALL_ROOT}/share:\${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 
 exec "\${INSTALL_ROOT}/libexec/limux-cli" "\$@"
 EOF_WRAPPER

@@ -1422,6 +1422,7 @@ pub fn build_window(app: &adw::Application) {
         exe_dir
             .as_ref()
             .map(|d| d.join("../../rust/limux-host-linux/icons")),
+        exe_dir.as_ref().map(|d| d.join("../share/icons")),
         exe_dir.as_ref().map(|d| d.join("../icons")),
         Some(std::path::PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -2309,6 +2310,9 @@ fn adw_color_scheme_for(scheme: app_config::ColorScheme) -> adw::ColorScheme {
 }
 
 fn gnome_interface_settings() -> Option<gio::Settings> {
+    if !compiled_gsettings_schema_available() {
+        return None;
+    }
     let schema = gio::SettingsSchemaSource::default()?.lookup(GNOME_INTERFACE_SCHEMA, true)?;
     if !schema.has_key(GNOME_COLOR_SCHEME_KEY) {
         return None;
@@ -2319,6 +2323,26 @@ fn gnome_interface_settings() -> Option<gio::Settings> {
         None::<&gio::SettingsBackend>,
         None::<&str>,
     ))
+}
+
+fn compiled_gsettings_schema_available() -> bool {
+    if let Some(schema_dir) = std::env::var_os("GSETTINGS_SCHEMA_DIR") {
+        return !schema_dir.is_empty()
+            && PathBuf::from(schema_dir)
+                .join("gschemas.compiled")
+                .is_file();
+    }
+
+    let data_dirs = std::env::var_os("XDG_DATA_DIRS")
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "/usr/local/share:/usr/share".into());
+
+    std::env::split_paths(&data_dirs).any(|dir| {
+        dir.join("glib-2.0")
+            .join("schemas")
+            .join("gschemas.compiled")
+            .is_file()
+    })
 }
 
 fn gnome_prefers_dark_from_raw(raw: &str) -> Option<bool> {
