@@ -1700,3 +1700,38 @@ workspace creation and mouse selection release behavior.
 
 ### Related:
 `e79a1ac` | `596bc69` | `LIFO_HANDOFF.md`
+
+## 2026-06-20 - Workspaces Sidebar And G0 Stability PR Merged
+### What:
+Merged the LIFO-owned stacked G0 stability PR into
+`lifo/workspaces-sidebar-notifications-20260620`.
+
+### Why:
+The operator wanted the WORKSPACES sidebar/attention improvements and G0
+runtime stability work carried through peer review, Codex bot feedback, and
+merge rather than stopping at a non-blocking review comment.
+
+### How:
+Used native Codex subagents for disjoint implementation/review lanes, coordinated
+with Halo over hcom, and opened PR #1 against the stacked base branch. The G0
+patch added runtime/debug socket isolation, hook `resolved_socket` diagnostics,
+Ghostty HiDPI physical sizing, wrapped-pane traversal for focus/attention,
+split-SVG package validation, and TaskMaster experience documentation. Codex
+bot flagged the GTK traversal unit test as display-dependent; follow-up commit
+`8798eaa` made the test skip when `gtk::init()` cannot initialize. Plain
+`./scripts/check.sh`, forced no-display host tests, and Xvfb traversal tests
+passed. Codex bot rereview on `8798eaa839` reported no major issues, and Halo
+independently verified the closeout.
+
+### Impact:
+PR #1 is merged at
+`299a8fc762dc5f4a168d7d37c8148c58d0aedb08`; the local closeout worktree is
+clean on `lifo/workspaces-sidebar-notifications-20260620`. Future work should
+start from that branch or a fresh branch from the intended base, not the spent
+`lifo/g0-stability-20260620` branch. Live copy/paste and stuck-left-click
+repros still require fresh runtime evidence if they recur.
+
+### Related:
+`https://github.com/RichelynScott/limux/pull/1` | `276aafd` | `8798eaa` |
+`299a8fc` | `LIFO_HANDOFF.md` |
+`.taskmaster/docs/workspaces-sidebar-notifications-20260620.md`

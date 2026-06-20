@@ -1,6 +1,18 @@
 # Limux Session Handoff
 
-Last updated: 2026-06-11 11:27 EDT
+Last updated: 2026-06-20 03:15 EDT
+
+## Latest Limux Product Lane Pointer
+
+The current LIFO-owned Limux product/stability closeout is
+`LIFO_HANDOFF.md`. It records PR #1 merged into
+`lifo/workspaces-sidebar-notifications-20260620` at
+`299a8fc762dc5f4a168d7d37c8148c58d0aedb08`, with Codex bot clean on
+`8798eaa839` and no immediate next action. Read `LIFO_HANDOFF.md` first for
+the workspace/sidebar/G0 stability lane.
+
+The older Project Isolation Lab material below is historical cross-project
+context and should not override the operator's later Limux-product redirect.
 
 ## Active Thread Goal - Project Isolation Lab
 
