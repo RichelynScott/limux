@@ -6,75 +6,104 @@ Author/runtime/date: halo / Codex GPT-5 / 2026-06-20 EDT
 
 1. Keep `LIFO_HANDOFF.md` and `archive/` untouched unless lifo transfers
    ownership.
-2. Review or merge `halo/limux-ui-improvements-20260620` at `b09c7f8`.
-3. Manually validate in a live Limux window after launching/merging/installing
-   that branch. The active installed user-local `limux` is still the
-   pre-feature `multi-runtime-isolation-20260620` build.
-4. Continue the separate GTK-critical investigation from the host log if the
-   operator wants the next runtime fix.
+2. Keep `origin/lifo/workspaces-sidebar-notifications-20260620` at
+   `49fb4cf3a15262fd4d09532c0f8fdc38ab8fdc45` as the recommended integration
+   lane. Do not merge `halo/limux-ui-improvements-20260620` wholesale and do
+   not cherry-pick halo docs onto lifo's branch unless the operator/lifo changes
+   that decision.
+3. For the reported crash, ask the operator to pick one path:
+   - Option 1, recommended: controlled cleanup/restart of live Limux
+     windows/hosts, then reopen `limux`.
+   - Option 2: watch-only until recurrence; capture exact repro action if it
+     happens again.
+   - Option 3: rollback `~/.local/bin/limux` to the previous reviewed build.
+4. Hold integration-branch mutation until crash evidence becomes concrete.
+5. Continue GTK-critical investigation only after the restart/watch/rollback
+   decision is settled.
 
 ## Current Baseline
 
 | Item | Value |
 |---|---|
 | Repo | `/home/riche/MCPs/limux` |
-| Branch | `halo/limux-ui-improvements-20260620` |
-| HEAD | `b09c7f8 feat(host): add workspace unread and pane attention markers` |
-| Installed `limux` | `/home/riche/.local/limux-reviewed/multi-runtime-isolation-20260620/bin/limux` (pre-feature build) |
+| Current checkout | `halo/limux-ui-improvements-20260620` |
+| Current checkout HEAD | `355ce4b docs(handoff): record limux ui improvement branch` |
+| Recommended integration lane | `origin/lifo/workspaces-sidebar-notifications-20260620` at `49fb4cf3a15262fd4d09532c0f8fdc38ab8fdc45` |
+| Installed `limux` | `/home/riche/.local/limux-reviewed/workspaces-sidebar-notifications-20260620/bin/limux` |
 | PR intake | No open PRs on `RichelynScott/limux` at intake. |
-| Runtime health | `limux --json surface-health` reported two healthy terminal surfaces. |
-| Build health | `cargo test -p limux-host-linux` and debug Xvfb smoke passed. |
+| Runtime health | Selected-workspace surfaces were healthy on both live sockets during crash triage. |
+| Dirty peer files | `M LIFO_HANDOFF.md`, `?? archive/` |
 
 ## Active Coordination
 
-- Lifo confirmed via hcom `#113038` that he does not own root `HANDOFF.md`.
-- Lifo's active lane is read-only investigation in
-  `/home/riche/MCPs/limux-workspaces-sidebar-notifications`, branch
-  `lifo/workspaces-sidebar-notifications-20260620`.
-- His investigation scope is workspace context-menu/unread helpers, pane widget
-  classes/focus/hover controllers, and terminal notification target routing.
-- Halo consumed the same code paths and pushed the implementation branch. Lifo
-  should be treated as reviewer/coordination peer for overlap, not owner of
-  the implementation branch.
+- Lifo accepted option A on hcom thread `limux-ui-integration-20260620`:
+  his branch at `49fb4cf` is the integration lane; halo docs stay separate.
+- Lifo is holding mutation on the integration branch during crash triage.
+- Crash thread: `limux-crash-20260620`.
+- Lifo independently confirmed:
+  - his integration worktree is clean and matches origin at `49fb4cf`;
+  - installed Limux resolves to the expected reviewed build;
+  - he sees no branch-specific panic, segfault, or unpushed-code evidence.
 
-## Implemented In `b09c7f8`
+## Installed Integration Work
 
-- Added `Mark Unread` to the workspace right-click context menu.
-- Reused existing sidebar unread visuals with `Marked for follow-up`.
-- Added a blue `.limux-pane-attention` outline to pane widgets when
-  terminal-originated notifications or bells identify an unfocused pane.
-- Added hover clearing: after the pointer enters an outlined pane, the outline
-  remains for three seconds, then clears.
-- Added a focused unit test for pane attention target selection.
+Installed from lifo branch:
+
+- workspace sidebar hide/restore ribbon;
+- compact persisted sidebar widths;
+- manual workspace unread/read support;
+- pane attention marker behavior;
+- Codex PreToolUse `user-input-needed` hook path;
+- hook delivery debug logging;
+- scoped TaskMaster experience note.
+
+Verification already run:
+
+```bash
+./scripts/check.sh
+LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh
+cargo build --release -p limux-cli -p limux-host-linux
+scripts/user-local-install/install-user-local.sh --dry-run --profile release --install-id workspaces-sidebar-notifications-20260620
+scripts/user-local-install/install-user-local.sh --apply --profile release --install-id workspaces-sidebar-notifications-20260620
+sha256sum -c SHA256SUMS
+/home/riche/.local/bin/limux --help
+/home/riche/.local/bin/limux --json hooks codex user-input-needed
+/home/riche/.local/bin/limux --json surface-health
+```
+
+## Crash Triage Findings
+
+Operator reported a crash after the integration build was installed. Evidence
+so far does not prove a Limux code crash:
+
+- Host log shows `Gdk-Message: Error reading events from display: Connection
+  reset by peer` at `01:31:21`.
+- No Rust panic, segfault, fatal GLib stack, or matching user-journal crash
+  entry was found.
+- `coredumpctl` is unavailable.
+- Two installed-lane Limux hosts were alive during triage:
+  - PID `23541` on `/run/user/1000/limux/limux-23541.sock`
+  - PID `24840` on `/run/user/1000/limux/limux.sock`
+- Both sockets list the same workspace set but have different selected
+  workspaces.
+- Explicit selected-workspace `surface-health` checks were healthy on both
+  sockets.
+- Some non-selected/tab surfaces reported unrealized. Treat that as weak
+  evidence only; it is not a crash by itself.
+- `/run/user/1000/limux/limux-25211.sock` was stale and failed to connect.
+
+Current hypothesis: WSLg/display/compositor/session reset or duplicate live
+host state, not a proven branch-specific crash.
 
 ## Runtime Findings To Carry Forward
 
-- Latest host log tail no longer shows the earlier GSettings schema-source
-  critical or split-icon warnings.
-- The log still shows GTK criticals around:
+- WSL EGL/Mesa/Zink/GDK compositor warnings remain.
+- GTK criticals around these calls remain a separate investigation target:
   - `gtk_scrolled_window_get_child`
   - `gtk_viewport_get_child`
   - `gtk_stack_set_visible_child_name`
-- WSL EGL/Mesa/Zink/GDK compositor warnings remain, but currently have no direct
-  confirmed Limux correctness impact.
 - Concurrent runtime launch isolation landed in `1df7621`, adding fallback
   socket behavior when the default control socket is in use.
-
-## Verification Already Run In This Resume
-
-```bash
-git status --short --branch
-git log --oneline --decorate -8
-git worktree list
-gh pr list --repo RichelynScott/limux --state open --json number,title,headRefName,author,url,updatedAt --limit 50
-readlink -f /home/riche/.local/bin/limux
-tail -n 200 /home/riche/.local/state/limux/logs/limux-host.log
-limux --json surface-health
-cargo check -p limux-host-linux
-cargo fmt --check
-cargo test -p limux-host-linux
-LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh
-```
 
 ## Do Not Resume
 

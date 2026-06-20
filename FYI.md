@@ -1755,3 +1755,36 @@ the installed user-local `limux` build. Verification passed with
 ### Related:
 `b09c7f8` | `rust/limux-host-linux/src/window.rs` |
 `rust/limux-host-linux/src/pane.rs`
+
+## 2026-06-20 - Limux Crash Triage And Integration Lane Hold
+### What:
+Classified the operator-reported Limux crash after the user-local integration
+install and coordinated with lifo to hold mutation on the integration branch.
+
+### Why:
+The installed Limux build is now from
+`origin/lifo/workspaces-sidebar-notifications-20260620` at `49fb4cf`, so any
+post-install crash needed immediate branch/repro triage before further
+mutation, rollback, or cleanup.
+
+### How:
+Compared halo and lifo evidence on hcom thread `limux-crash-20260620`.
+Both sessions found the same host log signature:
+`Gdk-Message: Error reading events from display: Connection reset by peer` at
+`01:31:21`, followed by fresh installed-lane host starts. Host-namespace
+process/socket checks showed two live installed-lane hosts on
+`/run/user/1000/limux/limux.sock` and `limux-23541.sock`; explicit
+selected-workspace `surface-health` checks were healthy on both. No Rust panic,
+segfault, fatal GLib stack, matching user-journal crash entry, or unpushed lifo
+worktree change was found.
+
+### Impact:
+Current classification is likely WSLg/display/compositor/session reset or
+duplicate live-host state, not a proven branch-specific Limux crash. The next
+operator choice is numbered in `HANDOFF.md`: controlled restart/cleanup,
+watch-only, or rollback. Integration-branch mutation remains held until crash
+evidence becomes concrete or the operator approves the next step.
+
+### Related:
+`HANDOFF.md` | `HALO_HANDOFF.md` | hcom `limux-crash-20260620` |
+`49fb4cf3a15262fd4d09532c0f8fdc38ab8fdc45`
