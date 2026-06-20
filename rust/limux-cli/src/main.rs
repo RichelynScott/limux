@@ -1054,26 +1054,41 @@ async fn run_agent_hook(
             agent,
             &event,
             "notify_ok",
-            &json!({
-                "workspace": workspace,
-                "surface_id": limux_env_value("LIMUX_SURFACE_ID"),
-                "socket": limux_env_value("LIMUX_SOCKET"),
-            }),
+            &agent_hook_notify_debug_details(&client.socket, workspace.as_deref(), None),
         ),
-        Err(error) => write_agent_hook_debug(
-            agent,
-            &event,
-            "notify_error",
-            &json!({
-                "error": format!("{error:#}"),
-                "workspace": workspace,
-                "surface_id": limux_env_value("LIMUX_SURFACE_ID"),
-                "socket": limux_env_value("LIMUX_SOCKET"),
-            }),
-        ),
+        Err(error) => {
+            let error = format!("{error:#}");
+            write_agent_hook_debug(
+                agent,
+                &event,
+                "notify_error",
+                &agent_hook_notify_debug_details(
+                    &client.socket,
+                    workspace.as_deref(),
+                    Some(&error),
+                ),
+            );
+        }
     }
 
     Ok(agent_hook_output(&event, &payload))
+}
+
+fn agent_hook_notify_debug_details(
+    socket: &Path,
+    workspace: Option<&str>,
+    error: Option<&str>,
+) -> Value {
+    let mut details = json!({
+        "workspace": workspace,
+        "surface_id": limux_env_value("LIMUX_SURFACE_ID"),
+        "socket": limux_env_value("LIMUX_SOCKET"),
+        "resolved_socket": socket.to_string_lossy().to_string(),
+    });
+    if let Some(error) = error {
+        details["error"] = Value::String(error.to_string());
+    }
+    details
 }
 
 fn non_empty_or<'a>(value: &'a str, fallback: &'a str) -> &'a str {
@@ -6226,6 +6241,18 @@ mod cli_arg_tests {
                 }
             })
         );
+    }
+
+    #[test]
+    fn hook_notify_debug_details_include_resolved_socket_path() {
+        let details = agent_hook_notify_debug_details(
+            Path::new("/tmp/resolved.sock"),
+            Some("workspace-a"),
+            None,
+        );
+
+        assert_eq!(details["workspace"], "workspace-a");
+        assert_eq!(details["resolved_socket"], "/tmp/resolved.sock");
     }
 
     #[test]

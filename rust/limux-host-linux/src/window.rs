@@ -5976,6 +5976,10 @@ pub(crate) fn find_gl_area(widget: &gtk::Widget) -> Option<gtk::GLArea> {
 /// `prefer_start` is true (to find the nearest edge). For Paned widgets on
 /// the other axis, prefer start_child (arbitrary but consistent).
 fn find_leaf_pane(widget: &gtk::Widget, axis: gtk::Orientation, prefer_start: bool) -> gtk::Widget {
+    if pane::is_pane_widget(widget) {
+        return widget.clone();
+    }
+
     if let Some(paned) = widget.downcast_ref::<gtk::Paned>() {
         let pick_start = if paned.orientation() == axis {
             prefer_start
@@ -5987,14 +5991,29 @@ fn find_leaf_pane(widget: &gtk::Widget, axis: gtk::Orientation, prefer_start: bo
         } else {
             paned.end_child()
         };
-        match child {
+        return match child {
             Some(c) => find_leaf_pane(&c, axis, prefer_start),
             None => widget.clone(),
-        }
-    } else {
-        // Leaf pane — this is a pane gtk::Box
-        widget.clone()
+        };
     }
+
+    if let Some(stack) = widget.downcast_ref::<gtk::Stack>() {
+        if let Some(visible) = stack.visible_child() {
+            return find_leaf_pane(&visible, axis, prefer_start);
+        }
+        return widget.clone();
+    }
+
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        let candidate = find_leaf_pane(&current, axis, prefer_start);
+        if pane::is_pane_widget(&candidate) {
+            return candidate;
+        }
+        child = current.next_sibling();
+    }
+
+    widget.clone()
 }
 
 fn should_emit_desktop_notification(
@@ -6175,6 +6194,7 @@ mod tests {
     use super::glib;
     use super::gtk::ffi;
     use super::gtk::gdk;
+    use super::gtk::prelude::*;
     use super::ToVariant;
     use super::{
         build_window_css, clamp_workspace_insert_index_for_pinning,
@@ -6986,6 +7006,36 @@ mod tests {
         });
 
         assert_eq!(workspace_drop_layout_path(&layout), vec![true, true]);
+    }
+
+    #[test]
+    fn find_leaf_pane_descends_wrapped_workspace_root_to_pane() {
+        super::gtk::init().expect("GTK init should succeed under the test display");
+
+        let pane = super::gtk::Box::new(super::gtk::Orientation::Vertical, 0);
+        let pane_header = super::gtk::Box::new(super::gtk::Orientation::Horizontal, 0);
+        pane_header.add_css_class("limux-pane-header");
+        pane.append(&pane_header);
+
+        let scrolled = super::gtk::ScrolledWindow::new();
+        scrolled.set_child(Some(&pane));
+
+        let stack = super::gtk::Stack::new();
+        let hidden = super::gtk::Box::new(super::gtk::Orientation::Vertical, 0);
+        stack.add_named(&hidden, Some("hidden"));
+        stack.add_named(&scrolled, Some("visible"));
+        stack.set_visible_child_name("visible");
+
+        let workspace_root = super::gtk::Box::new(super::gtk::Orientation::Vertical, 0);
+        workspace_root.append(&stack);
+
+        let leaf = super::find_leaf_pane(
+            &workspace_root.upcast::<super::gtk::Widget>(),
+            super::gtk::Orientation::Horizontal,
+            true,
+        );
+
+        assert_eq!(leaf, pane.upcast::<super::gtk::Widget>());
     }
 
     #[test]

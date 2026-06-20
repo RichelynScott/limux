@@ -103,6 +103,48 @@ assert_no_legacy_host_entrypoint() {
     fi
 }
 
+assert_split_icon_svg() {
+    local path="$1"
+    local prefix
+
+    if [ ! -s "$path" ]; then
+        echo "ERROR: split icon source is missing or empty: ${path}"
+        exit 1
+    fi
+
+    prefix="$(LC_ALL=C head -c 5 "$path")"
+    case "$prefix" in
+        "<svg "|"<?xml") ;;
+        *)
+            echo "ERROR: split icon source does not start with SVG/XML bytes: ${path}"
+            exit 1
+            ;;
+    esac
+
+    if ! LC_ALL=C grep -Eq '<svg([[:space:]>])' "$path"; then
+        echo "ERROR: split icon source is missing an <svg> element: ${path}"
+        exit 1
+    fi
+    if ! LC_ALL=C grep -q '</svg>' "$path"; then
+        echo "ERROR: split icon source is missing a closing </svg>: ${path}"
+        exit 1
+    fi
+}
+
+validate_split_icon_sources() {
+    local icons_dir="$1"
+    local rel
+
+    for rel in \
+        "limux-split-horizontal-symbolic.svg" \
+        "limux-split-vertical-symbolic.svg" \
+        "hicolor/scalable/actions/limux-split-horizontal-symbolic.svg" \
+        "hicolor/scalable/actions/limux-split-vertical-symbolic.svg"
+    do
+        assert_split_icon_svg "${icons_dir}/${rel}"
+    done
+}
+
 install_desktop_file() {
     local src="$1"
     local dest="$2"
@@ -209,6 +251,8 @@ if ! command -v python3 >/dev/null 2>&1; then
     echo "Install Python 3, then rerun ./scripts/package.sh"
     exit 1
 fi
+
+validate_split_icon_sources "$ICONS_DIR"
 
 if [ ! -f "${ROOT_DIR}/ghostty/build.zig" ]; then
     echo "ERROR: Ghostty submodule is missing or uninitialized at ${ROOT_DIR}/ghostty"

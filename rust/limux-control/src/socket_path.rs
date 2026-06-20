@@ -36,11 +36,13 @@ pub fn resolve_socket_path(explicit: Option<PathBuf>, mode: SocketMode) -> PathB
         return path;
     }
 
-    if let Some(path) = get_env_path(LIMUX_SOCKET_ENV) {
-        return path;
-    }
-    if let Some(path) = get_env_path(LIMUX_SOCKET_PATH_ENV) {
-        return path;
+    if mode == SocketMode::Runtime {
+        if let Some(path) = get_env_path(LIMUX_SOCKET_ENV) {
+            return path;
+        }
+        if let Some(path) = get_env_path(LIMUX_SOCKET_PATH_ENV) {
+            return path;
+        }
     }
 
     SocketMode::default_for(mode)
@@ -256,6 +258,17 @@ mod tests {
         let _socket = EnvGuard::set(LIMUX_SOCKET_ENV, None);
         let _socket_path = EnvGuard::set(LIMUX_SOCKET_PATH_ENV, None);
         let _xdg = EnvGuard::set("XDG_RUNTIME_DIR", None);
+
+        let resolved = resolve_socket_path(None, SocketMode::Debug);
+        assert_eq!(resolved, PathBuf::from(DEBUG_SOCKET));
+    }
+
+    #[test]
+    fn debug_mode_ignores_inherited_runtime_socket_env() {
+        let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
+        let _socket = EnvGuard::set(LIMUX_SOCKET_ENV, Some("/tmp/from-runtime.sock"));
+        let _socket_path =
+            EnvGuard::set(LIMUX_SOCKET_PATH_ENV, Some("/tmp/from-runtime-path.sock"));
 
         let resolved = resolve_socket_path(None, SocketMode::Debug);
         assert_eq!(resolved, PathBuf::from(DEBUG_SOCKET));

@@ -43,6 +43,20 @@ Practical result for this work:
 - First real task population remains blocked on a wrapper/source fix or a
   SCRIM-backed provider run of `parse-prd`.
 
+G0 stability follow-up on 2026-06-20:
+
+- `task-master-reviewed list` and `task-master-reviewed next` were re-run from
+  the G0 worktree before subagent implementation.
+- The wrapper still reported no usable tasks because this repo has only
+  `.taskmaster/docs/` and `.taskmaster/tasks/`, with no checked-in
+  `.taskmaster/config.json` or `.taskmaster/tasks/tasks.json`.
+- No task IDs, statuses, or task-store files were invented. G0 was tracked with
+  the live Codex plan and the subagent lane summaries instead.
+- For future refinement, the wrapper should make this failure mode explicit:
+  "TaskMaster initialized but no task store/config exists; run the approved
+  bootstrap or parse-prd path" rather than presenting an empty task list that
+  looks like valid project state.
+
 ## Completed Implementation Notes
 
 - Sidebar compact-state runtime and persisted width now use
