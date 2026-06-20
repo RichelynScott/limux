@@ -1788,3 +1788,33 @@ evidence becomes concrete or the operator approves the next step.
 ### Related:
 `HANDOFF.md` | `HALO_HANDOFF.md` | hcom `limux-crash-20260620` |
 `49fb4cf3a15262fd4d09532c0f8fdc38ab8fdc45`
+
+## 2026-06-20 - G0 Stability PR Merged After Codex Rereview
+### What:
+Closed the G0 stability PR loop for Limux. PR #1 was merged into
+`lifo/workspaces-sidebar-notifications-20260620` at
+`299a8fc762dc5f4a168d7d37c8148c58d0aedb08`.
+
+### Why:
+The operator requested that all Codex PR bot feedback be addressed, that
+`@codex review` be invoked after fixes, and that the PR merge only happen after
+Codex reported the latest head clean.
+
+### How:
+Lifo fixed the Codex P2 feedback by making the GTK traversal unit test skip
+when `gtk::init()` cannot initialize a display. Halo independently verified the
+PR bot comment, the no-display and forced-invalid-backend test paths, formatting
+and diff checks, and the GitHub PR state. Codex rereview then reported:
+`Didn't find any major issues` for `8798eaa839`.
+
+### Impact:
+The recommended integration lane is now
+`origin/lifo/workspaces-sidebar-notifications-20260620` at `299a8fc`. The
+active user-local `limux` symlink still points at the earlier
+`workspaces-sidebar-notifications-20260620` install; installing the G0 merge is
+a separate reviewed action if the operator wants it live.
+
+### Related:
+PR #1 | `8798eaa83963ecbe411cda7cc7d3c6345bd0f90d` |
+`299a8fc762dc5f4a168d7d37c8148c58d0aedb08` |
+hcom `limux-g0-stability-20260620`

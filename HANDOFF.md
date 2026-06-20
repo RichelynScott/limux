@@ -20,22 +20,17 @@ that help the operator run multiple terminal/agent sessions.
 1. Preserve peer dirt: do not edit or stage `LIFO_HANDOFF.md` or `archive/`
    unless lifo explicitly hands them over.
 2. Keep `origin/lifo/workspaces-sidebar-notifications-20260620` at
-   `49fb4cf3a15262fd4d09532c0f8fdc38ab8fdc45` as the recommended integration
-   lane. Lifo and halo agreed not to merge halo's branch wholesale and not to
-   cherry-pick halo docs into lifo's branch right now.
-3. Resolve the reported Limux crash with the operator by choosing one numbered
-   path:
-   - Option 1, recommended: operator-approved controlled cleanup/restart of the
-     currently live Limux hosts/windows, then reopen `limux`.
-   - Option 2: watch-only; if it recurs, capture the exact click/action and
-     rerun the crash evidence commands below.
-   - Option 3: rollback `~/.local/bin/limux` to the previous reviewed build.
-4. Do not mutate the integration branch while crash evidence is inconclusive.
-   Lifo is holding mutation on the integration lane.
-5. Continue the separate GTK-critical investigation only after the crash/restart
-   choice is settled. The recurring log lines are around
-   `gtk_scrolled_window_get_child`, `gtk_viewport_get_child`, and
-   `gtk_stack_set_visible_child_name`.
+   `299a8fc762dc5f4a168d7d37c8148c58d0aedb08` as the recommended integration
+   lane. This includes the workspace/sidebar work plus the G0 stability merge.
+3. If the operator wants the G0 stability fixes in the live app, do a separate
+   reviewed user-local install from
+   `/home/riche/MCPs/limux-workspaces-sidebar-notifications`; the current
+   `/home/riche/.local/bin/limux` symlink still points at the earlier
+   `workspaces-sidebar-notifications-20260620` install.
+4. If the old reported crash recurs, capture the exact click/action and rerun
+   the crash evidence commands below before rollback or cleanup.
+5. Keep the old Project Isolation Lab / VM goal out of this repo unless the
+   operator explicitly redirects back to it.
 
 ## Current State
 
@@ -43,12 +38,13 @@ that help the operator run multiple terminal/agent sessions.
 |---|---|
 | Repo | `/home/riche/MCPs/limux` |
 | Current checkout | `halo/limux-ui-improvements-20260620`, tracking `origin/halo/limux-ui-improvements-20260620` |
-| Current checkout HEAD | `355ce4b docs(handoff): record limux ui improvement branch` |
-| Recommended integration lane | `origin/lifo/workspaces-sidebar-notifications-20260620` at `49fb4cf3a15262fd4d09532c0f8fdc38ab8fdc45` |
+| Current checkout HEAD | `65cb302 docs(handoff): record limux crash triage` |
+| Recommended integration lane | `origin/lifo/workspaces-sidebar-notifications-20260620` at `299a8fc762dc5f4a168d7d37c8148c58d0aedb08` |
 | Installed Limux | `/home/riche/.local/limux-reviewed/workspaces-sidebar-notifications-20260620/bin/limux` |
-| Open PRs | `gh pr list --repo RichelynScott/limux --state open ...` returned `[]` on 2026-06-20 |
+| PR closeout | PR #1 merged into the integration lane at `299a8fc762dc5f4a168d7d37c8148c58d0aedb08` after Codex rereview cleared `8798eaa839`. |
 | Dirty peer files | `LIFO_HANDOFF.md` modified, `archive/` untracked |
-| Runtime classification | Reported crash is not yet proven to be a Limux code crash; evidence points first to display/compositor/session reset plus duplicate live hosts. |
+| Runtime classification | Earlier crash was not proven to be a Limux code crash; evidence pointed first to display/compositor/session reset plus duplicate live hosts. |
+| Compact/close state | Halo goal loop is complete; no active blocker in this session. |
 
 ## Crash Triage - 2026-06-20
 
@@ -91,6 +87,8 @@ branch.
 | 2026-06-20 | Installed integration build user-local. | `scripts/user-local-install/install-user-local.sh --apply --profile release --install-id workspaces-sidebar-notifications-20260620`; install hash check passed. |
 | 2026-06-20 | Coordinated with lifo on reported crash. | hcom `limux-crash-20260620`; lifo found matching evidence and no branch-specific panic/segfault. |
 | 2026-06-20 | Classified crash evidence. | Host log, socket, process, selected-workspace health, and journal checks. |
+| 2026-06-20 | Reviewed lifo's clipboard paste fix. | `origin/lifo/fix-clipboard-paste-20260620` at `b05af68`; no blocking findings; host tests/check passed in exported review tree. Not installed into live Limux by halo. |
+| 2026-06-20 | Reviewed and closed G0 stability PR bot loop. | PR #1: Codex bot P2 fixed at `8798eaa839`, bot rereview said no major issues, PR merged at `299a8fc762dc5f4a168d7d37c8148c58d0aedb08`. |
 
 ## Key Files For Context
 
@@ -105,6 +103,46 @@ branch.
 | `/home/riche/.local/state/limux/logs/limux-host.log` | Current automatic host stderr log. |
 | `/home/riche/MCPs/limux-workspaces-sidebar-notifications` | Lifo sibling worktree for the recommended integration lane. |
 | `/home/riche/MCPs/limux/docs/project-isolation-lab-goal.md` | Historical Limux-local VM/isolation alignment note; superseded for active Limux work. |
+
+## PR #1 / G0 Stability Closeout - 2026-06-20
+
+PR #1 (`https://github.com/RichelynScott/limux/pull/1`) was a stacked PR from
+`lifo/g0-stability-20260620` into
+`lifo/workspaces-sidebar-notifications-20260620`.
+
+Closeout facts:
+
+- Head before merge: `8798eaa83963ecbe411cda7cc7d3c6345bd0f90d`
+  (`test(host): skip gtk traversal test without display`).
+- Merge commit: `299a8fc762dc5f4a168d7d37c8148c58d0aedb08`
+  (`fix(host): harden G0 runtime stability`).
+- GitHub state: `MERGED` at `2026-06-20T07:08:13Z`.
+- Codex rereview on current head reported:
+  `Codex Review: Didn't find any major issues.`
+- Local sibling worktree
+  `/home/riche/MCPs/limux-workspaces-sidebar-notifications` is clean on
+  `lifo/workspaces-sidebar-notifications-20260620` and matches origin at
+  `299a8fc`.
+
+What the merge added:
+
+- Runtime/debug socket environment isolation.
+- Hook `resolved_socket` diagnostics.
+- Ghostty HiDPI physical sizing.
+- Wrapped pane traversal for focus/attention paths.
+- Split SVG validation before package/user-local install.
+- Display-independent GTK traversal test behavior for plain `cargo test`.
+
+Halo verification before merge closeout:
+
+```bash
+gh pr view 1 --repo RichelynScott/limux --json headRefOid,reviews,comments,mergeStateStatus,state
+gh api repos/RichelynScott/limux/pulls/1/comments
+env -u DISPLAY -u WAYLAND_DISPLAY CARGO_TARGET_DIR=/tmp/limux-g0-no-display-target cargo test -p limux-host-linux find_leaf_pane_descends_wrapped_workspace_root_to_pane -- --nocapture
+env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=invalid CARGO_TARGET_DIR=/tmp/limux-g0-no-display-target cargo test -p limux-host-linux find_leaf_pane_descends_wrapped_workspace_root_to_pane -- --nocapture
+cargo fmt --check
+git diff --check
+```
 
 ## Crash Evidence Commands
 
