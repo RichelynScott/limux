@@ -26,6 +26,14 @@ const AGENT_TEAM_ROSTER_MARKER: &str = "<!-- limux-team-roster durable:create-if
 const AGENT_TEAM_LEDGER_MARKER: &str = "<!-- limux-review-ledger durable:v1 -->";
 const REVIEW_REQUEST_MARKER: &str = "<!-- limux-review-request generated:v1 -->";
 const REVIEW_EVIDENCE_MARKER: &str = "<!-- limux-review-evidence pointer:v1 -->";
+const HOST_LAUNCH_ENV_REMOVALS: &[&str] = &[
+    "LIMUX_SOCKET",
+    "LIMUX_SOCKET_PATH",
+    "LIMUX_WORKSPACE_ID",
+    "LIMUX_SURFACE_ID",
+    "LIMUX_PANE_ID",
+    "LIMUX_TAB_ID",
+];
 const AGENT_TEAM_DEFAULT_PROTOCOL_FILE: &str = "LIMUX_AGENTS.md";
 const AGENT_TEAM_DEFAULT_ROSTER_FILE: &str = "LIMUX_TEAM_ROSTER.md";
 const AGENT_TEAM_DEFAULT_LEDGER_FILE: &str = "LIMUX_REVIEW_LEDGER.md";
@@ -282,9 +290,17 @@ fn resolve_host_binary() -> Result<PathBuf> {
         })
 }
 
+fn host_launch_command(host: &Path) -> Command {
+    let mut command = Command::new(host);
+    for key in HOST_LAUNCH_ENV_REMOVALS {
+        command.env_remove(key);
+    }
+    command
+}
+
 fn launch_host() -> Result<()> {
     let host = resolve_host_binary()?;
-    let err = Command::new(&host)
+    let err = host_launch_command(&host)
         .spawn()
         .with_context(|| format!("failed to launch {}", host.display()))?
         .wait()
@@ -5912,6 +5928,22 @@ mod cli_arg_tests {
         let dev = Path::new("/repo/target/debug/limux-cli");
         let candidates = host_binary_candidates(dev);
         assert!(candidates.contains(&PathBuf::from("/repo/target/debug/limux")));
+    }
+
+    #[test]
+    fn host_launch_command_clears_inherited_runtime_target_env() {
+        let command = host_launch_command(Path::new("/tmp/limux-host"));
+        let removals = command
+            .get_envs()
+            .filter_map(|(key, value)| value.is_none().then_some(key.to_string_lossy()))
+            .collect::<Vec<_>>();
+
+        for key in HOST_LAUNCH_ENV_REMOVALS {
+            assert!(
+                removals.iter().any(|removed| removed == key),
+                "missing env removal for {key}"
+            );
+        }
     }
 
     #[tokio::test]

@@ -31,6 +31,14 @@ const PANE_CREATE_COMMAND_READY_INTERVAL_MS: u64 = 50;
 const PANE_CREATE_COMMAND_READY_ATTEMPTS: u32 = 80;
 const PANE_CREATE_COMMAND_SETTLE_ATTEMPTS: u32 = 10;
 const PANE_CREATE_COMMAND_SUBMIT_DELAY_MS: u64 = 100;
+const HOST_LAUNCH_ENV_REMOVALS: &[&str] = &[
+    "LIMUX_SOCKET",
+    "LIMUX_SOCKET_PATH",
+    "LIMUX_WORKSPACE_ID",
+    "LIMUX_SURFACE_ID",
+    "LIMUX_PANE_ID",
+    "LIMUX_TAB_ID",
+];
 
 // ---------------------------------------------------------------------------
 // State
@@ -5289,10 +5297,9 @@ fn find_focused_pane(state: &State) -> Option<(String, gtk::Widget)> {
 }
 
 fn focused_shortcut_target(state: &State) -> pane::FocusedShortcutTarget {
-    let Some((_ws_id, pane_widget)) = find_leaf_focused_pane(state) else {
-        return pane::FocusedShortcutTarget::None;
-    };
-    pane::focused_shortcut_target(&pane_widget)
+    find_focused_pane(state)
+        .map(|(_ws_id, pane_widget)| pane::focused_shortcut_target(&pane_widget))
+        .unwrap_or(pane::FocusedShortcutTarget::None)
 }
 
 fn show_runtime_error(state: &State, title: &str, detail: &str) {
@@ -5321,7 +5328,12 @@ fn spawn_new_instance(state: &State) -> bool {
         }
     };
 
-    match std::process::Command::new(exe).spawn() {
+    let mut command = std::process::Command::new(exe);
+    for key in HOST_LAUNCH_ENV_REMOVALS {
+        command.env_remove(key);
+    }
+
+    match command.spawn() {
         Ok(_) => true,
         Err(err) => {
             let detail = format!("Failed to launch a new Limux instance: {err}");
