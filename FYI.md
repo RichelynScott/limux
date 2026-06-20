@@ -1669,3 +1669,34 @@ source or assets.
 ### Related:
 `AGENTS.md` | `docs/cmux-parity-plan.md` |
 <https://github.com/manaflow-ai/cmux/releases>
+
+## 2026-06-19 - Host Runtime Fixes And Automatic Logs
+### What:
+Fixed Limux host startup/runtime issues reported from live logs: duplicate
+terminal stack child names, stuck mouse-left-selection behavior, bad inherited
+`XDG_DATA_DIRS` hiding GSettings schemas, and missing automatic host stderr
+logging.
+
+### Why:
+The operator reported a crash when opening a new workspace, warnings about
+missing GSettings schemas, and a pane that behaved like the left mouse button
+was stuck. A restarted session needs the exact installed build, log path, and
+remaining manual validation steps.
+
+### How:
+Pushed `e79a1ac fix(host): stabilize startup and mouse release` and
+`596bc69 fix(host): add startup logging and schema env repair` to `main`, then
+installed `/home/riche/.local/limux-reviewed/runtime-logs-xdg-20260619/`.
+The patched host logs to `~/.local/state/limux/logs/limux-host.log` by
+default. Created `LIFO_HANDOFF.md` on branch `lifo/reboot-handoff-20260619`
+for reboot continuity without touching the pre-existing dirty shared
+`HANDOFF.md`.
+
+### Impact:
+Fresh Limux launches should preserve system GSettings schema dirs even from an
+old Limux terminal environment, and future crashes should leave automatic host
+stderr evidence. Manual post-reboot validation is still needed for new
+workspace creation and mouse selection release behavior.
+
+### Related:
+`e79a1ac` | `596bc69` | `LIFO_HANDOFF.md`
