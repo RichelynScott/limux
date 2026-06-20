@@ -19,21 +19,24 @@ that help the operator run multiple terminal/agent sessions.
 
 1. Preserve peer dirt: do not edit or stage `LIFO_HANDOFF.md` or `archive/`
    unless lifo explicitly hands them over.
-2. Coordinate with lifo on the current UI requests. Lifo confirmed his active
-   lane is read-only investigation in
-   `/home/riche/MCPs/limux-workspaces-sidebar-notifications` on branch
-   `lifo/workspaces-sidebar-notifications-20260620`; he does not own root
-   `HANDOFF.md`.
-3. Consume lifo's code-path report for:
-   - right-clicking a workspace to mark it unread manually;
-   - a blue outline around the pane/session needing attention, lingering for
-     about three seconds after hover.
-4. Before code edits, keep the current baseline visible:
+2. Review or merge the pushed implementation branch
+   `halo/limux-ui-improvements-20260620`, commit `b09c7f8`, which adds:
+   - right-click workspace `Mark Unread`;
+   - blue pane/session attention outline for unfocused terminal-originated
+     notifications, clearing three seconds after hover.
+3. Manually validate the feature in a live Limux window after launching a build
+   from this branch or after merging/installing it. The currently installed
+   user-local `limux` path still points at the pre-feature
+   `multi-runtime-isolation-20260620` build.
+4. Continue investigating the remaining GTK critical log lines around
+   `gtk_scrolled_window_get_child`, `gtk_viewport_get_child`, and
+   `gtk_stack_set_visible_child_name`.
+5. Before further code edits, keep the current baseline visible:
    - `git status --short --branch`
    - `cargo check -p limux-host-linux`
    - `limux --json surface-health`
    - `tail -n 200 ~/.local/state/limux/logs/limux-host.log`
-5. After implementing UI/runtime changes, run the narrow relevant checks first,
+6. After implementing additional UI/runtime changes, run the narrow relevant checks first,
    then `./scripts/xvfb-smoke-test.sh` or `./scripts/check.sh` when the blast
    radius warrants it.
 
@@ -42,10 +45,10 @@ that help the operator run multiple terminal/agent sessions.
 | Area | State |
 |---|---|
 | Repo | `/home/riche/MCPs/limux` |
-| Branch | `lifo/reboot-handoff-20260619`, tracking `origin/lifo/reboot-handoff-20260619` |
-| Current HEAD | `1df7621 fix(host): isolate concurrent runtime launches` |
+| Branch | `halo/limux-ui-improvements-20260620`, tracking `origin/halo/limux-ui-improvements-20260620` |
+| Current HEAD | `b09c7f8 feat(host): add workspace unread and pane attention markers` |
 | Main baseline | `origin/main` at `596bc69 fix(host): add startup logging and schema env repair` |
-| Installed Limux | `/home/riche/.local/limux-reviewed/multi-runtime-isolation-20260620/bin/limux` |
+| Installed Limux | `/home/riche/.local/limux-reviewed/multi-runtime-isolation-20260620/bin/limux` (pre-feature build) |
 | Open PRs | `gh pr list --repo RichelynScott/limux --state open ...` returned `[]` on 2026-06-20 |
 | Dirty peer files | `LIFO_HANDOFF.md` modified, `archive/` untracked |
 | Live runtime | `limux --json surface-health` returned two healthy terminal surfaces |
@@ -72,6 +75,8 @@ Latest host log observations from
 | 2026-06-20 | Coordinated with lifo. | hcom `#113038`: lifo does not own root `HANDOFF.md`; his lane is read-only in the sibling worktree. |
 | 2026-06-20 | Checked hcom collision alerts for `HANDOFF.md` / `FYI.md`. | Alerts referenced halo's stale 2026-06-11 `apply_patch` events; `muvi` is not active. |
 | 2026-06-20 | Verified current repo/runtime intake before implementation. | `git status --short --branch`; `git log --oneline`; `gh pr list`; `readlink -f ~/.local/bin/limux`; `tail -n 200 ~/.local/state/limux/logs/limux-host.log`; `limux --json surface-health`; `cargo check -p limux-host-linux`. |
+| 2026-06-20 | Implemented manual workspace unread marking and pane attention outlines. | Commit `b09c7f8` on branch `halo/limux-ui-improvements-20260620`, pushed to origin. |
+| 2026-06-20 | Verified the implementation. | `cargo fmt --check`; `cargo test -p limux-host-linux`; `LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh`; `git diff --check -- rust/limux-host-linux/src/window.rs rust/limux-host-linux/src/pane.rs`. |
 
 ## Key Files For Context
 
@@ -80,6 +85,7 @@ Latest host log observations from
 | `/home/riche/MCPs/limux/LIFO_HANDOFF.md` | Lifo-owned reboot/runtime handoff; currently dirty from a human-added log note. Do not edit unless lifo hands it over. |
 | `/home/riche/MCPs/limux/HALO_HANDOFF.md` | Halo-owned successor state for Limux improvement work. |
 | `/home/riche/MCPs/limux/rust/limux-host-linux/src/window.rs` | Workspace/sidebar UI, notification activation, pane/tab focus, and several likely GTK-critical code paths. |
+| `/home/riche/MCPs/limux/rust/limux-host-linux/src/pane.rs` | Pane registry, pane CSS, tab UI, and the new blue attention outline/hover-clear behavior. |
 | `/home/riche/MCPs/limux/rust/limux-host-linux/src/main.rs` | Host startup, logging, socket handling, and concurrent runtime launch isolation. |
 | `/home/riche/MCPs/limux/rust/limux-cli/src/main.rs` | Installed CLI entrypoint and host-launch behavior. |
 | `/home/riche/.local/state/limux/logs/limux-host.log` | Current automatic host stderr log. |
@@ -111,6 +117,9 @@ readlink -f /home/riche/.local/bin/limux
 tail -n 200 /home/riche/.local/state/limux/logs/limux-host.log
 limux --json surface-health
 cargo check -p limux-host-linux
+cargo fmt --check
+cargo test -p limux-host-linux
+LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh
 hcom list -v --name halo
 hcom transcript lifo --last 1 --full --name halo
 hcom events --sql 'id=113041 or id=113043' --name halo

@@ -1726,3 +1726,32 @@ remaining VM/isolation note only as historical context.
 ### Related:
 `HANDOFF.md` | `HALO_HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
 hcom `#113038`
+
+## 2026-06-20 - Workspace Unread And Pane Attention Markers
+### What:
+Added two scoped Limux UI improvements on branch
+`halo/limux-ui-improvements-20260620`: a workspace context-menu `Mark Unread`
+action and a blue pane attention outline for unfocused terminal-originated
+notifications.
+
+### Why:
+The operator wanted Limux to be more useful for managing many terminal/agent
+sessions, specifically by marking workspaces for follow-up and visually finding
+the pane/session that needs attention.
+
+### How:
+Reused the existing workspace unread visual pipeline, added a shared helper for
+manual and notification-driven unread state, routed notification/bell targets
+through existing `pane_id` metadata, and used the existing pane registry to add
+a `.limux-pane-attention` CSS class. Hovering an outlined pane clears the class
+after three seconds.
+
+### Impact:
+The change is available on the pushed implementation branch but is not yet in
+the installed user-local `limux` build. Verification passed with
+`cargo fmt --check`, `cargo test -p limux-host-linux`, and
+`LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh`.
+
+### Related:
+`b09c7f8` | `rust/limux-host-linux/src/window.rs` |
+`rust/limux-host-linux/src/pane.rs`
