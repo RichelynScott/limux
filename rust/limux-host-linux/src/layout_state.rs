@@ -11,6 +11,7 @@ pub const PERSISTENCE_DIR_NAME: &str = "limux";
 pub const SESSION_FILE_NAME: &str = "session.json";
 pub const LEGACY_WORKSPACES_FILE_NAME: &str = "workspaces.json";
 pub const DEFAULT_SIDEBAR_WIDTH: i32 = 220;
+pub const MIN_SIDEBAR_WIDTH: i32 = 84;
 pub const DEFAULT_SPLIT_RATIO: f64 = 0.5;
 const MIN_SPLIT_RATIO: f64 = 0.02;
 const MAX_SPLIT_RATIO: f64 = 0.98;
@@ -380,7 +381,7 @@ pub fn split_position_from_ratio(ratio: f64, total_size: i32) -> i32 {
 
 pub fn normalize_session(mut state: AppSessionState) -> AppSessionState {
     state.version = SESSION_VERSION;
-    state.sidebar.width = state.sidebar.width.max(DEFAULT_SIDEBAR_WIDTH);
+    state.sidebar.width = state.sidebar.width.max(MIN_SIDEBAR_WIDTH);
     if state.workspaces.is_empty() {
         state.active_workspace_index = 0;
     } else if state.active_workspace_index >= state.workspaces.len() {
@@ -1733,5 +1734,18 @@ mod tests {
             DEFAULT_SPLIT_RATIO
         );
         assert_eq!(snapshot_split_ratio(0, 0, None), DEFAULT_SPLIT_RATIO);
+    }
+
+    #[test]
+    fn normalize_session_preserves_compact_sidebar_width() {
+        let state = normalize_session(AppSessionState {
+            sidebar: SidebarState {
+                visible: true,
+                width: MIN_SIDEBAR_WIDTH,
+            },
+            ..AppSessionState::default()
+        });
+
+        assert_eq!(state.sidebar.width, MIN_SIDEBAR_WIDTH);
     }
 }

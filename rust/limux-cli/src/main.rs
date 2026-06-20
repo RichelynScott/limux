@@ -41,6 +41,9 @@ const AGENT_TEAM_LOCAL_POLICY_FILE: &str = "LIMUX_AGENTS.local.md";
 const AGENT_TEAM_INSTRUCTION_FILES: &[&str] = &["AGENTS.md", "CLAUDE.md", "GEMINI.md"];
 const REVIEW_DEFAULT_REVIEWS_DIR: &str = "reviews";
 const REVIEW_REVIEWERS: &[&str] = &["codex", "claude", "gemini", "opencode", "manual"];
+type HookInstallSpec = (&'static str, &'static str, Option<&'static str>);
+const CODEX_USER_INPUT_TOOL_MATCHER: &str =
+    "AskUserQuestion|request_user_input|functions\\.request_user_input";
 const REVIEW_LENSES: &[&str] = &[
     "security",
     "correctness",
@@ -966,7 +969,15 @@ async fn run_agent_hook(
     // Build a human-friendly title + body depending on event + agent.
     let agent_label = agent.label();
     persist_agent_hook_session(agent, args, &payload, &event)?;
+    let tool_name = hook_str(&payload, &["tool_name", "toolName", "name"]).unwrap_or("");
     let (title, body) = match event.as_str() {
+        "user-input-needed" => (
+            format!("{agent_label} needs you"),
+            hook_str(&payload, &["message", "summary", "prompt"])
+                .or_else(|| (!tool_name.is_empty()).then_some(tool_name))
+                .unwrap_or("waiting for input")
+                .to_owned(),
+        ),
         "Notification" => (
             format!("{agent_label} needs you"),
             hook_str(&payload, &["message", "notification"])
@@ -990,10 +1001,7 @@ async fn run_agent_hook(
             hook_str(&payload, &["reason"]).unwrap_or("").to_owned(),
         ),
         "PreToolUse" | "PostToolUse" => (
-            format!(
-                "{agent_label}: {}",
-                hook_str(&payload, &["tool_name"]).unwrap_or("tool")
-            ),
+            format!("{agent_label}: {}", non_empty_or(tool_name, "tool")),
             hook_str(&payload, &["tool_input", "summary"])
                 .unwrap_or("")
                 .to_owned(),
@@ -1034,15 +1042,46 @@ async fn run_agent_hook(
         params.insert("body".to_string(), Value::String(body));
     }
 
-    let _ = call_in_workspace_scope(
+    let notify_result = call_in_workspace_scope(
         client,
-        workspace,
+        workspace.clone(),
         "notification.create",
         Value::Object(params),
     )
     .await;
+    match notify_result {
+        Ok(_) => write_agent_hook_debug(
+            agent,
+            &event,
+            "notify_ok",
+            &json!({
+                "workspace": workspace,
+                "surface_id": limux_env_value("LIMUX_SURFACE_ID"),
+                "socket": limux_env_value("LIMUX_SOCKET"),
+            }),
+        ),
+        Err(error) => write_agent_hook_debug(
+            agent,
+            &event,
+            "notify_error",
+            &json!({
+                "error": format!("{error:#}"),
+                "workspace": workspace,
+                "surface_id": limux_env_value("LIMUX_SURFACE_ID"),
+                "socket": limux_env_value("LIMUX_SOCKET"),
+            }),
+        ),
+    }
 
     Ok(agent_hook_output(&event, &payload))
+}
+
+fn non_empty_or<'a>(value: &'a str, fallback: &'a str) -> &'a str {
+    if value.trim().is_empty() {
+        fallback
+    } else {
+        value
+    }
 }
 
 fn agent_hook_output(event: &str, payload: &Value) -> Value {
@@ -1515,20 +1554,25 @@ fn install_hook_target(agent: agent_hooks::AgentKind) -> Result<()> {
             &codex_hooks_path(),
             agent,
             &[
-                ("SessionStart", "session-start"),
-                ("UserPromptSubmit", "prompt-submit"),
-                ("Stop", "stop"),
+                ("SessionStart", "session-start", None),
+                ("UserPromptSubmit", "prompt-submit", None),
+                (
+                    "PreToolUse",
+                    "user-input-needed",
+                    Some(CODEX_USER_INPUT_TOOL_MATCHER),
+                ),
+                ("Stop", "stop", None),
             ],
         ),
         agent_hooks::AgentKind::Claude => install_json_hooks(
             &claude_settings_path(),
             agent,
             &[
-                ("SessionStart", "session-start"),
-                ("UserPromptSubmit", "prompt-submit"),
-                ("Stop", "stop"),
-                ("Notification", "stop"),
-                ("SessionEnd", "session-end"),
+                ("SessionStart", "session-start", None),
+                ("UserPromptSubmit", "prompt-submit", None),
+                ("Stop", "stop", None),
+                ("Notification", "stop", None),
+                ("SessionEnd", "session-end", None),
             ],
         ),
         agent_hooks::AgentKind::OpenCode => install_opencode_plugin(),
@@ -1536,10 +1580,10 @@ fn install_hook_target(agent: agent_hooks::AgentKind) -> Result<()> {
             &gemini_settings_path(),
             agent,
             &[
-                ("SessionStart", "session-start"),
-                ("BeforeAgent", "prompt-submit"),
-                ("AfterAgent", "stop"),
-                ("SessionEnd", "session-end"),
+                ("SessionStart", "session-start", None),
+                ("BeforeAgent", "prompt-submit", None),
+                ("AfterAgent", "stop", None),
+                ("SessionEnd", "session-end", None),
             ],
         ),
     }
@@ -1564,7 +1608,7 @@ fn uninstall_hook_target(agent: agent_hooks::AgentKind) -> Result<()> {
 fn install_json_hooks(
     path: &Path,
     agent: agent_hooks::AgentKind,
-    events: &[(&str, &str)],
+    events: &[HookInstallSpec],
 ) -> Result<()> {
     let mut root = read_json_object(path)?;
     let hooks = root
@@ -1586,7 +1630,7 @@ fn install_json_hooks(
             .unwrap_or(true)
     });
 
-    for (agent_event, limux_event) in events {
+    for (agent_event, limux_event, matcher) in events {
         let entries = hooks
             .entry((*agent_event).to_string())
             .or_insert_with(|| Value::Array(Vec::new()));
@@ -1602,7 +1646,9 @@ fn install_json_hooks(
                 "timeout": hook_timeout(agent)
             }]
         });
-        if matches!(agent, agent_hooks::AgentKind::Claude) {
+        if let Some(matcher) = matcher {
+            entry["matcher"] = Value::String((*matcher).to_string());
+        } else if matches!(agent, agent_hooks::AgentKind::Claude) {
             entry["matcher"] = Value::String("*".to_string());
         }
         entries.push(entry);
@@ -6190,7 +6236,7 @@ mod cli_arg_tests {
         install_json_hooks(
             &path,
             agent_hooks::AgentKind::Claude,
-            &[("SessionStart", "session-start")],
+            &[("SessionStart", "session-start", None)],
         )
         .expect("install hooks");
 
@@ -6213,7 +6259,7 @@ mod cli_arg_tests {
         install_json_hooks(
             &path,
             agent_hooks::AgentKind::Codex,
-            &[("SessionStart", "session-start")],
+            &[("SessionStart", "session-start", None)],
         )
         .expect("install hooks");
 
@@ -6226,6 +6272,32 @@ mod cli_arg_tests {
             .as_str()
             .expect("command")
             .contains("hooks codex session-start"));
+    }
+
+    #[test]
+    fn codex_user_input_hook_install_writes_pretooluse_matcher() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("hooks.json");
+
+        install_json_hooks(
+            &path,
+            agent_hooks::AgentKind::Codex,
+            &[(
+                "PreToolUse",
+                "user-input-needed",
+                Some(CODEX_USER_INPUT_TOOL_MATCHER),
+            )],
+        )
+        .expect("install hooks");
+
+        let root: Value =
+            serde_json::from_slice(&fs::read(&path).expect("read hooks")).expect("json");
+        let entry = &root["hooks"]["PreToolUse"][0];
+        assert_eq!(entry["matcher"], CODEX_USER_INPUT_TOOL_MATCHER);
+        assert!(entry["hooks"][0]["command"]
+            .as_str()
+            .expect("command")
+            .contains("hooks codex user-input-needed"));
     }
 
     #[test]

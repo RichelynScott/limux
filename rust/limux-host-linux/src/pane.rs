@@ -7,6 +7,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::Duration;
 
 use gtk::glib;
 #[allow(unused_imports)]
@@ -25,6 +26,8 @@ use crate::shortcut_config::{NormalizedShortcut, ResolvedShortcutConfig, Shortcu
 use crate::terminal::{self, TerminalCallbacks};
 
 static NEXT_PANE_ID: AtomicU32 = AtomicU32::new(1);
+const PANE_ATTENTION_CSS_CLASS: &str = "limux-pane-attention";
+const PANE_ATTENTION_HOVER_CLEAR_MS: u64 = 3_000;
 
 fn next_pane_id() -> u32 {
     NEXT_PANE_ID.fetch_add(1, Ordering::Relaxed)
@@ -195,6 +198,16 @@ pub fn find_pane_widget_by_id(pane_id: u32) -> Option<gtk::Widget> {
     lookup_pane_internals(pane_id).map(|internals| internals.pane_outer.clone().upcast())
 }
 
+pub fn mark_pane_attention(pane_id: u32) {
+    let Some(internals) = lookup_pane_internals(pane_id) else {
+        return;
+    };
+    if let Some(source) = internals.attention_clear_timer.borrow_mut().take() {
+        source.remove();
+    }
+    internals.pane_outer.add_css_class(PANE_ATTENTION_CSS_CLASS);
+}
+
 pub fn set_workspace_dragging_all(active: bool) {
     PANE_REGISTRY.with(|registry| {
         for weak in registry.borrow().values() {
@@ -203,6 +216,31 @@ pub fn set_workspace_dragging_all(active: bool) {
             }
         }
     });
+}
+
+fn install_attention_hover_clear(internals: &Rc<PaneInternals>) {
+    let motion = gtk::EventControllerMotion::new();
+    let outer = internals.pane_outer.clone();
+    let attention_clear_timer = internals.attention_clear_timer.clone();
+    motion.connect_enter(move |_, _, _| {
+        if !outer.has_css_class(PANE_ATTENTION_CSS_CLASS) {
+            return;
+        }
+        if let Some(source) = attention_clear_timer.borrow_mut().take() {
+            source.remove();
+        }
+        let outer_for_timeout = outer.clone();
+        let timer_for_timeout = attention_clear_timer.clone();
+        let source = glib::timeout_add_local_once(
+            Duration::from_millis(PANE_ATTENTION_HOVER_CLEAR_MS),
+            move || {
+                outer_for_timeout.remove_css_class(PANE_ATTENTION_CSS_CLASS);
+                timer_for_timeout.borrow_mut().take();
+            },
+        );
+        *attention_clear_timer.borrow_mut() = Some(source);
+    });
+    internals.pane_outer.add_controller(motion);
 }
 
 // ---------------------------------------------------------------------------
@@ -321,6 +359,9 @@ struct TabContextMenuContext {
 // ---------------------------------------------------------------------------
 
 pub const PANE_CSS: &str = r#"
+.limux-pane-attention {
+    box-shadow: inset 0 0 0 2px @accent_bg_color;
+}
 .limux-pane-header {
     background-color: @window_bg_color;
     color: @window_fg_color;
@@ -558,6 +599,7 @@ pub fn create_pane(
         active_tab: None,
     }));
     let workspace_dragging = Rc::new(Cell::new(false));
+    let attention_clear_timer = Rc::new(RefCell::new(None));
     let pane_id = pane_id_for_initial_state(initial_state);
     let internals = Rc::new(PaneInternals {
         pane_id,
@@ -570,6 +612,7 @@ pub fn create_pane(
         callbacks: callbacks.clone(),
         working_directory: ws_wd.clone(),
         workspace_dragging: workspace_dragging.clone(),
+        attention_clear_timer: attention_clear_timer.clone(),
         new_terminal_button: new_term_btn.clone(),
         split_right_button: split_h_btn.clone(),
         split_down_button: split_v_btn.clone(),
@@ -632,6 +675,7 @@ pub fn create_pane(
         });
     }
 
+    install_attention_hover_clear(&internals);
     install_tab_strip_drop_target(&tab_overlay, &internals);
     install_content_drop_target(&internals);
 
@@ -890,6 +934,7 @@ pub struct PaneInternals {
     callbacks: Rc<PaneCallbacks>,
     working_directory: Rc<std::cell::RefCell<Option<String>>>,
     workspace_dragging: Rc<Cell<bool>>,
+    attention_clear_timer: Rc<RefCell<Option<glib::SourceId>>>,
     new_terminal_button: gtk::Button,
     split_right_button: gtk::Button,
     split_down_button: gtk::Button,
