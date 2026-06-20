@@ -408,6 +408,18 @@ fn terminal_search_action(query: &str) -> String {
     format!("search:{query}")
 }
 
+fn physical_surface_size(width_css: i32, height_css: i32, scale_factor: i32) -> Option<(u32, u32)> {
+    if width_css <= 0 || height_css <= 0 {
+        return None;
+    }
+
+    let scale = u32::try_from(scale_factor.max(1)).ok()?;
+    let width = u32::try_from(width_css).ok()?.checked_mul(scale)?;
+    let height = u32::try_from(height_css).ok()?.checked_mul(scale)?;
+
+    Some((width, height))
+}
+
 fn request_terminal_focus(gl_area: &gtk::GLArea, had_focus: &Cell<bool>) {
     had_focus.set(true);
     gl_area.grab_focus();
@@ -415,13 +427,14 @@ fn request_terminal_focus(gl_area: &gtk::GLArea, had_focus: &Cell<bool>) {
 
 fn refresh_surface_display(surface: ghostty_surface_t, gl_area: &gtk::GLArea) {
     let alloc = gl_area.allocation();
-    let w = alloc.width() as u32;
-    let h = alloc.height() as u32;
-    if w > 0 && h > 0 {
-        let scale = gl_area.scale_factor() as f64;
+    let scale_factor = gl_area.scale_factor();
+    if let Some((width_px, height_px)) =
+        physical_surface_size(alloc.width(), alloc.height(), scale_factor)
+    {
+        let scale = scale_factor.max(1) as f64;
         unsafe {
             ghostty_surface_set_content_scale(surface, scale, scale);
-            ghostty_surface_set_size(surface, w, h);
+            ghostty_surface_set_size(surface, width_px, height_px);
         }
     }
     unsafe { ghostty_surface_refresh(surface) };
@@ -2405,6 +2418,14 @@ mod tests {
         assert_eq!(terminal_search_action(""), "search:");
         assert_eq!(terminal_search_action("needle"), "search:needle");
         assert_eq!(terminal_search_action("two words"), "search:two words");
+    }
+
+    #[test]
+    fn surface_size_uses_physical_pixels_for_hidpi_allocations() {
+        assert_eq!(physical_surface_size(320, 240, 2), Some((640, 480)));
+        assert_eq!(physical_surface_size(320, 240, 0), Some((320, 240)));
+        assert_eq!(physical_surface_size(0, 240, 2), None);
+        assert_eq!(physical_surface_size(-1, 240, 2), None);
     }
 
     #[test]
