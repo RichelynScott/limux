@@ -1,5 +1,10 @@
 # Project Isolation Lab Goal Alignment
 
+> Superseded for active Limux work as of 2026-06-20. This file is historical
+> context only. The Limux repo's current goal is Limux product/runtime
+> improvement; the Project Isolation Lab / VM lane belongs to
+> `/home/riche/Proj/SUPPLY_CHAIN_SECURITY`.
+
 Status: Limux-local alignment note. The canonical Project Isolation Lab owner is
 gumo/SUPPLY_CHAIN_SECURITY under `/home/riche/Proj/SUPPLY_CHAIN_SECURITY`.
 

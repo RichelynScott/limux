@@ -1700,3 +1700,29 @@ workspace creation and mouse selection release behavior.
 
 ### Related:
 `e79a1ac` | `596bc69` | `LIFO_HANDOFF.md`
+
+## 2026-06-20 - Limux Improvement Focus Restored
+### What:
+Rewrote the root Limux handoff so the active repo goal is Limux
+product/runtime improvement, not the previous Project Isolation Lab / VM lane.
+
+### Why:
+The operator explicitly redirected this session to focus on improving Limux
+while the VM/isolation project is handled by the SCS team. Keeping the old VM
+goal as the root resume target was causing the Limux session to drift.
+
+### How:
+Coordinated with lifo over hcom. Lifo confirmed he does not own root
+`HANDOFF.md` and that his current lane is read-only investigation in the sibling
+worktree for manual workspace unread marking and pane attention outline
+requests. Replaced root `HANDOFF.md`, added `HALO_HANDOFF.md`, and marked
+`docs/project-isolation-lab-goal.md` as historical for active Limux work.
+
+### Impact:
+A zero-context Limux successor should now resume product/runtime improvement,
+preserve lifo-owned dirt in `LIFO_HANDOFF.md` and `archive/`, and use the
+remaining VM/isolation note only as historical context.
+
+### Related:
+`HANDOFF.md` | `HALO_HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
+hcom `#113038`
