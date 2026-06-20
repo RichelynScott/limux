@@ -944,14 +944,21 @@ fn clipboard_from_type(display: &gtk::gdk::Display, clipboard_type: c_int) -> gt
 fn clipboard_has_text(clipboard: &gtk::gdk::Clipboard) -> bool {
     let formats = clipboard.formats();
     let mime_types = formats.mime_types();
+    if clipboard_formats_include_text(
+        formats.contains_type(String::static_type()),
+        mime_types.iter().map(|mime| mime.as_str()),
+    ) {
+        return true;
+    }
+
     if clipboard_formats_include_image(mime_types.iter().map(|mime| mime.as_str())) {
         return false;
     }
 
-    clipboard_formats_include_text(
-        formats.contains_type(String::static_type()),
-        mime_types.iter().map(|mime| mime.as_str()),
-    )
+    // WSLg/Wayland can expose clipboard text to read_text_async while reporting
+    // no GTK-side formats up front. Treat empty metadata as unknown so Ghostty
+    // attempts the read instead of skipping paste before the clipboard is read.
+    mime_types.is_empty()
 }
 
 fn clipboard_formats_include_image<'a>(mime_types: impl IntoIterator<Item = &'a str>) -> bool {
@@ -964,14 +971,17 @@ fn clipboard_formats_include_text<'a>(
     has_string_type: bool,
     mime_types: impl IntoIterator<Item = &'a str>,
 ) -> bool {
-    if !has_string_type {
-        return false;
-    }
-
-    mime_types.into_iter().any(|mime| {
-        mime.eq_ignore_ascii_case("text/plain")
-            || mime.eq_ignore_ascii_case("text/plain;charset=utf-8")
-    })
+    has_string_type
+        || mime_types.into_iter().any(|mime| {
+            mime.eq_ignore_ascii_case("text/plain")
+                || mime.eq_ignore_ascii_case("text/plain;charset=utf-8")
+                || mime.eq_ignore_ascii_case("STRING")
+                || mime.eq_ignore_ascii_case("UTF8_STRING")
+                || mime.eq_ignore_ascii_case("TEXT")
+                || mime
+                    .get(..5)
+                    .is_some_and(|prefix| prefix.eq_ignore_ascii_case("text/"))
+        })
 }
 
 unsafe extern "C" fn ghostty_clipboard_has_text_cb(
@@ -2542,6 +2552,13 @@ mod tests {
             true,
             ["text/plain", "text/plain;charset=utf-8"]
         ));
+        assert!(clipboard_formats_include_text(
+            false,
+            ["text/plain;charset=utf-8"]
+        ));
+        assert!(clipboard_formats_include_text(false, ["UTF8_STRING"]));
+        assert!(clipboard_formats_include_text(false, ["text/html"]));
+        assert!(!clipboard_formats_include_text(false, ["image/png"]));
         assert!(clipboard_formats_include_image(["image/png", "text/plain"]));
     }
 
