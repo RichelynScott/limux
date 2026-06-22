@@ -24,19 +24,6 @@
         ]
       }
     ],
-    "PreToolUse": [
-      {
-        "matcher": "AskUserQuestion|request_user_input|functions\\.request_user_input",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "[ \"${LIMUX_CODEX_HOOKS_DISABLED:-}\" != \"1\" ] && limux --json hooks codex user-input-needed || echo '{}'",
-            "statusMessage": "Limux Codex input-needed alert",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
     "Stop": [
       {
         "hooks": [

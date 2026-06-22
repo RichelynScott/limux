@@ -33,8 +33,3 @@ LIMUX_CODEX_HOOKS_DISABLED=1
 LIMUX_CLAUDE_HOOKS_DISABLED=1
 LIMUX_GEMINI_HOOKS_DISABLED=1
 ```
-
-Codex also installs a matcher-scoped `PreToolUse` hook for user-input tools
-(`AskUserQuestion`, `request_user_input`, and `functions.request_user_input`).
-That hook maps to `limux --json hooks codex user-input-needed` so Limux can
-flag the workspace while Codex is waiting for the operator.
