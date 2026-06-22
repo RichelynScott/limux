@@ -67,10 +67,17 @@ struct SurfaceEntry {
     on_close: Option<Box<VoidCallback>>,
     open_url_external: Rc<Cell<bool>>,
     clipboard_context: *mut ClipboardContext,
+    pending_selection_auto_copy: Option<String>,
 }
 
 struct ClipboardContext {
     surface: Cell<ghostty_surface_t>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ClipboardWriteTargets {
+    standard: bool,
+    selection: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -954,14 +961,86 @@ fn clipboard_from_type(display: &gtk::gdk::Display, clipboard_type: c_int) -> gt
     }
 }
 
+fn clipboard_write_targets(clipboard_type: c_int) -> ClipboardWriteTargets {
+    if clipboard_type == GHOSTTY_CLIPBOARD_SELECTION {
+        ClipboardWriteTargets {
+            standard: false,
+            selection: true,
+        }
+    } else {
+        ClipboardWriteTargets {
+            standard: true,
+            selection: false,
+        }
+    }
+}
+
+fn should_show_copy_toast(targets: ClipboardWriteTargets) -> bool {
+    targets.standard
+}
+
+fn should_cache_selection_auto_copy(targets: ClipboardWriteTargets, text: &str) -> bool {
+    targets.selection && !targets.standard && !text.is_empty()
+}
+
+fn should_promote_selection_auto_copy(button: c_int) -> bool {
+    button == GHOSTTY_MOUSE_LEFT
+}
+
+fn clear_pending_selection_auto_copy(surface: ghostty_surface_t) {
+    SURFACE_MAP.with(|map| {
+        if let Some(entry) = map.borrow_mut().get_mut(&(surface as usize)) {
+            entry.pending_selection_auto_copy = None;
+        }
+    });
+}
+
+fn cache_selection_auto_copy(surface_key: usize, targets: ClipboardWriteTargets, text: &str) {
+    if !targets.selection {
+        return;
+    }
+
+    SURFACE_MAP.with(|map| {
+        if let Some(entry) = map.borrow_mut().get_mut(&surface_key) {
+            entry.pending_selection_auto_copy =
+                should_cache_selection_auto_copy(targets, text).then(|| text.to_string());
+        }
+    });
+}
+
+fn promote_pending_selection_auto_copy(surface: ghostty_surface_t, button: c_int) {
+    if !should_promote_selection_auto_copy(button) {
+        return;
+    }
+
+    let pending = SURFACE_MAP.with(|map| {
+        map.borrow_mut()
+            .get_mut(&(surface as usize))
+            .and_then(|entry| {
+                entry
+                    .pending_selection_auto_copy
+                    .take()
+                    .map(|text| (text, entry.toast_overlay.clone()))
+            })
+    });
+
+    let Some((text, toast_overlay)) = pending else {
+        return;
+    };
+    if text.is_empty() {
+        return;
+    }
+
+    if let Some(display) = gtk::gdk::Display::default() {
+        display.clipboard().set_text(&text);
+    }
+    show_clipboard_toast(&toast_overlay);
+}
+
 fn clipboard_has_text(clipboard: &gtk::gdk::Clipboard) -> bool {
     let formats = clipboard.formats();
     let mime_types = formats.mime_types();
-    if clipboard_formats_include_image(mime_types.iter().map(|mime| mime.as_str())) {
-        return false;
-    }
-
-    clipboard_formats_include_text(
+    clipboard_formats_should_attempt_text_read(
         formats.contains_type(String::static_type()),
         mime_types.iter().map(|mime| mime.as_str()),
     )
@@ -977,14 +1056,44 @@ fn clipboard_formats_include_text<'a>(
     has_string_type: bool,
     mime_types: impl IntoIterator<Item = &'a str>,
 ) -> bool {
-    if !has_string_type {
-        return false;
+    has_string_type
+        || mime_types.into_iter().any(|mime| {
+            mime.eq_ignore_ascii_case("text/plain")
+                || mime.eq_ignore_ascii_case("text/plain;charset=utf-8")
+                || mime.eq_ignore_ascii_case("STRING")
+                || mime.eq_ignore_ascii_case("UTF8_STRING")
+                || mime.eq_ignore_ascii_case("TEXT")
+                || mime
+                    .get(..5)
+                    .is_some_and(|prefix| prefix.eq_ignore_ascii_case("text/"))
+        })
+}
+
+fn clipboard_formats_should_attempt_text_read<'a>(
+    has_string_type: bool,
+    mime_types: impl IntoIterator<Item = &'a str>,
+) -> bool {
+    if has_string_type {
+        return true;
     }
 
-    mime_types.into_iter().any(|mime| {
-        mime.eq_ignore_ascii_case("text/plain")
-            || mime.eq_ignore_ascii_case("text/plain;charset=utf-8")
-    })
+    let mut has_any_mime = false;
+    let mut has_image_mime = false;
+
+    for mime in mime_types {
+        has_any_mime = true;
+        if clipboard_formats_include_text(false, [mime]) {
+            return true;
+        }
+        if clipboard_formats_include_image([mime]) {
+            has_image_mime = true;
+        }
+    }
+
+    // WSLg/Wayland can expose clipboard text to read_text_async while reporting
+    // no GTK-side formats up front. Treat empty metadata as unknown so Ghostty
+    // attempts the read instead of skipping paste before the clipboard is read.
+    !has_any_mime && !has_image_mime
 }
 
 unsafe extern "C" fn ghostty_clipboard_has_text_cb(
@@ -1038,31 +1147,33 @@ unsafe extern "C" fn ghostty_write_clipboard_cb(
         None => return,
     };
 
-    // Write to the requested clipboard
-    let clipboard = if clipboard_type == GHOSTTY_CLIPBOARD_SELECTION {
-        display.primary_clipboard()
-    } else {
-        display.clipboard()
-    };
-    clipboard.set_text(&text);
-
-    // Also set the other clipboard for convenience
-    if clipboard_type == GHOSTTY_CLIPBOARD_SELECTION {
+    let targets = clipboard_write_targets(clipboard_type);
+    if targets.standard {
         display.clipboard().set_text(&text);
-    } else {
+    }
+    if targets.selection {
         display.primary_clipboard().set_text(&text);
     }
 
-    // Show "Copied to clipboard" toast on the surface's overlay
-    let surface_key = match unsafe { clipboard_surface_from_userdata(userdata) } {
-        Some(surface) => surface as usize,
-        None => return,
-    };
-    SURFACE_MAP.with(|map| {
-        if let Some(entry) = map.borrow().get(&surface_key) {
-            show_clipboard_toast(&entry.toast_overlay);
-        }
+    let surface_key = unsafe { clipboard_surface_from_userdata(userdata) }.map(|surface| {
+        let surface_key = surface as usize;
+        cache_selection_auto_copy(surface_key, targets, &text);
+        surface_key
     });
+
+    // Selection writes happen repeatedly while drag-selecting text. Only explicit
+    // standard-clipboard copies should show a user-visible "Copied" toast.
+    if should_show_copy_toast(targets) {
+        let surface_key = match surface_key {
+            Some(surface_key) => surface_key,
+            None => return,
+        };
+        SURFACE_MAP.with(|map| {
+            if let Some(entry) = map.borrow().get(&surface_key) {
+                show_clipboard_toast(&entry.toast_overlay);
+            }
+        });
+    }
 }
 
 unsafe extern "C" fn ghostty_close_surface_cb(userdata: *mut c_void, _process_alive: bool) {
@@ -1457,6 +1568,7 @@ pub fn create_terminal(
                         })),
                         open_url_external: open_url_external_for_map.clone(),
                         clipboard_context,
+                        pending_selection_auto_copy: None,
                     },
                 );
             });
@@ -1641,7 +1753,10 @@ pub fn create_terminal(
                 let button = ghostty_mouse_button_from_gdk(btn);
                 let mods = translate_mouse_mods(gesture.current_event_state());
                 unsafe {
-                    release_active_mouse_button(surface, &active_mouse_button_for_press, mods);
+                    let released_button =
+                        release_active_mouse_button(surface, &active_mouse_button_for_press, mods);
+                    promote_pending_selection_auto_copy(surface, released_button);
+                    clear_pending_selection_auto_copy(surface);
                     ghostty_surface_mouse_pos(surface, x, y, mods);
                     open_url_external_for_press.set(mods & GHOSTTY_MODS_CTRL != 0);
                     ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, button, mods);
@@ -1658,36 +1773,20 @@ pub fn create_terminal(
                 return;
             }
             if let Some(surface) = *sc2.borrow() {
-                let button = ghostty_mouse_button_from_gdk(btn);
+                let button =
+                    mouse_release_button_for_event(active_mouse_button_for_release.get(), btn);
                 let mods = translate_mouse_mods(gesture.current_event_state());
-                unsafe {
-                    ghostty_surface_mouse_pos(surface, x, y, mods);
-                    open_url_external_for_release.set(mods & GHOSTTY_MODS_CTRL != 0);
-                    ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, button, mods);
-                    open_url_external_for_release.set(false);
+                if button != GHOSTTY_MOUSE_UNKNOWN {
+                    unsafe {
+                        ghostty_surface_mouse_pos(surface, x, y, mods);
+                        open_url_external_for_release.set(mods & GHOSTTY_MODS_CTRL != 0);
+                        ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, button, mods);
+                        open_url_external_for_release.set(false);
+                    }
+                    promote_pending_selection_auto_copy(surface, button);
                 }
                 if active_mouse_button_for_release.get() == button {
                     active_mouse_button_for_release.set(GHOSTTY_MOUSE_UNKNOWN);
-                }
-            }
-        });
-        let sc_cancel = surface_cell.clone();
-        let active_mouse_button_for_cancel = active_mouse_button.clone();
-        click.connect_cancel(move |gesture, _| {
-            if let Some(surface) = *sc_cancel.borrow() {
-                let mods = translate_mouse_mods(gesture.current_event_state());
-                unsafe {
-                    release_active_mouse_button(surface, &active_mouse_button_for_cancel, mods);
-                }
-            }
-        });
-        let sc_stopped = surface_cell.clone();
-        let active_mouse_button_for_stopped = active_mouse_button.clone();
-        click.connect_stopped(move |gesture| {
-            if let Some(surface) = *sc_stopped.borrow() {
-                let mods = translate_mouse_mods(gesture.current_event_state());
-                unsafe {
-                    release_active_mouse_button(surface, &active_mouse_button_for_stopped, mods);
                 }
             }
         });
@@ -1712,7 +1811,6 @@ pub fn create_terminal(
         let surface_cell_for_enter = surface_cell.clone();
         let gl_for_focus = gl_area.clone();
         let had_focus_for_motion = had_focus.clone();
-        let active_mouse_button_for_enter = active_mouse_button.clone();
         let motion = gtk::EventControllerMotion::new();
         motion.connect_enter(move |ctrl, x, y| {
             if (hover_focus)() {
@@ -1723,24 +1821,13 @@ pub fn create_terminal(
             }
 
             if let Some(surface) = *surface_cell_for_enter.borrow() {
-                release_mouse_button_if_physical_button_is_up(
-                    surface,
-                    &active_mouse_button_for_enter,
-                    ctrl.current_event_state(),
-                );
                 let mods = translate_mouse_mods(ctrl.current_event_state());
                 unsafe { ghostty_surface_mouse_pos(surface, x, y, mods) };
             }
         });
-        let surface_cell = surface_cell.clone();
-        let active_mouse_button_for_motion = active_mouse_button.clone();
+        let surface_cell_for_motion = surface_cell.clone();
         motion.connect_motion(move |ctrl, x, y| {
-            if let Some(surface) = *surface_cell.borrow() {
-                release_mouse_button_if_physical_button_is_up(
-                    surface,
-                    &active_mouse_button_for_motion,
-                    ctrl.current_event_state(),
-                );
+            if let Some(surface) = *surface_cell_for_motion.borrow() {
                 let mods = translate_mouse_mods(ctrl.current_event_state());
                 unsafe { ghostty_surface_mouse_pos(surface, x, y, mods) };
             }
@@ -2339,11 +2426,10 @@ fn ghostty_mouse_button_from_gdk(button: u32) -> c_int {
     }
 }
 
-fn mouse_button_is_still_pressed(button: c_int, state: gtk::gdk::ModifierType) -> bool {
-    match button {
-        GHOSTTY_MOUSE_LEFT => state.contains(gtk::gdk::ModifierType::BUTTON1_MASK),
-        GHOSTTY_MOUSE_MIDDLE => state.contains(gtk::gdk::ModifierType::BUTTON2_MASK),
-        _ => false,
+fn mouse_release_button_for_event(active_button: c_int, event_button: u32) -> c_int {
+    match ghostty_mouse_button_from_gdk(event_button) {
+        GHOSTTY_MOUSE_UNKNOWN => active_button,
+        button => button,
     }
 }
 
@@ -2351,25 +2437,12 @@ unsafe fn release_active_mouse_button(
     surface: ghostty_surface_t,
     active_button: &Cell<c_int>,
     mods: c_int,
-) {
+) -> c_int {
     let button = active_button.replace(GHOSTTY_MOUSE_UNKNOWN);
     if button != GHOSTTY_MOUSE_UNKNOWN {
         ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, button, mods);
     }
-}
-
-fn release_mouse_button_if_physical_button_is_up(
-    surface: ghostty_surface_t,
-    active_button: &Cell<c_int>,
-    state: gtk::gdk::ModifierType,
-) {
-    let button = active_button.get();
-    if button != GHOSTTY_MOUSE_UNKNOWN && !mouse_button_is_still_pressed(button, state) {
-        let mods = translate_mouse_mods(state);
-        unsafe {
-            release_active_mouse_button(surface, active_button, mods);
-        }
-    }
+    button
 }
 
 #[cfg(test)]
@@ -2563,7 +2636,104 @@ mod tests {
             true,
             ["text/plain", "text/plain;charset=utf-8"]
         ));
+        assert!(clipboard_formats_include_text(
+            false,
+            ["text/plain;charset=utf-8"]
+        ));
+        assert!(clipboard_formats_include_text(false, ["UTF8_STRING"]));
+        assert!(clipboard_formats_include_text(false, ["text/html"]));
+        assert!(!clipboard_formats_include_text(false, ["image/png"]));
         assert!(clipboard_formats_include_image(["image/png", "text/plain"]));
+    }
+
+    #[test]
+    fn clipboard_formats_attempt_text_read_for_sparse_metadata() {
+        assert!(clipboard_formats_should_attempt_text_read(true, []));
+        assert!(clipboard_formats_should_attempt_text_read(false, []));
+        assert!(clipboard_formats_should_attempt_text_read(
+            false,
+            ["UTF8_STRING"]
+        ));
+        assert!(clipboard_formats_should_attempt_text_read(
+            false,
+            ["image/png", "text/plain;charset=utf-8"]
+        ));
+        assert!(!clipboard_formats_should_attempt_text_read(
+            false,
+            ["image/png"]
+        ));
+    }
+
+    #[test]
+    fn clipboard_write_targets_keep_standard_and_selection_separate() {
+        assert_eq!(
+            clipboard_write_targets(GHOSTTY_CLIPBOARD_STANDARD),
+            ClipboardWriteTargets {
+                standard: true,
+                selection: false,
+            }
+        );
+        assert_eq!(
+            clipboard_write_targets(GHOSTTY_CLIPBOARD_SELECTION),
+            ClipboardWriteTargets {
+                standard: false,
+                selection: true,
+            }
+        );
+    }
+
+    #[test]
+    fn copy_toast_only_for_standard_clipboard() {
+        assert!(should_show_copy_toast(clipboard_write_targets(
+            GHOSTTY_CLIPBOARD_STANDARD
+        )));
+        assert!(!should_show_copy_toast(clipboard_write_targets(
+            GHOSTTY_CLIPBOARD_SELECTION
+        )));
+    }
+
+    #[test]
+    fn selection_auto_copy_caches_non_empty_selection_only() {
+        assert!(should_cache_selection_auto_copy(
+            clipboard_write_targets(GHOSTTY_CLIPBOARD_SELECTION),
+            "selected text"
+        ));
+        assert!(!should_cache_selection_auto_copy(
+            clipboard_write_targets(GHOSTTY_CLIPBOARD_SELECTION),
+            ""
+        ));
+        assert!(!should_cache_selection_auto_copy(
+            clipboard_write_targets(GHOSTTY_CLIPBOARD_STANDARD),
+            "selected text"
+        ));
+    }
+
+    #[test]
+    fn selection_auto_copy_promotes_on_left_release_only() {
+        assert!(should_promote_selection_auto_copy(GHOSTTY_MOUSE_LEFT));
+        assert!(!should_promote_selection_auto_copy(GHOSTTY_MOUSE_MIDDLE));
+        assert!(!should_promote_selection_auto_copy(GHOSTTY_MOUSE_RIGHT));
+        assert!(!should_promote_selection_auto_copy(GHOSTTY_MOUSE_UNKNOWN));
+    }
+
+    #[test]
+    fn mouse_release_button_falls_back_to_active_button() {
+        assert_eq!(
+            mouse_release_button_for_event(GHOSTTY_MOUSE_LEFT, 0),
+            GHOSTTY_MOUSE_LEFT
+        );
+        assert_eq!(
+            mouse_release_button_for_event(GHOSTTY_MOUSE_MIDDLE, 0),
+            GHOSTTY_MOUSE_MIDDLE
+        );
+        assert_eq!(
+            mouse_release_button_for_event(GHOSTTY_MOUSE_LEFT, 2),
+            GHOSTTY_MOUSE_MIDDLE
+        );
+        assert_eq!(
+            mouse_release_button_for_event(GHOSTTY_MOUSE_UNKNOWN, 0),
+            GHOSTTY_MOUSE_UNKNOWN
+        );
     }
 
     #[test]
