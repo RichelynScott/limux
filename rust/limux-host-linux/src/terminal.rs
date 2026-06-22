@@ -961,6 +961,10 @@ fn clipboard_write_targets(clipboard_type: c_int) -> ClipboardWriteTargets {
     }
 }
 
+fn should_show_copy_toast(targets: ClipboardWriteTargets) -> bool {
+    targets.standard
+}
+
 fn clipboard_has_text(clipboard: &gtk::gdk::Clipboard) -> bool {
     let formats = clipboard.formats();
     let mime_types = formats.mime_types();
@@ -1079,16 +1083,19 @@ unsafe extern "C" fn ghostty_write_clipboard_cb(
         display.primary_clipboard().set_text(&text);
     }
 
-    // Show "Copied to clipboard" toast on the surface's overlay
-    let surface_key = match unsafe { clipboard_surface_from_userdata(userdata) } {
-        Some(surface) => surface as usize,
-        None => return,
-    };
-    SURFACE_MAP.with(|map| {
-        if let Some(entry) = map.borrow().get(&surface_key) {
-            show_clipboard_toast(&entry.toast_overlay);
-        }
-    });
+    // Selection writes happen repeatedly while drag-selecting text. Only explicit
+    // standard-clipboard copies should show a user-visible "Copied" toast.
+    if should_show_copy_toast(targets) {
+        let surface_key = match unsafe { clipboard_surface_from_userdata(userdata) } {
+            Some(surface) => surface as usize,
+            None => return,
+        };
+        SURFACE_MAP.with(|map| {
+            if let Some(entry) = map.borrow().get(&surface_key) {
+                show_clipboard_toast(&entry.toast_overlay);
+            }
+        });
+    }
 }
 
 unsafe extern "C" fn ghostty_close_surface_cb(userdata: *mut c_void, _process_alive: bool) {
@@ -2581,6 +2588,16 @@ mod tests {
                 selection: true,
             }
         );
+    }
+
+    #[test]
+    fn copy_toast_only_for_standard_clipboard() {
+        assert!(should_show_copy_toast(clipboard_write_targets(
+            GHOSTTY_CLIPBOARD_STANDARD
+        )));
+        assert!(!should_show_copy_toast(clipboard_write_targets(
+            GHOSTTY_CLIPBOARD_SELECTION
+        )));
     }
 
     #[test]
