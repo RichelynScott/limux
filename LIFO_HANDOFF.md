@@ -1,26 +1,48 @@
 # Limux Lifo Handoff
 
-Author/runtime/date: lifo / Codex GPT-5 / 2026-06-20 03:15 EDT.
+Author/runtime/date: lifo / Codex GPT-5 / 2026-06-22 14:45 EDT.
 
 ## Immediate Next Action
 
-No immediate action is required for the G0 stability PR. This session can be
-compacted and closed.
+No immediate repo action is required. The Limux PR stack is merged into
+`main`, `/home/riche/MCPs/limux` is on `main`, and the worktree is clean.
 
-Recommended next lane, if the operator resumes Limux work later:
+If the operator resumes Limux runtime testing, start from
+`/home/riche/MCPs/limux` on `main` at
+`9c5d9862b345e3aefa88626a3fd0a9a842561380`.
 
-1. Work from `/home/riche/MCPs/limux-workspaces-sidebar-notifications` on
-   branch `lifo/workspaces-sidebar-notifications-20260620`.
-2. Confirm state:
-   ```bash
-   git status --short --branch
-   git log --oneline --decorate -5
-   gh pr view --repo RichelynScott/limux 1 --json state,mergedAt,mergeCommit,url
-   ```
-3. If live runtime issues continue, capture
-   `~/.local/state/limux/logs/limux-host.log` and exact
-   `GSETTINGS` / `GTK` / `GDK` / `XDG` / `LIMUX` environment values from the
-   affected pane.
+If live runtime issues continue, capture
+`~/.local/state/limux/logs/limux-host.log` and exact
+`GSETTINGS` / `GTK` / `GDK` / `XDG` / `LIMUX` environment values from the
+affected pane.
+
+## 2026-06-22 Merge Closeout
+
+| PR | Result | Evidence |
+|---|---|---|
+| #2 `feat(host): add workspace attention UI lane` | Merged to `main`. | Merge commit `794f2233b3310e5ccde47b22f038494c83725116`. |
+| #3 `feat(host): improve workspace sidebar notifications` | Merged to `main`. | Merge commit `f28ee2ed228cdd648f02f39ac760fb6931aeabf6`; Codex bot P3s fixed in `6f70858`. |
+| #4 `fix(host): harden terminal selection copy and paste` | Merged to `main`. | Merge commit `c0534074c245db85af38bdd40e6de96b0b5b1206`. |
+| #5 `docs(limux): track future integration options` | Merged to `main`. | Merge commit `9c5d9862b345e3aefa88626a3fd0a9a842561380`. |
+
+Final local verification on merged `main`:
+
+```bash
+./scripts/check.sh
+```
+
+Result: passed on 2026-06-22 after the #2-#5 merge sequence.
+
+Notes:
+
+- Codex PR auto-review was unavailable during final closeout because the
+  account hit the usage window. The #3 P3 findings were fixed before merge, #4
+  had a prior clean Codex bot review on its head, and the final merged `main`
+  passed the canonical local gate.
+- Future Cursor/Limux integration ideas are tracked in
+  `docs/future-improvements/limux-cursor-integration-options-after-pr-greenlight.md`.
+- Do not start Cursor integration implementation or TaskMaster tasking until
+  the operator explicitly opens that lane.
 
 ### HUMAN NOTE/ADD: THIS SECTION AND REQUEST WAS DIRECTLY ADDED BY HUMAN AFTER ALL SESSIONS FINISHED COMPACTION AND I CLOSED THEM OUT AND I WAS GOING TO CLOSE DOWN THE LIMUX PROCESS BUT SAW THESE ERRORS I WANTED TO MAKE SURE WE DOCUMENTED SO YOU DOUBLE CHECK THAT THESE ARE GETTING ADDRESSED OR GOT ADDRESSED: 
 """
