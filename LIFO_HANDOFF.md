@@ -18,6 +18,48 @@ Author/runtime/date: lifo / Codex GPT-5 / 2026-06-19 20:15 EDT.
    - Try mouse selection in one pane, drag/release/cancel, move into other panes. Expected: no stuck left-click selection state.
 5. If either issue reproduces, preserve `~/.local/state/limux/logs/limux-host.log` and the exact launch environment (`env | sort | rg '^(GSETTINGS|GTK|GDK|XDG|LIMUX)_'`).
 
+### HUMAN NOTE/ADD: THIS SECTION AND REQUEST WAS DIRECTLY ADDED BY HUMAN AFTER ALL SESSIONS FINISHED COMPACTION AND I CLOSED THEM OUT AND I WAS GOING TO CLOSE DOWN THE LIMUX PROCESS BUT SAW THESE ERRORS I WANTED TO MAKE SURE WE DOCUMENTED SO YOU DOUBLE CHECK THAT THESE ARE GETTING ADDRESSED OR GOT ADDRESSED: 
+"""
+➜  ~ limux
+
+(limux-host:99589): GLib-GIO-CRITICAL **: 14:52:13.844: g_settings_schema_source_lookup: assertion 'source != NULL' failed
+
+(limux-host:99589): Gtk-WARNING **: 14:52:13.902: While adding page: duplicate child name in GtkStack: terminal-0
+
+(limux-host:99589): Gtk-CRITICAL **: 14:52:13.902: gtk_box_append: assertion 'gtk_widget_get_parent (child) == NULL' failed
+limux: control socket at /run/user/1000/limux/limux.sock
+
+(limux-host:99589): Gtk-WARNING **: 14:52:13.913: Failed to load icon /home/riche/MCPs/limux/rust/limux-host-linux/icons/hicolor/scalable/actions/limux-split-horizontal-symbolic.svg: Unrecognized image file format
+
+(limux-host:99589): Gtk-WARNING **: 14:52:13.913: Failed to load icon /home/riche/MCPs/limux/rust/limux-host-linux/icons/hicolor/scalable/actions/limux-split-vertical-symbolic.svg: Unrecognized image file format
+libEGL warning: failed to get driver name for fd -1
+
+libEGL warning: MESA-LOADER: failed to retrieve device information
+
+libEGL warning: failed to get driver name for fd -1
+
+MESA: error: ZINK: vkCreateInstance failed (VK_ERROR_INCOMPATIBLE_DRIVER)
+libEGL warning: egl: failed to create dri2 screen
+
+(limux-host:99589): Gdk-WARNING **: 14:56:20.383: Compositor doesn't support moving popups, relying on remapping
+
+(limux-host:99589): Gtk-WARNING **: 14:56:54.573: Failed to load icon /home/riche/MCPs/limux/rust/limux-host-linux/icons/hicolor/scalable/actions/limux-split-horizontal-symbolic.svg: Unrecognized image file format
+
+(limux-host:99589): Gtk-WARNING **: 14:56:54.573: Failed to load icon /home/riche/MCPs/limux/rust/limux-host-linux/icons/hicolor/scalable/actions/limux-split-vertical-symbolic.svg: Unrecognized image file format
+
+(limux-host:99589): Gtk-CRITICAL **: 15:30:48.417: gtk_scrolled_window_get_child: assertion 'GTK_IS_SCROLLED_WINDOW (scrolled_window)' failed
+
+(limux-host:99589): Gtk-CRITICAL **: 15:30:48.417: gtk_viewport_get_child: assertion 'GTK_IS_VIEWPORT (viewport)' failed
+
+(limux-host:99589): Gtk-CRITICAL **: 15:30:48.418: gtk_stack_set_visible_child_name: assertion 'GTK_IS_STACK (stack)' failed
+
+(limux-host:99589): Gtk-CRITICAL **: 15:30:50.334: gtk_scrolled_window_get_child: assertion 'GTK_IS_SCROLLED_WINDOW (scrolled_window)' failed
+
+(limux-host:99589): Gtk-CRITICAL **: 15:30:50.334: gtk_viewport_get_child: assertion 'GTK_IS_VIEWPORT (viewport)' failed
+
+(limux-host:99589): Gtk-CRITICAL **: 15:30:50.334: gtk_stack_set_visible_child_name: assertion 'GTK_IS_STACK (stack)' failed
+"""
+
 ## Completed This Session
 
 | Time | Item | Evidence |

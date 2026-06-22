@@ -26,9 +26,8 @@ const AGENT_TEAM_ROSTER_MARKER: &str = "<!-- limux-team-roster durable:create-if
 const AGENT_TEAM_LEDGER_MARKER: &str = "<!-- limux-review-ledger durable:v1 -->";
 const REVIEW_REQUEST_MARKER: &str = "<!-- limux-review-request generated:v1 -->";
 const REVIEW_EVIDENCE_MARKER: &str = "<!-- limux-review-evidence pointer:v1 -->";
-const HOST_LAUNCH_ENV_REMOVALS: &[&str] = &[
-    "LIMUX_SOCKET",
-    "LIMUX_SOCKET_PATH",
+const HOST_LAUNCH_SOCKET_ENV_REMOVALS: &[&str] = &["LIMUX_SOCKET", "LIMUX_SOCKET_PATH"];
+const HOST_LAUNCH_TARGET_ENV_REMOVALS: &[&str] = &[
     "LIMUX_WORKSPACE_ID",
     "LIMUX_SURFACE_ID",
     "LIMUX_PANE_ID",
@@ -291,11 +290,32 @@ fn resolve_host_binary() -> Result<PathBuf> {
 }
 
 fn host_launch_command(host: &Path) -> Command {
+    host_launch_command_with_inherited_target_env(host, host_launch_has_inherited_target_env())
+}
+
+fn host_launch_command_with_inherited_target_env(
+    host: &Path,
+    inherited_target_env: bool,
+) -> Command {
     let mut command = Command::new(host);
-    for key in HOST_LAUNCH_ENV_REMOVALS {
+    for key in host_launch_env_removals(inherited_target_env) {
         command.env_remove(key);
     }
     command
+}
+
+fn host_launch_has_inherited_target_env() -> bool {
+    HOST_LAUNCH_TARGET_ENV_REMOVALS
+        .iter()
+        .any(|key| env::var_os(key).is_some())
+}
+
+fn host_launch_env_removals(inherited_target_env: bool) -> Vec<&'static str> {
+    let mut removals = HOST_LAUNCH_TARGET_ENV_REMOVALS.to_vec();
+    if inherited_target_env {
+        removals.extend_from_slice(HOST_LAUNCH_SOCKET_ENV_REMOVALS);
+    }
+    removals
 }
 
 fn launch_host() -> Result<()> {
@@ -5931,17 +5951,55 @@ mod cli_arg_tests {
     }
 
     #[test]
-    fn host_launch_command_clears_inherited_runtime_target_env() {
-        let command = host_launch_command(Path::new("/tmp/limux-host"));
+    fn host_launch_command_clears_runtime_target_env_but_preserves_explicit_socket() {
+        let command =
+            host_launch_command_with_inherited_target_env(Path::new("/tmp/limux-host"), false);
         let removals = command
             .get_envs()
             .filter_map(|(key, value)| value.is_none().then_some(key.to_string_lossy()))
             .collect::<Vec<_>>();
 
-        for key in HOST_LAUNCH_ENV_REMOVALS {
+        for key in HOST_LAUNCH_TARGET_ENV_REMOVALS {
             assert!(
                 removals.iter().any(|removed| removed == key),
                 "missing env removal for {key}"
+            );
+        }
+        for key in HOST_LAUNCH_SOCKET_ENV_REMOVALS {
+            assert!(
+                !removals.iter().any(|removed| removed == key),
+                "explicit socket env should be preserved for {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn host_launch_env_removals_clear_socket_when_target_env_is_inherited() {
+        let removals = host_launch_env_removals(true);
+        for key in HOST_LAUNCH_TARGET_ENV_REMOVALS
+            .iter()
+            .chain(HOST_LAUNCH_SOCKET_ENV_REMOVALS.iter())
+        {
+            assert!(
+                removals.iter().any(|removed| removed == key),
+                "missing inherited env removal for {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn host_launch_env_removals_preserve_socket_without_inherited_target() {
+        let removals = host_launch_env_removals(false);
+        for key in HOST_LAUNCH_TARGET_ENV_REMOVALS {
+            assert!(
+                removals.iter().any(|removed| removed == key),
+                "missing target env removal for {key}"
+            );
+        }
+        for key in HOST_LAUNCH_SOCKET_ENV_REMOVALS {
+            assert!(
+                !removals.iter().any(|removed| removed == key),
+                "socket env should not be removed without inherited target env for {key}"
             );
         }
     }
