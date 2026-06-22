@@ -33,11 +33,12 @@ long-lived tracking is needed, repair the store with operator-approved
 TaskMaster wrapper path and SCRIM-backed PRD parsing.
 
 2026-06-22 follow-up: Soho relayed operator approval for an in-place
-`task-master-reviewed init` repair in this worktree. The command exited 0 but
-did not create `.taskmaster/config.json` or `.taskmaster/tasks/tasks.json`;
-`list` still emits missing-configuration warnings. The seed doc was preserved,
-and the failure was reported to
-`/home/riche/MCPs/claude-task-master/TASKMASTER_MGR_INBOX/INCIDENT_FROM_lifo_2026-06-22_limux-taskmaster-reinit-no-repair.md`.
+`task-master-reviewed init` repair in this worktree. The first recipe failed
+because `task-master init --version <value>` collided with the CLI global
+version flag and exited after printing `0.43.1`. The corrected command omitted
+`--version`, created `.taskmaster/config.json` and
+`.taskmaster/tasks/tasks.json`, preserved this seed doc, and `list` now runs
+without missing-configuration warnings.
 
 ## Done Criteria
 

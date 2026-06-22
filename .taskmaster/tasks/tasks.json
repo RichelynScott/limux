@@ -1,0 +1,17 @@
+{
+  "master": {
+    "tasks": [],
+    "metadata": {
+      "version": "1.0.0",
+      "lastModified": "2026-06-22T13:47:01.312Z",
+      "taskCount": 0,
+      "completedCount": 0,
+      "tags": [
+        "master"
+      ],
+      "created": "2026-06-22T13:47:01.312Z",
+      "updated": "2026-06-22T13:47:01.312Z",
+      "description": "Default tasks context"
+    }
+  }
+}
