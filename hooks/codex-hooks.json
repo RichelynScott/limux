@@ -30,9 +30,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ \"${LIMUX_CODEX_HOOKS_DISABLED:-}\" != \"1\" ] && limux --json hooks codex user-input-needed || echo '{\"continue\":true,\"suppressOutput\":false}'",
+            "command": "[ \"${LIMUX_CODEX_HOOKS_DISABLED:-}\" != \"1\" ] && limux --json hooks codex user-input-needed || echo '{}'",
             "statusMessage": "Limux Codex input-needed alert",
-            "timeout": 5000
+            "timeout": 5
           }
         ]
       }

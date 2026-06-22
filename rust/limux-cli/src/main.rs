@@ -1687,7 +1687,7 @@ fn install_json_hooks(
                 "type": "command",
                 "command": hook_command(agent, limux_event)?,
                 "statusMessage": format!("Limux {} session restore", agent.label()),
-                "timeout": hook_timeout(agent)
+                "timeout": hook_timeout(agent, limux_event)
             }]
         });
         if let Some(matcher) = matcher {
@@ -1701,7 +1701,13 @@ fn install_json_hooks(
     write_json_object(path, &root)
 }
 
-fn hook_timeout(agent: agent_hooks::AgentKind) -> u64 {
+fn hook_timeout(agent: agent_hooks::AgentKind, event: &str) -> u64 {
+    if agent == agent_hooks::AgentKind::Codex
+        && matches!(canonical_hook_event_name(event), Some("PreToolUse"))
+    {
+        return 5;
+    }
+
     match agent {
         agent_hooks::AgentKind::Claude => 5,
         agent_hooks::AgentKind::Codex | agent_hooks::AgentKind::Gemini => 5000,
@@ -6414,6 +6420,7 @@ mod cli_arg_tests {
             serde_json::from_slice(&fs::read(&path).expect("read hooks")).expect("json");
         let entry = &root["hooks"]["PreToolUse"][0];
         assert_eq!(entry["matcher"], CODEX_USER_INPUT_TOOL_MATCHER);
+        assert_eq!(entry["hooks"][0]["timeout"], 5);
         let command = entry["hooks"][0]["command"].as_str().expect("command");
         assert!(command.contains("hooks codex user-input-needed"));
         assert!(command.contains("|| echo '{}'"));
