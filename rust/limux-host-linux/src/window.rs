@@ -2861,28 +2861,14 @@ fn activate_desktop_notification_target(
     if workspace_changed {
         glib::idle_add_local_once(move || {
             glib::idle_add_local_once(move || {
-                focus_desktop_notification_target_and_clear_unread(
-                    &state_for_focus,
-                    &target_for_focus,
-                );
+                focus_desktop_notification_target(&state_for_focus, &target_for_focus);
             });
         });
     } else {
         glib::idle_add_local_once(move || {
-            focus_desktop_notification_target_and_clear_unread(&state_for_focus, &target_for_focus);
+            focus_desktop_notification_target(&state_for_focus, &target_for_focus);
         });
     }
-}
-
-fn focus_desktop_notification_target_and_clear_unread(
-    state: &State,
-    target: &DesktopNotificationTarget,
-) -> bool {
-    let focused = focus_desktop_notification_target(state, target);
-    if focused {
-        clear_workspace_unread(state, &target.workspace_id);
-    }
-    focused
 }
 
 fn focus_desktop_notification_target(state: &State, target: &DesktopNotificationTarget) -> bool {
@@ -3318,32 +3304,6 @@ fn clear_workspace_unread_widgets(
     if let Some(row_box) = sidebar_row.child() {
         row_box.remove_css_class("limux-sidebar-row-unread");
     }
-}
-
-fn clear_workspace_unread(state: &State, workspace_id: &str) -> bool {
-    let (notify_dot, notify_label, sidebar_row) = {
-        let mut s = state.borrow_mut();
-        let Some(workspace) = s
-            .workspaces
-            .iter_mut()
-            .find(|workspace| workspace.id == workspace_id)
-        else {
-            return false;
-        };
-        if !workspace.unread {
-            return false;
-        }
-        workspace.unread = false;
-        (
-            workspace.notify_dot.clone(),
-            workspace.notify_label.clone(),
-            workspace.sidebar_row.clone(),
-        )
-    };
-
-    clear_workspace_unread_widgets(&notify_dot, &notify_label, &sidebar_row);
-    request_session_save(state);
-    true
 }
 
 fn set_workspace_manual_unread(state: &State, workspace_id: &str, unread: bool) {
@@ -6136,7 +6096,7 @@ fn mark_workspace_unread_with_message(
             }
         }
 
-        if idx != active_idx || !source_focused {
+        if idx != active_idx {
             ws.unread = true;
             apply_workspace_unread_widgets(
                 &ws.notify_dot,
