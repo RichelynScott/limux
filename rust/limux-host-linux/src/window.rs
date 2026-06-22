@@ -31,6 +31,7 @@ const PANE_CREATE_COMMAND_READY_INTERVAL_MS: u64 = 50;
 const PANE_CREATE_COMMAND_READY_ATTEMPTS: u32 = 80;
 const PANE_CREATE_COMMAND_SETTLE_ATTEMPTS: u32 = 10;
 const PANE_CREATE_COMMAND_SUBMIT_DELAY_MS: u64 = 100;
+const ACTIVE_WORKSPACE_NOTIFICATION_MS: u64 = 3_000;
 const HOST_LAUNCH_ENV_REMOVALS: &[&str] = &[
     "LIMUX_SOCKET",
     "LIMUX_SOCKET_PATH",
@@ -3306,6 +3307,36 @@ fn clear_workspace_unread_widgets(
     }
 }
 
+fn show_active_workspace_notification(
+    state: &State,
+    workspace_id: String,
+    notify_dot: gtk::Label,
+    notify_label: gtk::Label,
+    sidebar_row: gtk::ListBoxRow,
+    message: String,
+) {
+    apply_workspace_unread_widgets(&notify_dot, &notify_label, &sidebar_row, &message);
+
+    let state_for_timeout = state.clone();
+    glib::timeout_add_local_once(
+        std::time::Duration::from_millis(ACTIVE_WORKSPACE_NOTIFICATION_MS),
+        move || {
+            let should_clear = {
+                let s = state_for_timeout.borrow();
+                s.workspaces
+                    .iter()
+                    .find(|workspace| workspace.id == workspace_id)
+                    .is_some_and(|workspace| {
+                        !workspace.unread && notify_label.label().as_str() == message
+                    })
+            };
+            if should_clear {
+                clear_workspace_unread_widgets(&notify_dot, &notify_label, &sidebar_row);
+            }
+        },
+    );
+}
+
 fn set_workspace_manual_unread(state: &State, workspace_id: &str, unread: bool) {
     let mut s = state.borrow_mut();
     if let Some(workspace) = s
@@ -6066,6 +6097,7 @@ fn mark_workspace_unread_with_message(
     source_focused: bool,
     target: DesktopNotificationTarget,
 ) -> Option<DesktopNotificationRequest> {
+    let mut active_notice = None;
     let mut s = state.borrow_mut();
     let active_idx = s.active_idx;
     let window_active = s.window.is_active();
@@ -6104,8 +6136,26 @@ fn mark_workspace_unread_with_message(
                 &ws.sidebar_row,
                 message,
             );
+        } else if !source_focused && target.pane_id.is_none() {
+            active_notice = Some((
+                ws.notify_dot.clone(),
+                ws.notify_label.clone(),
+                ws.sidebar_row.clone(),
+                message.to_string(),
+            ));
         }
 
+        drop(s);
+        if let Some((notify_dot, notify_label, sidebar_row, message)) = active_notice {
+            show_active_workspace_notification(
+                state,
+                ws_id.to_string(),
+                notify_dot,
+                notify_label,
+                sidebar_row,
+                message,
+            );
+        }
         return desktop_request;
     }
 
