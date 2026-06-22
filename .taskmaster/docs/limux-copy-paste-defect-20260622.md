@@ -32,6 +32,13 @@ long-lived tracking is needed, repair the store with operator-approved
 `task-master-reviewed init`, then populate tasks through the reviewed
 TaskMaster wrapper path and SCRIM-backed PRD parsing.
 
+2026-06-22 follow-up: Soho relayed operator approval for an in-place
+`task-master-reviewed init` repair in this worktree. The command exited 0 but
+did not create `.taskmaster/config.json` or `.taskmaster/tasks/tasks.json`;
+`list` still emits missing-configuration warnings. The seed doc was preserved,
+and the failure was reported to
+`/home/riche/MCPs/claude-task-master/TASKMASTER_MGR_INBOX/INCIDENT_FROM_lifo_2026-06-22_limux-taskmaster-reinit-no-repair.md`.
+
 ## Done Criteria
 
 - Root cause documented with code references.
