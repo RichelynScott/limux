@@ -10,4 +10,3 @@ __pycache__/
 *.deb
 *.AppImage
 save-sesh-plan.md
-.env
