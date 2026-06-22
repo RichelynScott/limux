@@ -1,6 +1,6 @@
 # Limux Lifo Handoff
 
-Author/runtime/date: lifo / Codex GPT-5 / 2026-06-22 14:45 EDT.
+Author/runtime/date: lifo / Codex GPT-5 / 2026-06-22 18:35 EDT.
 
 ## Immediate Next Action
 
@@ -8,13 +8,35 @@ No immediate repo action is required. The Limux PR stack is merged into
 `main`, `/home/riche/MCPs/limux` is on `main`, and the worktree is clean.
 
 If the operator resumes Limux runtime testing, start from
-`/home/riche/MCPs/limux` on `main` at
-`9c5d9862b345e3aefa88626a3fd0a9a842561380`.
+`/home/riche/MCPs/limux` on current `origin/main`.
 
 If live runtime issues continue, capture
 `~/.local/state/limux/logs/limux-host.log` and exact
 `GSETTINGS` / `GTK` / `GDK` / `XDG` / `LIMUX` environment values from the
 affected pane.
+
+## 2026-06-22 Restart Prep
+
+Nato installed the reviewed current-main build as
+`main-20260622-2fcfc55` and verified:
+
+- `~/.local/bin/limux` points at `main-20260622-2fcfc55/bin/limux`.
+- `SHA256SUMS` verified OK.
+- Old `29fd2ff` symlinks were archived under `archive/20260622T203030Z`.
+- Source tree had no source patch from the GTK/GLib investigation.
+
+Before the operator's Limux restart, this session found generated hook/session
+logs under repo-local `logs/`. They are not source artifacts, so `.gitignore`
+now ignores `logs/` to prevent accidental commits. Do not commit those generated
+logs.
+
+Current runtime gate:
+
+- Operator must fully restart Limux to unload the old live host.
+- If GTK/GLib launch/runtime errors recur on the current build, capture exact
+  user action/time, host log, session JSON snapshot, process/socket list, build
+  id/symlink target, and whether multiple runtimes are active before changing
+  source code.
 
 ## 2026-06-22 Merge Closeout
 
