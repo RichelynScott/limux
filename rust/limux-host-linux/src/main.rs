@@ -26,6 +26,7 @@ const LIMUX_SOCKET_PATH_ENV: &str = "LIMUX_SOCKET_PATH";
 const LIMUX_TARGET_ENV_REMOVALS: &[&str] = &[
     "LIMUX_SOCKET",
     "LIMUX_SOCKET_PATH",
+    layout_state::LIMUX_SESSION_DIR_ENV,
     "LIMUX_WORKSPACE_ID",
     "LIMUX_SURFACE_ID",
     "LIMUX_PANE_ID",
@@ -192,6 +193,19 @@ fn unique_runtime_socket_path(default_path: &Path) -> PathBuf {
         .join(file_name)
 }
 
+fn unique_runtime_session_dir(socket_path: &Path) -> PathBuf {
+    let dir_name = socket_path
+        .file_stem()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| std::ffi::OsStr::new("limux-runtime"));
+
+    socket_path
+        .parent()
+        .unwrap_or_else(|| Path::new("/tmp"))
+        .join("sessions")
+        .join(dir_name)
+}
+
 #[cfg(unix)]
 fn socket_accepts_connections(path: &Path) -> bool {
     UnixStream::connect(path).is_ok()
@@ -208,6 +222,10 @@ fn socket_env_override_present() -> bool {
         .any(|key| std::env::var_os(key).is_some_and(|value| !value.is_empty()))
 }
 
+fn session_dir_env_override_present() -> bool {
+    std::env::var_os(layout_state::LIMUX_SESSION_DIR_ENV).is_some_and(|value| !value.is_empty())
+}
+
 fn ensure_runtime_socket_does_not_collide() {
     if socket_env_override_present() {
         return;
@@ -221,12 +239,16 @@ fn ensure_runtime_socket_does_not_collide() {
     }
 
     let socket_path = unique_runtime_socket_path(&default_path);
+    let session_dir = unique_runtime_session_dir(&socket_path);
     eprintln!(
         "limux: default control socket already in use ({}); using {}",
         default_path.display(),
         socket_path.display()
     );
-    std::env::set_var(LIMUX_SOCKET_ENV, socket_path);
+    std::env::set_var(LIMUX_SOCKET_ENV, &socket_path);
+    if !session_dir_env_override_present() {
+        std::env::set_var(layout_state::LIMUX_SESSION_DIR_ENV, session_dir);
+    }
 }
 
 fn host_log_path() -> Option<PathBuf> {
@@ -468,6 +490,10 @@ mod tests {
             .expect("ghostty env test lock poisoned");
         let _socket = EnvVarGuard::set(LIMUX_SOCKET_ENV, Some("/tmp/old-runtime.sock"));
         let _socket_path = EnvVarGuard::set(LIMUX_SOCKET_PATH_ENV, Some("/tmp/old-runtime.sock"));
+        let _session_dir = EnvVarGuard::set(
+            layout_state::LIMUX_SESSION_DIR_ENV,
+            Some("/tmp/old-runtime-session"),
+        );
         let _workspace = EnvVarGuard::set("LIMUX_WORKSPACE_ID", Some("workspace-old"));
         let _surface = EnvVarGuard::set("LIMUX_SURFACE_ID", Some("1:terminal-0"));
         let _pane = EnvVarGuard::set("LIMUX_PANE_ID", Some("1"));
@@ -493,6 +519,8 @@ mod tests {
         let _xdg = EnvVarGuard::set("XDG_RUNTIME_DIR", Some(runtime_dir.path()));
         let _socket = EnvVarGuard::set(LIMUX_SOCKET_ENV, Option::<&str>::None);
         let _socket_path = EnvVarGuard::set(LIMUX_SOCKET_PATH_ENV, Option::<&str>::None);
+        let _session_dir =
+            EnvVarGuard::set(layout_state::LIMUX_SESSION_DIR_ENV, Option::<&str>::None);
 
         let default_path = limux_control::socket_path::SocketMode::default_for(
             limux_control::socket_path::SocketMode::Runtime,
@@ -503,9 +531,14 @@ mod tests {
 
         ensure_runtime_socket_does_not_collide();
 
+        let expected_socket = unique_runtime_socket_path(&default_path);
         assert_eq!(
             std::env::var_os(LIMUX_SOCKET_ENV),
-            Some(unique_runtime_socket_path(&default_path).into_os_string())
+            Some(expected_socket.clone().into_os_string())
+        );
+        assert_eq!(
+            std::env::var_os(layout_state::LIMUX_SESSION_DIR_ENV),
+            Some(unique_runtime_session_dir(&expected_socket).into_os_string())
         );
     }
 
@@ -519,6 +552,43 @@ mod tests {
         let _xdg = EnvVarGuard::set("XDG_RUNTIME_DIR", Some(runtime_dir.path()));
         let _socket = EnvVarGuard::set(LIMUX_SOCKET_ENV, Some(""));
         let _socket_path = EnvVarGuard::set(LIMUX_SOCKET_PATH_ENV, Some(""));
+        let _session_dir =
+            EnvVarGuard::set(layout_state::LIMUX_SESSION_DIR_ENV, Option::<&str>::None);
+
+        let default_path = limux_control::socket_path::SocketMode::default_for(
+            limux_control::socket_path::SocketMode::Runtime,
+        );
+        fs::create_dir_all(default_path.parent().expect("default socket parent"))
+            .expect("create socket parent");
+        let _listener = UnixListener::bind(&default_path).expect("bind default socket");
+
+        ensure_runtime_socket_does_not_collide();
+
+        let expected_socket = unique_runtime_socket_path(&default_path);
+        assert_eq!(
+            std::env::var_os(LIMUX_SOCKET_ENV),
+            Some(expected_socket.clone().into_os_string())
+        );
+        assert_eq!(
+            std::env::var_os(layout_state::LIMUX_SESSION_DIR_ENV),
+            Some(unique_runtime_session_dir(&expected_socket).into_os_string())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runtime_socket_preserves_explicit_session_dir_env() {
+        let _lock = GHOSTTY_ENV_LOCK
+            .lock()
+            .expect("ghostty env test lock poisoned");
+        let runtime_dir = tempfile::tempdir().expect("runtime tempdir");
+        let _xdg = EnvVarGuard::set("XDG_RUNTIME_DIR", Some(runtime_dir.path()));
+        let _socket = EnvVarGuard::set(LIMUX_SOCKET_ENV, Option::<&str>::None);
+        let _socket_path = EnvVarGuard::set(LIMUX_SOCKET_PATH_ENV, Option::<&str>::None);
+        let _session_dir = EnvVarGuard::set(
+            layout_state::LIMUX_SESSION_DIR_ENV,
+            Some("/tmp/manual-limux-session"),
+        );
 
         let default_path = limux_control::socket_path::SocketMode::default_for(
             limux_control::socket_path::SocketMode::Runtime,
@@ -530,8 +600,8 @@ mod tests {
         ensure_runtime_socket_does_not_collide();
 
         assert_eq!(
-            std::env::var_os(LIMUX_SOCKET_ENV),
-            Some(unique_runtime_socket_path(&default_path).into_os_string())
+            std::env::var_os(layout_state::LIMUX_SESSION_DIR_ENV),
+            Some(std::ffi::OsString::from("/tmp/manual-limux-session"))
         );
     }
 
@@ -542,6 +612,8 @@ mod tests {
             .expect("ghostty env test lock poisoned");
         let _socket = EnvVarGuard::set(LIMUX_SOCKET_ENV, Some("/tmp/manual-limux.sock"));
         let _socket_path = EnvVarGuard::set(LIMUX_SOCKET_PATH_ENV, Option::<&str>::None);
+        let _session_dir =
+            EnvVarGuard::set(layout_state::LIMUX_SESSION_DIR_ENV, Option::<&str>::None);
 
         ensure_runtime_socket_does_not_collide();
 
@@ -549,6 +621,7 @@ mod tests {
             std::env::var_os(LIMUX_SOCKET_ENV),
             Some(std::ffi::OsString::from("/tmp/manual-limux.sock"))
         );
+        assert!(std::env::var_os(layout_state::LIMUX_SESSION_DIR_ENV).is_none());
     }
 
     #[test]

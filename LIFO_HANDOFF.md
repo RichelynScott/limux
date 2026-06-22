@@ -1,22 +1,26 @@
-# Limux Lifo Reboot Handoff
+# Limux Lifo Handoff
 
-Author/runtime/date: lifo / Codex GPT-5 / 2026-06-19 20:15 EDT.
+Author/runtime/date: lifo / Codex GPT-5 / 2026-06-20 03:15 EDT.
 
 ## Immediate Next Action
 
-1. After DARTH-PC restarts, resume in `/home/riche/MCPs/limux`.
-2. Run:
+No immediate action is required for the G0 stability PR. This session can be
+compacted and closed.
+
+Recommended next lane, if the operator resumes Limux work later:
+
+1. Work from `/home/riche/MCPs/limux-workspaces-sidebar-notifications` on
+   branch `lifo/workspaces-sidebar-notifications-20260620`.
+2. Confirm state:
    ```bash
    git status --short --branch
-   git log --oneline -3
-   readlink -f ~/.local/bin/limux
-   tail -n 200 ~/.local/state/limux/logs/limux-host.log 2>/dev/null || true
+   git log --oneline --decorate -5
+   gh pr view --repo RichelynScott/limux 1 --json state,mergedAt,mergeCommit,url
    ```
-3. Fully quit any old Limux windows, then launch fresh with `limux`.
-4. Validate the two user-reported behaviors manually:
-   - Open a new workspace. Expected: no GSettings crash.
-   - Try mouse selection in one pane, drag/release/cancel, move into other panes. Expected: no stuck left-click selection state.
-5. If either issue reproduces, preserve `~/.local/state/limux/logs/limux-host.log` and the exact launch environment (`env | sort | rg '^(GSETTINGS|GTK|GDK|XDG|LIMUX)_'`).
+3. If live runtime issues continue, capture
+   `~/.local/state/limux/logs/limux-host.log` and exact
+   `GSETTINGS` / `GTK` / `GDK` / `XDG` / `LIMUX` environment values from the
+   affected pane.
 
 ### HUMAN NOTE/ADD: THIS SECTION AND REQUEST WAS DIRECTLY ADDED BY HUMAN AFTER ALL SESSIONS FINISHED COMPACTION AND I CLOSED THEM OUT AND I WAS GOING TO CLOSE DOWN THE LIMUX PROCESS BUT SAW THESE ERRORS I WANTED TO MAKE SURE WE DOCUMENTED SO YOU DOUBLE CHECK THAT THESE ARE GETTING ADDRESSED OR GOT ADDRESSED: 
 """
@@ -64,49 +68,78 @@ libEGL warning: egl: failed to create dri2 screen
 
 | Time | Item | Evidence |
 |---|---|---|
-| 2026-06-19 | Diagnosed startup warnings and pane mouse-selection issue from the user-provided logs. | Used `$systematic-debugging`; inspected `layout_state.rs`, `terminal.rs`, `window.rs`, installer wrapper. |
-| 2026-06-19 | Fixed duplicate `terminal-0` GTK stack child names from cloned tab IDs in normalized session state. | Commit `e79a1ac fix(host): stabilize startup and mouse release`, pushed to `main`. |
-| 2026-06-19 | Fixed the stuck mouse-left-selection symptom by tracking active mouse button state and synthesizing releases on cancel/stop/motion-with-button-up. | Commit `e79a1ac`, host tests passed. |
-| 2026-06-19 | Fixed installed icon theme lookup path for split icons. | Commit `e79a1ac`; installed icon SVG files are valid SVGs. |
-| 2026-06-19 | Found likely new-workspace crash root cause: old Limux terminal inherited `XDG_DATA_DIRS=/home/riche/.local/limux-reviewed/7e3693cc7053/share`, hiding `/usr/share` GSettings schemas. | `gsettings list-schemas` failed under private-only `XDG_DATA_DIRS` and succeeded with `/usr/local/share:/usr/share`. |
-| 2026-06-19 | Added automatic host stderr logging. | Commit `596bc69 fix(host): add startup logging and schema env repair`, pushed to `main`; default log path is `~/.local/state/limux/logs/limux-host.log`. |
-| 2026-06-19 | Repaired host and installer `XDG_DATA_DIRS` handling so inherited private-only values keep system schema dirs. | Commit `596bc69`; targeted bad-env Xvfb smoke had no `g_settings_schema_source_lookup` critical. |
-| 2026-06-19 | Installed patched user-local build. | Active symlink: `/home/riche/.local/bin/limux -> /home/riche/.local/limux-reviewed/runtime-logs-xdg-20260619/bin/limux`. |
-| 2026-06-19 | Ran verification. | `cargo fmt --check`; targeted host tests; `cargo check -p limux-host-linux`; release builds; Xvfb bad-env smoke; installer no-delete static scan; installer syntax check; SHA256 install manifest; `./scripts/check.sh`. |
-| 2026-06-19 | Checked GitHub PR directive. | `gh pr list --repo RichelynScott/limux --state open` returned `[]`; informed `reko`. |
+| 2026-06-20 02:08 EDT | Continued G0 Limux stability work in isolated worktree. | Worktree `/home/riche/MCPs/limux-workspaces-sidebar-notifications`, branch `lifo/g0-stability-20260620`, base `49fb4cf`. |
+| 2026-06-20 02:39 EDT | Integrated multi-subagent G0 fixes. | Commit `276aafd fix(host): harden g0 runtime stability`. |
+| 2026-06-20 02:49 EDT | Opened stacked PR for G0 stability. | PR `https://github.com/RichelynScott/limux/pull/1`, base `lifo/workspaces-sidebar-notifications-20260620`. |
+| 2026-06-20 02:56 EDT | Addressed Codex bot P2 about display-dependent GTK unit test. | Commit `8798eaa test(host): skip gtk traversal test without display`. |
+| 2026-06-20 03:06 EDT | Received Codex bot clean rereview. | Bot issue comment `4756805228`: "Didn't find any major issues" for `8798eaa839`. |
+| 2026-06-20 03:08 EDT | Merged PR #1 after Codex bot clear and Halo verification. | Squash merge commit `299a8fc762dc5f4a168d7d37c8148c58d0aedb08`. |
+| 2026-06-20 03:09 EDT | Reconciled local worktree after merge. | Local and remote `lifo/workspaces-sidebar-notifications-20260620` both at `299a8fc`; worktree clean. |
 
 ## Key Files For Context
 
 | Path | Purpose |
 |---|---|
-| `/home/riche/MCPs/limux/rust/limux-host-linux/src/layout_state.rs` | Session/layout normalization; fixed duplicate cloned tab IDs in `e79a1ac`. |
-| `/home/riche/MCPs/limux/rust/limux-host-linux/src/terminal.rs` | Ghostty surface event handling; fixed stuck mouse-selection release path in `e79a1ac`. |
-| `/home/riche/MCPs/limux/rust/limux-host-linux/src/main.rs` | Host process startup; now repairs `XDG_DATA_DIRS` and installs stderr log redirection. |
-| `/home/riche/MCPs/limux/rust/limux-host-linux/src/window.rs` | GTK window/dialog code and color-scheme schema lookup; now avoids calling lookup on a null default schema source. |
-| `/home/riche/MCPs/limux/scripts/user-local-install/install-user-local.sh` | User-local installer wrapper; now appends system XDG data dirs even when inheriting a bad private-only value. |
-| `/home/riche/.local/state/limux/logs/limux-host.log` | Automatic host stderr log for new patched launches. |
-| `/home/riche/.local/limux-reviewed/runtime-logs-xdg-20260619/` | Currently installed patched user-local build. |
+| `/home/riche/MCPs/limux-workspaces-sidebar-notifications/rust/limux-control/src/socket_path.rs` | Runtime/debug socket path resolution; debug mode now ignores inherited runtime socket env unless `--socket` is explicit. |
+| `/home/riche/MCPs/limux-workspaces-sidebar-notifications/rust/limux-cli/src/main.rs` | Hook notification debug records now include `resolved_socket`. |
+| `/home/riche/MCPs/limux-workspaces-sidebar-notifications/rust/limux-host-linux/src/terminal.rs` | Ghostty surface sizing now passes physical pixels for HiDPI. |
+| `/home/riche/MCPs/limux-workspaces-sidebar-notifications/rust/limux-host-linux/src/window.rs` | Wrapped workspace roots now descend to the real pane for focus/attention; GTK traversal regression test is headless-safe. |
+| `/home/riche/MCPs/limux-workspaces-sidebar-notifications/scripts/tests/validate-split-icons.sh` | Static validator for split SVG source/package install paths. |
+| `/home/riche/MCPs/limux-workspaces-sidebar-notifications/.taskmaster/docs/workspaces-sidebar-notifications-20260620.md` | TaskMaster experience note; wrapper saw no usable task store/config, so no task IDs were invented. |
+
+## Verification
+
+Manager-run checks before PR merge:
+
+```bash
+env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 cargo test -p limux-host-linux find_leaf_pane_descends_wrapped_workspace_root_to_pane -- --nocapture
+env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 cargo test -p limux-host-linux -- --nocapture
+xvfb-run -a cargo test -p limux-host-linux find_leaf_pane_descends_wrapped_workspace_root_to_pane -- --nocapture
+git diff --check && cargo fmt --check
+./scripts/check.sh
+```
+
+Earlier G0 checks included `cargo test -p limux-control socket_path`,
+`cargo test -p limux-cli hook`, `cargo test -p limux-host-linux terminal`,
+`xvfb-run -a cargo test -p limux-host-linux window::tests::`,
+`bash scripts/tests/validate-split-icons.sh`, and a no-delete static scan over
+the new shell test helper.
 
 ## Current Git State And Branching
 
-- `main` was pushed to `origin/main` at `596bc69` before the reboot directive.
-- This reboot handoff is on branch `lifo/reboot-handoff-20260619` to satisfy the directive not to push new WIP directly to `main`.
-- Pre-existing dirty state not owned by lifo:
-  - `HANDOFF.md` has an existing dirty diff from a prior Halo/Limux/SCS handoff update.
-  - `archive/` is untracked and contains smoke-test cleanup artifacts created under the repo archive path because delete-style cleanup is disallowed.
-- Do not stage or rewrite the dirty shared `HANDOFF.md` unless explicit ownership is assigned.
+- Current worktree:
+  `/home/riche/MCPs/limux-workspaces-sidebar-notifications`.
+- Current branch:
+  `lifo/workspaces-sidebar-notifications-20260620`.
+- Current commit:
+  `299a8fc762dc5f4a168d7d37c8148c58d0aedb08`
+  (`fix(host): harden G0 runtime stability`).
+- PR #1 is merged:
+  `https://github.com/RichelynScott/limux/pull/1`.
+- The spent feature branch `lifo/g0-stability-20260620` was left in place; do
+  not add new work on it.
+- The separate main checkout `/home/riche/MCPs/limux` had pre-existing
+  Halo-owned dirt (`LIFO_HANDOFF.md`, `archive/`) and was not mutated by this
+  closeout.
 
 ## Critical Behavior Rules
 
-- Logs are automatic only for newly launched patched Limux hosts. Existing old Limux windows still use the old binary and environment.
-- If the new-workspace crash still reproduces, treat `~/.local/state/limux/logs/limux-host.log` as the first evidence source.
-- Do not route unrelated work to `rumi`; current hcom directive scopes `rumi` only to `/home/riche/Proj/hermes-agent`.
-- During the reboot stand-down window, do not start new long-running work and do not push new WIP directly to `main`.
-- Preserve user/peer worktree changes. The dirty shared `HANDOFF.md` predates this reboot handoff and was intentionally left untouched.
+- Do not continue work on the spent G0 branch after PR #1. Start from
+  `lifo/workspaces-sidebar-notifications-20260620` or a fresh branch from the
+  intended base.
+- Preserve Halo-owned/local dirt in `/home/riche/MCPs/limux`; use the isolated
+  worktree above for this lane.
+- `./scripts/check.sh` now runs plain `cargo test --workspace`; the GTK
+  traversal regression test must remain safe without a display.
+- Codex bot feedback is actionable even when Halo classifies it as
+  non-blocking; fix it before merge when practical.
 
 ## Residual Risks
 
-- Manual live validation after a full restart/relaunch is still needed for the new-workspace dialog and stuck mouse-selection issue.
-- EGL/Mesa/Zink warnings in the original log appear environment/driver related and were not treated as the crash root cause.
-- GDK popup movement warning appears compositor capability related and was not treated as a Limux correctness bug.
-- If icon warnings remain after a fresh patched launch, inspect runtime icon-theme registration and installed icon cache behavior; source SVG files are valid.
+- The live stuck-left-click/copy-paste behavior still needs a fresh runtime
+  repro capture if it reappears. The G0 patch improves adjacent focus/pane and
+  terminal sizing behavior, but does not prove the live input bug is gone.
+- Existing EGL/Mesa/Zink warnings remain environment/driver warnings unless
+  they correlate with a reproducible Limux failure.
+- True live-refresh of already-running Limux runtimes is not implemented;
+  running hosts keep old in-memory code until restart.

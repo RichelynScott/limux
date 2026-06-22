@@ -27,6 +27,7 @@ const AGENT_TEAM_LEDGER_MARKER: &str = "<!-- limux-review-ledger durable:v1 -->"
 const REVIEW_REQUEST_MARKER: &str = "<!-- limux-review-request generated:v1 -->";
 const REVIEW_EVIDENCE_MARKER: &str = "<!-- limux-review-evidence pointer:v1 -->";
 const HOST_LAUNCH_SOCKET_ENV_REMOVALS: &[&str] = &["LIMUX_SOCKET", "LIMUX_SOCKET_PATH"];
+const HOST_LAUNCH_SESSION_ENV_REMOVALS: &[&str] = &["LIMUX_SESSION_DIR"];
 const HOST_LAUNCH_TARGET_ENV_REMOVALS: &[&str] = &[
     "LIMUX_WORKSPACE_ID",
     "LIMUX_SURFACE_ID",
@@ -40,6 +41,7 @@ const AGENT_TEAM_LOCAL_POLICY_FILE: &str = "LIMUX_AGENTS.local.md";
 const AGENT_TEAM_INSTRUCTION_FILES: &[&str] = &["AGENTS.md", "CLAUDE.md", "GEMINI.md"];
 const REVIEW_DEFAULT_REVIEWS_DIR: &str = "reviews";
 const REVIEW_REVIEWERS: &[&str] = &["codex", "claude", "gemini", "opencode", "manual"];
+type HookInstallSpec = (&'static str, &'static str, Option<&'static str>);
 const REVIEW_LENSES: &[&str] = &[
     "security",
     "correctness",
@@ -314,6 +316,7 @@ fn host_launch_env_removals(inherited_target_env: bool) -> Vec<&'static str> {
     let mut removals = HOST_LAUNCH_TARGET_ENV_REMOVALS.to_vec();
     if inherited_target_env {
         removals.extend_from_slice(HOST_LAUNCH_SOCKET_ENV_REMOVALS);
+        removals.extend_from_slice(HOST_LAUNCH_SESSION_ENV_REMOVALS);
     }
     removals
 }
@@ -986,6 +989,7 @@ async fn run_agent_hook(
     // Build a human-friendly title + body depending on event + agent.
     let agent_label = agent.label();
     persist_agent_hook_session(agent, args, &payload, &event)?;
+    let tool_name = hook_str(&payload, &["tool_name", "toolName", "name"]).unwrap_or("");
     let (title, body) = match event.as_str() {
         "Notification" => (
             format!("{agent_label} needs you"),
@@ -1010,10 +1014,7 @@ async fn run_agent_hook(
             hook_str(&payload, &["reason"]).unwrap_or("").to_owned(),
         ),
         "PreToolUse" | "PostToolUse" => (
-            format!(
-                "{agent_label}: {}",
-                hook_str(&payload, &["tool_name"]).unwrap_or("tool")
-            ),
+            format!("{agent_label}: {}", non_empty_or(tool_name, "tool")),
             hook_str(&payload, &["tool_input", "summary"])
                 .unwrap_or("")
                 .to_owned(),
@@ -1054,15 +1055,61 @@ async fn run_agent_hook(
         params.insert("body".to_string(), Value::String(body));
     }
 
-    let _ = call_in_workspace_scope(
+    let notify_result = call_in_workspace_scope(
         client,
-        workspace,
+        workspace.clone(),
         "notification.create",
         Value::Object(params),
     )
     .await;
+    match notify_result {
+        Ok(_) => write_agent_hook_debug(
+            agent,
+            &event,
+            "notify_ok",
+            &agent_hook_notify_debug_details(&client.socket, workspace.as_deref(), None),
+        ),
+        Err(error) => {
+            let error = format!("{error:#}");
+            write_agent_hook_debug(
+                agent,
+                &event,
+                "notify_error",
+                &agent_hook_notify_debug_details(
+                    &client.socket,
+                    workspace.as_deref(),
+                    Some(&error),
+                ),
+            );
+        }
+    }
 
     Ok(agent_hook_output(&event, &payload))
+}
+
+fn agent_hook_notify_debug_details(
+    socket: &Path,
+    workspace: Option<&str>,
+    error: Option<&str>,
+) -> Value {
+    let mut details = json!({
+        "workspace": workspace,
+        "surface_id": limux_env_value("LIMUX_SURFACE_ID"),
+        "socket": limux_env_value("LIMUX_SOCKET"),
+        "resolved_socket": socket.to_string_lossy().to_string(),
+    });
+    if let Some(error) = error {
+        details["error"] = Value::String(error.to_string());
+    }
+    details
+}
+
+fn non_empty_or<'a>(value: &'a str, fallback: &'a str) -> &'a str {
+    if value.trim().is_empty() {
+        fallback
+    } else {
+        value
+    }
 }
 
 fn agent_hook_output(event: &str, payload: &Value) -> Value {
@@ -1535,20 +1582,20 @@ fn install_hook_target(agent: agent_hooks::AgentKind) -> Result<()> {
             &codex_hooks_path(),
             agent,
             &[
-                ("SessionStart", "session-start"),
-                ("UserPromptSubmit", "prompt-submit"),
-                ("Stop", "stop"),
+                ("SessionStart", "session-start", None),
+                ("UserPromptSubmit", "prompt-submit", None),
+                ("Stop", "stop", None),
             ],
         ),
         agent_hooks::AgentKind::Claude => install_json_hooks(
             &claude_settings_path(),
             agent,
             &[
-                ("SessionStart", "session-start"),
-                ("UserPromptSubmit", "prompt-submit"),
-                ("Stop", "stop"),
-                ("Notification", "stop"),
-                ("SessionEnd", "session-end"),
+                ("SessionStart", "session-start", None),
+                ("UserPromptSubmit", "prompt-submit", None),
+                ("Stop", "stop", None),
+                ("Notification", "stop", None),
+                ("SessionEnd", "session-end", None),
             ],
         ),
         agent_hooks::AgentKind::OpenCode => install_opencode_plugin(),
@@ -1556,10 +1603,10 @@ fn install_hook_target(agent: agent_hooks::AgentKind) -> Result<()> {
             &gemini_settings_path(),
             agent,
             &[
-                ("SessionStart", "session-start"),
-                ("BeforeAgent", "prompt-submit"),
-                ("AfterAgent", "stop"),
-                ("SessionEnd", "session-end"),
+                ("SessionStart", "session-start", None),
+                ("BeforeAgent", "prompt-submit", None),
+                ("AfterAgent", "stop", None),
+                ("SessionEnd", "session-end", None),
             ],
         ),
     }
@@ -1584,7 +1631,7 @@ fn uninstall_hook_target(agent: agent_hooks::AgentKind) -> Result<()> {
 fn install_json_hooks(
     path: &Path,
     agent: agent_hooks::AgentKind,
-    events: &[(&str, &str)],
+    events: &[HookInstallSpec],
 ) -> Result<()> {
     let mut root = read_json_object(path)?;
     let hooks = root
@@ -1606,7 +1653,7 @@ fn install_json_hooks(
             .unwrap_or(true)
     });
 
-    for (agent_event, limux_event) in events {
+    for (agent_event, limux_event, matcher) in events {
         let entries = hooks
             .entry((*agent_event).to_string())
             .or_insert_with(|| Value::Array(Vec::new()));
@@ -1622,7 +1669,9 @@ fn install_json_hooks(
                 "timeout": hook_timeout(agent)
             }]
         });
-        if matches!(agent, agent_hooks::AgentKind::Claude) {
+        if let Some(matcher) = matcher {
+            entry["matcher"] = Value::String((*matcher).to_string());
+        } else if matches!(agent, agent_hooks::AgentKind::Claude) {
             entry["matcher"] = Value::String("*".to_string());
         }
         entries.push(entry);
@@ -5965,10 +6014,13 @@ mod cli_arg_tests {
                 "missing env removal for {key}"
             );
         }
-        for key in HOST_LAUNCH_SOCKET_ENV_REMOVALS {
+        for key in HOST_LAUNCH_SOCKET_ENV_REMOVALS
+            .iter()
+            .chain(HOST_LAUNCH_SESSION_ENV_REMOVALS.iter())
+        {
             assert!(
                 !removals.iter().any(|removed| removed == key),
-                "explicit socket env should be preserved for {key}"
+                "explicit runtime env should be preserved for {key}"
             );
         }
     }
@@ -5979,6 +6031,7 @@ mod cli_arg_tests {
         for key in HOST_LAUNCH_TARGET_ENV_REMOVALS
             .iter()
             .chain(HOST_LAUNCH_SOCKET_ENV_REMOVALS.iter())
+            .chain(HOST_LAUNCH_SESSION_ENV_REMOVALS.iter())
         {
             assert!(
                 removals.iter().any(|removed| removed == key),
@@ -5996,10 +6049,13 @@ mod cli_arg_tests {
                 "missing target env removal for {key}"
             );
         }
-        for key in HOST_LAUNCH_SOCKET_ENV_REMOVALS {
+        for key in HOST_LAUNCH_SOCKET_ENV_REMOVALS
+            .iter()
+            .chain(HOST_LAUNCH_SESSION_ENV_REMOVALS.iter())
+        {
             assert!(
                 !removals.iter().any(|removed| removed == key),
-                "socket env should not be removed without inherited target env for {key}"
+                "runtime env should not be removed without inherited target env for {key}"
             );
         }
     }
@@ -6241,6 +6297,18 @@ mod cli_arg_tests {
     }
 
     #[test]
+    fn hook_notify_debug_details_include_resolved_socket_path() {
+        let details = agent_hook_notify_debug_details(
+            Path::new("/tmp/resolved.sock"),
+            Some("workspace-a"),
+            None,
+        );
+
+        assert_eq!(details["workspace"], "workspace-a");
+        assert_eq!(details["resolved_socket"], "/tmp/resolved.sock");
+    }
+
+    #[test]
     fn claude_hook_install_writes_required_matcher() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("settings.json");
@@ -6248,7 +6316,7 @@ mod cli_arg_tests {
         install_json_hooks(
             &path,
             agent_hooks::AgentKind::Claude,
-            &[("SessionStart", "session-start")],
+            &[("SessionStart", "session-start", None)],
         )
         .expect("install hooks");
 
@@ -6271,7 +6339,7 @@ mod cli_arg_tests {
         install_json_hooks(
             &path,
             agent_hooks::AgentKind::Codex,
-            &[("SessionStart", "session-start")],
+            &[("SessionStart", "session-start", None)],
         )
         .expect("install hooks");
 

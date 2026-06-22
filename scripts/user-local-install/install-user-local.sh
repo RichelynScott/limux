@@ -37,6 +37,40 @@ die() {
     exit 1
 }
 
+assert_split_icon_svg() {
+    local path="$1"
+    local prefix
+
+    if [[ ! -s "$path" ]]; then
+        die "split icon source is missing or empty: ${path}"
+    fi
+
+    prefix="$(LC_ALL=C head -c 5 "$path")"
+    case "$prefix" in
+        "<svg "|"<?xml") ;;
+        *) die "split icon source does not start with SVG/XML bytes: ${path}" ;;
+    esac
+
+    LC_ALL=C grep -Eq '<svg([[:space:]>])' "$path" \
+        || die "split icon source is missing an <svg> element: ${path}"
+    LC_ALL=C grep -q '</svg>' "$path" \
+        || die "split icon source is missing a closing </svg>: ${path}"
+}
+
+validate_split_icon_sources() {
+    local icons_dir="$1"
+    local rel
+
+    for rel in \
+        "limux-split-horizontal-symbolic.svg" \
+        "limux-split-vertical-symbolic.svg" \
+        "hicolor/scalable/actions/limux-split-horizontal-symbolic.svg" \
+        "hicolor/scalable/actions/limux-split-vertical-symbolic.svg"
+    do
+        assert_split_icon_svg "${icons_dir}/${rel}"
+    done
+}
+
 script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 
@@ -135,6 +169,8 @@ ghostty_lib_src="${repo_root}/ghostty/zig-out/lib/libghostty.so"
 desktop_src="${repo_root}/rust/limux-host-linux/dev.limux.linux.desktop"
 metainfo_src="${repo_root}/rust/limux-host-linux/dev.limux.linux.metainfo.xml"
 icons_src="${repo_root}/rust/limux-host-linux/icons"
+
+validate_split_icon_sources "$icons_src"
 
 [[ -x "$cli_src" ]] || die "missing executable CLI artifact: ${cli_src}"
 [[ -x "$host_src" ]] || die "missing executable GTK host artifact: ${host_src}"
