@@ -1669,3 +1669,152 @@ source or assets.
 ### Related:
 `AGENTS.md` | `docs/cmux-parity-plan.md` |
 <https://github.com/manaflow-ai/cmux/releases>
+
+## 2026-06-19 - Host Runtime Fixes And Automatic Logs
+### What:
+Fixed Limux host startup/runtime issues reported from live logs: duplicate
+terminal stack child names, stuck mouse-left-selection behavior, bad inherited
+`XDG_DATA_DIRS` hiding GSettings schemas, and missing automatic host stderr
+logging.
+
+### Why:
+The operator reported a crash when opening a new workspace, warnings about
+missing GSettings schemas, and a pane that behaved like the left mouse button
+was stuck. A restarted session needs the exact installed build, log path, and
+remaining manual validation steps.
+
+### How:
+Pushed `e79a1ac fix(host): stabilize startup and mouse release` and
+`596bc69 fix(host): add startup logging and schema env repair` to `main`, then
+installed `/home/riche/.local/limux-reviewed/runtime-logs-xdg-20260619/`.
+The patched host logs to `~/.local/state/limux/logs/limux-host.log` by
+default. Created `LIFO_HANDOFF.md` on branch `lifo/reboot-handoff-20260619`
+for reboot continuity without touching the pre-existing dirty shared
+`HANDOFF.md`.
+
+### Impact:
+Fresh Limux launches should preserve system GSettings schema dirs even from an
+old Limux terminal environment, and future crashes should leave automatic host
+stderr evidence. Manual post-reboot validation is still needed for new
+workspace creation and mouse selection release behavior.
+
+### Related:
+`e79a1ac` | `596bc69` | `LIFO_HANDOFF.md`
+
+## 2026-06-20 - Limux Improvement Focus Restored
+### What:
+Rewrote the root Limux handoff so the active repo goal is Limux
+product/runtime improvement, not the previous Project Isolation Lab / VM lane.
+
+### Why:
+The operator explicitly redirected this session to focus on improving Limux
+while the VM/isolation project is handled by the SCS team. Keeping the old VM
+goal as the root resume target was causing the Limux session to drift.
+
+### How:
+Coordinated with lifo over hcom. Lifo confirmed he does not own root
+`HANDOFF.md` and that his current lane is read-only investigation in the sibling
+worktree for manual workspace unread marking and pane attention outline
+requests. Replaced root `HANDOFF.md`, added `HALO_HANDOFF.md`, and marked
+`docs/project-isolation-lab-goal.md` as historical for active Limux work.
+
+### Impact:
+A zero-context Limux successor should now resume product/runtime improvement,
+preserve lifo-owned dirt in `LIFO_HANDOFF.md` and `archive/`, and use the
+remaining VM/isolation note only as historical context.
+
+### Related:
+`HANDOFF.md` | `HALO_HANDOFF.md` | `docs/project-isolation-lab-goal.md` |
+hcom `#113038`
+
+## 2026-06-20 - Workspace Unread And Pane Attention Markers
+### What:
+Added two scoped Limux UI improvements on branch
+`halo/limux-ui-improvements-20260620`: a workspace context-menu `Mark Unread`
+action and a blue pane attention outline for unfocused terminal-originated
+notifications.
+
+### Why:
+The operator wanted Limux to be more useful for managing many terminal/agent
+sessions, specifically by marking workspaces for follow-up and visually finding
+the pane/session that needs attention.
+
+### How:
+Reused the existing workspace unread visual pipeline, added a shared helper for
+manual and notification-driven unread state, routed notification/bell targets
+through existing `pane_id` metadata, and used the existing pane registry to add
+a `.limux-pane-attention` CSS class. Hovering an outlined pane clears the class
+after three seconds.
+
+### Impact:
+The change is available on the pushed implementation branch but is not yet in
+the installed user-local `limux` build. Verification passed with
+`cargo fmt --check`, `cargo test -p limux-host-linux`, and
+`LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh`.
+
+### Related:
+`b09c7f8` | `rust/limux-host-linux/src/window.rs` |
+`rust/limux-host-linux/src/pane.rs`
+
+## 2026-06-20 - Limux Crash Triage And Integration Lane Hold
+### What:
+Classified the operator-reported Limux crash after the user-local integration
+install and coordinated with lifo to hold mutation on the integration branch.
+
+### Why:
+The installed Limux build is now from
+`origin/lifo/workspaces-sidebar-notifications-20260620` at `49fb4cf`, so any
+post-install crash needed immediate branch/repro triage before further
+mutation, rollback, or cleanup.
+
+### How:
+Compared halo and lifo evidence on hcom thread `limux-crash-20260620`.
+Both sessions found the same host log signature:
+`Gdk-Message: Error reading events from display: Connection reset by peer` at
+`01:31:21`, followed by fresh installed-lane host starts. Host-namespace
+process/socket checks showed two live installed-lane hosts on
+`/run/user/1000/limux/limux.sock` and `limux-23541.sock`; explicit
+selected-workspace `surface-health` checks were healthy on both. No Rust panic,
+segfault, fatal GLib stack, matching user-journal crash entry, or unpushed lifo
+worktree change was found.
+
+### Impact:
+Current classification is likely WSLg/display/compositor/session reset or
+duplicate live-host state, not a proven branch-specific Limux crash. The next
+operator choice is numbered in `HANDOFF.md`: controlled restart/cleanup,
+watch-only, or rollback. Integration-branch mutation remains held until crash
+evidence becomes concrete or the operator approves the next step.
+
+### Related:
+`HANDOFF.md` | `HALO_HANDOFF.md` | hcom `limux-crash-20260620` |
+`49fb4cf3a15262fd4d09532c0f8fdc38ab8fdc45`
+
+## 2026-06-20 - G0 Stability PR Merged After Codex Rereview
+### What:
+Closed the G0 stability PR loop for Limux. PR #1 was merged into
+`lifo/workspaces-sidebar-notifications-20260620` at
+`299a8fc762dc5f4a168d7d37c8148c58d0aedb08`.
+
+### Why:
+The operator requested that all Codex PR bot feedback be addressed, that
+`@codex review` be invoked after fixes, and that the PR merge only happen after
+Codex reported the latest head clean.
+
+### How:
+Lifo fixed the Codex P2 feedback by making the GTK traversal unit test skip
+when `gtk::init()` cannot initialize a display. Halo independently verified the
+PR bot comment, the no-display and forced-invalid-backend test paths, formatting
+and diff checks, and the GitHub PR state. Codex rereview then reported:
+`Didn't find any major issues` for `8798eaa839`.
+
+### Impact:
+The recommended integration lane is now
+`origin/lifo/workspaces-sidebar-notifications-20260620` at `299a8fc`. The
+active user-local `limux` symlink still points at the earlier
+`workspaces-sidebar-notifications-20260620` install; installing the G0 merge is
+a separate reviewed action if the operator wants it live.
+
+### Related:
+PR #1 | `8798eaa83963ecbe411cda7cc7d3c6345bd0f90d` |
+`299a8fc762dc5f4a168d7d37c8148c58d0aedb08` |
+hcom `limux-g0-stability-20260620`
