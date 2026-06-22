@@ -3187,15 +3187,12 @@ fn show_workspace_context_menu(state: &State, workspace_id: &str, row: &gtk::Lis
     unread_btn.add_css_class("flat");
     let rename_btn = gtk::Button::with_label("Rename");
     rename_btn.add_css_class("flat");
-    let mark_unread_btn = gtk::Button::with_label("Mark Unread");
-    mark_unread_btn.add_css_class("flat");
     let delete_btn = gtk::Button::with_label("Delete");
     delete_btn.add_css_class("flat");
     delete_btn.add_css_class("destructive-action");
 
     menu_box.append(&unread_btn);
     menu_box.append(&rename_btn);
-    menu_box.append(&mark_unread_btn);
     menu_box.append(&delete_btn);
 
     let popover = gtk::Popover::new();
@@ -3210,6 +3207,7 @@ fn show_workspace_context_menu(state: &State, workspace_id: &str, row: &gtk::Lis
         unread_btn.connect_clicked(move |_| {
             pop.popdown();
             set_workspace_manual_unread(&state, &ws_id, !is_unread);
+            request_session_save(&state);
         });
     }
     {
@@ -3219,17 +3217,6 @@ fn show_workspace_context_menu(state: &State, workspace_id: &str, row: &gtk::Lis
         rename_btn.connect_clicked(move |_| {
             pop.popdown();
             begin_workspace_inline_rename(&state, &ws_id);
-        });
-    }
-    {
-        let state = state.clone();
-        let ws_id = workspace_id.to_string();
-        let pop = popover.clone();
-        mark_unread_btn.connect_clicked(move |_| {
-            pop.popdown();
-            if mark_workspace_unread_manually(&state, &ws_id) {
-                request_session_save(&state);
-            }
         });
     }
     {
@@ -3366,7 +3353,7 @@ fn set_workspace_manual_unread(state: &State, workspace_id: &str, unread: bool) 
                 &workspace.notify_dot,
                 &workspace.notify_label,
                 &workspace.sidebar_row,
-                "Marked for follow-up",
+                MANUAL_WORKSPACE_UNREAD_MESSAGE,
             );
         } else {
             clear_workspace_unread_widgets(
@@ -6134,20 +6121,6 @@ fn set_workspace_unread_visuals(workspace: &mut Workspace, message: &str) {
     if let Some(row_box) = workspace.sidebar_row.child() {
         row_box.add_css_class("limux-sidebar-row-unread");
     }
-}
-
-fn mark_workspace_unread_manually(state: &State, ws_id: &str) -> bool {
-    let mut s = state.borrow_mut();
-    let Some(workspace) = s
-        .workspaces
-        .iter_mut()
-        .find(|workspace| workspace.id == ws_id)
-    else {
-        return false;
-    };
-
-    set_workspace_unread_visuals(workspace, MANUAL_WORKSPACE_UNREAD_MESSAGE);
-    true
 }
 
 fn mark_workspace_unread_with_message(

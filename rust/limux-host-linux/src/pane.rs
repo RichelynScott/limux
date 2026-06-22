@@ -203,10 +203,12 @@ pub fn mark_pane_needs_attention(pane_id: u32) -> bool {
         return false;
     };
 
-    if let Some(source) = internals.attention_clear_timer.borrow_mut().take() {
+    internals.pane_outer.add_css_class(PANE_ATTENTION_CSS_CLASS);
+    if internals.attention_hovered.get() {
+        schedule_attention_clear(&internals.pane_outer, &internals.attention_clear_timer);
+    } else if let Some(source) = internals.attention_clear_timer.borrow_mut().take() {
         source.remove();
     }
-    internals.pane_outer.add_css_class(PANE_ATTENTION_CSS_CLASS);
     true
 }
 
@@ -224,25 +226,39 @@ fn install_attention_hover_clear(internals: &Rc<PaneInternals>) {
     let motion = gtk::EventControllerMotion::new();
     let outer = internals.pane_outer.clone();
     let attention_clear_timer = internals.attention_clear_timer.clone();
+    let attention_hovered = internals.attention_hovered.clone();
     motion.connect_enter(move |_, _, _| {
+        attention_hovered.set(true);
         if !outer.has_css_class(PANE_ATTENTION_CSS_CLASS) {
             return;
         }
-        if let Some(source) = attention_clear_timer.borrow_mut().take() {
-            source.remove();
-        }
-        let outer_for_timeout = outer.clone();
-        let timer_for_timeout = attention_clear_timer.clone();
-        let source = glib::timeout_add_local_once(
-            Duration::from_millis(PANE_ATTENTION_HOVER_CLEAR_MS),
-            move || {
-                outer_for_timeout.remove_css_class(PANE_ATTENTION_CSS_CLASS);
-                timer_for_timeout.borrow_mut().take();
-            },
-        );
-        *attention_clear_timer.borrow_mut() = Some(source);
+        schedule_attention_clear(&outer, &attention_clear_timer);
+    });
+
+    let attention_hovered = internals.attention_hovered.clone();
+    motion.connect_leave(move |_| {
+        attention_hovered.set(false);
     });
     internals.pane_outer.add_controller(motion);
+}
+
+fn schedule_attention_clear(
+    outer: &gtk::Box,
+    attention_clear_timer: &Rc<RefCell<Option<glib::SourceId>>>,
+) {
+    if let Some(source) = attention_clear_timer.borrow_mut().take() {
+        source.remove();
+    }
+    let outer_for_timeout = outer.clone();
+    let timer_for_timeout = attention_clear_timer.clone();
+    let source = glib::timeout_add_local_once(
+        Duration::from_millis(PANE_ATTENTION_HOVER_CLEAR_MS),
+        move || {
+            outer_for_timeout.remove_css_class(PANE_ATTENTION_CSS_CLASS);
+            timer_for_timeout.borrow_mut().take();
+        },
+    );
+    *attention_clear_timer.borrow_mut() = Some(source);
 }
 
 // ---------------------------------------------------------------------------
@@ -505,20 +521,6 @@ pub fn create_pane(
         .vexpand(true)
         .build();
     outer.set_size_request(MIN_PANE_WIDTH, MIN_PANE_HEIGHT);
-    {
-        let pane_for_hover = outer.clone();
-        let attention_hover = gtk::EventControllerMotion::new();
-        attention_hover.connect_enter(move |_, _, _| {
-            if pane_for_hover.has_css_class("limux-pane-attention") {
-                let pane_for_clear = pane_for_hover.clone();
-                glib::timeout_add_local_once(std::time::Duration::from_secs(3), move || {
-                    pane_for_clear.remove_css_class("limux-pane-attention");
-                });
-            }
-        });
-        outer.add_controller(attention_hover);
-    }
-
     // The single header line: tabs (left) + action icons (right)
     let header = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -619,6 +621,7 @@ pub fn create_pane(
     }));
     let workspace_dragging = Rc::new(Cell::new(false));
     let attention_clear_timer = Rc::new(RefCell::new(None));
+    let attention_hovered = Rc::new(Cell::new(false));
     let pane_id = pane_id_for_initial_state(initial_state);
     let internals = Rc::new(PaneInternals {
         pane_id,
@@ -632,6 +635,7 @@ pub fn create_pane(
         working_directory: ws_wd.clone(),
         workspace_dragging: workspace_dragging.clone(),
         attention_clear_timer: attention_clear_timer.clone(),
+        attention_hovered: attention_hovered.clone(),
         new_terminal_button: new_term_btn.clone(),
         split_right_button: split_h_btn.clone(),
         split_down_button: split_v_btn.clone(),
@@ -954,6 +958,7 @@ pub struct PaneInternals {
     working_directory: Rc<std::cell::RefCell<Option<String>>>,
     workspace_dragging: Rc<Cell<bool>>,
     attention_clear_timer: Rc<RefCell<Option<glib::SourceId>>>,
+    attention_hovered: Rc<Cell<bool>>,
     new_terminal_button: gtk::Button,
     split_right_button: gtk::Button,
     split_down_button: gtk::Button,
