@@ -72,6 +72,12 @@ without missing-configuration warnings.
   as explicit standard-clipboard writes. Limux now keeps PRIMARY selection writes
   but only shows the toast for standard clipboard writes, so drag-selecting text
   should not produce the premature "Copied to clipboard" signal.
+- Operator follow-up confirmed the drag bug was fixed but asked to restore the
+  prior automatic regular-clipboard copy and bottom notification. Limux now
+  caches PRIMARY/selection writes during drag and promotes the latest non-empty
+  selection to the standard clipboard only after left-button release, then shows
+  the bottom copy toast. This restores auto-copy notification behavior without
+  reintroducing mid-drag copy/toast interruptions.
 
 ## Verification
 
@@ -95,3 +101,10 @@ Installed reviewed runtime:
 - `~/.local/bin/limux` and `~/.local/bin/limux-cli` point at this install.
 - Any already-running Limux process must be restarted before the fix is live in
   that window.
+
+2026-06-22 follow-up for restored release-time auto-copy:
+
+- `cargo fmt --check`
+- `LD_LIBRARY_PATH=/home/riche/MCPs/limux-copy-paste-fix-20260622/ghostty/zig-out/lib cargo test -p limux-host-linux terminal::tests -- --nocapture`
+- `LD_LIBRARY_PATH=/home/riche/MCPs/limux-copy-paste-fix-20260622/ghostty/zig-out/lib cargo clippy -p limux-host-linux --all-targets -- -D warnings`
+- `LD_LIBRARY_PATH=/home/riche/MCPs/limux-copy-paste-fix-20260622/ghostty/zig-out/lib cargo build -p limux-host-linux --bin limux -p limux-cli --bin limux-cli`

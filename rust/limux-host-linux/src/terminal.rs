@@ -67,6 +67,7 @@ struct SurfaceEntry {
     on_close: Option<Box<VoidCallback>>,
     open_url_external: Rc<Cell<bool>>,
     clipboard_context: *mut ClipboardContext,
+    pending_selection_auto_copy: Option<String>,
 }
 
 struct ClipboardContext {
@@ -965,6 +966,64 @@ fn should_show_copy_toast(targets: ClipboardWriteTargets) -> bool {
     targets.standard
 }
 
+fn should_cache_selection_auto_copy(targets: ClipboardWriteTargets, text: &str) -> bool {
+    targets.selection && !targets.standard && !text.is_empty()
+}
+
+fn should_promote_selection_auto_copy(button: c_int) -> bool {
+    button == GHOSTTY_MOUSE_LEFT
+}
+
+fn clear_pending_selection_auto_copy(surface: ghostty_surface_t) {
+    SURFACE_MAP.with(|map| {
+        if let Some(entry) = map.borrow_mut().get_mut(&(surface as usize)) {
+            entry.pending_selection_auto_copy = None;
+        }
+    });
+}
+
+fn cache_selection_auto_copy(surface_key: usize, targets: ClipboardWriteTargets, text: &str) {
+    if !targets.selection {
+        return;
+    }
+
+    SURFACE_MAP.with(|map| {
+        if let Some(entry) = map.borrow_mut().get_mut(&surface_key) {
+            entry.pending_selection_auto_copy =
+                should_cache_selection_auto_copy(targets, text).then(|| text.to_string());
+        }
+    });
+}
+
+fn promote_pending_selection_auto_copy(surface: ghostty_surface_t, button: c_int) {
+    if !should_promote_selection_auto_copy(button) {
+        return;
+    }
+
+    let pending = SURFACE_MAP.with(|map| {
+        map.borrow_mut()
+            .get_mut(&(surface as usize))
+            .and_then(|entry| {
+                entry
+                    .pending_selection_auto_copy
+                    .take()
+                    .map(|text| (text, entry.toast_overlay.clone()))
+            })
+    });
+
+    let Some((text, toast_overlay)) = pending else {
+        return;
+    };
+    if text.is_empty() {
+        return;
+    }
+
+    if let Some(display) = gtk::gdk::Display::default() {
+        display.clipboard().set_text(&text);
+    }
+    show_clipboard_toast(&toast_overlay);
+}
+
 fn clipboard_has_text(clipboard: &gtk::gdk::Clipboard) -> bool {
     let formats = clipboard.formats();
     let mime_types = formats.mime_types();
@@ -1083,11 +1142,17 @@ unsafe extern "C" fn ghostty_write_clipboard_cb(
         display.primary_clipboard().set_text(&text);
     }
 
+    let surface_key = unsafe { clipboard_surface_from_userdata(userdata) }.map(|surface| {
+        let surface_key = surface as usize;
+        cache_selection_auto_copy(surface_key, targets, &text);
+        surface_key
+    });
+
     // Selection writes happen repeatedly while drag-selecting text. Only explicit
     // standard-clipboard copies should show a user-visible "Copied" toast.
     if should_show_copy_toast(targets) {
-        let surface_key = match unsafe { clipboard_surface_from_userdata(userdata) } {
-            Some(surface) => surface as usize,
+        let surface_key = match surface_key {
+            Some(surface_key) => surface_key,
             None => return,
         };
         SURFACE_MAP.with(|map| {
@@ -1490,6 +1555,7 @@ pub fn create_terminal(
                         })),
                         open_url_external: open_url_external_for_map.clone(),
                         clipboard_context,
+                        pending_selection_auto_copy: None,
                     },
                 );
             });
@@ -1674,7 +1740,10 @@ pub fn create_terminal(
                 let button = ghostty_mouse_button_from_gdk(btn);
                 let mods = translate_mouse_mods(gesture.current_event_state());
                 unsafe {
-                    release_active_mouse_button(surface, &active_mouse_button_for_press, mods);
+                    let released_button =
+                        release_active_mouse_button(surface, &active_mouse_button_for_press, mods);
+                    promote_pending_selection_auto_copy(surface, released_button);
+                    clear_pending_selection_auto_copy(surface);
                     ghostty_surface_mouse_pos(surface, x, y, mods);
                     open_url_external_for_press.set(mods & GHOSTTY_MODS_CTRL != 0);
                     ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, button, mods);
@@ -1701,6 +1770,7 @@ pub fn create_terminal(
                         ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, button, mods);
                         open_url_external_for_release.set(false);
                     }
+                    promote_pending_selection_auto_copy(surface, button);
                 }
                 if active_mouse_button_for_release.get() == button {
                     active_mouse_button_for_release.set(GHOSTTY_MOUSE_UNKNOWN);
@@ -2354,11 +2424,12 @@ unsafe fn release_active_mouse_button(
     surface: ghostty_surface_t,
     active_button: &Cell<c_int>,
     mods: c_int,
-) {
+) -> c_int {
     let button = active_button.replace(GHOSTTY_MOUSE_UNKNOWN);
     if button != GHOSTTY_MOUSE_UNKNOWN {
         ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, button, mods);
     }
+    button
 }
 
 #[cfg(test)]
@@ -2598,6 +2669,30 @@ mod tests {
         assert!(!should_show_copy_toast(clipboard_write_targets(
             GHOSTTY_CLIPBOARD_SELECTION
         )));
+    }
+
+    #[test]
+    fn selection_auto_copy_caches_non_empty_selection_only() {
+        assert!(should_cache_selection_auto_copy(
+            clipboard_write_targets(GHOSTTY_CLIPBOARD_SELECTION),
+            "selected text"
+        ));
+        assert!(!should_cache_selection_auto_copy(
+            clipboard_write_targets(GHOSTTY_CLIPBOARD_SELECTION),
+            ""
+        ));
+        assert!(!should_cache_selection_auto_copy(
+            clipboard_write_targets(GHOSTTY_CLIPBOARD_STANDARD),
+            "selected text"
+        ));
+    }
+
+    #[test]
+    fn selection_auto_copy_promotes_on_left_release_only() {
+        assert!(should_promote_selection_auto_copy(GHOSTTY_MOUSE_LEFT));
+        assert!(!should_promote_selection_auto_copy(GHOSTTY_MOUSE_MIDDLE));
+        assert!(!should_promote_selection_auto_copy(GHOSTTY_MOUSE_RIGHT));
+        assert!(!should_promote_selection_auto_copy(GHOSTTY_MOUSE_UNKNOWN));
     }
 
     #[test]
