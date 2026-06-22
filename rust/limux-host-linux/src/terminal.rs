@@ -1741,7 +1741,6 @@ pub fn create_terminal(
         let surface_cell_for_enter = surface_cell.clone();
         let gl_for_focus = gl_area.clone();
         let had_focus_for_motion = had_focus.clone();
-        let active_mouse_button_for_enter = active_mouse_button.clone();
         let motion = gtk::EventControllerMotion::new();
         motion.connect_enter(move |ctrl, x, y| {
             if (hover_focus)() {
@@ -1752,36 +1751,15 @@ pub fn create_terminal(
             }
 
             if let Some(surface) = *surface_cell_for_enter.borrow() {
-                release_mouse_button_if_physical_button_is_up(
-                    surface,
-                    &active_mouse_button_for_enter,
-                    ctrl.current_event_state(),
-                );
                 let mods = translate_mouse_mods(ctrl.current_event_state());
                 unsafe { ghostty_surface_mouse_pos(surface, x, y, mods) };
             }
         });
         let surface_cell_for_motion = surface_cell.clone();
-        let active_mouse_button_for_motion = active_mouse_button.clone();
         motion.connect_motion(move |ctrl, x, y| {
             if let Some(surface) = *surface_cell_for_motion.borrow() {
-                release_mouse_button_if_physical_button_is_up(
-                    surface,
-                    &active_mouse_button_for_motion,
-                    ctrl.current_event_state(),
-                );
                 let mods = translate_mouse_mods(ctrl.current_event_state());
                 unsafe { ghostty_surface_mouse_pos(surface, x, y, mods) };
-            }
-        });
-        let surface_cell_for_leave = surface_cell.clone();
-        let active_mouse_button_for_leave = active_mouse_button.clone();
-        motion.connect_leave(move |ctrl| {
-            if let Some(surface) = *surface_cell_for_leave.borrow() {
-                let mods = translate_mouse_mods(ctrl.current_event_state());
-                unsafe {
-                    release_active_mouse_button(surface, &active_mouse_button_for_leave, mods);
-                }
             }
         });
         gl_area.add_controller(motion);
@@ -2385,14 +2363,6 @@ fn mouse_release_button_for_event(active_button: c_int, event_button: u32) -> c_
     }
 }
 
-fn mouse_button_is_still_pressed(button: c_int, state: gtk::gdk::ModifierType) -> bool {
-    match button {
-        GHOSTTY_MOUSE_LEFT => state.contains(gtk::gdk::ModifierType::BUTTON1_MASK),
-        GHOSTTY_MOUSE_MIDDLE => state.contains(gtk::gdk::ModifierType::BUTTON2_MASK),
-        _ => false,
-    }
-}
-
 unsafe fn release_active_mouse_button(
     surface: ghostty_surface_t,
     active_button: &Cell<c_int>,
@@ -2401,20 +2371,6 @@ unsafe fn release_active_mouse_button(
     let button = active_button.replace(GHOSTTY_MOUSE_UNKNOWN);
     if button != GHOSTTY_MOUSE_UNKNOWN {
         ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, button, mods);
-    }
-}
-
-fn release_mouse_button_if_physical_button_is_up(
-    surface: ghostty_surface_t,
-    active_button: &Cell<c_int>,
-    state: gtk::gdk::ModifierType,
-) {
-    let button = active_button.get();
-    if button != GHOSTTY_MOUSE_UNKNOWN && !mouse_button_is_still_pressed(button, state) {
-        let mods = translate_mouse_mods(state);
-        unsafe {
-            release_active_mouse_button(surface, active_button, mods);
-        }
     }
 }
 

@@ -55,7 +55,11 @@ without missing-configuration warnings.
   selection writes into the standard clipboard. That made terminal selection or
   copy actions in one pane/runtime clobber paste content in another.
 - Stuck terminal selection remained possible if GTK delivered a release with an
-  unknown button or the pointer left a GLArea before the matching release.
+  unknown button.
+- The first fix over-corrected stuck selection by treating motion/enter/leave
+  events with missing `BUTTON1_MASK` as a release. Under WSLg this can happen
+  while the physical left mouse button is still held, so Ghostty completed and
+  copied a partial selection before the user released the mouse.
 
 ## Verification
 
