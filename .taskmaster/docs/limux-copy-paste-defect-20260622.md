@@ -65,6 +65,13 @@ without missing-configuration warnings.
   those are gesture-recognition lifecycle signals and can fire when a pointer
   movement becomes a drag, so treating them as physical button release ends the
   Ghostty selection too early.
+- A Claude plugin rescue review found one more contributor that matches the
+  user's "Copied to clipboard" toast during drag: Ghostty's Linux
+  `copy-on-select` writes the PRIMARY/selection clipboard as the selection grows,
+  and Limux showed the visible copy toast for selection-clipboard writes as well
+  as explicit standard-clipboard writes. Limux now keeps PRIMARY selection writes
+  but only shows the toast for standard clipboard writes, so drag-selecting text
+  should not produce the premature "Copied to clipboard" signal.
 
 ## Verification
 
@@ -73,3 +80,18 @@ without missing-configuration warnings.
 - `LD_LIBRARY_PATH=/home/riche/MCPs/limux/ghostty/zig-out/lib cargo test -p limux-host-linux terminal::tests -- --nocapture`
 - `LD_LIBRARY_PATH=/home/riche/MCPs/limux/ghostty/zig-out/lib cargo test -p limux-host-linux -- --nocapture`
 - `LD_LIBRARY_PATH=/home/riche/MCPs/limux/ghostty/zig-out/lib cargo clippy -p limux-host-linux --all-targets -- -D warnings`
+
+2026-06-22 follow-up for commit `4bfae87`:
+
+- `cargo fmt --check`
+- `LD_LIBRARY_PATH=/home/riche/MCPs/limux-copy-paste-fix-20260622/ghostty/zig-out/lib cargo test -p limux-host-linux terminal::tests -- --nocapture`
+- `LD_LIBRARY_PATH=/home/riche/MCPs/limux-copy-paste-fix-20260622/ghostty/zig-out/lib cargo clippy -p limux-host-linux --all-targets -- -D warnings`
+- `LD_LIBRARY_PATH=/home/riche/MCPs/limux-copy-paste-fix-20260622/ghostty/zig-out/lib cargo build -p limux-host-linux --bin limux -p limux-cli --bin limux-cli`
+- `scripts/user-local-install/install-user-local.sh --apply --profile debug --install-id copy-paste-toast-fix-20260622-4bfae87`
+
+Installed reviewed runtime:
+
+- `/home/riche/.local/limux-reviewed/copy-paste-toast-fix-20260622-4bfae87`
+- `~/.local/bin/limux` and `~/.local/bin/limux-cli` point at this install.
+- Any already-running Limux process must be restarted before the fix is live in
+  that window.
