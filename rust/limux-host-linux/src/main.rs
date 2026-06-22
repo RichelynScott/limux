@@ -202,10 +202,14 @@ fn socket_accepts_connections(_path: &Path) -> bool {
     false
 }
 
+fn socket_env_override_present() -> bool {
+    [LIMUX_SOCKET_ENV, LIMUX_SOCKET_PATH_ENV]
+        .iter()
+        .any(|key| std::env::var_os(key).is_some_and(|value| !value.is_empty()))
+}
+
 fn ensure_runtime_socket_does_not_collide() {
-    if std::env::var_os(LIMUX_SOCKET_ENV).is_some()
-        || std::env::var_os(LIMUX_SOCKET_PATH_ENV).is_some()
-    {
+    if socket_env_override_present() {
         return;
     }
 
@@ -489,6 +493,32 @@ mod tests {
         let _xdg = EnvVarGuard::set("XDG_RUNTIME_DIR", Some(runtime_dir.path()));
         let _socket = EnvVarGuard::set(LIMUX_SOCKET_ENV, Option::<&str>::None);
         let _socket_path = EnvVarGuard::set(LIMUX_SOCKET_PATH_ENV, Option::<&str>::None);
+
+        let default_path = limux_control::socket_path::SocketMode::default_for(
+            limux_control::socket_path::SocketMode::Runtime,
+        );
+        fs::create_dir_all(default_path.parent().expect("default socket parent"))
+            .expect("create socket parent");
+        let _listener = UnixListener::bind(&default_path).expect("bind default socket");
+
+        ensure_runtime_socket_does_not_collide();
+
+        assert_eq!(
+            std::env::var_os(LIMUX_SOCKET_ENV),
+            Some(unique_runtime_socket_path(&default_path).into_os_string())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runtime_socket_treats_empty_socket_env_as_unset() {
+        let _lock = GHOSTTY_ENV_LOCK
+            .lock()
+            .expect("ghostty env test lock poisoned");
+        let runtime_dir = tempfile::tempdir().expect("runtime tempdir");
+        let _xdg = EnvVarGuard::set("XDG_RUNTIME_DIR", Some(runtime_dir.path()));
+        let _socket = EnvVarGuard::set(LIMUX_SOCKET_ENV, Some(""));
+        let _socket_path = EnvVarGuard::set(LIMUX_SOCKET_PATH_ENV, Some(""));
 
         let default_path = limux_control::socket_path::SocketMode::default_for(
             limux_control::socket_path::SocketMode::Runtime,
