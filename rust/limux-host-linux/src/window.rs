@@ -35,6 +35,7 @@ const ACTIVE_WORKSPACE_NOTIFICATION_MS: u64 = 3_000;
 const HOST_LAUNCH_ENV_REMOVALS: &[&str] = &[
     "LIMUX_SOCKET",
     "LIMUX_SOCKET_PATH",
+    layout_state::LIMUX_SESSION_DIR_ENV,
     "LIMUX_WORKSPACE_ID",
     "LIMUX_SURFACE_ID",
     "LIMUX_PANE_ID",
@@ -5561,6 +5562,14 @@ fn quit_app(state: &State) {
     state.borrow().app.quit();
 }
 
+fn new_instance_command(exe: &Path) -> std::process::Command {
+    let mut command = std::process::Command::new(exe);
+    for key in HOST_LAUNCH_ENV_REMOVALS {
+        command.env_remove(key);
+    }
+    command
+}
+
 fn spawn_new_instance(state: &State) -> bool {
     let exe = match std::env::current_exe() {
         Ok(exe) => exe,
@@ -5572,10 +5581,7 @@ fn spawn_new_instance(state: &State) -> bool {
         }
     };
 
-    let mut command = std::process::Command::new(exe);
-    for key in HOST_LAUNCH_ENV_REMOVALS {
-        command.env_remove(key);
-    }
+    let mut command = new_instance_command(&exe);
 
     match command.spawn() {
         Ok(_) => true,
@@ -6247,6 +6253,7 @@ fn show_desktop_notification(state: &State, request: DesktopNotificationRequest)
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
+    use std::path::Path;
     use std::rc::Rc;
 
     use super::glib;
@@ -6260,9 +6267,9 @@ mod tests {
         desktop_notification_activation_token_from_signal,
         desktop_notification_closed_id_from_signal, desktop_notification_id_from_response,
         directional_neighbor_score, favorites_prefix_len, font_size_after_delta,
-        ghostty_prefers_dark, gtk_system_prefers_dark_from_raw, next_active_workspace_index,
-        pane_create_split_placement, queue_session_save_request, resolve_pane_create_source_id,
-        resolved_system_prefers_dark, sanitize_background_opacity,
+        ghostty_prefers_dark, gtk_system_prefers_dark_from_raw, new_instance_command,
+        next_active_workspace_index, pane_create_split_placement, queue_session_save_request,
+        resolve_pane_create_source_id, resolved_system_prefers_dark, sanitize_background_opacity,
         shortcut_allowed_while_browser_find_active, shortcut_blocked_by_editable,
         shortcut_command_from_key_event, shortcut_dispatch_propagation,
         should_emit_desktop_notification, sidebar_width_class, snapshot_sidebar_width,
@@ -6272,9 +6279,9 @@ mod tests {
         workspace_notification_message, Direction, EditableCaptureContext, NeighborScore,
         PaneBounds, PaneCreateDirection, PaneCreateTargetError, PortalColorSchemePreference,
         SessionSaveAccess, SessionSaveRequest, WorkspaceSeedSource, BASE_CSS, HOST_ENTRY_CSS_CLASS,
-        SIDEBAR_COMPACT_CSS_CLASS, SIDEBAR_COMPACT_WIDTH, SIDEBAR_MIN_WIDTH,
-        SIDEBAR_TINY_CSS_CLASS, SIDEBAR_TINY_WIDTH, WORKSPACE_RENAME_ENTRY_CSS_CLASS,
-        WORKSPACE_RENAME_ENTRY_CSS_CLASSES,
+        HOST_LAUNCH_ENV_REMOVALS, SIDEBAR_COMPACT_CSS_CLASS, SIDEBAR_COMPACT_WIDTH,
+        SIDEBAR_MIN_WIDTH, SIDEBAR_TINY_CSS_CLASS, SIDEBAR_TINY_WIDTH,
+        WORKSPACE_RENAME_ENTRY_CSS_CLASS, WORKSPACE_RENAME_ENTRY_CSS_CLASSES,
     };
     use crate::layout_state::{LayoutNodeState, PaneState, SplitOrientation, SplitState};
     use crate::shortcut_config::{
@@ -6542,6 +6549,22 @@ mod tests {
             resolve_pane_create_source_id(None, None, None, true, &[], &[]),
             Err(PaneCreateTargetError::NoPanes)
         );
+    }
+
+    #[test]
+    fn new_instance_command_removes_inherited_limux_runtime_env() {
+        let command = new_instance_command(Path::new("/tmp/limux-host"));
+        let removals = command
+            .get_envs()
+            .filter_map(|(key, value)| value.is_none().then_some(key.to_string_lossy()))
+            .collect::<Vec<_>>();
+
+        for key in HOST_LAUNCH_ENV_REMOVALS {
+            assert!(
+                removals.iter().any(|removed| removed == key),
+                "missing env removal for {key}"
+            );
+        }
     }
 
     #[test]
