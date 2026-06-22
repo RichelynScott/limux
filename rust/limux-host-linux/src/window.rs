@@ -2016,7 +2016,7 @@ fn focused_widget_is_editable(window: &gtk::Window) -> bool {
 
 fn focused_editable_capture_context(state: &State, window: &gtk::Window) -> EditableCaptureContext {
     let gtk_editable = focused_widget_is_editable(window);
-    match focused_shortcut_target(state) {
+    match focused_leaf_shortcut_target(state) {
         pane::FocusedShortcutTarget::Browser(target) => EditableCaptureContext {
             gtk_editable,
             browser_dom_editable: target.is_page_editable(),
@@ -5311,8 +5311,8 @@ fn find_focused_pane(state: &State) -> Option<(String, gtk::Widget)> {
     Some((ws_id, first_leaf_pane(&root)))
 }
 
-fn focused_shortcut_target(state: &State) -> pane::FocusedShortcutTarget {
-    find_focused_pane(state)
+fn focused_leaf_shortcut_target(state: &State) -> pane::FocusedShortcutTarget {
+    find_leaf_focused_pane(state)
         .map(|(_ws_id, pane_widget)| pane::focused_shortcut_target(&pane_widget))
         .unwrap_or(pane::FocusedShortcutTarget::None)
 }
@@ -5360,7 +5360,7 @@ fn spawn_new_instance(state: &State) -> bool {
 }
 
 fn dispatch_terminal_command(state: &State, command: ShortcutCommand) -> bool {
-    let pane::FocusedShortcutTarget::Terminal(target) = focused_shortcut_target(state) else {
+    let pane::FocusedShortcutTarget::Terminal(target) = focused_leaf_shortcut_target(state) else {
         return false;
     };
 
@@ -5436,7 +5436,7 @@ fn broadcast_font_size(size: f32) {
 }
 
 fn dispatch_browser_command(state: &State, command: ShortcutCommand) -> bool {
-    let pane::FocusedShortcutTarget::Browser(target) = focused_shortcut_target(state) else {
+    let pane::FocusedShortcutTarget::Browser(target) = focused_leaf_shortcut_target(state) else {
         return false;
     };
 
