@@ -806,6 +806,7 @@ const FREEDESKTOP_NOTIFICATIONS_PATH: &str = "/org/freedesktop/Notifications";
 const FREEDESKTOP_NOTIFICATIONS_INTERFACE: &str = "org.freedesktop.Notifications";
 const GNOME_INTERFACE_SCHEMA: &str = "org.gnome.desktop.interface";
 const GNOME_COLOR_SCHEME_KEY: &str = "color-scheme";
+const MANUAL_WORKSPACE_UNREAD_MESSAGE: &str = "Marked for follow-up";
 const DESKTOP_NOTIFICATION_DBUS_TIMEOUT_MS: i32 = 1_000;
 const DESKTOP_NOTIFICATION_EXPIRE_TIMEOUT_MS: i32 = 10_000;
 const PORTAL_THEME_READ_TIMEOUT_MS: i32 = 500;
@@ -2126,7 +2127,7 @@ fn focused_widget_is_editable(window: &gtk::Window) -> bool {
 
 fn focused_editable_capture_context(state: &State, window: &gtk::Window) -> EditableCaptureContext {
     let gtk_editable = focused_widget_is_editable(window);
-    match focused_shortcut_target(state) {
+    match focused_leaf_shortcut_target(state) {
         pane::FocusedShortcutTarget::Browser(target) => EditableCaptureContext {
             gtk_editable,
             browser_dom_editable: target.is_page_editable(),
@@ -3186,12 +3187,15 @@ fn show_workspace_context_menu(state: &State, workspace_id: &str, row: &gtk::Lis
     unread_btn.add_css_class("flat");
     let rename_btn = gtk::Button::with_label("Rename");
     rename_btn.add_css_class("flat");
+    let mark_unread_btn = gtk::Button::with_label("Mark Unread");
+    mark_unread_btn.add_css_class("flat");
     let delete_btn = gtk::Button::with_label("Delete");
     delete_btn.add_css_class("flat");
     delete_btn.add_css_class("destructive-action");
 
     menu_box.append(&unread_btn);
     menu_box.append(&rename_btn);
+    menu_box.append(&mark_unread_btn);
     menu_box.append(&delete_btn);
 
     let popover = gtk::Popover::new();
@@ -3215,6 +3219,17 @@ fn show_workspace_context_menu(state: &State, workspace_id: &str, row: &gtk::Lis
         rename_btn.connect_clicked(move |_| {
             pop.popdown();
             begin_workspace_inline_rename(&state, &ws_id);
+        });
+    }
+    {
+        let state = state.clone();
+        let ws_id = workspace_id.to_string();
+        let pop = popover.clone();
+        mark_unread_btn.connect_clicked(move |_| {
+            pop.popdown();
+            if mark_workspace_unread_manually(&state, &ws_id) {
+                request_session_save(&state);
+            }
         });
     }
     {
@@ -5541,8 +5556,8 @@ fn find_focused_pane(state: &State) -> Option<(String, gtk::Widget)> {
     Some((ws_id, first_leaf_pane(&root)))
 }
 
-fn focused_shortcut_target(state: &State) -> pane::FocusedShortcutTarget {
-    find_focused_pane(state)
+fn focused_leaf_shortcut_target(state: &State) -> pane::FocusedShortcutTarget {
+    find_leaf_focused_pane(state)
         .map(|(_ws_id, pane_widget)| pane::focused_shortcut_target(&pane_widget))
         .unwrap_or(pane::FocusedShortcutTarget::None)
 }
@@ -5595,7 +5610,7 @@ fn spawn_new_instance(state: &State) -> bool {
 }
 
 fn dispatch_terminal_command(state: &State, command: ShortcutCommand) -> bool {
-    let pane::FocusedShortcutTarget::Terminal(target) = focused_shortcut_target(state) else {
+    let pane::FocusedShortcutTarget::Terminal(target) = focused_leaf_shortcut_target(state) else {
         return false;
     };
 
@@ -5671,7 +5686,7 @@ fn broadcast_font_size(size: f32) {
 }
 
 fn dispatch_browser_command(state: &State, command: ShortcutCommand) -> bool {
-    let pane::FocusedShortcutTarget::Browser(target) = focused_shortcut_target(state) else {
+    let pane::FocusedShortcutTarget::Browser(target) = focused_leaf_shortcut_target(state) else {
         return false;
     };
 
@@ -6070,6 +6085,14 @@ fn should_emit_desktop_notification(
     desktop_notifications_enabled && (!window_active || !workspace_is_active || !source_focused)
 }
 
+fn pane_attention_target(source_focused: bool, target: &DesktopNotificationTarget) -> Option<u32> {
+    if source_focused {
+        None
+    } else {
+        target.pane_id
+    }
+}
+
 fn mark_workspace_unread(
     state: &State,
     ws_id: &str,
@@ -6096,6 +6119,37 @@ fn workspace_notification_message(title: &str, body: &str) -> String {
     }
 }
 
+fn set_workspace_unread_visuals(workspace: &mut Workspace, message: &str) {
+    workspace.unread = true;
+    workspace
+        .notify_dot
+        .remove_css_class("limux-notify-dot-hidden");
+    workspace.notify_dot.add_css_class("limux-notify-dot");
+    workspace.notify_label.set_label(message);
+    workspace.notify_label.remove_css_class("limux-notify-msg");
+    workspace
+        .notify_label
+        .add_css_class("limux-notify-msg-unread");
+    workspace.notify_label.set_visible(true);
+    if let Some(row_box) = workspace.sidebar_row.child() {
+        row_box.add_css_class("limux-sidebar-row-unread");
+    }
+}
+
+fn mark_workspace_unread_manually(state: &State, ws_id: &str) -> bool {
+    let mut s = state.borrow_mut();
+    let Some(workspace) = s
+        .workspaces
+        .iter_mut()
+        .find(|workspace| workspace.id == ws_id)
+    else {
+        return false;
+    };
+
+    set_workspace_unread_visuals(workspace, MANUAL_WORKSPACE_UNREAD_MESSAGE);
+    true
+}
+
 fn mark_workspace_unread_with_message(
     state: &State,
     ws_id: &str,
@@ -6115,6 +6169,9 @@ fn mark_workspace_unread_with_message(
         .find(|(_, w)| w.id == ws_id)
     {
         let workspace_is_active = idx == active_idx;
+        if let Some(pane_id) = pane_attention_target(source_focused, &target) {
+            pane::mark_pane_needs_attention(pane_id);
+        }
         let desktop_request = should_emit_desktop_notification(
             notifications.enabled,
             window_active,
@@ -6128,20 +6185,8 @@ fn mark_workspace_unread_with_message(
             target: target.clone(),
         });
 
-        if !source_focused {
-            if let Some(pane_id) = target.pane_id {
-                pane::mark_pane_attention(pane_id);
-            }
-        }
-
         if idx != active_idx {
-            ws.unread = true;
-            apply_workspace_unread_widgets(
-                &ws.notify_dot,
-                &ws.notify_label,
-                &ws.sidebar_row,
-                message,
-            );
+            set_workspace_unread_visuals(ws, message);
         } else if !source_focused && target.pane_id.is_none() {
             active_notice = Some((
                 ws.notify_dot.clone(),
@@ -6268,17 +6313,18 @@ mod tests {
         desktop_notification_closed_id_from_signal, desktop_notification_id_from_response,
         directional_neighbor_score, favorites_prefix_len, font_size_after_delta,
         ghostty_prefers_dark, gtk_system_prefers_dark_from_raw, new_instance_command,
-        next_active_workspace_index, pane_create_split_placement, queue_session_save_request,
-        resolve_pane_create_source_id, resolved_system_prefers_dark, sanitize_background_opacity,
-        shortcut_allowed_while_browser_find_active, shortcut_blocked_by_editable,
-        shortcut_command_from_key_event, shortcut_dispatch_propagation,
-        should_emit_desktop_notification, sidebar_width_class, snapshot_sidebar_width,
-        surface_send_text_response, tab_drag_workspace_seed, use_opaque_window_background,
-        validate_typed_terminal_text, validate_workspace_folder_input_with_dirs,
-        workspace_drop_layout_path, workspace_folder_path_from_input,
-        workspace_notification_message, Direction, EditableCaptureContext, NeighborScore,
-        PaneBounds, PaneCreateDirection, PaneCreateTargetError, PortalColorSchemePreference,
-        SessionSaveAccess, SessionSaveRequest, WorkspaceSeedSource, BASE_CSS, HOST_ENTRY_CSS_CLASS,
+        next_active_workspace_index, pane_attention_target, pane_create_split_placement,
+        queue_session_save_request, resolve_pane_create_source_id, resolved_system_prefers_dark,
+        sanitize_background_opacity, shortcut_allowed_while_browser_find_active,
+        shortcut_blocked_by_editable, shortcut_command_from_key_event,
+        shortcut_dispatch_propagation, should_emit_desktop_notification, sidebar_width_class,
+        snapshot_sidebar_width, surface_send_text_response, tab_drag_workspace_seed,
+        use_opaque_window_background, validate_typed_terminal_text,
+        validate_workspace_folder_input_with_dirs, workspace_drop_layout_path,
+        workspace_folder_path_from_input, workspace_notification_message,
+        DesktopNotificationTarget, Direction, EditableCaptureContext, NeighborScore, PaneBounds,
+        PaneCreateDirection, PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess,
+        SessionSaveRequest, WorkspaceSeedSource, BASE_CSS, HOST_ENTRY_CSS_CLASS,
         HOST_LAUNCH_ENV_REMOVALS, SIDEBAR_COMPACT_CSS_CLASS, SIDEBAR_COMPACT_WIDTH,
         SIDEBAR_MIN_WIDTH, SIDEBAR_TINY_CSS_CLASS, SIDEBAR_TINY_WIDTH,
         WORKSPACE_RENAME_ENTRY_CSS_CLASS, WORKSPACE_RENAME_ENTRY_CSS_CLASSES,
@@ -6846,6 +6892,24 @@ mod tests {
             snapshot_sidebar_width(false, 0, SIDEBAR_COMPACT_WIDTH),
             SIDEBAR_COMPACT_WIDTH
         );
+    }
+
+    #[test]
+    fn pane_attention_target_requires_unfocused_pane_target() {
+        let target = DesktopNotificationTarget {
+            workspace_id: "workspace-a".to_string(),
+            pane_id: Some(42),
+            tab_id: Some("terminal-a".to_string()),
+        };
+        assert_eq!(pane_attention_target(false, &target), Some(42));
+        assert_eq!(pane_attention_target(true, &target), None);
+
+        let workspace_only = DesktopNotificationTarget {
+            workspace_id: "workspace-a".to_string(),
+            pane_id: None,
+            tab_id: None,
+        };
+        assert_eq!(pane_attention_target(false, &workspace_only), None);
     }
 
     #[test]

@@ -198,14 +198,16 @@ pub fn find_pane_widget_by_id(pane_id: u32) -> Option<gtk::Widget> {
     lookup_pane_internals(pane_id).map(|internals| internals.pane_outer.clone().upcast())
 }
 
-pub fn mark_pane_attention(pane_id: u32) {
+pub fn mark_pane_needs_attention(pane_id: u32) -> bool {
     let Some(internals) = lookup_pane_internals(pane_id) else {
-        return;
+        return false;
     };
+
     if let Some(source) = internals.attention_clear_timer.borrow_mut().take() {
         source.remove();
     }
     internals.pane_outer.add_css_class(PANE_ATTENTION_CSS_CLASS);
+    true
 }
 
 pub fn set_workspace_dragging_all(active: bool) {
@@ -369,6 +371,10 @@ pub const PANE_CSS: &str = r#"
     min-height: 30px;
     padding: 0 2px;
 }
+.limux-pane-attention {
+    box-shadow: inset 0 0 0 2px #3584e4;
+    border-radius: 6px;
+}
 .limux-tab {
     background: none;
     border: none;
@@ -499,6 +505,19 @@ pub fn create_pane(
         .vexpand(true)
         .build();
     outer.set_size_request(MIN_PANE_WIDTH, MIN_PANE_HEIGHT);
+    {
+        let pane_for_hover = outer.clone();
+        let attention_hover = gtk::EventControllerMotion::new();
+        attention_hover.connect_enter(move |_, _, _| {
+            if pane_for_hover.has_css_class("limux-pane-attention") {
+                let pane_for_clear = pane_for_hover.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_secs(3), move || {
+                    pane_for_clear.remove_css_class("limux-pane-attention");
+                });
+            }
+        });
+        outer.add_controller(attention_hover);
+    }
 
     // The single header line: tabs (left) + action icons (right)
     let header = gtk::Box::builder()
