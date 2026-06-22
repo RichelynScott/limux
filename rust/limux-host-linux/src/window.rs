@@ -1016,12 +1016,11 @@ fn snapshot_session_state(state: &State) -> AppSessionState {
     let s = state.borrow();
     let restorable_agents = layout_state::RestorableAgentIndex::load();
     let sidebar_visible = sidebar_is_visible(&s);
-    let sidebar_width = if sidebar_visible {
-        sidebar_width(&s.sidebar_shell)
-    } else {
-        s.sidebar_expanded_width
-    }
-    .max(SIDEBAR_WIDTH);
+    let sidebar_width = snapshot_sidebar_width(
+        sidebar_visible,
+        sidebar_width(&s.sidebar_shell),
+        s.sidebar_expanded_width,
+    );
 
     let workspaces = s
         .workspaces
@@ -1060,6 +1059,15 @@ fn snapshot_session_state(state: &State) -> AppSessionState {
         },
         workspaces,
     })
+}
+
+fn snapshot_sidebar_width(sidebar_visible: bool, current_width: i32, expanded_width: i32) -> i32 {
+    if sidebar_visible {
+        current_width
+    } else {
+        expanded_width
+    }
+    .max(SIDEBAR_MIN_WIDTH)
 }
 
 fn sidebar_is_visible(state: &AppState) -> bool {
@@ -6207,15 +6215,16 @@ mod tests {
         resolved_system_prefers_dark, sanitize_background_opacity,
         shortcut_allowed_while_browser_find_active, shortcut_blocked_by_editable,
         shortcut_command_from_key_event, shortcut_dispatch_propagation,
-        should_emit_desktop_notification, sidebar_width_class, surface_send_text_response,
-        tab_drag_workspace_seed, use_opaque_window_background, validate_typed_terminal_text,
-        validate_workspace_folder_input_with_dirs, workspace_drop_layout_path,
-        workspace_folder_path_from_input, workspace_notification_message, Direction,
-        EditableCaptureContext, NeighborScore, PaneBounds, PaneCreateDirection,
-        PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest,
-        WorkspaceSeedSource, BASE_CSS, HOST_ENTRY_CSS_CLASS, SIDEBAR_COMPACT_CSS_CLASS,
-        SIDEBAR_COMPACT_WIDTH, SIDEBAR_TINY_CSS_CLASS, SIDEBAR_TINY_WIDTH,
-        WORKSPACE_RENAME_ENTRY_CSS_CLASS, WORKSPACE_RENAME_ENTRY_CSS_CLASSES,
+        should_emit_desktop_notification, sidebar_width_class, snapshot_sidebar_width,
+        surface_send_text_response, tab_drag_workspace_seed, use_opaque_window_background,
+        validate_typed_terminal_text, validate_workspace_folder_input_with_dirs,
+        workspace_drop_layout_path, workspace_folder_path_from_input,
+        workspace_notification_message, Direction, EditableCaptureContext, NeighborScore,
+        PaneBounds, PaneCreateDirection, PaneCreateTargetError, PortalColorSchemePreference,
+        SessionSaveAccess, SessionSaveRequest, WorkspaceSeedSource, BASE_CSS, HOST_ENTRY_CSS_CLASS,
+        SIDEBAR_COMPACT_CSS_CLASS, SIDEBAR_COMPACT_WIDTH, SIDEBAR_MIN_WIDTH,
+        SIDEBAR_TINY_CSS_CLASS, SIDEBAR_TINY_WIDTH, WORKSPACE_RENAME_ENTRY_CSS_CLASS,
+        WORKSPACE_RENAME_ENTRY_CSS_CLASSES,
     };
     use crate::layout_state::{LayoutNodeState, PaneState, SplitOrientation, SplitState};
     use crate::shortcut_config::{
@@ -6740,6 +6749,30 @@ mod tests {
             Some(SIDEBAR_COMPACT_CSS_CLASS)
         );
         assert_eq!(sidebar_width_class(SIDEBAR_COMPACT_WIDTH + 1), None);
+    }
+
+    #[test]
+    fn snapshot_sidebar_width_preserves_compact_visible_widths() {
+        assert_eq!(
+            snapshot_sidebar_width(true, SIDEBAR_MIN_WIDTH, SIDEBAR_COMPACT_WIDTH),
+            SIDEBAR_MIN_WIDTH
+        );
+        assert_eq!(
+            snapshot_sidebar_width(true, SIDEBAR_TINY_WIDTH + 12, SIDEBAR_COMPACT_WIDTH),
+            SIDEBAR_TINY_WIDTH + 12
+        );
+    }
+
+    #[test]
+    fn snapshot_sidebar_width_preserves_compact_hidden_expanded_widths() {
+        assert_eq!(
+            snapshot_sidebar_width(false, 0, SIDEBAR_MIN_WIDTH),
+            SIDEBAR_MIN_WIDTH
+        );
+        assert_eq!(
+            snapshot_sidebar_width(false, 0, SIDEBAR_COMPACT_WIDTH),
+            SIDEBAR_COMPACT_WIDTH
+        );
     }
 
     #[test]
