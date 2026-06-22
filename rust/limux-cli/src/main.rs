@@ -1121,6 +1121,14 @@ fn non_empty_or<'a>(value: &'a str, fallback: &'a str) -> &'a str {
 
 fn agent_hook_output(event: &str, payload: &Value) -> Value {
     let canonical_event = canonical_hook_event_name(event);
+    if matches!(canonical_event, Some("PreToolUse")) {
+        return json!({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse"
+            }
+        });
+    }
+
     let mut output = Map::new();
     output.insert("continue".to_string(), Value::Bool(true));
     output.insert("suppressOutput".to_string(), Value::Bool(false));
@@ -1147,6 +1155,7 @@ fn agent_hook_output(event: &str, payload: &Value) -> Value {
 fn canonical_hook_event_name(event: &str) -> Option<&'static str> {
     match event {
         "SessionStart" | "session-start" => Some("SessionStart"),
+        "PreToolUse" | "user-input-needed" => Some("PreToolUse"),
         "UserPromptSubmit" | "prompt-submit" => Some("UserPromptSubmit"),
         "Stop" | "stop" | "Notification" => Some("Stop"),
         "SessionEnd" | "session-end" => None,
@@ -1768,8 +1777,15 @@ fn hook_command(agent: agent_hooks::AgentKind, event: &str) -> Result<String> {
         agent.store_name().to_ascii_uppercase()
     );
     let limux_command = hook_cli_command()?;
+    let disabled_output = if agent == agent_hooks::AgentKind::Codex
+        && matches!(canonical_hook_event_name(event), Some("PreToolUse"))
+    {
+        "{}"
+    } else {
+        "{\"continue\":true,\"suppressOutput\":false}"
+    };
     Ok(format!(
-        "[ \"${{{disable_var}:-}}\" != \"1\" ] && {limux_command} --json hooks {} {} || echo '{{\"continue\":true,\"suppressOutput\":false}}'",
+        "[ \"${{{disable_var}:-}}\" != \"1\" ] && {limux_command} --json hooks {} {} || echo '{disabled_output}'",
         agent.store_name(),
         event
     ))
@@ -6302,6 +6318,25 @@ mod cli_arg_tests {
     }
 
     #[test]
+    fn codex_pretooluse_hook_output_omits_unsupported_common_fields() {
+        let output = agent_hook_output(
+            "user-input-needed",
+            &json!({ "tool_name": "AskUserQuestion" }),
+        );
+
+        assert_eq!(
+            output,
+            json!({
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse"
+                }
+            })
+        );
+        assert!(output.get("continue").is_none());
+        assert!(output.get("suppressOutput").is_none());
+    }
+
+    #[test]
     fn hook_notify_debug_details_include_resolved_socket_path() {
         let details = agent_hook_notify_debug_details(
             Path::new("/tmp/resolved.sock"),
@@ -6379,10 +6414,9 @@ mod cli_arg_tests {
             serde_json::from_slice(&fs::read(&path).expect("read hooks")).expect("json");
         let entry = &root["hooks"]["PreToolUse"][0];
         assert_eq!(entry["matcher"], CODEX_USER_INPUT_TOOL_MATCHER);
-        assert!(entry["hooks"][0]["command"]
-            .as_str()
-            .expect("command")
-            .contains("hooks codex user-input-needed"));
+        let command = entry["hooks"][0]["command"].as_str().expect("command");
+        assert!(command.contains("hooks codex user-input-needed"));
+        assert!(command.contains("|| echo '{}'"));
     }
 
     #[test]
