@@ -60,6 +60,11 @@ without missing-configuration warnings.
   events with missing `BUTTON1_MASK` as a release. Under WSLg this can happen
   while the physical left mouse button is still held, so Ghostty completed and
   copied a partial selection before the user released the mouse.
+- Follow-up reproduction showed the same symptom after motion/enter/leave cleanup.
+  The remaining premature-release path was `GtkGestureClick` `cancel`/`stopped`:
+  those are gesture-recognition lifecycle signals and can fire when a pointer
+  movement becomes a drag, so treating them as physical button release ends the
+  Ghostty selection too early.
 
 ## Verification
 

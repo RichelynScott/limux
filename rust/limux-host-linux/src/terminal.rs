@@ -1700,26 +1700,6 @@ pub fn create_terminal(
                 }
             }
         });
-        let sc_cancel = surface_cell.clone();
-        let active_mouse_button_for_cancel = active_mouse_button.clone();
-        click.connect_cancel(move |gesture, _| {
-            if let Some(surface) = *sc_cancel.borrow() {
-                let mods = translate_mouse_mods(gesture.current_event_state());
-                unsafe {
-                    release_active_mouse_button(surface, &active_mouse_button_for_cancel, mods);
-                }
-            }
-        });
-        let sc_stopped = surface_cell.clone();
-        let active_mouse_button_for_stopped = active_mouse_button.clone();
-        click.connect_stopped(move |gesture| {
-            if let Some(surface) = *sc_stopped.borrow() {
-                let mods = translate_mouse_mods(gesture.current_event_state());
-                unsafe {
-                    release_active_mouse_button(surface, &active_mouse_button_for_stopped, mods);
-                }
-            }
-        });
         gl_area.add_controller(click);
 
         // Right-click context menu
