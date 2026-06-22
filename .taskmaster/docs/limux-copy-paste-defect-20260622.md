@@ -21,10 +21,15 @@ peer-owned work in the main checkout.
 
 ## TaskMaster Status
 
-This branch did not have a committed `.taskmaster/` task store when the fix lane
-started. Per the reviewed TaskMaster rules, this document records the task
-surface without hand-creating `.taskmaster/tasks/tasks.json` or inventing task
-IDs. If long-lived tracking is needed, populate tasks through the reviewed
+This branch has a broken/uninitialized `.taskmaster/` skeleton, not a verified
+empty TaskMaster store. `task-master-reviewed list` and `next` reported missing
+configuration and fell back to defaults, which means `.taskmaster/config.json`
+is absent and the output must not be interpreted as "zero valid tasks".
+
+Per the reviewed TaskMaster rules, this document records the task surface
+without hand-creating `.taskmaster/tasks/tasks.json` or inventing task IDs. If
+long-lived tracking is needed, repair the store with operator-approved
+`task-master-reviewed init`, then populate tasks through the reviewed
 TaskMaster wrapper path and SCRIM-backed PRD parsing.
 
 ## Done Criteria
