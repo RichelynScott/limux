@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 pub const SESSION_VERSION: u32 = 1;
 pub const PERSISTENCE_DIR_NAME: &str = "limux";
+pub const LIMUX_SESSION_DIR_ENV: &str = "LIMUX_SESSION_DIR";
 pub const SESSION_FILE_NAME: &str = "session.json";
 pub const LEGACY_WORKSPACES_FILE_NAME: &str = "workspaces.json";
 pub const DEFAULT_SIDEBAR_WIDTH: i32 = 220;
@@ -279,6 +280,10 @@ impl TabState {
 }
 
 pub fn persistence_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os(LIMUX_SESSION_DIR_ENV).filter(|value| !value.is_empty()) {
+        return PathBuf::from(dir);
+    }
+
     if let Some(data_dir) = dirs::data_dir() {
         return data_dir.join(PERSISTENCE_DIR_NAME);
     }
@@ -959,6 +964,7 @@ mod tests {
     #[test]
     fn persistence_dir_uses_xdg_data_home_directly() {
         let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
+        let _session_dir = EnvGuard::set(LIMUX_SESSION_DIR_ENV, None);
         let _xdg = EnvGuard::set("XDG_DATA_HOME", Some("/tmp/limux-xdg-data"));
         let _home = EnvGuard::set("HOME", Some("/tmp/limux-home"));
 
@@ -971,12 +977,34 @@ mod tests {
     #[test]
     fn persistence_dir_falls_back_to_home_local_share_when_data_dir_missing() {
         let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
+        let _session_dir = EnvGuard::set(LIMUX_SESSION_DIR_ENV, None);
         let _xdg = EnvGuard::set("XDG_DATA_HOME", None);
         let _home = EnvGuard::set("HOME", Some("/tmp/limux-home"));
 
         assert_eq!(
             persistence_dir(),
             PathBuf::from("/tmp/limux-home/.local/share").join(PERSISTENCE_DIR_NAME)
+        );
+    }
+
+    #[test]
+    fn persistence_dir_uses_session_dir_override() {
+        let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
+        let _session_dir = EnvGuard::set(LIMUX_SESSION_DIR_ENV, Some("/tmp/limux-session"));
+        let _xdg = EnvGuard::set("XDG_DATA_HOME", Some("/tmp/limux-xdg-data"));
+
+        assert_eq!(persistence_dir(), PathBuf::from("/tmp/limux-session"));
+    }
+
+    #[test]
+    fn persistence_dir_ignores_empty_session_dir_override() {
+        let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
+        let _session_dir = EnvGuard::set(LIMUX_SESSION_DIR_ENV, Some(""));
+        let _xdg = EnvGuard::set("XDG_DATA_HOME", Some("/tmp/limux-xdg-data"));
+
+        assert_eq!(
+            persistence_dir(),
+            PathBuf::from("/tmp/limux-xdg-data").join(PERSISTENCE_DIR_NAME)
         );
     }
 
