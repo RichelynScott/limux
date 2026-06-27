@@ -6260,6 +6260,24 @@ fn should_emit_desktop_notification(
     desktop_notifications_enabled && (!window_active || !workspace_is_active || !source_focused)
 }
 
+fn should_auto_open_sidebar_for_notification(
+    auto_open_sidebar: bool,
+    sidebar_visible: bool,
+    workspace_is_active: bool,
+) -> bool {
+    auto_open_sidebar && !sidebar_visible && !workspace_is_active
+}
+
+fn show_sidebar(state: &State) {
+    let should_show = {
+        let s = state.borrow();
+        !sidebar_is_visible(&s)
+    };
+    if should_show {
+        toggle_sidebar(state);
+    }
+}
+
 fn pane_attention_target(source_focused: bool, target: &DesktopNotificationTarget) -> Option<u32> {
     if source_focused {
         None
@@ -6322,56 +6340,62 @@ fn mark_workspace_unread_with_message(
     let mut s = state.borrow_mut();
     let active_idx = s.active_idx;
     let window_active = s.window.is_active();
+    let sidebar_visible = sidebar_is_visible(&s);
     let notifications = s.config.borrow().notifications;
-    if let Some((idx, ws)) = s
+    let (idx, ws) = s
         .workspaces
         .iter_mut()
         .enumerate()
-        .find(|(_, w)| w.id == ws_id)
-    {
-        let workspace_is_active = idx == active_idx;
-        if let Some(pane_id) = pane_attention_target(source_focused, &target) {
-            pane::mark_pane_needs_attention(pane_id);
-        }
-        let desktop_request = should_emit_desktop_notification(
-            notifications.enabled,
-            window_active,
-            workspace_is_active,
-            source_focused,
-        )
-        .then(|| DesktopNotificationRequest {
-            summary: ws.name.clone(),
-            body: message.to_string(),
-            sound: notifications.sound,
-            target: target.clone(),
-        });
+        .find(|(_, w)| w.id == ws_id)?;
 
-        if idx != active_idx {
-            set_workspace_unread_visuals(ws, message);
-        } else if !source_focused && target.pane_id.is_none() {
-            active_notice = Some((
-                ws.notify_dot.clone(),
-                ws.notify_label.clone(),
-                ws.sidebar_row.clone(),
-                message.to_string(),
-            ));
-        }
+    let workspace_is_active = idx == active_idx;
+    let auto_open_sidebar = should_auto_open_sidebar_for_notification(
+        notifications.auto_open_sidebar,
+        sidebar_visible,
+        workspace_is_active,
+    );
+    if let Some(pane_id) = pane_attention_target(source_focused, &target) {
+        pane::mark_pane_needs_attention(pane_id);
+    }
+    let desktop_request = should_emit_desktop_notification(
+        notifications.enabled,
+        window_active,
+        workspace_is_active,
+        source_focused,
+    )
+    .then(|| DesktopNotificationRequest {
+        summary: ws.name.clone(),
+        body: message.to_string(),
+        sound: notifications.sound,
+        target: target.clone(),
+    });
 
-        drop(s);
-        if let Some((notify_dot, notify_label, sidebar_row, message)) = active_notice {
-            show_active_workspace_notification(
-                state,
-                ws_id.to_string(),
-                notify_dot,
-                notify_label,
-                sidebar_row,
-                message,
-            );
-        }
-        return desktop_request;
+    if idx != active_idx {
+        set_workspace_unread_visuals(ws, message);
+    } else if !source_focused && target.pane_id.is_none() {
+        active_notice = Some((
+            ws.notify_dot.clone(),
+            ws.notify_label.clone(),
+            ws.sidebar_row.clone(),
+            message.to_string(),
+        ));
     }
 
-    None
+    drop(s);
+    if auto_open_sidebar {
+        show_sidebar(state);
+    }
+    if let Some((notify_dot, notify_label, sidebar_row, message)) = active_notice {
+        show_active_workspace_notification(
+            state,
+            ws_id.to_string(),
+            notify_dot,
+            notify_label,
+            sidebar_row,
+            message,
+        );
+    }
+    desktop_request
 }
 
 fn desktop_notification_hints(
@@ -6478,17 +6502,18 @@ mod tests {
         queue_session_save_request, resolve_pane_create_source_id, resolved_system_prefers_dark,
         sanitize_background_opacity, shortcut_allowed_while_browser_find_active,
         shortcut_blocked_by_editable, shortcut_command_from_key_event,
-        shortcut_dispatch_propagation, should_emit_desktop_notification, sidebar_width_class,
-        snapshot_sidebar_width, surface_send_text_response, tab_drag_workspace_seed,
-        use_opaque_window_background, validate_typed_terminal_text,
-        validate_workspace_folder_input_with_dirs, workspace_drop_layout_path,
-        workspace_folder_path_from_input, workspace_notification_message,
-        DesktopNotificationTarget, Direction, EditableCaptureContext, NeighborScore, PaneBounds,
-        PaneCreateDirection, PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess,
-        SessionSaveRequest, WorkspaceSeedSource, BASE_CSS, HOST_ENTRY_CSS_CLASS,
-        HOST_LAUNCH_ENV_REMOVALS, SIDEBAR_COMPACT_CSS_CLASS, SIDEBAR_COMPACT_WIDTH,
-        SIDEBAR_MIN_WIDTH, SIDEBAR_TINY_CSS_CLASS, SIDEBAR_TINY_WIDTH,
-        WORKSPACE_RENAME_ENTRY_CSS_CLASS, WORKSPACE_RENAME_ENTRY_CSS_CLASSES,
+        shortcut_dispatch_propagation, should_auto_open_sidebar_for_notification,
+        should_emit_desktop_notification, sidebar_width_class, snapshot_sidebar_width,
+        surface_send_text_response, tab_drag_workspace_seed, use_opaque_window_background,
+        validate_typed_terminal_text, validate_workspace_folder_input_with_dirs,
+        workspace_drop_layout_path, workspace_folder_path_from_input,
+        workspace_notification_message, DesktopNotificationTarget, Direction,
+        EditableCaptureContext, NeighborScore, PaneBounds, PaneCreateDirection,
+        PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest,
+        WorkspaceSeedSource, BASE_CSS, HOST_ENTRY_CSS_CLASS, HOST_LAUNCH_ENV_REMOVALS,
+        SIDEBAR_COMPACT_CSS_CLASS, SIDEBAR_COMPACT_WIDTH, SIDEBAR_MIN_WIDTH,
+        SIDEBAR_TINY_CSS_CLASS, SIDEBAR_TINY_WIDTH, WORKSPACE_RENAME_ENTRY_CSS_CLASS,
+        WORKSPACE_RENAME_ENTRY_CSS_CLASSES,
     };
     use crate::layout_state::{LayoutNodeState, PaneState, SplitOrientation, SplitState};
     use crate::shortcut_config::{
@@ -7020,6 +7045,22 @@ mod tests {
             false, false, false, false
         ));
         assert!(!should_emit_desktop_notification(true, true, true, true));
+    }
+
+    #[test]
+    fn sidebar_auto_open_only_runs_for_hidden_background_workspace_notifications() {
+        assert!(should_auto_open_sidebar_for_notification(
+            true, false, false
+        ));
+        assert!(!should_auto_open_sidebar_for_notification(
+            false, false, false
+        ));
+        assert!(!should_auto_open_sidebar_for_notification(
+            true, true, false
+        ));
+        assert!(!should_auto_open_sidebar_for_notification(
+            true, false, true
+        ));
     }
 
     #[test]
