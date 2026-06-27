@@ -1,14 +1,57 @@
 # Limux Lifo Handoff
 
-Author/runtime/date: lifo / Codex GPT-5 / 2026-06-22 18:35 EDT.
+Author/runtime/date: lifo / Codex GPT-5 / 2026-06-27 06:15 EDT.
 
 ## Immediate Next Action
 
-No immediate repo action is required. The Limux PR stack is merged into
-`main`, `/home/riche/MCPs/limux` is on `main`, and the worktree is clean.
+The current user-local Limux symlink now points at the reviewed branch build
+from `lifo/hermes-workspace-highlight-resize-20260627`:
+
+- Branch/head: `cedcb3ade43d` (`fix(host): align pane attention and sidebar auto-open`).
+- Install root:
+  `/home/riche/.local/limux-reviewed/lifo-hermes-highlight-cedcb3a`.
+- Symlinks:
+  `/home/riche/.local/bin/limux` and `/home/riche/.local/bin/limux-cli`
+  both point into that install root.
+
+Important runtime caveat: at 2026-06-27 06:15 EDT, the currently running
+`limux-host` process was still PID `54063` from the old install path
+`/home/riche/.local/limux-reviewed/main-20260622-2fcfc55/libexec/limux-host`.
+Open Limux windows keep their original host binary until closed/relaunched.
+To actually run `cedcb3ade43d`, the operator must close the old Limux host and
+start `limux` again after this handoff update.
+
+## 2026-06-27 Runtime Install Correction
+
+Root cause of the post-restart mismatch: PR #6 work had been pushed, but the
+user-local install symlink had not been updated before the operator restarted
+the PC/Limux. Before correction, `/home/riche/.local/bin/limux` resolved to
+`/home/riche/.local/limux-reviewed/main-20260622-2fcfc55/bin/limux`.
+
+Corrective actions completed:
+
+- Verified branch state: `lifo/hermes-workspace-highlight-resize-20260627`
+  tracking origin at `cedcb3ade43d`.
+- Ran `cargo check -p limux-host-linux`.
+- Ran `cargo test -p limux-host-linux`: 226 passed.
+- Ran `./scripts/check.sh`: passed.
+- Built release CLI and host artifacts.
+- Ran user-local installer:
+  `scripts/user-local-install/install-user-local.sh --apply --profile release --install-id lifo-hermes-highlight-cedcb3a`.
+- Verified install checksum manifest from inside the install root:
+  `sha256sum -c SHA256SUMS`: all OK.
+- Verified new CLI wrappers print expected `limux --help` / `limux-cli --help`.
+
+The installer archived the previous `~/.local/bin/limux` and `limux-cli`
+symlinks under
+`/home/riche/.local/limux-reviewed/archive/20260627T101506Z/`.
+
+If the operator resumes Limux runtime testing, first confirm that no running
+`limux-host` process still points at `main-20260622-2fcfc55`.
 
 If the operator resumes Limux runtime testing, start from
-`/home/riche/MCPs/limux` on current `origin/main`.
+`/home/riche/MCPs/limux` on branch
+`lifo/hermes-workspace-highlight-resize-20260627`.
 
 If live runtime issues continue, capture
 `~/.local/state/limux/logs/limux-host.log` and exact
