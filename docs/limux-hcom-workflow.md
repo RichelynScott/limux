@@ -289,11 +289,16 @@ If your normal agent entrypoint is hcom, use:
 
 ```bash
 limux agent-team --agents codex,claude --launch-mode hcom --cwd "$PWD"
+limux agent-team --agents codex,claude,hermes --launch-mode hcom --cwd "$PWD"
 ```
 
 That keeps the panes inside Limux but launches them as
-`hcom codex --run-here` and `hcom claude --run-here`, so hcom owns the session
-registration without opening another terminal window.
+`hcom <agent> --run-here`, so hcom owns the session registration without
+opening another terminal window. Hermes can participate in agent-team hcom
+launches this way; Hermes lifecycle hook installation still belongs to the
+Hermes-side plugin. Limux provides the receivers (`limux hooks hermes <event>`
+and `limux hermes-hook`) that translate hcom/Hermes lifecycle payloads into
+sidebar notifications and restorable session state.
 
 Important remaining rule: do not treat `LIMUX_AGENTS.md` as an inherited or
 merged copy of `AGENTS.md`. Repo instruction files such as `AGENTS.md`,
@@ -384,6 +389,10 @@ As of this review:
   the protocol, roster, and ledger before bootstrap, then submits a sanitized
   one-line bootstrap prompt with explicit Enter. `--no-bootstrap` and
   `--no-launch` skip prompt sends.
+- Hermes is supported as an agent-team hcom launch target and as a notification
+  receiver through `limux hooks hermes <event>` / `limux hermes-hook`. Limux
+  deliberately does not install Hermes lifecycle hooks; that remains owned by
+  the Hermes-side plugin.
 - `limux review prepare` creates durable review request files, appends pending
   `LIMUX_REVIEW_LEDGER.md` entries, supports dry-run planning, and refuses
   existing requests, leaf symlink/non-regular/overlapping targets, and

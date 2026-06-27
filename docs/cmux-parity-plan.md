@@ -106,13 +106,16 @@ dispatcher parity.
 `mark_workspace_unread_with_message` + libadwaita toast.
 CLI: `limux notify [--workspace <id|name>] [--subtitle <…>] [--body <…>] <title>`.
 
-### Phase 4 — `limux claude-hook` / `opencode-hook` / `gemini-hook` ✅
+### Phase 4 — `limux claude-hook` / `opencode-hook` / `gemini-hook` / `hermes-hook` ✅
 Reads hook JSON from stdin, translates the agent-specific event vocabulary
 into a `notify` (and, where useful, an inline `send`). Drop-in for
-`~/.claude/settings.json` hooks blocks.
+`~/.claude/settings.json` hooks blocks. Hermes is receiver-only from Limux's
+side: `limux hooks hermes <event>` and `limux hermes-hook` understand
+hcom/Hermes lifecycle event names and nested `extra` / `metadata` payload
+fields, while Hermes lifecycle plugin installation remains owned by Hermes.
 
 ### Phase 5 — `limux agent-team` + generated protocol file ✅
-`limux agent-team [--agents codex,claude[,opencode,gemini]]
+`limux agent-team [--agents codex,claude[,opencode,gemini,hermes]]
 [--launch-mode direct|hcom] [--cwd <path>] [--protocol-path <path>]
 [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite]
 [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]`:

@@ -19,7 +19,8 @@ use crate::control_bridge::{
 };
 use crate::keybind_editor;
 use crate::layout_state::{
-    self, AppSessionState, LayoutNodeState, LoadedSession, PaneState, WorkspaceState,
+    self, AppSessionState, LayoutNodeState, LoadedSession, PaneState, WorkspaceHighlightColor,
+    WorkspaceState,
 };
 use crate::pane::{self, PaneCallbacks};
 use crate::shortcut_config::{
@@ -67,6 +68,8 @@ struct Workspace {
     unread: bool,
     /// Whether this workspace is favorited/pinned to top.
     favorite: bool,
+    /// Optional user-selected sidebar highlight color.
+    highlight: Option<WorkspaceHighlightColor>,
     /// Last known working directory from the terminal (via OSC 7).
     cwd: Rc<RefCell<Option<String>>>,
     /// The folder path this workspace was opened with.
@@ -1045,6 +1048,7 @@ fn snapshot_session_state(state: &State) -> AppSessionState {
                 id: Some(workspace.id.clone()),
                 name: workspace.name.clone(),
                 favorite: workspace.favorite,
+                highlight: workspace.highlight,
                 cwd,
                 folder_path,
                 layout,
@@ -1154,8 +1158,19 @@ fn apply_ratio_value(
         return false;
     }
     applying.set(true);
-    paned.set_position(layout_state::split_position_from_ratio(ratio, size));
-    update_split_ratio_state(paned, ratio);
+    paned.set_position(layout_state::split_position_from_ratio_with_min(
+        ratio,
+        size,
+        minimum_split_extent_for_orientation(orientation),
+    ));
+    update_split_ratio_state(
+        paned,
+        layout_state::clamp_split_ratio_for_size(
+            ratio,
+            size,
+            minimum_split_extent_for_orientation(orientation),
+        ),
+    );
     applying.set(false);
     true
 }
@@ -1190,24 +1205,47 @@ pub(crate) fn apply_split_ratio_after_layout(
     });
 }
 
-pub(crate) fn attach_split_position_persistence(state: &State, paned: &gtk::Paned) {
-    update_split_ratio_state(paned, layout_state::DEFAULT_SPLIT_RATIO);
+pub(crate) fn attach_split_position_persistence(
+    state: &State,
+    paned: &gtk::Paned,
+    applying: Rc<Cell<bool>>,
+) {
     let state = state.clone();
     paned.connect_position_notify(move |paned| {
+        if applying.get() {
+            return;
+        }
         let allocation = paned.allocation();
-        let size = if paned.orientation() == gtk::Orientation::Horizontal {
-            allocation.width()
-        } else {
-            allocation.height()
-        };
-        let ratio = layout_state::snapshot_split_ratio(
+        let orientation = paned.orientation();
+        let size = split_extent_from_allocation(&allocation, orientation);
+        let ratio = layout_state::snapshot_split_ratio_with_min(
             paned.position(),
             size,
             split_ratio_state(paned).map(|ratio| *ratio.borrow()),
+            minimum_split_extent_for_orientation(orientation),
         );
         update_split_ratio_state(paned, ratio);
         request_session_save(&state);
     });
+}
+
+fn split_extent_from_allocation(
+    allocation: &gtk::Allocation,
+    orientation: gtk::Orientation,
+) -> i32 {
+    if orientation == gtk::Orientation::Horizontal {
+        allocation.width()
+    } else {
+        allocation.height()
+    }
+}
+
+pub(crate) fn minimum_split_extent_for_orientation(orientation: gtk::Orientation) -> i32 {
+    if orientation == gtk::Orientation::Horizontal {
+        pane::MIN_PANE_WIDTH
+    } else {
+        pane::MIN_PANE_HEIGHT
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1353,6 +1391,62 @@ row:selected .limux-ws-star-btn {
 .limux-sidebar-row-unread .limux-ws-name {
     color: @window_fg_color;
     font-weight: 700;
+}
+.limux-sidebar-row-highlight-orange {
+    background-color: rgba(249, 115, 22, 0.14);
+    border-left: 3px solid #f97316;
+}
+.limux-sidebar-row-highlight-red {
+    background-color: rgba(239, 68, 68, 0.14);
+    border-left: 3px solid #ef4444;
+}
+.limux-sidebar-row-highlight-purple {
+    background-color: rgba(168, 85, 247, 0.14);
+    border-left: 3px solid #a855f7;
+}
+.limux-sidebar-row-highlight-pink {
+    background-color: rgba(236, 72, 153, 0.14);
+    border-left: 3px solid #ec4899;
+}
+.limux-sidebar-row-highlight-green {
+    background-color: rgba(34, 197, 94, 0.14);
+    border-left: 3px solid #22c55e;
+}
+.limux-sidebar-row-highlight-yellow {
+    background-color: rgba(234, 179, 8, 0.16);
+    border-left: 3px solid #eab308;
+}
+.limux-sidebar-row-highlight-teal {
+    background-color: rgba(20, 184, 166, 0.14);
+    border-left: 3px solid #14b8a6;
+}
+.limux-sidebar-row-highlight-cyan {
+    background-color: rgba(6, 182, 212, 0.14);
+    border-left: 3px solid #06b6d4;
+}
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-orange {
+    box-shadow: inset 0 0 0 1px #f97316;
+}
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-red {
+    box-shadow: inset 0 0 0 1px #ef4444;
+}
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-purple {
+    box-shadow: inset 0 0 0 1px #a855f7;
+}
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-pink {
+    box-shadow: inset 0 0 0 1px #ec4899;
+}
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-green {
+    box-shadow: inset 0 0 0 1px #22c55e;
+}
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-yellow {
+    box-shadow: inset 0 0 0 1px #eab308;
+}
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-teal {
+    box-shadow: inset 0 0 0 1px #14b8a6;
+}
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-cyan {
+    box-shadow: inset 0 0 0 1px #06b6d4;
 }
 .limux-drop-above .limux-sidebar-row-box {
     border-radius: 0;
@@ -3171,13 +3265,13 @@ fn show_workspace_context_menu(state: &State, workspace_id: &str, row: &gtk::Lis
     menu_box.set_margin_start(4);
     menu_box.set_margin_end(4);
 
-    let is_unread = state
+    let (is_unread, current_highlight) = state
         .borrow()
         .workspaces
         .iter()
         .find(|workspace| workspace.id == workspace_id)
-        .map(|workspace| workspace.unread)
-        .unwrap_or(false);
+        .map(|workspace| (workspace.unread, workspace.highlight))
+        .unwrap_or((false, None));
 
     let unread_btn = gtk::Button::with_label(if is_unread {
         "Mark Read"
@@ -3192,6 +3286,41 @@ fn show_workspace_context_menu(state: &State, workspace_id: &str, row: &gtk::Lis
     delete_btn.add_css_class("destructive-action");
 
     menu_box.append(&unread_btn);
+    let highlight_label = gtk::Label::builder()
+        .label("Highlight")
+        .xalign(0.0)
+        .margin_top(4)
+        .margin_start(6)
+        .build();
+    highlight_label.add_css_class("dim-label");
+    menu_box.append(&highlight_label);
+
+    let highlight_grid = gtk::Grid::builder()
+        .column_spacing(2)
+        .row_spacing(2)
+        .build();
+    let off_btn = gtk::Button::with_label(if current_highlight.is_none() {
+        "Off *"
+    } else {
+        "Off"
+    });
+    off_btn.add_css_class("flat");
+    highlight_grid.attach(&off_btn, 0, 0, 1, 1);
+    let mut highlight_buttons: Vec<(gtk::Button, WorkspaceHighlightColor)> = Vec::new();
+    for (index, color) in WorkspaceHighlightColor::ALL.iter().copied().enumerate() {
+        let label = if current_highlight == Some(color) {
+            format!("{} *", color.label())
+        } else {
+            color.label().to_string()
+        };
+        let btn = gtk::Button::with_label(&label);
+        btn.add_css_class("flat");
+        let column = ((index + 1) % 2) as i32;
+        let row_idx = index.div_ceil(2) as i32;
+        highlight_grid.attach(&btn, column, row_idx, 1, 1);
+        highlight_buttons.push((btn, color));
+    }
+    menu_box.append(&highlight_grid);
     menu_box.append(&rename_btn);
     menu_box.append(&delete_btn);
 
@@ -3207,6 +3336,26 @@ fn show_workspace_context_menu(state: &State, workspace_id: &str, row: &gtk::Lis
         unread_btn.connect_clicked(move |_| {
             pop.popdown();
             set_workspace_manual_unread(&state, &ws_id, !is_unread);
+            request_session_save(&state);
+        });
+    }
+    {
+        let state = state.clone();
+        let ws_id = workspace_id.to_string();
+        let pop = popover.clone();
+        off_btn.connect_clicked(move |_| {
+            pop.popdown();
+            set_workspace_highlight(&state, &ws_id, None);
+            request_session_save(&state);
+        });
+    }
+    for (btn, color) in highlight_buttons {
+        let state = state.clone();
+        let ws_id = workspace_id.to_string();
+        let pop = popover.clone();
+        btn.connect_clicked(move |_| {
+            pop.popdown();
+            set_workspace_highlight(&state, &ws_id, Some(color));
             request_session_save(&state);
         });
     }
@@ -3276,6 +3425,25 @@ fn set_workspace_favorite_visual(workspace: &Workspace) {
             .favorite_button
             .remove_css_class("limux-ws-star-btn-active");
     }
+}
+
+fn apply_workspace_highlight_widgets(
+    sidebar_row: &gtk::ListBoxRow,
+    highlight: Option<WorkspaceHighlightColor>,
+) {
+    let Some(row_box) = sidebar_row.child() else {
+        return;
+    };
+    for color in WorkspaceHighlightColor::ALL {
+        row_box.remove_css_class(color.css_class());
+    }
+    if let Some(color) = highlight {
+        row_box.add_css_class(color.css_class());
+    }
+}
+
+fn set_workspace_highlight_visual(workspace: &Workspace) {
+    apply_workspace_highlight_widgets(&workspace.sidebar_row, workspace.highlight);
 }
 
 fn apply_workspace_unread_widgets(
@@ -3362,6 +3530,22 @@ fn set_workspace_manual_unread(state: &State, workspace_id: &str, unread: bool) 
                 &workspace.sidebar_row,
             );
         }
+    }
+}
+
+fn set_workspace_highlight(
+    state: &State,
+    workspace_id: &str,
+    highlight: Option<WorkspaceHighlightColor>,
+) {
+    let mut s = state.borrow_mut();
+    if let Some(workspace) = s
+        .workspaces
+        .iter_mut()
+        .find(|workspace| workspace.id == workspace_id)
+    {
+        workspace.highlight = highlight;
+        set_workspace_highlight_visual(workspace);
     }
 }
 
@@ -3738,6 +3922,7 @@ fn create_workspace_for_tab(state: &State, payload: &str) -> bool {
             notify_label,
             unread: false,
             favorite: false,
+            highlight: None,
             cwd: Rc::new(RefCell::new(seed.cwd.clone())),
             folder_path: seed.folder_path.clone(),
             path_label,
@@ -4174,6 +4359,7 @@ fn create_workspace_with_folder(state: &State, name: &str, folder_path: &str) {
         id: None,
         name: name.to_string(),
         favorite: false,
+        highlight: None,
         cwd: Some(folder_path.to_string()),
         folder_path: Some(folder_path.to_string()),
         layout: LayoutNodeState::Pane(PaneState::fallback(Some(folder_path))),
@@ -4855,6 +5041,7 @@ fn add_workspace_from_state(state: &State, workspace: &WorkspaceState) {
         notify_label,
         unread: false,
         favorite: workspace.favorite,
+        highlight: workspace.highlight,
         cwd,
         folder_path: workspace.folder_path.clone(),
         path_label,
@@ -4863,6 +5050,7 @@ fn add_workspace_from_state(state: &State, workspace: &WorkspaceState) {
     if workspace.favorite {
         set_workspace_favorite_visual(&ws);
     }
+    set_workspace_highlight_visual(&ws);
 
     {
         let mut s = state.borrow_mut();
@@ -6633,6 +6821,14 @@ mod tests {
             [HOST_ENTRY_CSS_CLASS, WORKSPACE_RENAME_ENTRY_CSS_CLASS]
         );
         assert!(BASE_CSS.contains(".limux-ws-rename-entry"));
+    }
+
+    #[test]
+    fn workspace_highlight_css_preserves_unread_precedence() {
+        assert!(BASE_CSS.contains(".limux-sidebar-row-highlight-orange"));
+        assert!(BASE_CSS.contains("border-left: 3px solid #f97316;"));
+        assert!(BASE_CSS.contains(".limux-sidebar-row-unread.limux-sidebar-row-highlight-orange"));
+        assert!(BASE_CSS.contains("background-color: alpha(@accent_bg_color, 0.16);"));
     }
 
     #[test]

@@ -155,7 +155,7 @@ echo "stage 0: OK"
 echo
 echo "== stage 0b: agent-team --dry-run hcom launch-mode (no host) =="
 "$LIMUX_CLI" agent-team --dry-run \
-  --agents codex,claude \
+  --agents codex,claude,hermes \
   --launch-mode hcom \
   --cwd "$DEMO_DIR" \
   --protocol-path "$DEMO_DIR/stage0b-LIMUX_AGENTS.md" \
@@ -163,12 +163,14 @@ echo "== stage 0b: agent-team --dry-run hcom launch-mode (no host) =="
   --ledger-path "$DEMO_DIR/stage0b-review-ledger.md" \
   2>&1 | tee "$LOG_DIR/stage0b-hcom.txt"
 
-grep -q "peers=\[codex, claude\]" "$LOG_DIR/stage0b-hcom.txt" \
+grep -q "peers=\[codex, claude, hermes\]" "$LOG_DIR/stage0b-hcom.txt" \
   || { echo "FAIL: stage 0b dry-run did not report expected hcom peers"; exit 1; }
 grep -q 'hcom codex --run-here' "$DEMO_DIR/stage0b-LIMUX_AGENTS.md" \
   || { echo "FAIL: stage 0b protocol missing hcom codex launch command"; exit 1; }
 grep -q 'hcom claude --run-here' "$DEMO_DIR/stage0b-LIMUX_AGENTS.md" \
   || { echo "FAIL: stage 0b protocol missing hcom claude launch command"; exit 1; }
+grep -q 'hcom hermes --run-here' "$DEMO_DIR/stage0b-LIMUX_AGENTS.md" \
+  || { echo "FAIL: stage 0b protocol missing hcom hermes launch command"; exit 1; }
 echo "stage 0b: OK"
 
 # --- 4. Launch the live host under Xvfb ----------------------------------

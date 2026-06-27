@@ -14,8 +14,8 @@ pub const LEGACY_WORKSPACES_FILE_NAME: &str = "workspaces.json";
 pub const DEFAULT_SIDEBAR_WIDTH: i32 = 220;
 pub const MIN_SIDEBAR_WIDTH: i32 = 84;
 pub const DEFAULT_SPLIT_RATIO: f64 = 0.5;
-const MIN_SPLIT_RATIO: f64 = 0.02;
-const MAX_SPLIT_RATIO: f64 = 0.98;
+const MIN_SPLIT_RATIO: f64 = 0.08;
+const MAX_SPLIT_RATIO: f64 = 0.92;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionLoadSource {
@@ -60,10 +60,64 @@ pub struct WorkspaceState {
     #[serde(default)]
     pub favorite: bool,
     #[serde(default)]
+    pub highlight: Option<WorkspaceHighlightColor>,
+    #[serde(default)]
     pub cwd: Option<String>,
     #[serde(default)]
     pub folder_path: Option<String>,
     pub layout: LayoutNodeState,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkspaceHighlightColor {
+    Orange,
+    Red,
+    Purple,
+    Pink,
+    Green,
+    Yellow,
+    Teal,
+    Cyan,
+}
+
+impl WorkspaceHighlightColor {
+    pub const ALL: [Self; 8] = [
+        Self::Orange,
+        Self::Red,
+        Self::Purple,
+        Self::Pink,
+        Self::Green,
+        Self::Yellow,
+        Self::Teal,
+        Self::Cyan,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Orange => "Orange",
+            Self::Red => "Red",
+            Self::Purple => "Purple",
+            Self::Pink => "Pink",
+            Self::Green => "Green",
+            Self::Yellow => "Yellow",
+            Self::Teal => "Teal",
+            Self::Cyan => "Cyan",
+        }
+    }
+
+    pub fn css_class(self) -> &'static str {
+        match self {
+            Self::Orange => "limux-sidebar-row-highlight-orange",
+            Self::Red => "limux-sidebar-row-highlight-red",
+            Self::Purple => "limux-sidebar-row-highlight-purple",
+            Self::Pink => "limux-sidebar-row-highlight-pink",
+            Self::Green => "limux-sidebar-row-highlight-green",
+            Self::Yellow => "limux-sidebar-row-highlight-yellow",
+            Self::Teal => "limux-sidebar-row-highlight-teal",
+            Self::Cyan => "limux-sidebar-row-highlight-cyan",
+        }
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
@@ -117,6 +171,7 @@ pub enum RestorableAgentKind {
     Codex,
     OpenCode,
     Gemini,
+    Hermes,
 }
 
 impl RestorableAgentKind {
@@ -135,6 +190,7 @@ impl RestorableAgentKind {
             Self::Codex => "codex",
             Self::OpenCode => "opencode",
             Self::Gemini => "gemini",
+            Self::Hermes => "hermes",
         }
     }
 
@@ -144,6 +200,7 @@ impl RestorableAgentKind {
             Self::Codex => "codex",
             Self::OpenCode => "opencode",
             Self::Gemini => "gemini",
+            Self::Hermes => "hermes",
         }
     }
 }
@@ -361,14 +418,45 @@ pub fn clamp_split_ratio(ratio: f64) -> f64 {
     ratio.clamp(MIN_SPLIT_RATIO, MAX_SPLIT_RATIO)
 }
 
-pub fn split_ratio_from_position(position: i32, total_size: i32) -> f64 {
+pub fn clamp_split_ratio_for_size(ratio: f64, total_size: i32, min_child_size: i32) -> f64 {
+    let ratio = clamp_split_ratio(ratio);
+    if total_size <= 0 || min_child_size <= 0 {
+        return ratio;
+    }
+    if total_size <= min_child_size.saturating_mul(2) {
+        return DEFAULT_SPLIT_RATIO;
+    }
+
+    let min_ratio =
+        (min_child_size as f64 / total_size as f64).clamp(MIN_SPLIT_RATIO, DEFAULT_SPLIT_RATIO);
+    ratio.clamp(min_ratio, 1.0 - min_ratio)
+}
+
+#[cfg(test)]
+fn split_ratio_from_position(position: i32, total_size: i32) -> f64 {
     if total_size <= 0 {
         return DEFAULT_SPLIT_RATIO;
     }
     clamp_split_ratio(position as f64 / total_size as f64)
 }
 
-pub fn snapshot_split_ratio(position: i32, total_size: i32, stored_ratio: Option<f64>) -> f64 {
+pub fn split_ratio_from_position_with_min(
+    position: i32,
+    total_size: i32,
+    min_child_size: i32,
+) -> f64 {
+    if total_size <= 0 {
+        return DEFAULT_SPLIT_RATIO;
+    }
+    clamp_split_ratio_for_size(
+        position as f64 / total_size as f64,
+        total_size,
+        min_child_size,
+    )
+}
+
+#[cfg(test)]
+fn snapshot_split_ratio(position: i32, total_size: i32, stored_ratio: Option<f64>) -> f64 {
     if total_size <= 0 {
         return stored_ratio
             .map(clamp_split_ratio)
@@ -377,11 +465,34 @@ pub fn snapshot_split_ratio(position: i32, total_size: i32, stored_ratio: Option
     split_ratio_from_position(position, total_size)
 }
 
-pub fn split_position_from_ratio(ratio: f64, total_size: i32) -> i32 {
+pub fn snapshot_split_ratio_with_min(
+    position: i32,
+    total_size: i32,
+    stored_ratio: Option<f64>,
+    min_child_size: i32,
+) -> f64 {
+    if total_size <= 0 {
+        return stored_ratio
+            .map(clamp_split_ratio)
+            .unwrap_or(DEFAULT_SPLIT_RATIO);
+    }
+    split_ratio_from_position_with_min(position, total_size, min_child_size)
+}
+
+#[cfg(test)]
+fn split_position_from_ratio(ratio: f64, total_size: i32) -> i32 {
     if total_size <= 0 {
         return 0;
     }
     (clamp_split_ratio(ratio) * total_size as f64).round() as i32
+}
+
+pub fn split_position_from_ratio_with_min(ratio: f64, total_size: i32, min_child_size: i32) -> i32 {
+    if total_size <= 0 {
+        return 0;
+    }
+    (clamp_split_ratio_for_size(ratio, total_size, min_child_size) * total_size as f64).round()
+        as i32
 }
 
 pub fn normalize_session(mut state: AppSessionState) -> AppSessionState {
@@ -468,6 +579,7 @@ impl AppSessionState {
                     id: None,
                     name: workspace.name,
                     favorite: workspace.favorite,
+                    highlight: None,
                     cwd: workspace.cwd,
                     folder_path: workspace.folder_path,
                     // Legacy files only knew "workspace exists"; rehydrate a fresh terminal at the
@@ -524,6 +636,7 @@ impl RestorableAgentIndex {
             (RestorableAgentKind::Codex, "codex-hook-sessions.json"),
             (RestorableAgentKind::OpenCode, "opencode-hook-sessions.json"),
             (RestorableAgentKind::Gemini, "gemini-hook-sessions.json"),
+            (RestorableAgentKind::Hermes, "hermes-hook-sessions.json"),
         ] {
             let path = dir.join(file_name);
             let Ok(raw) = fs::read_to_string(&path) else {
@@ -746,7 +859,7 @@ fn build_resume_command(
             parts.push(session_id.clone());
             parts.extend(preserved_tail);
         }
-        RestorableAgentKind::Claude | RestorableAgentKind::Gemini => {
+        RestorableAgentKind::Claude | RestorableAgentKind::Gemini | RestorableAgentKind::Hermes => {
             parts.push("--resume".to_string());
             parts.push(session_id.clone());
             parts.extend(preserved_tail);
@@ -871,7 +984,7 @@ fn is_resume_selector(kind: RestorableAgentKind, arg: &str) -> bool {
             arg == "resume" || arg == "--resume" || arg.starts_with("--resume=")
         }
         RestorableAgentKind::OpenCode => arg == "--session" || arg.starts_with("--session="),
-        RestorableAgentKind::Claude | RestorableAgentKind::Gemini => {
+        RestorableAgentKind::Claude | RestorableAgentKind::Gemini | RestorableAgentKind::Hermes => {
             arg == "--resume" || arg.starts_with("--resume=") || arg == "--continue"
         }
     }
@@ -1031,6 +1144,7 @@ mod tests {
                 id: Some("11111111-1111-4111-8111-111111111111".to_string()),
                 name: "canonical".to_string(),
                 favorite: true,
+                highlight: None,
                 cwd: Some("/canonical".to_string()),
                 folder_path: Some("/canonical".to_string()),
                 layout: LayoutNodeState::Pane(PaneState::fallback(Some("/canonical"))),
@@ -1132,6 +1246,7 @@ mod tests {
                 id: Some("22222222-2222-4222-8222-222222222222".to_string()),
                 name: "workspace".to_string(),
                 favorite: false,
+                highlight: None,
                 cwd: Some("/tmp".to_string()),
                 folder_path: Some("/tmp".to_string()),
                 layout: LayoutNodeState::Pane(PaneState::fallback(Some("/tmp"))),
@@ -1572,6 +1687,33 @@ mod tests {
     }
 
     #[test]
+    fn restorable_hermes_resume_command_uses_native_resume_flag() {
+        let agent = RestorableAgentState {
+            kind: RestorableAgentKind::Hermes,
+            session_id: "20260624_132006_02638e".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            launch_command: Some(AgentLaunchCommandState {
+                executable: "hermes".to_string(),
+                arguments: vec![
+                    "hermes".to_string(),
+                    "--model".to_string(),
+                    "anthropic/claude-sonnet-4.6".to_string(),
+                ],
+                cwd: Some("/tmp/project".to_string()),
+                environment: Default::default(),
+                captured_at: Some(12.0),
+            }),
+            restore_on_startup: true,
+        };
+
+        let command = agent.resume_command().expect("resume command");
+        assert!(
+            command.contains("cd '/tmp/project' && 'hermes' '--resume' '20260624_132006_02638e'")
+        );
+        assert!(command.contains("hooks hermes cleanup"));
+    }
+
+    #[test]
     fn restorable_agent_resume_command_drops_dangerous_launch_flags() {
         let agent = RestorableAgentState {
             kind: RestorableAgentKind::Codex,
@@ -1719,6 +1861,7 @@ mod tests {
                 id: Some("33333333-3333-4333-8333-333333333333".to_string()),
                 name: "workspace".to_string(),
                 favorite: false,
+                highlight: Some(WorkspaceHighlightColor::Orange),
                 cwd: None,
                 folder_path: None,
                 layout: LayoutNodeState::Pane(PaneState {
@@ -1739,6 +1882,10 @@ mod tests {
         let decoded: AppSessionState = serde_json::from_str(&raw).expect("deserialize session");
 
         assert!(!decoded.top_bar_visible);
+        assert_eq!(
+            decoded.workspaces[0].highlight,
+            Some(WorkspaceHighlightColor::Orange)
+        );
         let LayoutNodeState::Pane(pane) = &decoded.workspaces[0].layout else {
             panic!("expected pane");
         };
@@ -1752,6 +1899,8 @@ mod tests {
         assert_eq!(split_ratio_from_position(0, 0), DEFAULT_SPLIT_RATIO);
         assert!(split_ratio_from_position(9999, 10) <= MAX_SPLIT_RATIO);
         assert_eq!(split_position_from_ratio(f64::INFINITY, 200), 100);
+        assert_eq!(clamp_split_ratio(0.001), 0.08);
+        assert_eq!(clamp_split_ratio(0.999), 0.92);
     }
 
     #[test]
@@ -1762,6 +1911,18 @@ mod tests {
             DEFAULT_SPLIT_RATIO
         );
         assert_eq!(snapshot_split_ratio(0, 0, None), DEFAULT_SPLIT_RATIO);
+    }
+
+    #[test]
+    fn split_ratio_helpers_respect_child_pixel_minimums() {
+        assert_eq!(clamp_split_ratio_for_size(0.05, 1000, 260), 0.26);
+        assert_eq!(clamp_split_ratio_for_size(0.95, 1000, 260), 0.74);
+        assert_eq!(
+            clamp_split_ratio_for_size(0.2, 400, 260),
+            DEFAULT_SPLIT_RATIO
+        );
+        assert_eq!(split_position_from_ratio_with_min(0.01, 1000, 260), 260);
+        assert_eq!(split_ratio_from_position_with_min(30, 1000, 260), 0.26);
     }
 
     #[test]

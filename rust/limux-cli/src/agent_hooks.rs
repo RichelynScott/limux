@@ -14,6 +14,7 @@ pub(crate) enum AgentKind {
     Codex,
     OpenCode,
     Gemini,
+    Hermes,
 }
 
 impl AgentKind {
@@ -23,6 +24,7 @@ impl AgentKind {
             "codex" => Some(Self::Codex),
             "opencode" | "open-code" => Some(Self::OpenCode),
             "gemini" => Some(Self::Gemini),
+            "hermes" | "hermes-agent" | "hermes-cli" => Some(Self::Hermes),
             _ => None,
         }
     }
@@ -33,6 +35,7 @@ impl AgentKind {
             Self::Codex => "codex",
             Self::OpenCode => "opencode",
             Self::Gemini => "gemini",
+            Self::Hermes => "hermes",
         }
     }
 
@@ -42,6 +45,7 @@ impl AgentKind {
             Self::Codex => "Codex",
             Self::OpenCode => "OpenCode",
             Self::Gemini => "Gemini",
+            Self::Hermes => "Hermes",
         }
     }
 
@@ -51,6 +55,7 @@ impl AgentKind {
             Self::Codex => "codex",
             Self::OpenCode => "opencode",
             Self::Gemini => "gemini",
+            Self::Hermes => "hermes",
         }
     }
 }
@@ -273,7 +278,7 @@ pub(crate) fn build_resume_command(
             parts.push(session_id);
             parts.extend(preserved_tail);
         }
-        AgentKind::Claude | AgentKind::Gemini => {
+        AgentKind::Claude | AgentKind::Gemini | AgentKind::Hermes => {
             parts.push("--resume".to_string());
             parts.push(session_id);
             parts.extend(preserved_tail);
@@ -365,7 +370,7 @@ fn is_resume_selector(kind: AgentKind, arg: &str) -> bool {
     match kind {
         AgentKind::Codex => arg == "resume" || arg == "--resume" || arg.starts_with("--resume="),
         AgentKind::OpenCode => arg == "--session" || arg.starts_with("--session="),
-        AgentKind::Claude | AgentKind::Gemini => {
+        AgentKind::Claude | AgentKind::Gemini | AgentKind::Hermes => {
             arg == "--resume" || arg.starts_with("--resume=") || arg == "--continue"
         }
     }
@@ -440,6 +445,7 @@ fn selected_environment() -> BTreeMap<String, String> {
         "CLAUDE_CONFIG_DIR",
         "OPENCODE_CONFIG_DIR",
         "GEMINI_CONFIG_DIR",
+        "HERMES_HOME",
         "ANTHROPIC_BASE_URL",
         "ANTHROPIC_MODEL",
         "ANTHROPIC_SMALL_FAST_MODEL",
@@ -545,6 +551,44 @@ mod tests {
         assert_eq!(
             command,
             "cd '/tmp/project one' && 'codex' 'resume' '--model' 'gpt-5.5' '--config' 'profile=work' 'sess-123'"
+        );
+    }
+
+    #[test]
+    fn hermes_kind_accepts_hcom_agent_aliases() {
+        assert_eq!(
+            AgentKind::from_hook_name("hermes-agent"),
+            Some(AgentKind::Hermes)
+        );
+        assert_eq!(AgentKind::Hermes.store_name(), "hermes");
+        assert_eq!(AgentKind::Hermes.label(), "Hermes");
+    }
+
+    #[test]
+    fn hermes_resume_command_uses_native_resume_flag() {
+        let launch = AgentLaunchCommandRecord {
+            executable: "hermes".to_string(),
+            arguments: vec![
+                "hermes".to_string(),
+                "--model".to_string(),
+                "anthropic/claude-sonnet-4.6".to_string(),
+            ],
+            cwd: Some("/tmp/project".to_string()),
+            environment: Default::default(),
+            captured_at: 20.0,
+        };
+
+        let command = build_resume_command(
+            AgentKind::Hermes,
+            "20260624_132006_02638e",
+            Some(&launch),
+            Some("/tmp/project"),
+        )
+        .expect("resume command");
+
+        assert_eq!(
+            command,
+            "cd '/tmp/project' && 'hermes' '--resume' '20260624_132006_02638e' '--model' 'anthropic/claude-sonnet-4.6'"
         );
     }
 }
