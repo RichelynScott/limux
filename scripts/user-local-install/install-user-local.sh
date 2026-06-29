@@ -184,6 +184,7 @@ ghostty_share_src=""
 for candidate in \
     "$ghostty_share_override" \
     "${repo_root}/ghostty/zig-out/share/ghostty" \
+    "${repo_root}/ghostty/src" \
     "/usr/local/share/ghostty" \
     "/usr/share/ghostty"
 do

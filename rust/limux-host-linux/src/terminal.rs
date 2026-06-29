@@ -411,6 +411,22 @@ pub struct TerminalWidget {
     pub handle: TerminalHandle,
 }
 
+const TERMINAL_RESIZE_DEBOUNCE_MS: u64 = 90;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct SurfaceResizeSnapshot {
+    width_px: u32,
+    height_px: u32,
+    scale_factor: i32,
+}
+
+#[derive(Default)]
+struct SurfaceResizeCoalescer {
+    last_applied: Cell<Option<SurfaceResizeSnapshot>>,
+    pending: Cell<Option<SurfaceResizeSnapshot>>,
+    timeout: RefCell<Option<glib::SourceId>>,
+}
+
 fn terminal_search_action(query: &str) -> String {
     format!("search:{query}")
 }
@@ -427,22 +443,63 @@ fn physical_surface_size(width_css: i32, height_css: i32, scale_factor: i32) -> 
     Some((width, height))
 }
 
+fn surface_resize_snapshot(
+    width_css: i32,
+    height_css: i32,
+    scale_factor: i32,
+) -> Option<SurfaceResizeSnapshot> {
+    let (width_px, height_px) = physical_surface_size(width_css, height_css, scale_factor)?;
+    Some(SurfaceResizeSnapshot {
+        width_px,
+        height_px,
+        scale_factor: scale_factor.max(1),
+    })
+}
+
+fn surface_resize_needs_apply(
+    last_applied: Option<SurfaceResizeSnapshot>,
+    next: SurfaceResizeSnapshot,
+) -> bool {
+    last_applied != Some(next)
+}
+
+fn surface_size_matches_snapshot(
+    width_px: u32,
+    height_px: u32,
+    snapshot: SurfaceResizeSnapshot,
+) -> bool {
+    width_px == snapshot.width_px && height_px == snapshot.height_px
+}
+
 fn request_terminal_focus(gl_area: &gtk::GLArea, had_focus: &Cell<bool>) {
     had_focus.set(true);
     gl_area.grab_focus();
 }
 
+fn apply_surface_resize_snapshot(
+    surface: ghostty_surface_t,
+    gl_area: &gtk::GLArea,
+    snapshot: SurfaceResizeSnapshot,
+) {
+    let scale = snapshot.scale_factor.max(1) as f64;
+    unsafe {
+        ghostty_surface_set_content_scale(surface, scale, scale);
+        let current = ghostty_surface_size(surface);
+        if !surface_size_matches_snapshot(current.width_px, current.height_px, snapshot) {
+            ghostty_surface_set_size(surface, snapshot.width_px, snapshot.height_px);
+        }
+    }
+    unsafe { ghostty_surface_refresh(surface) };
+    gl_area.queue_render();
+}
+
 fn refresh_surface_display(surface: ghostty_surface_t, gl_area: &gtk::GLArea) {
     let alloc = gl_area.allocation();
-    let scale_factor = gl_area.scale_factor();
-    if let Some((width_px, height_px)) =
-        physical_surface_size(alloc.width(), alloc.height(), scale_factor)
+    if let Some(snapshot) =
+        surface_resize_snapshot(alloc.width(), alloc.height(), gl_area.scale_factor())
     {
-        let scale = scale_factor.max(1) as f64;
-        unsafe {
-            ghostty_surface_set_content_scale(surface, scale, scale);
-            ghostty_surface_set_size(surface, width_px, height_px);
-        }
+        apply_surface_resize_snapshot(surface, gl_area, snapshot);
+        return;
     }
     unsafe { ghostty_surface_refresh(surface) };
     gl_area.queue_render();
@@ -456,6 +513,51 @@ fn refresh_realized_surface_display(surface: ghostty_surface_t, gl_area: &gtk::G
         }
     }
     refresh_surface_display(surface, gl_area);
+}
+
+fn schedule_coalesced_surface_resize(
+    coalescer: &Rc<SurfaceResizeCoalescer>,
+    surface_cell: &Rc<RefCell<Option<ghostty_surface_t>>>,
+    gl_area: &gtk::GLArea,
+    width: i32,
+    height: i32,
+) {
+    let Some(snapshot) = surface_resize_snapshot(width, height, gl_area.scale_factor()) else {
+        return;
+    };
+
+    if !surface_resize_needs_apply(coalescer.last_applied.get(), snapshot) {
+        gl_area.queue_render();
+        return;
+    }
+
+    coalescer.pending.set(Some(snapshot));
+    if let Some(source) = coalescer.timeout.borrow_mut().take() {
+        source.remove();
+    }
+
+    let coalescer_for_timeout = coalescer.clone();
+    let surface_cell_for_timeout = surface_cell.clone();
+    let gl_area_for_timeout = gl_area.clone();
+    let source = glib::timeout_add_local_once(
+        Duration::from_millis(TERMINAL_RESIZE_DEBOUNCE_MS),
+        move || {
+            coalescer_for_timeout.timeout.borrow_mut().take();
+            let Some(snapshot) = coalescer_for_timeout.pending.take() else {
+                return;
+            };
+            if !surface_resize_needs_apply(coalescer_for_timeout.last_applied.get(), snapshot) {
+                gl_area_for_timeout.queue_render();
+                return;
+            }
+            let Some(surface) = *surface_cell_for_timeout.borrow() else {
+                return;
+            };
+            apply_surface_resize_snapshot(surface, &gl_area_for_timeout, snapshot);
+            coalescer_for_timeout.last_applied.set(Some(snapshot));
+        },
+    );
+    *coalescer.timeout.borrow_mut() = Some(source);
 }
 
 fn clear_ghostty_preedit(surface: ghostty_surface_t) {
@@ -1599,19 +1701,22 @@ pub fn create_terminal(
     // The actual GL viewport is set by GTK when the render signal fires,
     // so we must NOT call ghostty_surface_draw here — the viewport would
     // still be the old size. Instead we queue_render() and let the render
-    // callback draw with the correct viewport.
+    // callback draw with the correct viewport. During drag-resizes, coalesce
+    // GTK's high-frequency pixel stream so chat TUIs receive one settled
+    // SIGWINCH instead of many intermediate widths.
     {
         let surface_cell = surface_cell.clone();
+        let resize_coalescer = Rc::new(SurfaceResizeCoalescer::default());
         let gl_for_resize = gl_area.clone();
         let had_focus = had_focus.clone();
         gl_area.connect_resize(move |gl_area, width, height| {
-            if let Some(surface) = *surface_cell.borrow() {
-                let w = width as u32;
-                let h = height as u32;
-                if w > 0 && h > 0 {
-                    refresh_surface_display(surface, gl_area);
-                }
-            }
+            schedule_coalesced_surface_resize(
+                &resize_coalescer,
+                &surface_cell,
+                gl_area,
+                width,
+                height,
+            );
 
             if had_focus.get() {
                 let gl_for_focus = gl_for_resize.clone();
@@ -2499,6 +2604,57 @@ mod tests {
         assert_eq!(physical_surface_size(320, 240, 0), Some((320, 240)));
         assert_eq!(physical_surface_size(0, 240, 2), None);
         assert_eq!(physical_surface_size(-1, 240, 2), None);
+    }
+
+    #[test]
+    fn surface_resize_snapshot_tracks_physical_pixels_and_scale() {
+        assert_eq!(
+            surface_resize_snapshot(320, 240, 2),
+            Some(SurfaceResizeSnapshot {
+                width_px: 640,
+                height_px: 480,
+                scale_factor: 2,
+            })
+        );
+        assert_eq!(
+            surface_resize_snapshot(320, 240, 0),
+            Some(SurfaceResizeSnapshot {
+                width_px: 320,
+                height_px: 240,
+                scale_factor: 1,
+            })
+        );
+        assert_eq!(surface_resize_snapshot(0, 240, 2), None);
+    }
+
+    #[test]
+    fn surface_resize_coalescer_skips_duplicate_snapshot() {
+        let current = SurfaceResizeSnapshot {
+            width_px: 640,
+            height_px: 480,
+            scale_factor: 2,
+        };
+        assert!(!surface_resize_needs_apply(Some(current), current));
+        assert!(surface_resize_needs_apply(
+            Some(current),
+            SurfaceResizeSnapshot {
+                width_px: 642,
+                height_px: 480,
+                scale_factor: 2,
+            }
+        ));
+    }
+
+    #[test]
+    fn surface_size_match_uses_physical_pixel_dimensions() {
+        let snapshot = SurfaceResizeSnapshot {
+            width_px: 640,
+            height_px: 480,
+            scale_factor: 2,
+        };
+        assert!(surface_size_matches_snapshot(640, 480, snapshot));
+        assert!(!surface_size_matches_snapshot(641, 480, snapshot));
+        assert!(!surface_size_matches_snapshot(640, 479, snapshot));
     }
 
     #[test]
