@@ -1,25 +1,90 @@
 # Limux Lifo Handoff
 
-Author/runtime/date: lifo / Codex GPT-5 / 2026-06-27 06:15 EDT.
+Author/runtime/date: lifo / Codex gpt-5.5 (xhigh) / 2026-06-29 09:15 EDT.
 
 ## Immediate Next Action
 
 The current user-local Limux symlink now points at the reviewed branch build
 from `lifo/hermes-workspace-highlight-resize-20260627`:
 
-- Branch/head: `cedcb3ade43d` (`fix(host): align pane attention and sidebar auto-open`).
+- Branch/head: `60d960302cbd` (`fix(host): coalesce terminal resize updates`).
 - Install root:
-  `/home/riche/.local/limux-reviewed/lifo-hermes-highlight-cedcb3a`.
+  `/home/riche/.local/limux-reviewed/resize-stability-60d9603`.
 - Symlinks:
   `/home/riche/.local/bin/limux` and `/home/riche/.local/bin/limux-cli`
   both point into that install root.
 
-Important runtime caveat: at 2026-06-27 06:15 EDT, the currently running
-`limux-host` process was still PID `54063` from the old install path
-`/home/riche/.local/limux-reviewed/main-20260622-2fcfc55/libexec/limux-host`.
-Open Limux windows keep their original host binary until closed/relaunched.
-To actually run `cedcb3ade43d`, the operator must close the old Limux host and
+Important runtime caveat: at 2026-06-29 09:14 EDT, the currently running
+`limux-host` process was still PID `42009` from the old install path
+`/home/riche/.local/limux-reviewed/lifo-hermes-highlight-cedcb3a/libexec/limux-host`.
+Open Limux windows keep their original host binary until closed/relaunched. To
+actually run `60d960302cbd`, the operator must close the old Limux host and
 start `limux` again after this handoff update.
+
+PR #6 was pushed to GitHub and a fresh `@codex review` was requested at
+`https://github.com/RichelynScott/limux/pull/6#issuecomment-4833008516`.
+At 2026-06-29 09:15 EDT, the bot had not yet posted a new review for
+`60d960302cbd`; the prior bot review only covered `ffa6ec3021`.
+
+If runtime resize corruption still reproduces after the restart, capture:
+
+- exact agent/runtime type (`codex`, `claude`, `hermes`) and whether it uses a
+  normal-screen TUI or alternate screen;
+- whether the pane was being drag-resized, workspace-switched, refocused, or
+  cross-monitor moved;
+- `limux read-screen --scrollback --lines 500` from the affected surface, if
+  readable;
+- the running host path from `ps -eo pid,cmd | rg 'limux(-host|-cli)?'`.
+
+## 2026-06-29 Resize Stability Fix
+
+Research sources checked:
+
+- Limux upstream PRs #83, #95, and #100 all point at Ghostty surface sizing
+  correctness around physical pixels / GLArea framebuffer scale.
+- cmux issue #3052 and PR #4765 tie Claude/Ink live-region duplication to
+  redundant resize/layout events and recommend coalescing pixel-only resizes.
+- cmux issue #2789 ties idle prompt growth on resize to Ghostty shell
+  integration / OSC prompt marker behavior.
+- cmux issue #5299 records column-grow/refocus corruption in libghostty's
+  incremental grow path.
+- tmux PR #5101 records a pane-resize reflow bug where saved cursor restore can
+  overwrite prior shell output.
+
+Fix completed:
+
+- Added a trailing 90 ms resize coalescer in
+  `rust/limux-host-linux/src/terminal.rs` so GTK drag-resize storms do not send
+  every intermediate size into Ghostty / SIGWINCH-sensitive agent TUIs.
+- Added redundant-size suppression by checking `ghostty_surface_size()` before
+  calling `ghostty_surface_set_size`.
+- Preserved physical-pixel sizing for HiDPI / fractional scale behavior.
+- Relaxed Ghostty resource discovery in `rust/limux-host-linux/src/main.rs` so
+  shell integration can be installed and used even when compiled terminfo is
+  absent.
+- Added installer fallback in
+  `scripts/user-local-install/install-user-local.sh` to copy
+  `/home/riche/MCPs/limux/ghostty/src` as Ghostty resources when
+  `ghostty/zig-out/share/ghostty` is unavailable.
+
+Verification completed:
+
+- `cargo test -p limux-host-linux surface_resize`
+- `cargo test -p limux-host-linux resolves_shell_integration_without_terminfo`
+- `cargo test -p limux-host-linux resource_env_sets_shell_integration_without_optional_terminfo`
+- `cargo test -p limux-host-linux surface_size_match_uses_physical_pixel_dimensions`
+- `scripts/user-local-install/install-user-local.sh --dry-run --profile release --install-id resize-stability-check`
+- `./scripts/check.sh`
+- `git diff --check`
+- `python3 /home/riche/.codex/scripts/static_check_no_delete_api.py --target-dir scripts/user-local-install`
+- `cargo build --release -p limux-cli --bin limux-cli`
+- `cargo build --release -p limux-host-linux`
+- `scripts/user-local-install/install-user-local.sh --apply --profile release --install-id resize-stability-60d9603`
+- `/home/riche/.local/bin/limux --help`
+
+Known limitation: installer now finds Ghostty shell integration from
+`ghostty/src`, but still reports `Ghostty terminfo: not found`. Do not treat
+terminfo generation as solved; that remains a separate packaging task.
 
 ## 2026-06-27 Runtime Install Correction
 
