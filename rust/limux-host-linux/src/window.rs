@@ -33,6 +33,7 @@ const PANE_CREATE_COMMAND_READY_ATTEMPTS: u32 = 80;
 const PANE_CREATE_COMMAND_SETTLE_ATTEMPTS: u32 = 10;
 const PANE_CREATE_COMMAND_SUBMIT_DELAY_MS: u64 = 100;
 const ACTIVE_WORKSPACE_NOTIFICATION_MS: u64 = 3_000;
+const LIMUX_WINDOW_DECORATION_LAYOUT: &str = ":minimize,maximize,close";
 const HOST_LAUNCH_ENV_REMOVALS: &[&str] = &[
     "LIMUX_SOCKET",
     "LIMUX_SOCKET_PATH",
@@ -108,6 +109,31 @@ pub(crate) struct AppState {
     _desktop_notification_token_signal: Option<gio::SignalSubscription>,
     _desktop_notification_action_signal: Option<gio::SignalSubscription>,
     _desktop_notification_closed_signal: Option<gio::SignalSubscription>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct WindowChromePolicy {
+    use_client_side_titlebar: bool,
+    decoration_layout: &'static str,
+}
+
+fn window_chrome_policy(_compositor_provides_decorations: bool) -> WindowChromePolicy {
+    // Server-side Wayland decorations have been observed to expose only a close
+    // button and a larger invisible resize hit area than Limux wants. Keep
+    // chrome under GTK/libadwaita so controls and hit testing stay consistent.
+    WindowChromePolicy {
+        use_client_side_titlebar: true,
+        decoration_layout: LIMUX_WINDOW_DECORATION_LAYOUT,
+    }
+}
+
+fn build_window_header(title: &str, decoration_layout: &str) -> adw::HeaderBar {
+    let bar = adw::HeaderBar::new();
+    bar.set_title_widget(Some(&gtk::Label::builder().label(title).build()));
+    bar.set_show_start_title_buttons(false);
+    bar.set_show_end_title_buttons(true);
+    bar.set_decoration_layout(Some(decoration_layout));
+    bar
 }
 
 impl AppState {
@@ -1636,22 +1662,20 @@ pub fn build_window(app: &adw::Application) {
         .build();
     apply_window_background_class(&window, background_opacity);
 
-    // On Wayland compositors with xdg-decoration support, the compositor
-    // already provides the window chrome, so keep Limux from rendering a
-    // duplicate header bar. X11 continues to use the in-app header.
-    let provides_decorations = display
+    let compositor_provides_decorations = display
         .clone()
         .downcast::<gdk4_wayland::WaylandDisplay>()
         .ok()
         .map(|display| display.query_registry("zxdg_decoration_manager_v1"))
         .unwrap_or(false);
+    let chrome_policy = window_chrome_policy(compositor_provides_decorations);
 
-    let header = if provides_decorations {
-        None
+    let header = if chrome_policy.use_client_side_titlebar {
+        let header = build_window_header(&title, chrome_policy.decoration_layout);
+        window.set_titlebar(Some(&header));
+        Some(header)
     } else {
-        let bar = adw::HeaderBar::new();
-        bar.set_title_widget(Some(&gtk::Label::builder().label(&title).build()));
-        Some(bar)
+        None
     };
 
     let stack = gtk::Stack::new();
@@ -1757,9 +1781,6 @@ pub fn build_window(app: &adw::Application) {
         build_sidebar_split(&sidebar, &stack);
 
     let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    if let Some(ref header) = header {
-        vbox.append(header);
-    }
     vbox.append(&main_split);
     window.set_content(Some(&vbox));
 
@@ -6530,14 +6551,14 @@ mod tests {
         should_emit_desktop_notification, sidebar_width_class, snapshot_sidebar_width,
         surface_send_text_response, tab_drag_workspace_seed, use_opaque_window_background,
         validate_typed_terminal_text, validate_workspace_folder_input_with_dirs,
-        workspace_drop_layout_path, workspace_folder_path_from_input,
+        window_chrome_policy, workspace_drop_layout_path, workspace_folder_path_from_input,
         workspace_notification_message, DesktopNotificationTarget, Direction,
         EditableCaptureContext, NeighborScore, PaneBounds, PaneCreateDirection,
         PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest,
         WorkspaceSeedSource, BASE_CSS, HOST_ENTRY_CSS_CLASS, HOST_LAUNCH_ENV_REMOVALS,
-        SIDEBAR_COMPACT_CSS_CLASS, SIDEBAR_COMPACT_WIDTH, SIDEBAR_MIN_WIDTH,
-        SIDEBAR_TINY_CSS_CLASS, SIDEBAR_TINY_WIDTH, WORKSPACE_RENAME_ENTRY_CSS_CLASS,
-        WORKSPACE_RENAME_ENTRY_CSS_CLASSES,
+        LIMUX_WINDOW_DECORATION_LAYOUT, SIDEBAR_COMPACT_CSS_CLASS, SIDEBAR_COMPACT_WIDTH,
+        SIDEBAR_MIN_WIDTH, SIDEBAR_TINY_CSS_CLASS, SIDEBAR_TINY_WIDTH,
+        WORKSPACE_RENAME_ENTRY_CSS_CLASS, WORKSPACE_RENAME_ENTRY_CSS_CLASSES,
     };
     use crate::layout_state::{LayoutNodeState, PaneState, SplitOrientation, SplitState};
     use crate::shortcut_config::{
@@ -6567,6 +6588,28 @@ mod tests {
     fn favorites_prefix_len_counts_only_leading_favorites() {
         let flags = [true, true, false, true, false];
         assert_eq!(favorites_prefix_len(&flags), 2);
+    }
+
+    #[test]
+    fn window_chrome_policy_prefers_limux_controls_when_compositor_decorates() {
+        let with_compositor_decorations = window_chrome_policy(true);
+        let without_compositor_decorations = window_chrome_policy(false);
+
+        assert!(with_compositor_decorations.use_client_side_titlebar);
+        assert_eq!(
+            with_compositor_decorations.decoration_layout,
+            LIMUX_WINDOW_DECORATION_LAYOUT
+        );
+        assert_eq!(with_compositor_decorations, without_compositor_decorations);
+        assert!(with_compositor_decorations
+            .decoration_layout
+            .contains("minimize"));
+        assert!(with_compositor_decorations
+            .decoration_layout
+            .contains("maximize"));
+        assert!(with_compositor_decorations
+            .decoration_layout
+            .contains("close"));
     }
 
     #[test]
