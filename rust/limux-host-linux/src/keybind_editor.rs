@@ -400,6 +400,9 @@ fn validation_error_message(err: &ShortcutConfigError) -> String {
         ShortcutConfigError::ModifierOnlyBinding { .. } => {
             "Choose a non-modifier key for this shortcut.".to_string()
         }
+        ShortcutConfigError::ReservedTerminalControlBinding { .. } => {
+            "Use Ctrl+Shift+V for terminal paste; Ctrl+V is reserved by terminals.".to_string()
+        }
         ShortcutConfigError::DuplicateBinding { .. } => {
             "That shortcut is already assigned to another action.".to_string()
         }
@@ -453,6 +456,15 @@ mod tests {
         assert_eq!(
             validation_error_message(&err),
             "Use Ctrl, Alt, or Cmd together with another key."
+        );
+
+        let err = ShortcutConfigError::ReservedTerminalControlBinding {
+            shortcut_id: "terminal_paste".to_string(),
+            input: "<Ctrl>v".to_string(),
+        };
+        assert_eq!(
+            validation_error_message(&err),
+            "Use Ctrl+Shift+V for terminal paste; Ctrl+V is reserved by terminals."
         );
     }
 
