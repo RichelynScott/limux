@@ -35,6 +35,7 @@ static GHOSTTY: OnceLock<GhosttyState> = OnceLock::new();
 static CURRENT_COLOR_SCHEME: AtomicI32 = AtomicI32::new(GHOSTTY_COLOR_SCHEME_LIGHT);
 static CURRENT_SCROLLBAR_ENABLED: AtomicBool = AtomicBool::new(true);
 static WAKEUP_IDLE_QUEUED: AtomicBool = AtomicBool::new(false);
+static KEY_DEBUG_ENABLED: OnceLock<bool> = OnceLock::new();
 static EMPTY_CLIPBOARD_TEXT: [u8; 1] = [0];
 
 type TitleChangedCallback = dyn Fn(&str);
@@ -1780,6 +1781,7 @@ pub fn create_terminal(
                     event.text = ct.as_ptr();
                 }
 
+                debug_key_event("press", keyval, keycode, modifier, &event, c_text.as_ref());
                 let consumed = unsafe { ghostty_surface_key(surface, event) };
                 if consumed && ime_state_press.borrow().composing {
                     im_context_press.reset();
@@ -1826,6 +1828,7 @@ pub fn create_terminal(
                     keycode,
                     modifier,
                 );
+                debug_key_event("release", keyval, keycode, modifier, &event, None);
                 unsafe { ghostty_surface_key(surface, event) };
                 ime_state_release.borrow_mut().finish_key_event();
             }
@@ -2282,19 +2285,8 @@ fn translate_key_event(
     keycode: u32,
     modifier: gtk::gdk::ModifierType,
 ) -> ghostty_input_key_s {
-    let mut mods: c_int = GHOSTTY_MODS_NONE;
-    if modifier.contains(gtk::gdk::ModifierType::SHIFT_MASK) {
-        mods |= GHOSTTY_MODS_SHIFT;
-    }
-    if modifier.contains(gtk::gdk::ModifierType::CONTROL_MASK) {
-        mods |= GHOSTTY_MODS_CTRL;
-    }
-    if modifier.contains(gtk::gdk::ModifierType::ALT_MASK) {
-        mods |= GHOSTTY_MODS_ALT;
-    }
-    if modifier.contains(gtk::gdk::ModifierType::SUPER_MASK) {
-        mods |= GHOSTTY_MODS_SUPER;
-    }
+    let corrected_modifier = corrected_key_modifier_state(action, keyval, modifier);
+    let mods = translate_mouse_mods(corrected_modifier);
 
     let unshifted = widget
         .zip(key_event)
@@ -2313,6 +2305,41 @@ fn translate_key_event(
         text: ptr::null(),
         unshifted_codepoint: unshifted,
         composing: false,
+    }
+}
+
+fn corrected_key_modifier_state(
+    action: c_int,
+    keyval: gtk::gdk::Key,
+    modifier: gtk::gdk::ModifierType,
+) -> gtk::gdk::ModifierType {
+    let Some(mask) = modifier_mask_for_key(keyval) else {
+        return modifier;
+    };
+
+    let mut corrected = modifier;
+    match action {
+        GHOSTTY_ACTION_PRESS | GHOSTTY_ACTION_REPEAT => corrected.insert(mask),
+        GHOSTTY_ACTION_RELEASE => corrected.remove(mask),
+        _ => {}
+    }
+    corrected
+}
+
+fn modifier_mask_for_key(keyval: gtk::gdk::Key) -> Option<gtk::gdk::ModifierType> {
+    match keyval {
+        gtk::gdk::Key::Shift_L | gtk::gdk::Key::Shift_R => Some(gtk::gdk::ModifierType::SHIFT_MASK),
+        gtk::gdk::Key::Control_L | gtk::gdk::Key::Control_R => {
+            Some(gtk::gdk::ModifierType::CONTROL_MASK)
+        }
+        gtk::gdk::Key::Alt_L | gtk::gdk::Key::Alt_R => Some(gtk::gdk::ModifierType::ALT_MASK),
+        gtk::gdk::Key::Meta_L
+        | gtk::gdk::Key::Meta_R
+        | gtk::gdk::Key::Super_L
+        | gtk::gdk::Key::Super_R
+        | gtk::gdk::Key::Hyper_L
+        | gtk::gdk::Key::Hyper_R => Some(gtk::gdk::ModifierType::SUPER_MASK),
+        _ => None,
     }
 }
 
@@ -2523,6 +2550,45 @@ fn translate_mouse_mods(state: gtk::gdk::ModifierType) -> c_int {
     mods
 }
 
+fn key_debug_enabled() -> bool {
+    *KEY_DEBUG_ENABLED.get_or_init(|| {
+        std::env::var_os("LIMUX_DEBUG_KEYS").is_some_and(|value| {
+            let value = value.to_string_lossy();
+            !value.is_empty() && value != "0" && value != "off" && value != "false"
+        })
+    })
+}
+
+fn debug_key_event(
+    phase: &str,
+    keyval: gtk::gdk::Key,
+    keycode: u32,
+    raw_modifier: gtk::gdk::ModifierType,
+    event: &ghostty_input_key_s,
+    text: Option<&CString>,
+) {
+    if !key_debug_enabled() {
+        return;
+    }
+
+    let key_name = keyval
+        .name()
+        .map(|name| name.to_string())
+        .unwrap_or_else(|| format!("{keyval:?}"));
+    let text = text.and_then(|value| value.to_str().ok()).unwrap_or("");
+    eprintln!(
+        "limux-key phase={phase} action={} key={} keycode={} raw_mods={:?} ghostty_mods={} consumed_mods={} unshifted={} text={:?}",
+        event.action,
+        key_name,
+        keycode,
+        raw_modifier,
+        event.mods,
+        event.consumed_mods,
+        event.unshifted_codepoint,
+        text
+    );
+}
+
 fn ghostty_mouse_button_from_gdk(button: u32) -> c_int {
     match button {
         1 => GHOSTTY_MOUSE_LEFT,
@@ -2589,6 +2655,48 @@ mod tests {
         assert_eq!(fallback_native_keycode(gtk::gdk::Key::Return), 0x24);
         assert_eq!(fallback_unshifted_codepoint(gtk::gdk::Key::KP_Enter), 0x0D);
         assert_eq!(fallback_native_keycode(gtk::gdk::Key::KP_Enter), 0x68);
+    }
+
+    #[test]
+    fn modifier_key_press_includes_the_pressed_modifier() {
+        let event = translate_key_event(
+            GHOSTTY_ACTION_PRESS,
+            None,
+            None,
+            gtk::gdk::Key::Control_L,
+            0,
+            gtk::gdk::ModifierType::empty(),
+        );
+
+        assert_eq!(event.mods & GHOSTTY_MODS_CTRL, GHOSTTY_MODS_CTRL);
+    }
+
+    #[test]
+    fn modifier_key_release_removes_the_released_modifier() {
+        let event = translate_key_event(
+            GHOSTTY_ACTION_RELEASE,
+            None,
+            None,
+            gtk::gdk::Key::Control_L,
+            0,
+            gtk::gdk::ModifierType::CONTROL_MASK,
+        );
+
+        assert_eq!(event.mods & GHOSTTY_MODS_CTRL, GHOSTTY_MODS_NONE);
+    }
+
+    #[test]
+    fn non_modifier_key_preserves_reported_modifiers() {
+        let event = translate_key_event(
+            GHOSTTY_ACTION_PRESS,
+            None,
+            None,
+            gtk::gdk::Key::V,
+            0,
+            gtk::gdk::ModifierType::CONTROL_MASK,
+        );
+
+        assert_eq!(event.mods & GHOSTTY_MODS_CTRL, GHOSTTY_MODS_CTRL);
     }
 
     #[test]
