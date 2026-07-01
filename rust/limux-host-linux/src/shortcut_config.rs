@@ -192,10 +192,6 @@ pub enum ShortcutConfigError {
         shortcut_id: String,
         input: String,
     },
-    ReservedTerminalControlBinding {
-        shortcut_id: String,
-        input: String,
-    },
     InvalidJson(String),
 }
 
@@ -238,12 +234,6 @@ impl std::fmt::Display for ShortcutConfigError {
             }
             Self::ModifierOnlyBinding { .. } => {
                 write!(f, "choose a non-modifier key with Ctrl, Alt, or Cmd")
-            }
-            Self::ReservedTerminalControlBinding { .. } => {
-                write!(
-                    f,
-                    "plain Ctrl+V is reserved for terminal literal-next input"
-                )
             }
             Self::InvalidJson(reason) => write!(f, "invalid shortcut config JSON: {reason}"),
         }
@@ -947,18 +937,6 @@ impl NormalizedShortcut {
         }
         if definition.requires_base_modifier() && !self.ctrl && !self.alt && !self.cmd {
             return Err(ShortcutConfigError::BaseModifierRequired {
-                shortcut_id: definition.config_key.to_string(),
-                input: self.to_config_accel(),
-            });
-        }
-        if definition.id == ShortcutId::TerminalPaste
-            && self.ctrl
-            && !self.shift
-            && !self.alt
-            && !self.cmd
-            && self.key == "v"
-        {
-            return Err(ShortcutConfigError::ReservedTerminalControlBinding {
                 shortcut_id: definition.config_key.to_string(),
                 input: self.to_config_accel(),
             });
@@ -2472,41 +2450,6 @@ mod tests {
             ShortcutConfigError::ModifierOnlyBinding { shortcut_id, .. }
                 if shortcut_id == "split_right"
         ));
-    }
-
-    #[test]
-    fn resolve_shortcuts_from_str_rejects_terminal_paste_plain_ctrl_v() {
-        let err = resolve_shortcuts_from_str(
-            r#"{
-                "shortcuts": {
-                    "terminal_paste": "<Ctrl>v"
-                }
-            }"#,
-        )
-        .unwrap_err();
-
-        assert!(matches!(
-            err,
-            ShortcutConfigError::ReservedTerminalControlBinding { shortcut_id, input }
-                if shortcut_id == "terminal_paste" && input == "<Ctrl>v"
-        ));
-    }
-
-    #[test]
-    fn terminal_paste_still_allows_default_ctrl_shift_v() {
-        let resolved = resolve_shortcuts_from_str(
-            r#"{
-                "shortcuts": {
-                    "terminal_paste": "<Ctrl><Shift>v"
-                }
-            }"#,
-        )
-        .unwrap();
-
-        assert_eq!(
-            resolved.command_for_runtime_combo("ctrl+shift+v"),
-            Some(ShortcutCommand::TerminalPaste)
-        );
     }
 
     #[test]

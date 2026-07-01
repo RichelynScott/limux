@@ -185,14 +185,8 @@ That means terminal-native combos like these should pass through unless you expl
 - `Ctrl+C`
 - `Ctrl+L`
 - `Ctrl+R`
-- `Ctrl+V`
 - plain typing
 - `Enter`
-
-`terminal_paste` is the exception to the "explicitly bind it" rule for
-terminal-native controls: Limux rejects plain `Ctrl+V` for terminal paste
-because terminals reserve it for literal-next input. Use the default
-`Ctrl+Shift+V` paste binding instead.
 
 Editable browser fields should also retain native behavior for:
 
