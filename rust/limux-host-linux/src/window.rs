@@ -1259,7 +1259,7 @@ const WORKSPACE_RENAME_ENTRY_CSS_CLASSES: [&str; 2] =
 const SIDEBAR_HANDLE_CSS_CLASS: &str = "limux-sidebar-handle";
 const SIDEBAR_COLLAPSE_BUTTON_CSS_CLASS: &str = "limux-sidebar-collapse-btn";
 const SIDEBAR_HANDLE_CURSOR_NAME: &str = "col-resize";
-const SIDEBAR_RESIZE_HANDLE_WIDTH_PX: i32 = 8;
+const SIDEBAR_RESIZE_HANDLE_WIDTH_PX: i32 = 3;
 
 const BASE_CSS: &str = r#"
 .limux-host-entry {
@@ -1544,8 +1544,8 @@ row:selected .limux-ws-path {
     background-color: @window_bg_color;
 }
 .limux-sidebar-handle {
-    min-width: 8px;
-    background-color: alpha(@window_fg_color, 0.10);
+    min-width: 3px;
+    background-color: alpha(@window_fg_color, 0.08);
 }
 .limux-sidebar-handle:hover {
     background-color: alpha(@accent_bg_color, 0.45);
@@ -1797,7 +1797,7 @@ pub fn build_window(app: &adw::Application) {
         *slot.borrow_mut() = Some(state.clone());
     });
 
-    install_sidebar_resize(&state, &main_split, &sidebar_shell);
+    install_sidebar_resize(&state, &sidebar_handle, &sidebar_shell);
 
     {
         let state = state.clone();
@@ -2009,7 +2009,7 @@ fn build_sidebar_split(
     )
 }
 
-fn install_sidebar_resize(state: &State, main_split: &gtk::Box, sidebar_shell: &gtk::Box) {
+fn install_sidebar_resize(state: &State, sidebar_handle: &gtk::Box, sidebar_shell: &gtk::Box) {
     let resizing_sidebar = Rc::new(Cell::new(false));
     let drag_origin = Rc::new(Cell::new(SIDEBAR_WIDTH));
     let drag = gtk::GestureDrag::new();
@@ -2018,14 +2018,8 @@ fn install_sidebar_resize(state: &State, main_split: &gtk::Box, sidebar_shell: &
         let drag_origin = drag_origin.clone();
         let sidebar_shell = sidebar_shell.clone();
         let resizing_sidebar = resizing_sidebar.clone();
-        drag.connect_drag_begin(move |gesture, x, _| {
+        drag.connect_drag_begin(move |gesture, _, _| {
             let current_width = sidebar_width(&sidebar_shell);
-            let handle_start = current_width as f64;
-            let handle_end = handle_start + SIDEBAR_RESIZE_HANDLE_WIDTH_PX as f64;
-            if x < handle_start || x > handle_end {
-                gesture.set_state(gtk::EventSequenceState::Denied);
-                return;
-            }
             resizing_sidebar.set(true);
             drag_origin.set(current_width.max(SIDEBAR_MIN_WIDTH));
             gesture.set_state(gtk::EventSequenceState::Claimed);
@@ -2059,7 +2053,7 @@ fn install_sidebar_resize(state: &State, main_split: &gtk::Box, sidebar_shell: &
         });
     }
 
-    main_split.add_controller(drag);
+    sidebar_handle.add_controller(drag);
 }
 
 fn set_sidebar_width(sidebar_shell: &gtk::Box, width: i32) {
