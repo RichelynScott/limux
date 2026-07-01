@@ -435,6 +435,14 @@ impl SurfaceResizeCoalescer {
             source.remove();
         }
     }
+
+    fn clear_pending_if_snapshot_is_applied(&self, snapshot: SurfaceResizeSnapshot) -> bool {
+        if surface_resize_needs_apply(self.last_applied.get(), snapshot) {
+            return false;
+        }
+        self.clear_pending();
+        true
+    }
 }
 
 fn terminal_search_action(query: &str) -> String {
@@ -509,7 +517,7 @@ fn apply_surface_resize_from_cell(
     gl_area: &gtk::GLArea,
     snapshot: SurfaceResizeSnapshot,
 ) {
-    if !surface_resize_needs_apply(coalescer.last_applied.get(), snapshot) {
+    if coalescer.clear_pending_if_snapshot_is_applied(snapshot) {
         gl_area.queue_render();
         return;
     }
@@ -2795,6 +2803,26 @@ mod tests {
 
         assert_eq!(coalescer.pending.get(), None);
         assert!(coalescer.timeout.borrow().is_none());
+    }
+
+    #[test]
+    fn surface_resize_coalescer_drops_stale_pending_when_latest_matches_applied() {
+        let coalescer = SurfaceResizeCoalescer::default();
+        let applied = SurfaceResizeSnapshot {
+            width_px: 640,
+            height_px: 480,
+            scale_factor: 2,
+        };
+        let stale_pending = SurfaceResizeSnapshot {
+            width_px: 800,
+            height_px: 480,
+            scale_factor: 2,
+        };
+        coalescer.last_applied.set(Some(applied));
+        coalescer.pending.set(Some(stale_pending));
+
+        assert!(coalescer.clear_pending_if_snapshot_is_applied(applied));
+        assert_eq!(coalescer.pending.get(), None);
     }
 
     #[test]
