@@ -412,7 +412,7 @@ pub struct TerminalWidget {
     pub handle: TerminalHandle,
 }
 
-const TERMINAL_RESIZE_DEBOUNCE_MS: u64 = 90;
+const TERMINAL_RESIZE_COALESCE_MS: u64 = 16;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct SurfaceResizeSnapshot {
@@ -426,6 +426,15 @@ struct SurfaceResizeCoalescer {
     last_applied: Cell<Option<SurfaceResizeSnapshot>>,
     pending: Cell<Option<SurfaceResizeSnapshot>>,
     timeout: RefCell<Option<glib::SourceId>>,
+}
+
+impl SurfaceResizeCoalescer {
+    fn clear_pending(&self) {
+        self.pending.set(None);
+        if let Some(source) = self.timeout.borrow_mut().take() {
+            source.remove();
+        }
+    }
 }
 
 fn terminal_search_action(query: &str) -> String {
@@ -494,6 +503,23 @@ fn apply_surface_resize_snapshot(
     gl_area.queue_render();
 }
 
+fn apply_surface_resize_from_cell(
+    coalescer: &SurfaceResizeCoalescer,
+    surface_cell: &Rc<RefCell<Option<ghostty_surface_t>>>,
+    gl_area: &gtk::GLArea,
+    snapshot: SurfaceResizeSnapshot,
+) {
+    if !surface_resize_needs_apply(coalescer.last_applied.get(), snapshot) {
+        gl_area.queue_render();
+        return;
+    }
+    let Some(surface) = *surface_cell.borrow() else {
+        return;
+    };
+    apply_surface_resize_snapshot(surface, gl_area, snapshot);
+    coalescer.last_applied.set(Some(snapshot));
+}
+
 fn refresh_surface_display(surface: ghostty_surface_t, gl_area: &gtk::GLArea) {
     let alloc = gl_area.allocation();
     if let Some(snapshot) =
@@ -524,6 +550,7 @@ fn schedule_coalesced_surface_resize(
     height: i32,
 ) {
     let Some(snapshot) = surface_resize_snapshot(width, height, gl_area.scale_factor()) else {
+        coalescer.clear_pending();
         return;
     };
 
@@ -532,30 +559,29 @@ fn schedule_coalesced_surface_resize(
         return;
     }
 
-    coalescer.pending.set(Some(snapshot));
-    if let Some(source) = coalescer.timeout.borrow_mut().take() {
-        source.remove();
+    if coalescer.timeout.borrow().is_none() {
+        apply_surface_resize_from_cell(coalescer, surface_cell, gl_area, snapshot);
+    } else {
+        coalescer.pending.set(Some(snapshot));
+        return;
     }
 
     let coalescer_for_timeout = coalescer.clone();
     let surface_cell_for_timeout = surface_cell.clone();
     let gl_area_for_timeout = gl_area.clone();
     let source = glib::timeout_add_local_once(
-        Duration::from_millis(TERMINAL_RESIZE_DEBOUNCE_MS),
+        Duration::from_millis(TERMINAL_RESIZE_COALESCE_MS),
         move || {
             coalescer_for_timeout.timeout.borrow_mut().take();
             let Some(snapshot) = coalescer_for_timeout.pending.take() else {
                 return;
             };
-            if !surface_resize_needs_apply(coalescer_for_timeout.last_applied.get(), snapshot) {
-                gl_area_for_timeout.queue_render();
-                return;
-            }
-            let Some(surface) = *surface_cell_for_timeout.borrow() else {
-                return;
-            };
-            apply_surface_resize_snapshot(surface, &gl_area_for_timeout, snapshot);
-            coalescer_for_timeout.last_applied.set(Some(snapshot));
+            apply_surface_resize_from_cell(
+                &coalescer_for_timeout,
+                &surface_cell_for_timeout,
+                &gl_area_for_timeout,
+                snapshot,
+            );
         },
     );
     *coalescer.timeout.borrow_mut() = Some(source);
@@ -1369,6 +1395,7 @@ pub fn create_terminal(
     let extra_env = options.extra_env;
     let callbacks = Rc::new(RefCell::new(callbacks));
     let surface_cell: Rc<RefCell<Option<ghostty_surface_t>>> = Rc::new(RefCell::new(None));
+    let resize_coalescer = Rc::new(SurfaceResizeCoalescer::default());
     let had_focus = Rc::new(Cell::new(false));
     let scrollbar_syncing = Rc::new(Cell::new(false));
     let open_url_external = Rc::new(Cell::new(false));
@@ -1702,12 +1729,12 @@ pub fn create_terminal(
     // The actual GL viewport is set by GTK when the render signal fires,
     // so we must NOT call ghostty_surface_draw here — the viewport would
     // still be the old size. Instead we queue_render() and let the render
-    // callback draw with the correct viewport. During drag-resizes, coalesce
-    // GTK's high-frequency pixel stream so chat TUIs receive one settled
-    // SIGWINCH instead of many intermediate widths.
+    // callback draw with the correct viewport. During drag-resizes, apply the
+    // first size immediately and coalesce follow-ups to frame-scale cadence so
+    // Ghostty stays in sync with the visible pane without flooding chat TUIs.
     {
         let surface_cell = surface_cell.clone();
-        let resize_coalescer = Rc::new(SurfaceResizeCoalescer::default());
+        let resize_coalescer = resize_coalescer.clone();
         let gl_for_resize = gl_area.clone();
         let had_focus = had_focus.clone();
         gl_area.connect_resize(move |gl_area, width, height| {
@@ -2019,7 +2046,9 @@ pub fn create_terminal(
     // in connect_realize when the widget is re-realized.
     {
         let surface_cell = surface_cell.clone();
+        let resize_coalescer = resize_coalescer.clone();
         gl_area.connect_unrealize(move |gl_area| {
+            resize_coalescer.clear_pending();
             if let Some(surface) = *surface_cell.borrow() {
                 gl_area.make_current();
                 unsafe { ghostty_surface_display_unrealized(surface) };
@@ -2751,6 +2780,21 @@ mod tests {
                 scale_factor: 2,
             }
         ));
+    }
+
+    #[test]
+    fn surface_resize_coalescer_clear_pending_drops_stale_snapshot() {
+        let coalescer = SurfaceResizeCoalescer::default();
+        coalescer.pending.set(Some(SurfaceResizeSnapshot {
+            width_px: 640,
+            height_px: 480,
+            scale_factor: 2,
+        }));
+
+        coalescer.clear_pending();
+
+        assert_eq!(coalescer.pending.get(), None);
+        assert!(coalescer.timeout.borrow().is_none());
     }
 
     #[test]
