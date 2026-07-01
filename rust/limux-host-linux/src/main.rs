@@ -65,8 +65,8 @@ fn has_ghostty_terminfo(path: &Path) -> bool {
         .any(|entry| parent.join(entry).is_file())
 }
 
-fn has_ghostty_shell_integration(path: &Path) -> bool {
-    path.is_dir() && path.join("shell-integration").is_dir()
+fn is_ghostty_resources_dir(path: &Path) -> bool {
+    path.is_dir() && path.join("shell-integration").is_dir() && has_ghostty_terminfo(path)
 }
 
 fn ghostty_resources_candidates(exe_dir: &Path) -> Vec<PathBuf> {
@@ -76,7 +76,6 @@ fn ghostty_resources_candidates(exe_dir: &Path) -> Vec<PathBuf> {
         candidates.push(ancestor.join("share/limux/ghostty"));
         candidates.push(ancestor.join("share/ghostty"));
         candidates.push(ancestor.join("ghostty/zig-out/share/ghostty"));
-        candidates.push(ancestor.join("ghostty/src"));
     }
 
     candidates.push(PathBuf::from("/usr/local/share/ghostty"));
@@ -89,7 +88,7 @@ fn resolve_ghostty_resources_dir(exe_path: &Path) -> Option<PathBuf> {
     let exe_dir = exe_path.parent()?;
     ghostty_resources_candidates(exe_dir)
         .into_iter()
-        .find(|path| has_ghostty_shell_integration(path))
+        .find(|path| is_ghostty_resources_dir(path))
 }
 
 fn ghostty_terminfo_dir(resources_dir: &Path) -> Option<PathBuf> {
@@ -122,7 +121,7 @@ fn set_ghostty_runtime_env_for_exe(exe_path: &Path) {
     set_env_path_if_missing_or_invalid(
         "GHOSTTY_RESOURCES_DIR",
         Some(resources_dir.clone()),
-        has_ghostty_shell_integration,
+        is_ghostty_resources_dir,
     );
     set_env_path_if_missing_or_invalid(
         "TERMINFO",
@@ -684,7 +683,7 @@ mod tests {
     }
 
     #[test]
-    fn resolves_shell_integration_without_terminfo() {
+    fn rejects_resource_dirs_without_sibling_terminfo() {
         let root = temp_path("shell-integration-only");
         let exe_dir = root.join("target/release");
         let resources_dir = root.join("ghostty/src");
@@ -693,17 +692,14 @@ mod tests {
         fs::create_dir_all(&shell_integration_dir).unwrap();
 
         let exe = exe_dir.join("limux");
-        let resolved = resolve_ghostty_resources_dir(&exe).unwrap();
-        assert_eq!(resolved, resources_dir);
-        assert!(has_ghostty_shell_integration(&resolved));
-        assert!(ghostty_terminfo_dir(&resolved).is_some());
-        assert!(!has_ghostty_terminfo(&resolved));
+        assert!(resolve_ghostty_resources_dir(&exe).is_none());
+        assert!(!is_ghostty_resources_dir(&resources_dir));
 
         fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
-    fn resource_env_sets_shell_integration_without_optional_terminfo() {
+    fn resource_env_ignores_shell_integration_without_terminfo() {
         with_ghostty_env(|| {
             let root = temp_path("env-shell-only");
             let exe_dir = root.join("target/release");
@@ -715,14 +711,8 @@ mod tests {
             let exe = exe_dir.join("limux");
             set_ghostty_runtime_env_for_exe(&exe);
 
-            assert_eq!(
-                std::env::var_os("GHOSTTY_RESOURCES_DIR"),
-                Some(resources_dir.into_os_string())
-            );
-            assert_eq!(
-                std::env::var_os("GHOSTTY_SHELL_INTEGRATION_XDG_DIR"),
-                Some(shell_integration_dir.into_os_string())
-            );
+            assert!(std::env::var_os("GHOSTTY_RESOURCES_DIR").is_none());
+            assert!(std::env::var_os("GHOSTTY_SHELL_INTEGRATION_XDG_DIR").is_none());
             assert!(std::env::var_os("TERMINFO").is_none());
 
             fs::remove_dir_all(root).unwrap();

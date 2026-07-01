@@ -24,6 +24,10 @@ That script is the source of truth for the repository quality gate and currently
 - Do not commit generated artifacts, build outputs, or cache files.
 - Remove dead files and legacy paths when a canonical replacement exists.
 - Add regression tests when fixing behavior or moving high-risk logic.
+- Treat runtime resource discovery as a correctness boundary. In particular,
+  do not use Ghostty source directories such as `ghostty/src` as installed
+  runtime resources; see
+  [`terminal-input-regression-20260701.md`](terminal-input-regression-20260701.md).
 
 ## Refactor Guidance
 

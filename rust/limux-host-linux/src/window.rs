@@ -1257,8 +1257,9 @@ const WORKSPACE_RENAME_ENTRY_CSS_CLASS: &str = "limux-ws-rename-entry";
 const WORKSPACE_RENAME_ENTRY_CSS_CLASSES: [&str; 2] =
     [HOST_ENTRY_CSS_CLASS, WORKSPACE_RENAME_ENTRY_CSS_CLASS];
 const SIDEBAR_HANDLE_CSS_CLASS: &str = "limux-sidebar-handle";
+const SIDEBAR_COLLAPSE_BUTTON_CSS_CLASS: &str = "limux-sidebar-collapse-btn";
 const SIDEBAR_HANDLE_CURSOR_NAME: &str = "col-resize";
-const SIDEBAR_RESIZE_HANDLE_WIDTH_PX: i32 = 3;
+const SIDEBAR_RESIZE_HANDLE_WIDTH_PX: i32 = 8;
 
 const BASE_CSS: &str = r#"
 .limux-host-entry {
@@ -1482,6 +1483,20 @@ row:selected .limux-ws-star-btn {
     background: alpha(@window_fg_color, 0.14);
     color: @window_fg_color;
 }
+.limux-sidebar-collapse-btn {
+    background: alpha(@window_fg_color, 0.08);
+    color: alpha(@window_fg_color, 0.72);
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 3px 8px;
+    min-width: 0;
+    min-height: 0;
+    margin-right: 6px;
+}
+.limux-sidebar-collapse-btn:hover {
+    background: alpha(@window_fg_color, 0.14);
+    color: @window_fg_color;
+}
 .limux-sidebar-restore-ribbon {
     background: alpha(@accent_bg_color, 0.18);
     color: @window_fg_color;
@@ -1529,8 +1544,8 @@ row:selected .limux-ws-path {
     background-color: @window_bg_color;
 }
 .limux-sidebar-handle {
-    min-width: 3px;
-    background-color: alpha(@window_fg_color, 0.08);
+    min-width: 8px;
+    background-color: alpha(@window_fg_color, 0.10);
 }
 .limux-sidebar-handle:hover {
     background-color: alpha(@accent_bg_color, 0.45);
@@ -1672,9 +1687,17 @@ pub fn build_window(app: &adw::Application) {
         .build();
     sidebar_title.append(&sidebar_title_label);
 
+    let sidebar_collapse_button = gtk::Button::builder()
+        .label("<")
+        .tooltip_text("Hide workspaces")
+        .valign(gtk::Align::Center)
+        .build();
+    sidebar_collapse_button.add_css_class(SIDEBAR_COLLAPSE_BUTTON_CSS_CLASS);
+    sidebar_title.append(&sidebar_collapse_button);
+
     {
         let window = window.clone();
-        let drag_title = sidebar_title.clone();
+        let drag_title = sidebar_title_label.clone();
         let drag = gtk::GestureClick::new();
         drag.set_button(1);
         drag.connect_pressed(move |gesture, _, x, y| {
@@ -1686,7 +1709,7 @@ pub fn build_window(app: &adw::Application) {
             begin_window_move_from_widget(&drag_title, &window, &device, button, x, y, timestamp);
             gesture.set_state(gtk::EventSequenceState::Claimed);
         });
-        sidebar_title.add_controller(drag);
+        sidebar_title_label.add_controller(drag);
     }
 
     let new_ws_btn = gtk::Button::builder()
@@ -1779,6 +1802,13 @@ pub fn build_window(app: &adw::Application) {
     {
         let state = state.clone();
         sidebar_restore_button.connect_clicked(move |_| {
+            toggle_sidebar(&state);
+        });
+    }
+
+    {
+        let state = state.clone();
+        sidebar_collapse_button.connect_clicked(move |_| {
             toggle_sidebar(&state);
         });
     }

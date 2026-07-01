@@ -125,6 +125,11 @@ Run the canonical local quality gate before committing:
 
 Repository maintainability rules live in [`docs/maintainability.md`](docs/maintainability.md).
 
+When validating user-local installs, also check
+[`docs/terminal-input-regression-20260701.md`](docs/terminal-input-regression-20260701.md).
+It records the June 2026 Ghostty resource packaging regression and the rule
+that `ghostty/src` must not be installed or resolved as runtime resources.
+
 ## Agent integrations
 
 Limux ships first-class hooks for coding agents (Codex, Claude Code, Gemini CLI,

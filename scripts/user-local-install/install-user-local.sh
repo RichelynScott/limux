@@ -20,7 +20,7 @@ Options:
   --install-id <id>        Install id under limux-reviewed (default: git sha)
   --desktop-entry          Install a user desktop entry under ~/.local/share/applications
   --no-desktop-entry       Do not install a desktop entry (default)
-  --ghostty-share <path>   Ghostty share dir containing shell-integration
+  --ghostty-share <path>   Ghostty runtime share dir containing shell-integration
   --ghostty-terminfo <path>
                            Terminfo dir containing g/ghostty or x/xterm-ghostty
   --manifest-out <path>    Also write the dry-run manifest to this path
@@ -184,7 +184,6 @@ ghostty_share_src=""
 for candidate in \
     "$ghostty_share_override" \
     "${repo_root}/ghostty/zig-out/share/ghostty" \
-    "${repo_root}/ghostty/src" \
     "/usr/local/share/ghostty" \
     "/usr/share/ghostty"
 do
