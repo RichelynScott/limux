@@ -28,7 +28,12 @@ const AGENT_TEAM_ROSTER_MARKER: &str = "<!-- limux-team-roster durable:create-if
 const AGENT_TEAM_LEDGER_MARKER: &str = "<!-- limux-review-ledger durable:v1 -->";
 const REVIEW_REQUEST_MARKER: &str = "<!-- limux-review-request generated:v1 -->";
 const REVIEW_EVIDENCE_MARKER: &str = "<!-- limux-review-evidence pointer:v1 -->";
-const HOST_LAUNCH_SOCKET_ENV_REMOVALS: &[&str] = &["LIMUX_SOCKET", "LIMUX_SOCKET_PATH"];
+const HOST_LAUNCH_SOCKET_ENV_REMOVALS: &[&str] = &[
+    "LIMUX_SOCKET",
+    "LIMUX_SOCKET_PATH",
+    limux_control::socket_path::LIMUX_CHANNEL_ENV,
+    limux_control::socket_path::LIMUX_PREVIEW_ID_ENV,
+];
 const HOST_LAUNCH_SESSION_ENV_REMOVALS: &[&str] = &["LIMUX_SESSION_DIR"];
 const HOST_LAUNCH_TARGET_ENV_REMOVALS: &[&str] = &[
     "LIMUX_WORKSPACE_ID",
@@ -6225,6 +6230,26 @@ mod cli_arg_tests {
             .flatten();
 
         assert_eq!(channel_env.as_deref(), Some("preview:branch"));
+    }
+
+    #[test]
+    fn host_launch_command_clears_inherited_channel_without_explicit_channel() {
+        let command =
+            host_launch_command_with_inherited_target_env(Path::new("/tmp/limux-host"), true, None);
+        let removals = command
+            .get_envs()
+            .filter_map(|(key, value)| value.is_none().then_some(key.to_string_lossy()))
+            .collect::<Vec<_>>();
+
+        for key in [
+            limux_control::socket_path::LIMUX_CHANNEL_ENV,
+            limux_control::socket_path::LIMUX_PREVIEW_ID_ENV,
+        ] {
+            assert!(
+                removals.iter().any(|removed| removed == key),
+                "missing inherited channel env removal for {key}"
+            );
+        }
     }
 
     #[test]

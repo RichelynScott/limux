@@ -26,6 +26,8 @@ const LIMUX_SOCKET_PATH_ENV: &str = "LIMUX_SOCKET_PATH";
 const LIMUX_TARGET_ENV_REMOVALS: &[&str] = &[
     "LIMUX_SOCKET",
     "LIMUX_SOCKET_PATH",
+    limux_control::socket_path::LIMUX_CHANNEL_ENV,
+    limux_control::socket_path::LIMUX_PREVIEW_ID_ENV,
     layout_state::LIMUX_SESSION_DIR_ENV,
     "LIMUX_WORKSPACE_ID",
     "LIMUX_SURFACE_ID",
@@ -231,7 +233,8 @@ fn ensure_runtime_socket_does_not_collide() {
         return;
     }
 
-    let default_path = limux_control::socket_path::SocketMode::default_for(
+    let default_path = limux_control::socket_path::resolve_socket_path(
+        None,
         limux_control::socket_path::SocketMode::Runtime,
     );
     if !socket_accepts_connections(&default_path) {
@@ -490,6 +493,14 @@ mod tests {
             .expect("ghostty env test lock poisoned");
         let _socket = EnvVarGuard::set(LIMUX_SOCKET_ENV, Some("/tmp/old-runtime.sock"));
         let _socket_path = EnvVarGuard::set(LIMUX_SOCKET_PATH_ENV, Some("/tmp/old-runtime.sock"));
+        let _channel = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_CHANNEL_ENV,
+            Some("preview:old"),
+        );
+        let _preview_id = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_PREVIEW_ID_ENV,
+            Some("old"),
+        );
         let _session_dir = EnvVarGuard::set(
             layout_state::LIMUX_SESSION_DIR_ENV,
             Some("/tmp/old-runtime-session"),
@@ -519,6 +530,14 @@ mod tests {
         let _xdg = EnvVarGuard::set("XDG_RUNTIME_DIR", Some(runtime_dir.path()));
         let _socket = EnvVarGuard::set(LIMUX_SOCKET_ENV, Option::<&str>::None);
         let _socket_path = EnvVarGuard::set(LIMUX_SOCKET_PATH_ENV, Option::<&str>::None);
+        let _channel = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_CHANNEL_ENV,
+            Option::<&str>::None,
+        );
+        let _preview_id = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_PREVIEW_ID_ENV,
+            Option::<&str>::None,
+        );
         let _session_dir =
             EnvVarGuard::set(layout_state::LIMUX_SESSION_DIR_ENV, Option::<&str>::None);
 
@@ -544,6 +563,46 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn runtime_socket_collision_check_uses_channel_socket() {
+        let _lock = GHOSTTY_ENV_LOCK
+            .lock()
+            .expect("ghostty env test lock poisoned");
+        let runtime_dir = tempfile::tempdir().expect("runtime tempdir");
+        let _xdg = EnvVarGuard::set("XDG_RUNTIME_DIR", Some(runtime_dir.path()));
+        let _socket = EnvVarGuard::set(LIMUX_SOCKET_ENV, Option::<&str>::None);
+        let _socket_path = EnvVarGuard::set(LIMUX_SOCKET_PATH_ENV, Option::<&str>::None);
+        let _channel = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_CHANNEL_ENV,
+            Some("preview:branch"),
+        );
+        let _preview_id = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_PREVIEW_ID_ENV,
+            Option::<&str>::None,
+        );
+        let _session_dir =
+            EnvVarGuard::set(layout_state::LIMUX_SESSION_DIR_ENV, Option::<&str>::None);
+
+        let legacy_path = limux_control::socket_path::SocketMode::default_for(
+            limux_control::socket_path::SocketMode::Runtime,
+        );
+        fs::create_dir_all(legacy_path.parent().expect("legacy socket parent"))
+            .expect("create legacy socket parent");
+        let _listener = UnixListener::bind(&legacy_path).expect("bind legacy socket");
+
+        ensure_runtime_socket_does_not_collide();
+
+        assert!(
+            std::env::var_os(LIMUX_SOCKET_ENV).is_none(),
+            "legacy socket collision must not override explicit preview channel"
+        );
+        assert!(
+            std::env::var_os(layout_state::LIMUX_SESSION_DIR_ENV).is_none(),
+            "legacy socket collision must not force a fallback session for preview channel"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn runtime_socket_treats_empty_socket_env_as_unset() {
         let _lock = GHOSTTY_ENV_LOCK
             .lock()
@@ -552,6 +611,14 @@ mod tests {
         let _xdg = EnvVarGuard::set("XDG_RUNTIME_DIR", Some(runtime_dir.path()));
         let _socket = EnvVarGuard::set(LIMUX_SOCKET_ENV, Some(""));
         let _socket_path = EnvVarGuard::set(LIMUX_SOCKET_PATH_ENV, Some(""));
+        let _channel = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_CHANNEL_ENV,
+            Option::<&str>::None,
+        );
+        let _preview_id = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_PREVIEW_ID_ENV,
+            Option::<&str>::None,
+        );
         let _session_dir =
             EnvVarGuard::set(layout_state::LIMUX_SESSION_DIR_ENV, Option::<&str>::None);
 
@@ -585,6 +652,14 @@ mod tests {
         let _xdg = EnvVarGuard::set("XDG_RUNTIME_DIR", Some(runtime_dir.path()));
         let _socket = EnvVarGuard::set(LIMUX_SOCKET_ENV, Option::<&str>::None);
         let _socket_path = EnvVarGuard::set(LIMUX_SOCKET_PATH_ENV, Option::<&str>::None);
+        let _channel = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_CHANNEL_ENV,
+            Option::<&str>::None,
+        );
+        let _preview_id = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_PREVIEW_ID_ENV,
+            Option::<&str>::None,
+        );
         let _session_dir = EnvVarGuard::set(
             layout_state::LIMUX_SESSION_DIR_ENV,
             Some("/tmp/manual-limux-session"),
@@ -612,6 +687,14 @@ mod tests {
             .expect("ghostty env test lock poisoned");
         let _socket = EnvVarGuard::set(LIMUX_SOCKET_ENV, Some("/tmp/manual-limux.sock"));
         let _socket_path = EnvVarGuard::set(LIMUX_SOCKET_PATH_ENV, Option::<&str>::None);
+        let _channel = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_CHANNEL_ENV,
+            Option::<&str>::None,
+        );
+        let _preview_id = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_PREVIEW_ID_ENV,
+            Option::<&str>::None,
+        );
         let _session_dir =
             EnvVarGuard::set(layout_state::LIMUX_SESSION_DIR_ENV, Option::<&str>::None);
 

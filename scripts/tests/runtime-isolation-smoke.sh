@@ -22,7 +22,8 @@ case "$profile" in
         ;;
 esac
 
-prefix="${LIMUX_RUNTIME_ISOLATION_SMOKE_PREFIX:-/tmp/limux-runtime-isolation-smoke-${USER:-user}-$$}"
+run_id="$(date -u +%Y%m%dT%H%M%S)-$$"
+prefix="${LIMUX_RUNTIME_ISOLATION_SMOKE_PREFIX:-/tmp/limux-runtime-isolation-smoke-${USER:-user}-${run_id}}"
 inherited_socket="/tmp/limux-runtime-isolation-inherited-stable.sock"
 
 printf 'runtime-isolation-smoke: building limux-cli (%s)\n' "$profile"
