@@ -14,18 +14,24 @@ direction:
   <https://github.com/manaflow-ai/cmux/pulls?q=is%3Apr+is%3Aopen+sort%3Aupdated-desc>
 - Repository: <https://github.com/manaflow-ai/cmux>
 
-Snapshot as of 2026-06-16:
+Current detailed research database:
 
-- cmux latest GitHub release is `v0.64.16`, published 2026-06-15.
+- `docs/research/cmux-upstream/README.md`
+- `docs/research/cmux-upstream/items.json`
+- `docs/research/cmux-upstream/items.md`
+- `docs/research/cmux-upstream/sources.md`
+
+Snapshot as of 2026-07-02:
+
+- cmux latest GitHub release is `v0.64.17`, published 2026-06-23.
 - cmux repository activity is current: GitHub reports `pushed_at` on
-  2026-06-16 and 1,461 open PRs via the GitHub search API.
-- Recent cmux release/PR themes worth mining for Limux ideas include terminal
-  renderer memory reclamation, notification focus/DND behavior, sidebar
-  performance and unread state, terminal-core and Ghostty-engine decomposition,
-  workspace custom titles, window-title templates, command palette extraction,
-  remote/cloud-VM connectivity, workspace/pane canvas layout, per-workspace
-  environment variables, AI auto-naming, browser recovery, and long-session
-  memory diagnostics.
+  2026-07-02.
+- Recent cmux release/PR themes worth mining for Limux ideas include browser
+  automation allowlists, agent lifecycle sidebar state, workspace groups and
+  colors, sidebar performance with many agent panes, split/new-tab cwd
+  inheritance, restore/session correctness, remote tmux/SSH persistence,
+  Git observation without optional locks, and hidden-terminal renderer
+  throttling.
 - The configured Limux upstream remote (`https://github.com/am-will/limux.git`)
   is quieter than cmux; `upstream/main` was observed at commit `9ffc934`
   dated 2026-05-13. Re-check this date before making a public age/staleness

@@ -32,7 +32,8 @@
             "details": "Resolver order must be: Cursor setting limux.socketPath, LIMUX_SOCKET, LIMUX_SOCKET_PATH, LIMUX_CHANNEL channel-derived sockets matching RuntimeChannel::from_env(), then the XDG_RUNTIME_DIR legacy default, then /tmp/limux.sock. stable maps to XDG_RUNTIME_DIR/limux/stable/limux.sock or /tmp/limux-stable.sock. preview maps to XDG_RUNTIME_DIR/limux/preview/default/limux.sock unless LIMUX_PREVIEW_ID is set. preview:<id> or preview/<id> maps to XDG_RUNTIME_DIR/limux/preview/<id>/limux.sock or /tmp/limux-preview-<id>.sock when XDG_RUNTIME_DIR is unavailable. Do not add /run/user/${uid}/limux/limux.sock as a separate Cursor fallback unless Limux source adds it first.",
             "status": "pending",
             "dependencies": [],
-            "parentTaskId": 2
+            "parentTaskId": 2,
+            "parentId": "2"
           }
         ]
       },
@@ -258,10 +259,11 @@
         "description": "Future project: perform multi-agent research over upstream Limux and manaflow-ai/cmux GitHub PRs, issues, releases, and code to compile candidate features, fixes, and ideas for this Limux fork.",
         "details": "Do not start until current Limux stabilization and PR cleanup are green. Research should collect links, classify feature/fix/UX/architecture items, estimate fit for GTK/Linux Limux, rate value/risk/complexity, and turn selected items into PRDs/tasks/subprojects.",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [],
         "priority": "high",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-07-02T09:07:39.198Z"
       },
       {
         "id": 19,
@@ -345,14 +347,12 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-02T08:15:30.762Z",
+      "lastModified": "2026-07-02T09:07:39.199Z",
       "taskCount": 20,
-      "completedCount": 4,
+      "completedCount": 5,
       "tags": [
         "master"
-      ],
-      "created": "2026-07-02T08:41:18.436Z",
-      "description": "Tasks for master context"
+      ]
     }
   }
 }
