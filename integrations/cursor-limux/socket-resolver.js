@@ -1,0 +1,218 @@
+"use strict";
+
+const fs = require("fs");
+const net = require("net");
+const path = require("path");
+
+const DEFAULT_PREVIEW_ID = "default";
+
+function cleanPath(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function sanitizeChannelId(raw) {
+  const value = cleanPath(raw);
+  if (!value || value.includes("/") || value.includes("\\") || value.includes("\0")) {
+    return null;
+  }
+  return value;
+}
+
+function parseRuntimeChannel(env = process.env) {
+  const raw = cleanPath(env.LIMUX_CHANNEL);
+  if (!raw) {
+    return null;
+  }
+
+  if (raw === "stable") {
+    return { kind: "stable", label: "stable" };
+  }
+
+  if (raw === "preview") {
+    const id = sanitizeChannelId(env.LIMUX_PREVIEW_ID) || DEFAULT_PREVIEW_ID;
+    return { kind: "preview", id, label: `preview/${id}` };
+  }
+
+  for (const prefix of ["preview:", "preview/"]) {
+    if (raw.startsWith(prefix)) {
+      const id = sanitizeChannelId(raw.slice(prefix.length));
+      return id ? { kind: "preview", id, label: `preview/${id}` } : null;
+    }
+  }
+
+  return null;
+}
+
+function runtimeChannelSocketPath(env = process.env) {
+  const channel = parseRuntimeChannel(env);
+  if (!channel) {
+    return null;
+  }
+
+  const runtimeDir = cleanPath(env.XDG_RUNTIME_DIR);
+  if (runtimeDir) {
+    const parts =
+      channel.kind === "stable"
+        ? [runtimeDir, "limux", "stable", "limux.sock"]
+        : [runtimeDir, "limux", "preview", channel.id, "limux.sock"];
+    return { channel: channel.label, path: path.join(...parts) };
+  }
+
+  const fileName =
+    channel.kind === "stable" ? "limux-stable.sock" : `limux-preview-${channel.id}.sock`;
+  return { channel: channel.label, path: path.join("/tmp", fileName) };
+}
+
+function pushCandidate(candidates, seen, candidate) {
+  if (!candidate.path || seen.has(candidate.path)) {
+    return;
+  }
+  seen.add(candidate.path);
+  candidates.push(candidate);
+}
+
+function resolveSocketCandidates(options = {}, env = process.env) {
+  const candidates = [];
+  const seen = new Set();
+  const settingPath = cleanPath(options.socketPath);
+  const limuxSocket = cleanPath(env.LIMUX_SOCKET);
+  const limuxSocketPath = cleanPath(env.LIMUX_SOCKET_PATH);
+  const runtimeDir = cleanPath(env.XDG_RUNTIME_DIR);
+  const channelSocket = runtimeChannelSocketPath(env);
+
+  pushCandidate(candidates, seen, { source: "setting", path: settingPath, explicit: true });
+  pushCandidate(candidates, seen, { source: "LIMUX_SOCKET", path: limuxSocket, explicit: true });
+  pushCandidate(candidates, seen, {
+    source: "LIMUX_SOCKET_PATH",
+    path: limuxSocketPath,
+    explicit: true,
+  });
+  if (channelSocket) {
+    pushCandidate(candidates, seen, {
+      source: "LIMUX_CHANNEL",
+      path: channelSocket.path,
+      explicit: false,
+      channel: channelSocket.channel,
+    });
+  }
+  if (runtimeDir) {
+    pushCandidate(candidates, seen, {
+      source: "XDG_RUNTIME_DIR",
+      path: path.join(runtimeDir, "limux", "limux.sock"),
+      explicit: false,
+    });
+  }
+  pushCandidate(candidates, seen, { source: "fallback", path: "/tmp/limux.sock", explicit: false });
+
+  return candidates;
+}
+
+function encodeRequest(request) {
+  return `${JSON.stringify(request)}\n`;
+}
+
+function parseResponse(line) {
+  const response = JSON.parse(line);
+  if (response && response.ok === true) {
+    return response.result === undefined ? null : response.result;
+  }
+  if (response && Object.prototype.hasOwnProperty.call(response, "result")) {
+    return response.result;
+  }
+  if (response && response.error) {
+    throw new Error(
+      typeof response.error === "string" ? response.error : JSON.stringify(response.error),
+    );
+  }
+  throw new Error("invalid Limux response envelope");
+}
+
+function socketFileLooksValid(socketPath) {
+  try {
+    return fs.statSync(socketPath).isSocket();
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      return true;
+    }
+    throw error;
+  }
+}
+
+function probeSocket(socketPath, options = {}) {
+  const timeoutMs = options.timeoutMs || 500;
+
+  try {
+    if (!socketFileLooksValid(socketPath)) {
+      return Promise.resolve({
+        path: socketPath,
+        connected: false,
+        identity: null,
+        error: "path exists but is not a socket",
+      });
+    }
+  } catch (error) {
+    return Promise.resolve({
+      path: socketPath,
+      connected: false,
+      identity: null,
+      error: error.message,
+    });
+  }
+
+  return new Promise((resolve) => {
+    const socket = net.connect(socketPath);
+    let buffer = "";
+    let settled = false;
+    const timer = setTimeout(() => finish(false, null, "timeout"), timeoutMs);
+
+    function finish(connected, identity, error) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      resolve({ path: socketPath, connected, identity, error });
+    }
+
+    socket.setEncoding("utf8");
+    socket.once("connect", () => {
+      socket.write(
+        encodeRequest({
+          id: "cursor-identify-1",
+          method: "system.identify",
+          params: { caller: "cursor-limux" },
+        }),
+      );
+    });
+    socket.on("data", (chunk) => {
+      buffer += chunk;
+      const newline = buffer.indexOf("\n");
+      if (newline === -1) {
+        return;
+      }
+      try {
+        finish(true, parseResponse(buffer.slice(0, newline)), null);
+      } catch (error) {
+        finish(false, null, error.message);
+      }
+    });
+    socket.once("error", (error) => finish(false, null, error.code || error.message));
+    socket.once("end", () => {
+      if (!settled) {
+        finish(false, null, "connection closed before response");
+      }
+    });
+  });
+}
+
+module.exports = {
+  parseRuntimeChannel,
+  probeSocket,
+  resolveSocketCandidates,
+  runtimeChannelSocketPath,
+};
