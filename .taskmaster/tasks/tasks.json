@@ -16,9 +16,9 @@
       {
         "id": 2,
         "title": "Implement Socket Resolution Logic",
-        "description": "Implement Limux socket path resolution mirroring the exact order: `limux.socketPath`, `LIMUX_SOCKET`, `LIMUX_SOCKET_PATH`, `${XDG_RUNTIME_DIR}/limux/limux.sock`, then `/tmp/limux.sock`.",
-        "details": "Create `socket-resolver.js`. Implement a function `resolveSocketCandidates()` returning an ordered array of candidate paths based on the PRD-specified order. Do not add `/run/user/${uid}/limux/limux.sock`. For each candidate, implement `probeSocket(path, timeout)` using Node `net.connect` with a timeout, sending a `system.identify` request. Return `{ connected, identity, error }`. Handle stale socket files, connection refused, and timeout explicitly.",
-        "testStrategy": "Write Node tests using `node --test` covering: live socket, stale file, refused connection, timeout, duplicate live sockets, ambiguous identity. Verify the exact resolution order matches Limux source.",
+        "description": "Implement Limux socket path resolution mirroring the exact order: `limux.socketPath`, `LIMUX_SOCKET`, `LIMUX_SOCKET_PATH`, `LIMUX_CHANNEL` channel-derived stable/preview sockets, `${XDG_RUNTIME_DIR}/limux/limux.sock`, then `/tmp/limux.sock`.",
+        "details": "Create `socket-resolver.js`. Implement a function `resolveSocketCandidates()` returning an ordered array of candidate paths based on the PRD-specified order. Do not add `/run/user/${uid}/limux/limux.sock`. Channel-aware candidates must match `RuntimeChannel::from_env()`: `stable` maps to `${XDG_RUNTIME_DIR}/limux/stable/limux.sock` or `/tmp/limux-stable.sock`; `preview` maps to `${XDG_RUNTIME_DIR}/limux/preview/default/limux.sock` unless `LIMUX_PREVIEW_ID` is set; `preview:<id>` and `preview/<id>` map to `${XDG_RUNTIME_DIR}/limux/preview/<id>/limux.sock` or `/tmp/limux-preview-<id>.sock` when `XDG_RUNTIME_DIR` is unavailable. For each candidate, implement `probeSocket(path, timeout)` using Node `net.connect` with a timeout, sending a `system.identify` request. Return `{ connected, identity, error }`. Handle stale socket files, connection refused, and timeout explicitly.",
+        "testStrategy": "Write Node tests using `node --test` covering: channel-aware resolution order, stable channel sockets, preview default and explicit ID sockets, live socket, stale file, refused connection, timeout, duplicate live sockets, and ambiguous identity. Verify the exact resolution order matches Limux source.",
         "priority": "high",
         "dependencies": [
           "1"
