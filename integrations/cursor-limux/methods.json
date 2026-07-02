@@ -1,0 +1,10 @@
+{
+  "methods": [
+    "workspace.list",
+    "workspace.select",
+    "window.present",
+    "cursor.pane_create_empty",
+    "surface.read_text",
+    "cursor.workspace_open_folder"
+  ]
+}

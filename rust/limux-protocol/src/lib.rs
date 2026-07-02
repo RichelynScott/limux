@@ -1,9 +1,19 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use std::sync::OnceLock;
 use thiserror::Error;
+
+const RESTRICTED_METHOD_ALLOWLIST_JSON: &str =
+    include_str!("../../../integrations/cursor-limux/methods.json");
+static RESTRICTED_METHOD_ALLOWLIST: OnceLock<Vec<String>> = OnceLock::new();
 
 fn default_params() -> Value {
     Value::Object(Map::new())
+}
+
+#[derive(Debug, Deserialize)]
+struct RestrictedMethodAllowlist {
+    methods: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -106,6 +116,44 @@ pub enum ProtocolError {
     InvalidCommand,
     #[error("v1 params/args/payload must be a json object")]
     InvalidParams,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Error)]
+#[error("restricted Limux method is not allowlisted: {method}")]
+pub struct RestrictedMethodError {
+    method: String,
+}
+
+impl RestrictedMethodError {
+    pub fn method(&self) -> &str {
+        &self.method
+    }
+}
+
+pub fn restricted_method_allowlist() -> &'static [String] {
+    RESTRICTED_METHOD_ALLOWLIST
+        .get_or_init(|| {
+            serde_json::from_str::<RestrictedMethodAllowlist>(RESTRICTED_METHOD_ALLOWLIST_JSON)
+                .expect("restricted method allowlist JSON must be valid")
+                .methods
+        })
+        .as_slice()
+}
+
+pub fn is_restricted_method_allowed(method: &str) -> bool {
+    restricted_method_allowlist()
+        .iter()
+        .any(|allowed| allowed == method)
+}
+
+pub fn validate_restricted_method(method: &str) -> Result<(), RestrictedMethodError> {
+    if is_restricted_method_allowed(method) {
+        Ok(())
+    } else {
+        Err(RestrictedMethodError {
+            method: method.to_string(),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Error)]
@@ -218,6 +266,37 @@ mod tests {
         assert_eq!(encoded["ok"], false);
         assert_eq!(encoded["error"]["code"], -32601);
         assert_eq!(encoded["error"]["message"], "unknown method");
+    }
+
+    #[test]
+    fn restricted_method_allowlist_matches_shared_manifest() {
+        assert_eq!(
+            restricted_method_allowlist(),
+            vec![
+                "workspace.list".to_string(),
+                "workspace.select".to_string(),
+                "window.present".to_string(),
+                "cursor.pane_create_empty".to_string(),
+                "surface.read_text".to_string(),
+                "cursor.workspace_open_folder".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn restricted_method_validator_rejects_mutating_terminal_methods() {
+        assert!(validate_restricted_method("workspace.list").is_ok());
+        assert!(validate_restricted_method("surface.read_text").is_ok());
+
+        for method in [
+            "surface.send_text",
+            "surface.send_key",
+            "pane.create",
+            "pane.create.command",
+        ] {
+            let error = validate_restricted_method(method).expect_err("method should be rejected");
+            assert_eq!(error.method(), method);
+        }
     }
 
     #[test]
