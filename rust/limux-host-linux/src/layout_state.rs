@@ -6,6 +6,8 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use limux_control::socket_path::RuntimeChannel;
+
 pub const SESSION_VERSION: u32 = 1;
 pub const PERSISTENCE_DIR_NAME: &str = "limux";
 pub const LIMUX_SESSION_DIR_ENV: &str = "LIMUX_SESSION_DIR";
@@ -340,13 +342,28 @@ pub fn persistence_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os(LIMUX_SESSION_DIR_ENV).filter(|value| !value.is_empty()) {
         return PathBuf::from(dir);
     }
+    if let Some(channel) = RuntimeChannel::from_env() {
+        return channel_persistence_dir(&channel);
+    }
 
+    base_persistence_dir()
+}
+
+fn base_persistence_dir() -> PathBuf {
     if let Some(data_dir) = dirs::data_dir() {
         return data_dir.join(PERSISTENCE_DIR_NAME);
     }
 
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
     home.join(".local/share").join(PERSISTENCE_DIR_NAME)
+}
+
+pub fn channel_persistence_dir(channel: &RuntimeChannel) -> PathBuf {
+    let base = base_persistence_dir();
+    match channel {
+        RuntimeChannel::Stable => base.join("stable").join("session"),
+        RuntimeChannel::Preview(id) => base.join("preview").join(id).join("session"),
+    }
 }
 
 pub fn canonical_session_path_in(dir: &Path) -> PathBuf {
@@ -1083,6 +1100,7 @@ mod tests {
     fn persistence_dir_uses_xdg_data_home_directly() {
         let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
         let _session_dir = EnvGuard::set(LIMUX_SESSION_DIR_ENV, None);
+        let _channel = EnvGuard::set(limux_control::socket_path::LIMUX_CHANNEL_ENV, None);
         let _xdg = EnvGuard::set("XDG_DATA_HOME", Some("/tmp/limux-xdg-data"));
         let _home = EnvGuard::set("HOME", Some("/tmp/limux-home"));
 
@@ -1096,6 +1114,7 @@ mod tests {
     fn persistence_dir_falls_back_to_home_local_share_when_data_dir_missing() {
         let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
         let _session_dir = EnvGuard::set(LIMUX_SESSION_DIR_ENV, None);
+        let _channel = EnvGuard::set(limux_control::socket_path::LIMUX_CHANNEL_ENV, None);
         let _xdg = EnvGuard::set("XDG_DATA_HOME", None);
         let _home = EnvGuard::set("HOME", Some("/tmp/limux-home"));
 
@@ -1109,6 +1128,10 @@ mod tests {
     fn persistence_dir_uses_session_dir_override() {
         let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
         let _session_dir = EnvGuard::set(LIMUX_SESSION_DIR_ENV, Some("/tmp/limux-session"));
+        let _channel = EnvGuard::set(
+            limux_control::socket_path::LIMUX_CHANNEL_ENV,
+            Some("preview:test"),
+        );
         let _xdg = EnvGuard::set("XDG_DATA_HOME", Some("/tmp/limux-xdg-data"));
 
         assert_eq!(persistence_dir(), PathBuf::from("/tmp/limux-session"));
@@ -1118,11 +1141,28 @@ mod tests {
     fn persistence_dir_ignores_empty_session_dir_override() {
         let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
         let _session_dir = EnvGuard::set(LIMUX_SESSION_DIR_ENV, Some(""));
+        let _channel = EnvGuard::set(limux_control::socket_path::LIMUX_CHANNEL_ENV, None);
         let _xdg = EnvGuard::set("XDG_DATA_HOME", Some("/tmp/limux-xdg-data"));
 
         assert_eq!(
             persistence_dir(),
             PathBuf::from("/tmp/limux-xdg-data").join(PERSISTENCE_DIR_NAME)
+        );
+    }
+
+    #[test]
+    fn persistence_dir_uses_channel_namespace_when_set() {
+        let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
+        let _session_dir = EnvGuard::set(LIMUX_SESSION_DIR_ENV, None);
+        let _channel = EnvGuard::set(
+            limux_control::socket_path::LIMUX_CHANNEL_ENV,
+            Some("preview:branch"),
+        );
+        let _xdg = EnvGuard::set("XDG_DATA_HOME", Some("/tmp/limux-xdg-data"));
+
+        assert_eq!(
+            persistence_dir(),
+            PathBuf::from("/tmp/limux-xdg-data/limux/preview/branch/session")
         );
     }
 

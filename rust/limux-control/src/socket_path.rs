@@ -9,6 +9,8 @@ use std::path::PathBuf;
 
 const LIMUX_SOCKET_ENV: &str = "LIMUX_SOCKET";
 const LIMUX_SOCKET_PATH_ENV: &str = "LIMUX_SOCKET_PATH";
+pub const LIMUX_CHANNEL_ENV: &str = "LIMUX_CHANNEL";
+pub const LIMUX_PREVIEW_ID_ENV: &str = "LIMUX_PREVIEW_ID";
 const RUNTIME_SUBDIR: &str = "limux";
 const RUNTIME_SOCKET_NAME: &str = "limux.sock";
 const FALLBACK_RUNTIME_SOCKET: &str = "/tmp/limux.sock";
@@ -20,6 +22,80 @@ const SOCKET_FILE_MODE: u32 = 0o600;
 pub enum SocketMode {
     Runtime,
     Debug,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RuntimeChannel {
+    Stable,
+    Preview(String),
+}
+
+impl RuntimeChannel {
+    pub const DEFAULT_PREVIEW_ID: &'static str = "default";
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        let raw = raw.trim();
+        match raw {
+            "stable" => Some(Self::Stable),
+            "preview" => Some(Self::Preview(Self::DEFAULT_PREVIEW_ID.to_string())),
+            _ => raw
+                .strip_prefix("preview:")
+                .or_else(|| raw.strip_prefix("preview/"))
+                .and_then(sanitize_channel_id)
+                .map(Self::Preview),
+        }
+    }
+
+    pub fn from_env() -> Option<Self> {
+        let channel = env::var(LIMUX_CHANNEL_ENV).ok()?;
+        match channel.trim() {
+            "preview" => env::var(LIMUX_PREVIEW_ID_ENV)
+                .ok()
+                .and_then(|value| sanitize_channel_id(&value))
+                .map(Self::Preview)
+                .or_else(|| Some(Self::Preview(Self::DEFAULT_PREVIEW_ID.to_string()))),
+            _ => Self::parse(&channel),
+        }
+    }
+
+    pub fn env_value(&self) -> String {
+        match self {
+            Self::Stable => "stable".to_string(),
+            Self::Preview(id) => format!("preview:{id}"),
+        }
+    }
+
+    pub fn label(&self) -> String {
+        match self {
+            Self::Stable => "stable".to_string(),
+            Self::Preview(id) => format!("preview/{id}"),
+        }
+    }
+
+    fn runtime_socket_path(&self) -> PathBuf {
+        match env::var_os("XDG_RUNTIME_DIR") {
+            Some(runtime_dir) if !runtime_dir.is_empty() => {
+                let mut path = PathBuf::from(runtime_dir);
+                path.push(RUNTIME_SUBDIR);
+                match self {
+                    Self::Stable => path.push("stable"),
+                    Self::Preview(id) => {
+                        path.push("preview");
+                        path.push(id);
+                    }
+                }
+                path.push(RUNTIME_SOCKET_NAME);
+                path
+            }
+            _ => {
+                let file_name = match self {
+                    Self::Stable => "limux-stable.sock".to_string(),
+                    Self::Preview(id) => format!("limux-preview-{id}.sock"),
+                };
+                PathBuf::from("/tmp").join(file_name)
+            }
+        }
+    }
 }
 
 impl SocketMode {
@@ -43,9 +119,28 @@ pub fn resolve_socket_path(explicit: Option<PathBuf>, mode: SocketMode) -> PathB
         if let Some(path) = get_env_path(LIMUX_SOCKET_PATH_ENV) {
             return path;
         }
+        if let Some(channel) = RuntimeChannel::from_env() {
+            return channel.runtime_socket_path();
+        }
     }
 
     SocketMode::default_for(mode)
+}
+
+pub fn resolve_socket_path_for_channel(
+    explicit: Option<PathBuf>,
+    mode: SocketMode,
+    channel: Option<&RuntimeChannel>,
+) -> PathBuf {
+    if let Some(path) = explicit {
+        return path;
+    }
+    if mode == SocketMode::Runtime {
+        if let Some(channel) = channel {
+            return channel.runtime_socket_path();
+        }
+    }
+    resolve_socket_path(None, mode)
 }
 
 pub fn prepare_socket_path(path: &Path, mode: SocketMode, owner_only: bool) -> io::Result<()> {
@@ -162,6 +257,22 @@ fn get_env_path(key: &str) -> Option<PathBuf> {
     })
 }
 
+fn sanitize_channel_id(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed == "." || trimmed == ".." {
+        return None;
+    }
+    let mut out = String::with_capacity(trimmed.len());
+    for ch in trimmed.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+            out.push(ch);
+        } else {
+            return None;
+        }
+    }
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,6 +353,8 @@ mod tests {
         let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
         let _socket = EnvGuard::set(LIMUX_SOCKET_ENV, None);
         let _socket_path = EnvGuard::set(LIMUX_SOCKET_PATH_ENV, None);
+        let _channel = EnvGuard::set(LIMUX_CHANNEL_ENV, None);
+        let _preview_id = EnvGuard::set(LIMUX_PREVIEW_ID_ENV, None);
         let xdg = TempDir::new().expect("xdg runtime dir temp path");
         let _xdg = EnvGuard::set("XDG_RUNTIME_DIR", Some(xdg.path().to_str().expect("utf8")));
 
@@ -250,6 +363,80 @@ mod tests {
             resolved,
             xdg.path().join(RUNTIME_SUBDIR).join(RUNTIME_SOCKET_NAME)
         );
+    }
+
+    #[test]
+    fn runtime_channel_parses_stable_and_preview_ids() {
+        assert_eq!(
+            RuntimeChannel::parse("stable"),
+            Some(RuntimeChannel::Stable)
+        );
+        assert_eq!(
+            RuntimeChannel::parse("preview"),
+            Some(RuntimeChannel::Preview("default".to_string()))
+        );
+        assert_eq!(
+            RuntimeChannel::parse("preview:branch_123"),
+            Some(RuntimeChannel::Preview("branch_123".to_string()))
+        );
+        assert_eq!(RuntimeChannel::parse("preview:bad/id"), None);
+        assert_eq!(RuntimeChannel::parse("preview:.."), None);
+    }
+
+    #[test]
+    fn channel_socket_paths_use_isolated_runtime_namespaces() {
+        let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
+        let _socket = EnvGuard::set(LIMUX_SOCKET_ENV, None);
+        let _socket_path = EnvGuard::set(LIMUX_SOCKET_PATH_ENV, None);
+        let _channel = EnvGuard::set(LIMUX_CHANNEL_ENV, None);
+        let _preview_id = EnvGuard::set(LIMUX_PREVIEW_ID_ENV, None);
+        let xdg = TempDir::new().expect("xdg runtime dir temp path");
+        let _xdg = EnvGuard::set("XDG_RUNTIME_DIR", Some(xdg.path().to_str().expect("utf8")));
+
+        let stable = resolve_socket_path_for_channel(
+            None,
+            SocketMode::Runtime,
+            Some(&RuntimeChannel::Stable),
+        );
+        let preview = resolve_socket_path_for_channel(
+            None,
+            SocketMode::Runtime,
+            Some(&RuntimeChannel::Preview("test".to_string())),
+        );
+
+        assert_eq!(stable, xdg.path().join("limux/stable/limux.sock"));
+        assert_eq!(preview, xdg.path().join("limux/preview/test/limux.sock"));
+    }
+
+    #[test]
+    fn explicit_channel_overrides_inherited_socket_env_for_cli_targeting() {
+        let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
+        let _socket = EnvGuard::set(LIMUX_SOCKET_ENV, Some("/tmp/inherited-stable.sock"));
+        let _socket_path = EnvGuard::set(LIMUX_SOCKET_PATH_ENV, None);
+        let _channel = EnvGuard::set(LIMUX_CHANNEL_ENV, None);
+        let _preview_id = EnvGuard::set(LIMUX_PREVIEW_ID_ENV, None);
+        let _xdg = EnvGuard::set("XDG_RUNTIME_DIR", None);
+
+        let resolved = resolve_socket_path_for_channel(
+            None,
+            SocketMode::Runtime,
+            Some(&RuntimeChannel::Preview("branch".to_string())),
+        );
+
+        assert_eq!(resolved, PathBuf::from("/tmp/limux-preview-branch.sock"));
+    }
+
+    #[test]
+    fn env_channel_is_lower_precedence_than_inherited_socket() {
+        let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
+        let _socket = EnvGuard::set(LIMUX_SOCKET_ENV, Some("/tmp/from-env.sock"));
+        let _socket_path = EnvGuard::set(LIMUX_SOCKET_PATH_ENV, None);
+        let _channel = EnvGuard::set(LIMUX_CHANNEL_ENV, Some("preview:env"));
+        let _preview_id = EnvGuard::set(LIMUX_PREVIEW_ID_ENV, None);
+
+        let resolved = resolve_socket_path(None, SocketMode::Runtime);
+
+        assert_eq!(resolved, PathBuf::from("/tmp/from-env.sock"));
     }
 
     #[test]
