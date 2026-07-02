@@ -8,7 +8,9 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, bail, Context, Result};
-use limux_control::socket_path::{resolve_socket_path, SocketMode};
+use limux_control::socket_path::{
+    resolve_socket_path, resolve_socket_path_for_channel, RuntimeChannel, SocketMode,
+};
 use limux_protocol::{validate_terminal_text_payload, V2Request, V2Response};
 use serde_json::{json, Map, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -71,6 +73,7 @@ impl IdFormat {
 #[derive(Debug, Clone)]
 struct GlobalOptions {
     socket: Option<PathBuf>,
+    channel: Option<RuntimeChannel>,
     socket_mode: SocketMode,
     json_output: bool,
     id_format: IdFormat,
@@ -154,6 +157,7 @@ impl Client {
 fn parse_global_args() -> Result<GlobalOptions> {
     let mut args: Vec<String> = env::args().skip(1).collect();
     let mut socket: Option<PathBuf> = None;
+    let mut channel: Option<RuntimeChannel> = None;
     let mut socket_mode = SocketMode::Runtime;
     let mut json_output = false;
     let mut id_format = IdFormat::Refs;
@@ -183,6 +187,15 @@ fn parse_global_args() -> Result<GlobalOptions> {
                     "debug" => SocketMode::Debug,
                     _ => bail!("--socket-mode must be runtime or debug"),
                 };
+                command_start += 2;
+            }
+            "--channel" => {
+                let value = args
+                    .get(command_start + 1)
+                    .ok_or_else(|| anyhow!("--channel requires stable|preview[:id]"))?;
+                channel = RuntimeChannel::parse(value)
+                    .ok_or_else(|| anyhow!("--channel requires stable|preview[:id]"))?
+                    .into();
                 command_start += 2;
             }
             "--json" => {
@@ -219,6 +232,7 @@ fn parse_global_args() -> Result<GlobalOptions> {
 
     Ok(GlobalOptions {
         socket,
+        channel,
         socket_mode,
         json_output,
         id_format,
@@ -230,7 +244,7 @@ fn parse_global_args() -> Result<GlobalOptions> {
 
 fn print_help() {
     println!(
-        "limux CLI\n\nUsage: limux [--socket <path>] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--launch-mode direct|hcom] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the active workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, or hcom with --run-here when requested, writes\n      LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md plus\n      LIMUX_REVIEW_LEDGER.md when missing so peers can coordinate via durable\n      files and `limux send --surface <peer-surface-id> <envelope>`.\n  review prepare --artifact <path-or-ref> --reviewer <agent|manual> --lens <name> --summary <text> [--cwd <path>] [--ledger-path <path>] [--reviews-dir <path>] [--review-id <id>] [--dry-run]\n      Creates a durable review request file, appends a pending review-ledger\n      entry, and prints the reviewer prompt without launching a reviewer pane.\n"
+        "limux CLI\n\nUsage: limux [--socket <path>] [--channel stable|preview[:id]] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--launch-mode direct|hcom] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the active workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, or hcom with --run-here when requested, writes\n      LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md plus\n      LIMUX_REVIEW_LEDGER.md when missing so peers can coordinate via durable\n      files and `limux send --surface <peer-surface-id> <envelope>`.\n  review prepare --artifact <path-or-ref> --reviewer <agent|manual> --lens <name> --summary <text> [--cwd <path>] [--ledger-path <path>] [--reviews-dir <path>] [--review-id <id>] [--dry-run]\n      Creates a durable review request file, appends a pending review-ledger\n      entry, and prints the reviewer prompt without launching a reviewer pane.\n"
     );
     println!(
         "  agent-team extra flags: --no-bootstrap skips the post-launch bootstrap prompt while still launching panes; --dry-run skips host contact but still materializes the protocol and seeds missing roster/ledger files."
@@ -297,19 +311,30 @@ fn resolve_host_binary() -> Result<PathBuf> {
         })
 }
 
-fn host_launch_command(host: &Path) -> Command {
-    host_launch_command_with_inherited_target_env(host, host_launch_has_inherited_target_env())
-}
-
 fn host_launch_command_with_inherited_target_env(
     host: &Path,
     inherited_target_env: bool,
+    channel: Option<&RuntimeChannel>,
 ) -> Command {
     let mut command = Command::new(host);
     for key in host_launch_env_removals(inherited_target_env) {
         command.env_remove(key);
     }
+    if let Some(channel) = channel {
+        command.env(
+            limux_control::socket_path::LIMUX_CHANNEL_ENV,
+            channel.env_value(),
+        );
+    }
     command
+}
+
+fn host_launch_command(host: &Path, channel: Option<&RuntimeChannel>) -> Command {
+    host_launch_command_with_inherited_target_env(
+        host,
+        host_launch_has_inherited_target_env(),
+        channel,
+    )
 }
 
 fn host_launch_has_inherited_target_env() -> bool {
@@ -327,9 +352,9 @@ fn host_launch_env_removals(inherited_target_env: bool) -> Vec<&'static str> {
     removals
 }
 
-fn launch_host() -> Result<()> {
+fn launch_host(channel: Option<&RuntimeChannel>) -> Result<()> {
     let host = resolve_host_binary()?;
-    let err = host_launch_command(&host)
+    let err = host_launch_command(&host, channel)
         .spawn()
         .with_context(|| format!("failed to launch {}", host.display()))?
         .wait()
@@ -6008,10 +6033,18 @@ async fn execute_command(client: &mut Client, opts: &GlobalOptions) -> Result<Co
 async fn main() -> Result<()> {
     let opts = parse_global_args()?;
     if should_launch_host(&opts) {
-        return launch_host();
+        return launch_host(opts.channel.as_ref());
     }
 
-    let socket = resolve_socket_path(opts.socket.clone(), opts.socket_mode);
+    let socket = if opts.channel.is_some() {
+        resolve_socket_path_for_channel(
+            opts.socket.clone(),
+            opts.socket_mode,
+            opts.channel.as_ref(),
+        )
+    } else {
+        resolve_socket_path(opts.socket.clone(), opts.socket_mode)
+    };
 
     let mut client = Client::new(socket);
     let output = execute_command(&mut client, &opts).await;
@@ -6054,6 +6087,7 @@ mod cli_arg_tests {
     fn default_opts(command_args: Vec<String>) -> GlobalOptions {
         GlobalOptions {
             socket: None,
+            channel: None,
             socket_mode: SocketMode::Runtime,
             json_output: false,
             id_format: IdFormat::Refs,
@@ -6090,8 +6124,11 @@ mod cli_arg_tests {
 
     #[test]
     fn host_launch_command_clears_runtime_target_env_but_preserves_explicit_socket() {
-        let command =
-            host_launch_command_with_inherited_target_env(Path::new("/tmp/limux-host"), false);
+        let command = host_launch_command_with_inherited_target_env(
+            Path::new("/tmp/limux-host"),
+            false,
+            None,
+        );
         let removals = command
             .get_envs()
             .filter_map(|(key, value)| value.is_none().then_some(key.to_string_lossy()))
@@ -6112,6 +6149,25 @@ mod cli_arg_tests {
                 "explicit runtime env should be preserved for {key}"
             );
         }
+    }
+
+    #[test]
+    fn host_launch_command_sets_explicit_runtime_channel() {
+        let channel = RuntimeChannel::Preview("branch".to_string());
+        let command = host_launch_command_with_inherited_target_env(
+            Path::new("/tmp/limux-host"),
+            false,
+            Some(&channel),
+        );
+        let channel_env = command
+            .get_envs()
+            .find_map(|(key, value)| {
+                (key == limux_control::socket_path::LIMUX_CHANNEL_ENV)
+                    .then(|| value.map(|value| value.to_string_lossy().to_string()))
+            })
+            .flatten();
+
+        assert_eq!(channel_env.as_deref(), Some("preview:branch"));
     }
 
     #[test]
@@ -8271,6 +8327,7 @@ mod review_prepare_tests {
         let mut client = Client::new(cwd.join("missing.sock"));
         let opts = GlobalOptions {
             socket: None,
+            channel: None,
             socket_mode: SocketMode::Runtime,
             json_output: true,
             id_format: IdFormat::Refs,
