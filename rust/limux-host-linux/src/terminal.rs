@@ -562,7 +562,7 @@ fn schedule_coalesced_surface_resize(
         return;
     };
 
-    if !surface_resize_needs_apply(coalescer.last_applied.get(), snapshot) {
+    if coalescer.clear_pending_if_snapshot_is_applied(snapshot) {
         gl_area.queue_render();
         return;
     }

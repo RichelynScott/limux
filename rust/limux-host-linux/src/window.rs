@@ -1451,6 +1451,17 @@ row:selected .limux-ws-star-btn {
     background-color: rgba(6, 182, 212, 0.14);
     border-left: 3px solid #06b6d4;
 }
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-orange,
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-red,
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-purple,
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-pink,
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-green,
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-yellow,
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-teal,
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-cyan {
+    background-color: alpha(@accent_bg_color, 0.16);
+    border-left: 3px solid @accent_bg_color;
+}
 .limux-sidebar-row-unread.limux-sidebar-row-highlight-orange {
     box-shadow: inset 0 0 0 1px #f97316;
 }

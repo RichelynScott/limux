@@ -476,6 +476,11 @@ pub fn snapshot_split_ratio_with_min(
             .map(clamp_split_ratio)
             .unwrap_or(DEFAULT_SPLIT_RATIO);
     }
+    if min_child_size > 0 && total_size <= min_child_size.saturating_mul(2) {
+        return stored_ratio
+            .map(clamp_split_ratio)
+            .unwrap_or(DEFAULT_SPLIT_RATIO);
+    }
     split_ratio_from_position_with_min(position, total_size, min_child_size)
 }
 
@@ -1923,6 +1928,18 @@ mod tests {
         );
         assert_eq!(split_position_from_ratio_with_min(0.01, 1000, 260), 260);
         assert_eq!(split_ratio_from_position_with_min(30, 1000, 260), 0.26);
+    }
+
+    #[test]
+    fn snapshot_split_ratio_with_min_preserves_stored_ratio_when_undersized() {
+        assert_eq!(
+            snapshot_split_ratio_with_min(200, 400, Some(0.31), 260),
+            0.31
+        );
+        assert_eq!(
+            snapshot_split_ratio_with_min(200, 400, None, 260),
+            DEFAULT_SPLIT_RATIO
+        );
     }
 
     #[test]
