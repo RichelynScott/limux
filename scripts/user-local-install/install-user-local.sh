@@ -18,6 +18,8 @@ Options:
                            Select target/<profile> artifacts (default: release)
   --prefix <path>          User prefix (default: ~/.local)
   --install-id <id>        Install id under limux-reviewed (default: git sha)
+  --channel <channel>      Install launcher lane: legacy, stable, preview, preview:<id>
+                           (default: legacy)
   --desktop-entry          Install a user desktop entry under ~/.local/share/applications
   --no-desktop-entry       Do not install a desktop entry (default)
   --ghostty-share <path>   Ghostty runtime share dir containing shell-integration
@@ -78,10 +80,36 @@ mode="dry-run"
 profile="${LIMUX_LOCAL_PROFILE:-release}"
 prefix="${LIMUX_USER_PREFIX:-${HOME}/.local}"
 install_id=""
+runtime_channel="legacy"
 desktop_entry="false"
 manifest_out=""
 ghostty_share_override="${LIMUX_GHOSTTY_SHARE_DIR:-}"
 ghostty_terminfo_override="${LIMUX_GHOSTTY_TERMINFO_DIR:-}"
+
+parse_runtime_channel() {
+    local raw="$1"
+    local id
+
+    case "$raw" in
+        legacy|stable)
+            printf '%s\n' "$raw"
+            ;;
+        preview)
+            printf 'preview:default\n'
+            ;;
+        preview:*|preview/*)
+            id="${raw#preview:}"
+            id="${id#preview/}"
+            if [[ -z "$id" || "$id" == "." || "$id" == ".." || ! "$id" =~ ^[A-Za-z0-9_-]+$ ]]; then
+                die "unsafe preview channel id: ${id:-<empty>}"
+            fi
+            printf 'preview:%s\n' "$id"
+            ;;
+        *)
+            die "--channel must be legacy, stable, preview, or preview:<id>, got: ${raw}"
+            ;;
+    esac
+}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -106,6 +134,11 @@ while [[ $# -gt 0 ]]; do
         --install-id)
             [[ $# -ge 2 ]] || die "--install-id requires a value"
             install_id="$2"
+            shift 2
+            ;;
+        --channel)
+            [[ $# -ge 2 ]] || die "--channel requires a value"
+            runtime_channel="$(parse_runtime_channel "$2")"
             shift 2
             ;;
         --desktop-entry)
@@ -156,8 +189,47 @@ if [[ "$install_id" == *"/"* || "$install_id" == "." || "$install_id" == ".." ]]
     die "unsafe install id: ${install_id}"
 fi
 
+channel_kind="$runtime_channel"
+channel_id=""
+install_subdir="$install_id"
+launcher_name="limux"
+cli_launcher_name="limux-cli"
+desktop_file_name="dev.limux.linux.desktop"
+desktop_display_name="Limux"
+wrapper_cli_args=()
+
+case "$runtime_channel" in
+    legacy)
+        ;;
+    stable)
+        install_subdir="stable/${install_id}"
+        launcher_name="limux-stable"
+        cli_launcher_name="limux-stable-cli"
+        desktop_file_name="dev.limux.linux.stable.desktop"
+        desktop_display_name="Limux Stable"
+        wrapper_cli_args=("--channel" "stable")
+        ;;
+    preview:*)
+        channel_kind="preview"
+        channel_id="${runtime_channel#preview:}"
+        install_subdir="preview/${channel_id}/${install_id}"
+        if [[ "$channel_id" == "default" ]]; then
+            launcher_name="limux-preview"
+            cli_launcher_name="limux-preview-cli"
+            desktop_file_name="dev.limux.linux.preview.desktop"
+            desktop_display_name="Limux Preview"
+        else
+            launcher_name="limux-preview-${channel_id}"
+            cli_launcher_name="limux-preview-${channel_id}-cli"
+            desktop_file_name="dev.limux.linux.preview-${channel_id}.desktop"
+            desktop_display_name="Limux Preview ${channel_id}"
+        fi
+        wrapper_cli_args=("--channel" "$runtime_channel")
+        ;;
+esac
+
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-install_root="${prefix}/limux-reviewed/${install_id}"
+install_root="${prefix}/limux-reviewed/${install_subdir}"
 archive_dir="${prefix}/limux-reviewed/archive/${timestamp}"
 bin_link_dir="${prefix}/bin"
 app_dir="${prefix}/share/applications"
@@ -260,7 +332,11 @@ copy_if_present() {
     local label="$3"
 
     if [[ -e "$source" ]]; then
-        run cp -a "$source" "$dest"
+        if [[ -d "$source" ]]; then
+            run cp -R "$source" "$dest"
+        else
+            run cp "$source" "$dest"
+        fi
     else
         plan "skip missing ${label}: ${source}"
     fi
@@ -268,6 +344,16 @@ copy_if_present() {
 
 wrapper_content() {
     local root="$1"
+    local channel="$2"
+    shift 2
+    local cli_args=("$@")
+    local quoted_cli_args=""
+    local arg
+
+    for arg in "${cli_args[@]}"; do
+        quoted_cli_args+=" \"${arg//\"/\\\"}\""
+    done
+
     cat <<EOF_WRAPPER
 #!/usr/bin/env bash
 set -euo pipefail
@@ -276,16 +362,19 @@ INSTALL_ROOT="${root}"
 export LD_LIBRARY_PATH="\${INSTALL_ROOT}/lib\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
 export LIMUX_HOST_BIN="\${INSTALL_ROOT}/libexec/limux-host"
 export XDG_DATA_DIRS="\${INSTALL_ROOT}/share\${XDG_DATA_DIRS:+:\${XDG_DATA_DIRS}}:/usr/local/share:/usr/share"
+$(if [[ "$channel" != "legacy" ]]; then printf 'export LIMUX_CHANNEL="%s"\n' "$channel"; fi)
 
-exec "\${INSTALL_ROOT}/libexec/limux-cli" "\$@"
+exec "\${INSTALL_ROOT}/libexec/limux-cli"${quoted_cli_args} "\$@"
 EOF_WRAPPER
 }
 
 desktop_content() {
     local exec_path="$1"
+    local display_name="$2"
     sed \
         -e "s|^Exec=.*|Exec=${exec_path}|" \
         -e "s|^TryExec=.*|TryExec=${exec_path}|" \
+        -e "s|^Name=.*|Name=${display_name}|" \
         "$desktop_src"
 }
 
@@ -304,7 +393,7 @@ run cp "$ghostty_lib_src" "${install_root}/lib/libghostty.so"
 
 if [[ -n "$ghostty_share_src" ]]; then
     run mkdir -p "${install_root}/share/limux/ghostty"
-    run cp -a "${ghostty_share_src}/." "${install_root}/share/limux/ghostty/"
+    run cp -R "${ghostty_share_src}/." "${install_root}/share/limux/ghostty/"
 else
     plan "warning: no Ghostty resource directory found; installed host will fall back to built-in/default resource behavior"
 fi
@@ -323,31 +412,31 @@ else
     plan "warning: no Ghostty terminfo entries found"
 fi
 
-write_file "${install_root}/bin/limux" "$(wrapper_content "$install_root")"
-write_file "${install_root}/bin/limux-cli" "$(wrapper_content "$install_root")"
-run chmod 755 "${install_root}/bin/limux" "${install_root}/bin/limux-cli"
+write_file "${install_root}/bin/${launcher_name}" "$(wrapper_content "$install_root" "$runtime_channel" "${wrapper_cli_args[@]}")"
+write_file "${install_root}/bin/${cli_launcher_name}" "$(wrapper_content "$install_root" "$runtime_channel" "${wrapper_cli_args[@]}")"
+run chmod 755 "${install_root}/bin/${launcher_name}" "${install_root}/bin/${cli_launcher_name}"
 run chmod 755 "${install_root}/libexec/limux-cli" "${install_root}/libexec/limux-host"
 
 if [[ -f "$desktop_src" ]]; then
-    write_file "${install_root}/share/applications/dev.limux.linux.desktop" "$(desktop_content "${bin_link_dir}/limux")"
+    write_file "${install_root}/share/applications/${desktop_file_name}" "$(desktop_content "${bin_link_dir}/${launcher_name}" "$desktop_display_name")"
 else
     plan "skip missing desktop entry source: ${desktop_src}"
 fi
 copy_if_present "$metainfo_src" "${install_root}/share/metainfo/dev.limux.linux.metainfo.xml" "metainfo"
 if [[ -d "$icons_src" ]]; then
-    run cp -a "${icons_src}/." "${install_root}/share/icons/"
+    run cp -R "${icons_src}/." "${install_root}/share/icons/"
 else
     plan "skip missing icons source: ${icons_src}"
 fi
 
 run mkdir -p "$bin_link_dir"
-install_symlink "${install_root}/bin/limux" "${bin_link_dir}/limux"
-install_symlink "${install_root}/bin/limux-cli" "${bin_link_dir}/limux-cli"
+install_symlink "${install_root}/bin/${launcher_name}" "${bin_link_dir}/${launcher_name}"
+install_symlink "${install_root}/bin/${cli_launcher_name}" "${bin_link_dir}/${cli_launcher_name}"
 
 if [[ "$desktop_entry" == "true" ]]; then
     run mkdir -p "$app_dir"
-    archive_existing_path "${app_dir}/dev.limux.linux.desktop" "desktop entry"
-    run cp "${install_root}/share/applications/dev.limux.linux.desktop" "${app_dir}/dev.limux.linux.desktop"
+    archive_existing_path "${app_dir}/${desktop_file_name}" "desktop entry"
+    run cp "${install_root}/share/applications/${desktop_file_name}" "${app_dir}/${desktop_file_name}"
 fi
 
 manifest="$(
@@ -358,9 +447,14 @@ Mode: ${mode}
 Timestamp UTC: ${timestamp}
 Repo: ${repo_root}
 Install ID: ${install_id}
+Runtime channel: ${runtime_channel}
+Runtime kind: ${channel_kind}
+Preview channel id: ${channel_id:-n/a}
 Install root: ${install_root}
 Profile: ${profile}
 Desktop entry: ${desktop_entry}
+Launcher: ${bin_link_dir}/${launcher_name}
+CLI launcher: ${bin_link_dir}/${cli_launcher_name}
 
 ## Source Artifacts
 
@@ -372,8 +466,8 @@ Desktop entry: ${desktop_entry}
 
 ## User Links
 
-- ${bin_link_dir}/limux -> ${install_root}/bin/limux
-- ${bin_link_dir}/limux-cli -> ${install_root}/bin/limux-cli
+- ${bin_link_dir}/${launcher_name} -> ${install_root}/bin/${launcher_name}
+- ${bin_link_dir}/${cli_launcher_name} -> ${install_root}/bin/${cli_launcher_name}
 
 ## Archive Directory For Replaced Links
 
@@ -396,8 +490,8 @@ if [[ "$mode" == "apply" ]]; then
     (
         cd "$install_root"
         sha256sum \
-            bin/limux \
-            bin/limux-cli \
+            "bin/${launcher_name}" \
+            "bin/${cli_launcher_name}" \
             libexec/limux-cli \
             libexec/limux-host \
             lib/libghostty.so \

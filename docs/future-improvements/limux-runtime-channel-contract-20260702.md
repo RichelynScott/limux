@@ -1,7 +1,7 @@
 # Limux Runtime Channel Contract
 
 Author/runtime/date: lifo / Codex gpt-5.5 (xhigh) / 2026-07-02
-TaskMaster: #19.2
+TaskMaster: #19.2, #19.3
 
 ## Contract
 
@@ -73,14 +73,36 @@ With `LIMUX_CHANNEL` set and no explicit `LIMUX_SESSION_DIR`:
 `LIMUX_CHANNEL=<channel>` in its environment. Existing `limux` with no channel
 continues to launch the legacy default runtime.
 
+## User-Local Install Wrappers
+
+`scripts/user-local-install/install-user-local.sh --channel <channel>` creates
+channel-specific install roots and launchers:
+
+| Install channel | Install root shape | User launchers |
+|---|---|---|
+| `legacy` | `$prefix/limux-reviewed/<install-id>` | `limux`, `limux-cli` |
+| `stable` | `$prefix/limux-reviewed/stable/<install-id>` | `limux-stable`, `limux-stable-cli` |
+| `preview` | `$prefix/limux-reviewed/preview/default/<install-id>` | `limux-preview`, `limux-preview-cli` |
+| `preview:<id>` | `$prefix/limux-reviewed/preview/<id>/<install-id>` | `limux-preview-<id>`, `limux-preview-<id>-cli` |
+
+Preview and stable wrappers invoke `limux-cli --channel <channel>` and export
+`LIMUX_CHANNEL=<channel>`. The explicit CLI flag is intentional: it prevents a
+preview wrapper launched from inside a stable pane from honoring that pane's
+inherited `LIMUX_SOCKET`.
+
+Desktop entries are also channel-specific when requested, for example
+`dev.limux.linux.preview.desktop` with display name `Limux Preview`. Existing
+launcher or desktop-entry paths are moved into the timestamped archive
+directory before replacement; the installer does not delete them.
+
 ## Implementation Pointers
 
 - Channel parsing and socket paths: `rust/limux-control/src/socket_path.rs`
 - Host session namespace: `rust/limux-host-linux/src/layout_state.rs`
 - CLI `--channel` targeting and host launch env: `rust/limux-cli/src/main.rs`
+- User-local channel wrappers: `scripts/user-local-install/install-user-local.sh`
 
 ## Next Work
 
-Task #19.3 should add stable/preview user-local wrappers so the operator does
-not need to remember `--channel preview:<id>` manually, and so preview installs
-do not rewrite the stable `~/.local/bin/limux` launcher.
+Task #19.4 should expand CLI targeting coverage and diagnostics around stable,
+preview, and inherited socket/channel combinations.
