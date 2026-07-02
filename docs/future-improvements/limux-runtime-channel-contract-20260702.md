@@ -110,14 +110,34 @@ The JSON form is available with `--json` and includes `resolved_socket`,
 `socket_mode`, `explicit_socket`, `explicit_channel`, inherited `LIMUX_*`
 values, and `connects: false`.
 
+## Maintained Smoke And Runbook
+
+The maintained local smoke is:
+
+```bash
+bash scripts/tests/runtime-isolation-smoke.sh
+```
+
+It builds debug artifacts, installs legacy, stable, and preview lanes into a
+unique `/tmp` prefix, verifies launcher symlinks, and confirms
+`limux-preview target-info` ignores an inherited stable `LIMUX_SOCKET`.
+
+Operator workflow details live in:
+
+```text
+docs/future-improvements/limux-dual-runtime-runbook-20260702.md
+```
+
 ## Implementation Pointers
 
 - Channel parsing and socket paths: `rust/limux-control/src/socket_path.rs`
 - Host session namespace: `rust/limux-host-linux/src/layout_state.rs`
 - CLI `--channel` targeting and host launch env: `rust/limux-cli/src/main.rs`
 - User-local channel wrappers: `scripts/user-local-install/install-user-local.sh`
+- Dual-runtime smoke: `scripts/tests/runtime-isolation-smoke.sh`
 
 ## Next Work
 
-Task #19.5 should add the dual-runtime smoke runbook and a maintained smoke
-path that verifies stable and preview can be launched side by side.
+Remaining product work after TaskMaster #19 should focus on real GUI preview
+launch confirmation, desktop app-id/window grouping refinements, and any
+operator-approved promotion path from preview to daily-driver install.
