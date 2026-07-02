@@ -1,0 +1,48 @@
+{
+  "models": {
+    "main": {
+      "provider": "ollama",
+      "modelId": "glm-5.2",
+      "maxTokens": 120000,
+      "temperature": 0.2,
+      "baseURL": "https://ollama.com/api"
+    },
+    "research": {
+      "provider": "ollama",
+      "modelId": "glm-5.2",
+      "maxTokens": 120000,
+      "temperature": 0.2,
+      "baseURL": "https://ollama.com/api"
+    },
+    "fallback": {
+      "provider": "minimax",
+      "modelId": "MiniMax-M3",
+      "maxTokens": 120000,
+      "temperature": 0.2
+    }
+  },
+  "global": {
+    "logLevel": "info",
+    "debug": false,
+    "defaultNumTasks": 10,
+    "defaultSubtasks": 5,
+    "defaultPriority": "medium",
+    "projectName": "Limux",
+    "ollamaBaseURL": "https://ollama.com/api",
+    "bedrockBaseURL": "https://bedrock.us-east-1.amazonaws.com",
+    "responseLanguage": "English",
+    "enableCodebaseAnalysis": true,
+    "enableProxy": false,
+    "anonymousTelemetry": false,
+    "defaultTag": "master",
+    "azureOpenaiBaseURL": "https://your-endpoint.openai.azure.com/",
+    "userId": "1234567890"
+  },
+  "claudeCode": {},
+  "codexCli": {},
+  "grokCli": {
+    "timeout": 120000,
+    "workingDirectory": null,
+    "defaultModel": "grok-4-latest"
+  }
+}

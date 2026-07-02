@@ -1,0 +1,358 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Scaffold Cursor Extension Structure",
+        "description": "Create the `integrations/cursor-limux/` directory with package.json, extension manifest, and entry point using only Node built-ins and VS Code API.",
+        "details": "Create `integrations/cursor-limux/package.json` with `main` pointing to `extension.js`. Set `engines.vscode` to compatible version. Add `activationEvents` with `onView:limux` for lazy activation. Add `contributes.views` with a Limux sidebar view. Ensure zero `dependencies`, `devDependencies`, and no package-manager scripts. Create `extension.js` with `activate()` and `deactivate()` stubs.",
+        "testStrategy": "Verify `package.json` parses with no dependencies. Validate manifest schema. Run a manual smoke test with `cursor --extensionDevelopmentPath integrations/cursor-limux` to confirm the extension loads without errors.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-07-02T08:00:17.837Z"
+      },
+      {
+        "id": 2,
+        "title": "Implement Socket Resolution Logic",
+        "description": "Implement Limux socket path resolution mirroring the exact order: `limux.socketPath`, `LIMUX_SOCKET`, `LIMUX_SOCKET_PATH`, `LIMUX_CHANNEL` channel-derived stable/preview sockets, `${XDG_RUNTIME_DIR}/limux/limux.sock`, then `/tmp/limux.sock`.",
+        "details": "Create `socket-resolver.js`. Implement a function `resolveSocketCandidates()` returning an ordered array of candidate paths based on the PRD-specified order. Do not add `/run/user/${uid}/limux/limux.sock`. Channel-aware candidates must match `RuntimeChannel::from_env()`: `stable` maps to `${XDG_RUNTIME_DIR}/limux/stable/limux.sock` or `/tmp/limux-stable.sock`; `preview` maps to `${XDG_RUNTIME_DIR}/limux/preview/default/limux.sock` unless `LIMUX_PREVIEW_ID` is set; `preview:<id>` and `preview/<id>` map to `${XDG_RUNTIME_DIR}/limux/preview/<id>/limux.sock` or `/tmp/limux-preview-<id>.sock` when `XDG_RUNTIME_DIR` is unavailable. For each candidate, implement `probeSocket(path, timeout)` using Node `net.connect` with a timeout, sending a `system.identify` request. Return `{ connected, identity, error }`. Handle stale socket files, connection refused, and timeout explicitly.",
+        "testStrategy": "Write Node tests using `node --test` covering: channel-aware resolution order, stable channel sockets, preview default and explicit ID sockets, live socket, stale file, refused connection, timeout, duplicate live sockets, and ambiguous identity. Verify the exact resolution order matches Limux source.",
+        "priority": "high",
+        "dependencies": [
+          "1"
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Add channel-aware runtime socket resolution",
+            "description": "Supersedes the parent task resolver order where it omits LIMUX_CHANNEL.",
+            "details": "Resolver order must be: Cursor setting limux.socketPath, LIMUX_SOCKET, LIMUX_SOCKET_PATH, LIMUX_CHANNEL channel-derived sockets matching RuntimeChannel::from_env(), then the XDG_RUNTIME_DIR legacy default, then /tmp/limux.sock. stable maps to XDG_RUNTIME_DIR/limux/stable/limux.sock or /tmp/limux-stable.sock. preview maps to XDG_RUNTIME_DIR/limux/preview/default/limux.sock unless LIMUX_PREVIEW_ID is set. preview:<id> or preview/<id> maps to XDG_RUNTIME_DIR/limux/preview/<id>/limux.sock or /tmp/limux-preview-<id>.sock when XDG_RUNTIME_DIR is unavailable. Do not add /run/user/${uid}/limux/limux.sock as a separate Cursor fallback unless Limux source adds it first.",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 2
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Implement Limux Socket Framing Client",
+        "description": "Create a Node `net.connect`-based client implementing the existing Limux JSON framing protocol for request/response communication over Unix sockets.",
+        "details": "Create `limux-client.js`. Implement framing according to existing Limux protocol (newline-delimited JSON or length-prefixed per current source). Implement `sendRequest(method, params, timeout)` returning a promise. Handle connection lifecycle, reconnection for refresh, and error propagation. Do not shell out for any communication.",
+        "testStrategy": "Node tests for framing: valid frame round-trip, malformed frame handling, timeout, connection drop mid-request. Verify no child_process usage in the client.",
+        "priority": "high",
+        "dependencies": [
+          "2"
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 4,
+        "title": "Implement Runtime Discovery and Selection",
+        "description": "Build runtime discovery that probes all candidate sockets, displays identity, lets the user select among multiple live runtimes, and pins the selected identity for state-changing commands.",
+        "details": "Create `runtime-manager.js`. Use socket resolver to get candidates, probe each, collect live runtimes with their `system.identify` response. If multiple, show a QuickPick with identity info. Store the selected runtime identity. Before any state-changing command, verify the current runtime identity matches the pinned identity; fail with a clear error if identity changed. Surface disconnected state clearly when no live runtime is found.",
+        "testStrategy": "Node tests: single live runtime auto-selects, multiple runtimes trigger choice, stale/timeout surfaces disconnected state, identity change on pinned runtime causes state-changing command to fail.",
+        "priority": "high",
+        "dependencies": [
+          "3"
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 5,
+        "title": "Define Shared Restricted Method Allowlist",
+        "description": "Create a shared, pinned method allowlist exactly matching `workspace.list`, `workspace.select`, `window.present`, `cursor.pane_create_empty`, `surface.read_text`, and `cursor.workspace_open_folder`, shared by both Rust and extension request builders.",
+        "details": "Create a shared definition (e.g., `methods.json` or a generated constant) listing the exact v1 methods. In the extension, create `request-builder.js` that can only emit requests for methods in this allowlist. Ensure request builders cannot construct `surface.send_text`, `surface.send_key`, `pane.create.command`, or any method outside the set. The Rust side must consume the same allowlist definition for enforcement.",
+        "testStrategy": "Node tests verify request builders reject any non-allowlisted method. Verify the allowlist is exactly the 6 pinned methods. Cross-check Rust constant matches the shared definition.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-07-02T08:14:23.387Z"
+      },
+      {
+        "id": 6,
+        "title": "Implement Server-Side Cursor-Restricted Method Surface",
+        "description": "Add a server-side restricted method dispatch path in the Limux host that enforces the Cursor allowlist, rejecting forbidden methods and unexpected payload fields.",
+        "details": "In `rust/limux-host-linux/src/control_bridge.rs`, add either a restricted socket path or a per-connection caller role/nonce mechanism. Implement an allowlist check before dispatch. Reject `surface.send_text`, `surface.send_key`, `pane.create.command` (command-bearing), unknown methods, and unexpected payload fields with a clear error. Implement `system.capabilities` to return the restricted method set for Cursor connections. Preserve existing unrestricted socket behavior for CLI/agent compatibility.",
+        "testStrategy": "Rust tests: restricted path rejects `surface.send_text`, `surface.send_key`, raw `pane.create.command`, unknown methods, unexpected payload fields. Restricted path allows the 6 pinned methods. Unrestricted path remains compatible with existing CLI/agent methods.",
+        "priority": "high",
+        "dependencies": [
+          "5"
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 7,
+        "title": "Implement Workspace List and Tree Data Provider",
+        "description": "Implement the Limux sidebar tree view with `vscode.TreeDataProvider` showing `Workspace -> Pane -> Tab/Surface` hierarchy using `workspace.list` responses.",
+        "details": "Create `limux-tree-provider.js` implementing `vscode.TreeDataProvider`. Define tree item types: Workspace, Pane, Tab, Surface with stable IDs and context values. Implement `getChildren()` calling `workspace.list` via the Limux client. Implement `onDidChangeTreeData` for refresh. Handle refresh failures by showing a disconnected state in the tree. Use `onDidChangeConfiguration` for socket path changes. Register the provider in `extension.js` activate().",
+        "testStrategy": "Node tests for TreeDataProvider: tree shape correctness, stable IDs, refresh triggers `onDidChangeTreeData`, disconnected state on refresh failure. Manual smoke test verifies tree displays against a running Limux.",
+        "priority": "high",
+        "dependencies": [
+          "4",
+          "5"
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 8,
+        "title": "Implement Workspace Select and Window Present",
+        "description": "Implement `workspace.select` (selection-only) and `window.present` (best-effort raise/focus) with explicit result states and Wayland limitation surfacing.",
+        "details": "Add command handlers for `workspace.select` and `window.present` in the extension. `workspace.select` is selection-only, no side effects. `window.present` returns `succeeded`, `failed`, or `unsupported`. On Wayland, surface limitations to the user via a notification or status bar message rather than silently failing. Document Wayland focus constraints in extension UI. Add Rust implementation for `window.present` with X11/Wayland detection.",
+        "testStrategy": "Rust tests for `window.present` covering success, failure, unsupported. Extension tests for command invocation and result handling. Xvfb smoke test for available presentation behavior. Manual Wayland smoke required before claiming Wayland focus support.",
+        "priority": "medium",
+        "dependencies": [
+          "6",
+          "7"
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 9,
+        "title": "Implement Empty Pane Creation",
+        "description": "Implement `cursor.pane_create_empty` in both Rust host and extension, rejecting any command, text, key, paste, shell, or raw PTY payload fields.",
+        "details": "Rust: add `cursor.pane_create_empty` handler in control_bridge that validates the payload contains no `command`, `text`, `key`, `paste`, `shell`, or PTY fields. Reject any unexpected field. Create an empty pane only. Extension: add a request builder and command that invokes `cursor.pane_create_empty` with an empty or minimal payload. Ensure the builder cannot emit command-bearing creation.",
+        "testStrategy": "Rust tests: submit hand-crafted JSON frames with forbidden fields (`command`, `text`, `key`, `paste`, `shell`) and prove rejection. Verify clean empty payload succeeds. Extension tests: verify request builder only emits allowed fields.",
+        "priority": "high",
+        "dependencies": [
+          "6"
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 10,
+        "title": "Implement Safe Path Determination and Folder Opening",
+        "description": "Implement `workspace.list` path metadata (`folder_path`, `openable_path`, `path_source`) with canonicalization checks, and implement bidirectional folder opening between Limux and Cursor with strict safety validation.",
+        "details": "Rust: implement safe path determination requiring canonicalized, existing local directories. Expose `folder_path`, `openable_path`, `path_source` in `workspace.list`. Implement `cursor.workspace_open_folder` accepting only local `file:` folders in same Linux/Remote-WSL host. Reject native Windows paths, virtual folders, remote folders, untitled folders, ambiguous multi-root. Limux-to-Cursor launcher: require absolute executable path via `limux.cursorExecutable` or `LIMUX_CURSOR_BIN`; no PATH lookup default. Construct argv without shell interpolation.",
+        "testStrategy": "Rust tests: spaces, leading dashes, shell metacharacters, missing dirs, files, broken symlinks, symlink escapes. Extension tests: local folder eligibility, rejection of non-file schemes, multi-root quick-pick. Verify launcher argv construction has no shell interpolation.",
+        "priority": "high",
+        "dependencies": [
+          "6"
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 11,
+        "title": "Implement Read-Only Visible Surface Snapshots",
+        "description": "Implement `surface.read_text` returning only the current visible viewport with bounded size, explicit encoding, and rejection of scrollback/paste/key/text parameters.",
+        "details": "Rust: implement `surface.read_text` returning current visible viewport only. Bound the response size. Include explicit encoding field. No scrollback semantics. Reject requests with `count`, `offset`, scrollback, `paste`, `key`, or `text` payload fields. Extension: add a command to fetch and display the snapshot in a read-only editor panel.",
+        "testStrategy": "Rust tests: bounded output size, viewport-only content, rejection of forbidden parameters (`count`, `offset`, `scrollback`, `paste`, `key`, `text`). Extension tests: snapshot display in read-only view, no input fields accepted.",
+        "priority": "medium",
+        "dependencies": [
+          "6"
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 12,
+        "title": "Implement Acceptance Gates and Test Suite",
+        "description": "Create executable acceptance gates: Node tests with `node --test`, Rust tests, Xvfb smoke, `./scripts/check.sh`, and a v1 acceptance script verifying tree parity, no forbidden methods, folder round-trip, and socket behavior.",
+        "details": "Extension tests: use built-in `node --test`, no npm/npx. Cover socket resolution, framing, method allowlist, TreeDataProvider, local-folder eligibility, activation smoke. Rust tests: restricted method dispatch, launcher argv/path safety, workspace metadata, present states, snapshot bounds. Create `scripts/v1-acceptance-check.sh` verifying: tree parity with `limux --json list-workspaces`, no forbidden Cursor methods exposed, folder round-trip works, stale/duplicate socket behavior. Ensure `./scripts/check.sh` and `./scripts/xvfb-smoke-test.sh` remain green.",
+        "testStrategy": "Run full suite: `cargo fmt --check`, `cargo check -p limux-host-linux`, `cargo check -p limux-cli`, `node --test` in extension, `./scripts/check.sh`, `./scripts/xvfb-smoke-test.sh`, `scripts/v1-acceptance-check.sh`. All must pass before merge.",
+        "priority": "high",
+        "dependencies": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9",
+          "10",
+          "11"
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 13,
+        "title": "Document V2 Boundary and Non-Goals Enforcement",
+        "description": "Add code comments, documentation, and test assertions ensuring v1 does not absorb attach mode, input forwarding, raw PTY writes, resize authority, or stream replay, and that the v2 section remains marked `REWORK BEFORE PRD`.",
+        "details": "Add inline comments in extension and Rust code marking v1 boundaries. Create `docs/v2-boundary.md` listing what v1 must not include: attach, input forwarding, raw PTY writes, bidirectional resize authority, stream replay. Mark the v2 section in planning docs as `REWORK BEFORE PRD`. Add a test that scans the extension and Rust source for forbidden method registrations (`surface.send_text`, `surface.send_key`, raw PTY write APIs) and fails if found.",
+        "testStrategy": "Automated check: grep/scan test verifying no forbidden methods are registered or dispatched in the Cursor-restricted path. Documentation review confirms v2 section is marked `REWORK BEFORE PRD`.",
+        "priority": "low",
+        "dependencies": [
+          "5",
+          "6",
+          "9",
+          "11"
+        ],
+        "status": "in-progress",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Finalize planning-level v2 boundary docs",
+            "description": "Completed in docs/future-improvements/limux-cursor-ide-integration-plan-20260630.md and .taskmaster/docs/limux-cursor-ide-integration-prd-20260630.md: v1 forbids attach/input/raw PTY writes/resize authority/stream replay, and v2 remains REWORK BEFORE PRD.",
+            "details": "",
+            "status": "done",
+            "dependencies": [],
+            "parentTaskId": 13,
+            "updatedAt": "2026-06-30T22:42:43.646Z",
+            "parentId": "13"
+          }
+        ],
+        "updatedAt": "2026-06-30T22:43:17.576Z"
+      },
+      {
+        "id": 14,
+        "title": "Fix Limux keyboard modifier and paste corruption",
+        "description": "Investigate and fix Limux terminal keyboard input behaving as if modifiers/shortcuts are stuck, plus related broken prompt/paste character symptoms reported on 2026-07-01.",
+        "details": "Evidence so far: Ctrl+V shortcut hotfix was not root cause and was reverted in commit 1b5a53a; live shortcut config restored to terminal_paste <Ctrl>v; installed symlinks restored to resize-stability-60d9603. Online research points to separate classes: prompt/question-mark glyphs likely font/Powerlevel10k/Nerd Font, paste wrappers likely bracketed paste mode, and live typing corruption likely GTK/WSLg/Ghostty modifier state. Inspect Limux terminal.rs against vendored Ghostty GTK key event translation, especially modifier press/release correction and env-gated LIMUX_DEBUG_KEYS logging.",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-07-02T08:15:30.761Z"
+      },
+      {
+        "id": 15,
+        "title": "Fix Limux window edge hitbox and standard controls",
+        "description": "Investigate and fix the Limux GTK window chrome behavior where invisible window edges extend beyond the visible border and the app exposes only a close button instead of minimize/maximize/fullscreen controls.",
+        "details": "Use GTK/libadwaita window chrome evidence first. Keep the fix scoped to window decorations/header controls; do not change workspace pane behavior or terminal resizing in this task. Acceptance: resize/click hitbox behavior is no worse than a normal GTK client-side decorated window, header exposes minimize and fullscreen/windowed controls, and focused cargo checks pass.",
+        "testStrategy": "",
+        "status": "review",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-07-01T16:48:34.511Z"
+      },
+      {
+        "id": 16,
+        "title": "Design Limux window opacity and always-on-top controls",
+        "description": "Future project: design and implement user settings for Limux window opacity and always-on-top behavior after the current stability/merge work is clean.",
+        "details": "Track as future UI/settings work, not part of the immediate window chrome bugfix. Consider per-main-window behavior, persistence, compositor support differences, and interaction with detached workspace sidebar if that project proceeds.",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 17,
+        "title": "Research detachable workspace notification sidebar",
+        "description": "Future project: evaluate a detachable Limux workspace/notification sidebar that can live separately from the main window and reattach later.",
+        "details": "Track the concept as a separate planning project: detachable workspace pane, optional second sidebar, reattach/merge behavior, click-to-raise Limux, per-sidebar opacity/always-on-top/show-hide ribbon settings, and notification behavior while the main Limux window is behind other apps.",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 18,
+        "title": "Build upstream Limux and cmux feature research database",
+        "description": "Future project: perform multi-agent research over upstream Limux and manaflow-ai/cmux GitHub PRs, issues, releases, and code to compile candidate features, fixes, and ideas for this Limux fork.",
+        "details": "Do not start until current Limux stabilization and PR cleanup are green. Research should collect links, classify feature/fix/UX/architecture items, estimate fit for GTK/Linux Limux, rate value/risk/complexity, and turn selected items into PRDs/tasks/subprojects.",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 19,
+        "title": "Implement isolated Limux stable and preview runtime channels",
+        "description": "Allow the primary in-use Limux runtime/session to continue unaffected while separate preview/test Limux builds run from isolated installs, sockets, app IDs, config/state dirs, and session stores.",
+        "details": "High-priority project lane. Goal: operator can keep the daily-driver Limux with 10+ active workspaces open while launching and testing new Limux code in a fully separate preview runtime. Acceptance should cover separate install prefixes, socket paths, runtime/session IDs, config/session-state storage, desktop/app identity, CLI targeting, smoke-test launch, and a documented deploy/restart workflow that cannot overwrite or send commands to the primary runtime by accident.",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Audit current runtime identity and mutable state surfaces",
+            "description": "Map every value that can accidentally couple stable and preview Limux runtimes.",
+            "details": "Inventory install prefix, host binary/libexec path, application ID, desktop/window identity, control socket path, LIMUX_SOCKET/LIMUX_SESSION_DIR env, config dir, session persistence dir, shortcut/settings files, logs, desktop notifications, and CLI targeting defaults. Deliverable: exact list of surfaces and current source files/functions.",
+            "status": "done",
+            "dependencies": [],
+            "parentTaskId": 19,
+            "parentId": "19",
+            "updatedAt": "2026-07-02T06:22:03.106Z"
+          },
+          {
+            "id": 2,
+            "title": "Define stable and preview runtime channel contract",
+            "description": "Specify the channel model that keeps the primary daily-driver runtime untouched while preview builds run.",
+            "details": "Define channel names, defaults, env/CLI flags, app/session identity derivation, socket namespace, config/session state namespace, and visual labeling. Acceptance: a preview launch cannot load, mutate, send commands to, or overwrite stable runtime state unless explicit stable-target flags are used.",
+            "status": "done",
+            "dependencies": [],
+            "parentTaskId": 19,
+            "parentId": "19",
+            "updatedAt": "2026-07-02T06:52:26.898Z"
+          },
+          {
+            "id": 3,
+            "title": "Implement isolated preview install and launch wrappers",
+            "description": "Create the tooling needed to build/install/run preview Limux without disturbing stable Limux.",
+            "details": "Add scripts or CLI support for separate preview install prefix under user-local reviewed builds, distinct libexec host path, distinct launch command such as limux-preview, clear operator-facing labels, and no implicit stop/restart of stable. Include rollback/removal notes that avoid deleting user state.",
+            "status": "done",
+            "dependencies": [],
+            "parentTaskId": 19,
+            "parentId": "19",
+            "updatedAt": "2026-07-02T07:00:25.743Z"
+          },
+          {
+            "id": 4,
+            "title": "Implement explicit CLI targeting for stable and preview sockets",
+            "description": "Make Limux CLI operations target the correct runtime channel without accidental cross-talk.",
+            "details": "Add or document channel-aware CLI behavior for identify, notify, send, read-screen, health, workspace commands, and agent hooks. Preview commands should default to the preview socket/session namespace, stable commands to stable, and all explicit socket overrides should remain visible in diagnostics.",
+            "status": "done",
+            "dependencies": [],
+            "parentTaskId": 19,
+            "parentId": "19",
+            "updatedAt": "2026-07-02T07:04:47.512Z"
+          },
+          {
+            "id": 5,
+            "title": "Add smoke tests and operator runbook for dual-runtime workflow",
+            "description": "Prove stable and preview Limux can run side-by-side and document the workflow for future Limux development.",
+            "details": "Smoke coverage should assert distinct sockets, distinct session/config dirs, preview startup health, workspace creation in preview only, and no stable runtime process restart. Runbook should cover build, install, launch, verify, close preview, and promote preview to stable only after PR review/merge.",
+            "status": "done",
+            "dependencies": [],
+            "parentTaskId": 19,
+            "parentId": "19",
+            "updatedAt": "2026-07-02T07:08:36.162Z"
+          }
+        ],
+        "updatedAt": "2026-07-02T07:08:36.162Z"
+      },
+      {
+        "id": 20,
+        "title": "Improve pane attention borders and per-pane color flags",
+        "description": "Fix pane attention borders so unread/attention outlines render visibly above pane content, then add right-click pane controls for mark-unread and user color borders similar to workspace highlights.",
+        "details": "Reference screenshot to save in docs/future-improvements/screenshots/limux-pane-attention-border-layering-20260701.png. Scope: blue attention border is currently mostly hidden/behind layers on the right pane; make it render above pane/tab/content layers. Add context menu actions to mark a pane unread and assign/clear per-pane border color. Add settings for attention-clear behavior: hover, typing, hover for configurable X seconds, and combinations such as hover timer plus typing. Workspace sidebar should mirror pane border colors independently of workspace highlight color; example 50/50 split workspace border if left pane is orange and right pane is yellow.",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
+      }
+    ],
+    "metadata": {
+      "version": "1.0.0",
+      "lastModified": "2026-07-02T08:15:30.762Z",
+      "taskCount": 20,
+      "completedCount": 4,
+      "tags": [
+        "master"
+      ],
+      "created": "2026-07-02T08:41:18.436Z",
+      "description": "Tasks for master context"
+    }
+  }
+}

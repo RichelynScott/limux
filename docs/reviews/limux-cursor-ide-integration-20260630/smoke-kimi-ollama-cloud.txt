@@ -1,0 +1,4 @@
+
+session_id: 20260630_172127_2cfce4
+OK-KIMI
+/usr/bin/timeout: the monitored command dumped core

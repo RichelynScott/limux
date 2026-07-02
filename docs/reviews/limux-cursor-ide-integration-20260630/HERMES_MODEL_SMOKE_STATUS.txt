@@ -1,0 +1,218 @@
+Hermes model smoke status - 2026-06-30
+
+Requested reviewer families:
+
+- GLM 5.2 from Ollama Cloud.
+- MiniMax M3.
+- Kimi K2.7 Code from Ollama Cloud.
+
+Operator routing override from Rumi/BigBoss after the first synthesis:
+
+- Do not use `minimax-m3` through Ollama Cloud for this review wave.
+- MiniMax M3 reviewers must use the direct MiniMax provider because the paid
+  MiniMax token plan has the available capacity.
+- Correct direct route after Hermes-side credential/routing setup:
+  `--provider minimax --model "MiniMax-M3"`.
+- Alternate direct MiniMax option: `minimax-m2.7-highspeed`.
+- Ollama Cloud should be reserved for GLM/Kimi-style needs; GLM 5.2 is
+  expensive there.
+
+Observed model IDs in Hermes cache/catalog:
+
+- z-ai/glm-5.2
+- minimax/minimax-m3
+- moonshotai/kimi-k2.7-code
+- short Ollama-style names observed in config/cache:
+  - glm-5.2
+  - kimi-k2.7-code:cloud
+  - minimax-m3, but do not use this through Ollama Cloud for the review wave
+
+Smoke outcomes:
+
+- GLM via `--provider ollama-cloud --model "z-ai/glm-5.2"`:
+  HTTP 404, detail Not Found.
+- GLM via `--provider ollama-cloud --model "glm-5.2"`:
+  HTTP 404, detail Not Found.
+- Kimi via `--provider ollama-cloud --model "moonshotai/kimi-k2.7-code"`:
+  HTTP 404, detail Not Found.
+- Kimi via `--provider ollama-cloud --model "kimi-k2.7-code:cloud"`:
+  HTTP 404, detail Not Found.
+- MiniMax via `--provider openrouter --model "minimax/minimax-m3"`:
+  blocked because `OPENROUTER_API_KEY` is not configured.
+- MiniMax via `--provider minimax --model "minimax-m3"`:
+  blocked because MiniMax API credentials are not configured; returned 401.
+- Z.ai direct via `--provider zai --model "glm-5.2"`:
+  blocked by expired or incorrect token.
+- Kimi direct via `--provider kimi-coding --model "kimi-k2.7-code"`:
+  blocked by invalid authentication.
+- Custom Ollama bridge using the existing Ollama Cloud key and
+  `https://ollama.com/v1`:
+  blocked by missing authentication header in the resulting Hermes request.
+
+Hcom Hermes worker attempt:
+
+- Launched `limux-cursor-glm-review-pita` with
+  `--provider ollama-cloud --model "glm-5.2"`.
+  It failed after 3 retries with HTTP 404. The visible Hermes screen reported
+  provider `ollama-cloud`, model `glm-5.2`, endpoint
+  `https://chatgpt.com/backend-api/codex`, and detail `Not Found`.
+- Launched `limux-cursor-kimi-review-zomu` with
+  `--provider ollama-cloud --model "kimi-k2.7-code:cloud"`.
+  It failed after 3 retries with HTTP 404. The visible Hermes screen reported
+  provider `ollama-cloud`, model `kimi-k2.7-code:cloud`, endpoint
+  `https://chatgpt.com/backend-api/codex`, and detail `Not Found`.
+- Launched `limux-cursor-minimax-review-nova` with
+  `--provider minimax --model "minimax-m3"`.
+  It failed with HTTP 401. The visible Hermes screen reported endpoint
+  `https://api.minimax.io/anthropic` and a missing `X-Api-Key` requirement.
+
+Hermes manager routing finding from `rumi`:
+
+- Ownership: Hermes / `hermes-agent` runtime, not Limux.
+- Root cause for Ollama Cloud 404s: stale Hermes `model.base_url` routing.
+  Live config has `provider=ollama-cloud` and `default=glm-5.2`, but
+  `model.base_url` still points at `https://chatgpt.com/backend-api/codex`.
+  Hermes then creates an `ollama-cloud` client against that Codex backend and
+  gets HTTP 404 for Ollama model IDs.
+- Ollama Cloud itself is healthy with the configured key for GLM/Kimi style
+  routes. Rumi's direct non-secret probes showed `/v1/models` includes
+  `glm-5.2`, `kimi-k2.7-code`, and `minimax-m3`, and `/v1/chat/completions`
+  for `glm-5.2` returned 200. Despite that availability, BigBoss/Rumi later
+  corrected routing: MiniMax M3 must use the direct MiniMax provider, not
+  Ollama Cloud, for this review wave.
+- Use these future review routes after Hermes remediation:
+  - GLM: `--provider ollama-cloud --model "glm-5.2"`.
+  - Kimi: `--provider ollama-cloud --model "kimi-k2.7-code"`.
+  - MiniMax: `--provider minimax --model "MiniMax-M3"`.
+  - MiniMax alternate: `--provider minimax --model "minimax-m2.7-highspeed"`.
+- Direct provider failures are separate credential gates: direct Z.ai auth,
+  direct Kimi auth, and direct MiniMax key/entitlement are not solved by Limux.
+- SCRIM can provide scoped secret injection only after an exact reviewed wrapper
+  or command contract exists; do not write provider keys into Hermes config,
+  hcom, chat, `.env`, or shell history from this Limux lane.
+
+Hermes hotfix update from Rumi:
+
+- Installed runtime hotfix is active in `/home/riche/.hermes/hermes-agent`.
+  Scoped files copied from Hermes source:
+  `hermes_cli/runtime_provider.py` and
+  `hermes_cli/cli_agent_setup_mixin.py`.
+- Source commit: `14b50cd16` on branch
+  `fix/provider-ollama-cloud-routing-20260630`.
+- Source PR: `https://github.com/RichelynScott/hermes-agent/pull/52`.
+  Codex review was requested and was pending as of 2026-06-30 09:50 EST.
+- Rumi did not mutate `~/.hermes/config.yaml` or secrets.
+- Installed runtime resolver now maps `ollama-cloud` to `https://ollama.com/v1`
+  instead of allowing stale `model.base_url=https://chatgpt.com/backend-api/codex`
+  to override it.
+- Installed runtime now fails closed before API use for
+  `ollama-cloud + minimax-m3` with the instruction to use
+  `--provider minimax --model MiniMax-M3`.
+- Rumi did not run live GLM 5.2 completion to avoid spending Ollama Cloud quota.
+
+Post-hotfix local smokes from Limux lane:
+
+- `hermes chat --provider ollama-cloud --model "minimax-m3" ...` exited before
+  API use with the expected fail-closed message:
+  `MiniMax M3 must use provider minimax, not ollama-cloud. Use: --provider minimax --model MiniMax-M3. Direct MiniMax alternative: minimax-m2.7-highspeed.`
+- `hermes chat --provider minimax --model "MiniMax-M3" ...` still returned HTTP
+  401 with missing `X-Api-Key` behavior from this Limux shell. This means the
+  direct MiniMax credential/SCRIM grant path is still not ready for the Limux
+  review wave.
+- Live GLM/Kimi completion smokes were intentionally not run from Limux to avoid
+  spending Ollama Cloud quota before the review commands are final.
+
+SCRIM ruling for direct MiniMax:
+
+- SCRIM can provide direct MiniMax env only through an exact reviewed wrapper or
+  exact command; it is not covered by the current all-three profile.
+- Use an L0 exact grant for the immediate Limux review wave, not plaintext
+  config and not a broad arbitrary Hermes grant.
+- Env mapping: `MINIMAX_API_KEY=MINIMAX_API_KEY`.
+- Required route inside the reviewed command:
+  `--provider minimax --model MiniMax-M3`.
+- Cwd must be bound to `/home/riche/MCPs/limux` or this review directory.
+- Network should be allowed; timeout should be tight; capture should be
+  `exit_only` if the wrapper writes artifacts, or redacted stdout/stderr only
+  for a reviewed diagnostic slot.
+- If HTTP 401 / missing `X-Api-Key` persists under that SCRIM grant, classify
+  it as a Hermes direct-MiniMax adapter/header/env-name issue, invalid
+  credential, endpoint issue, or entitlement issue.
+- Wrapper scaffold for this grant:
+  `docs/reviews/limux-cursor-ide-integration-20260630/run-minimax-direct-review.sh`.
+
+Rumi/Moka follow-up on credential delivery:
+
+- Rumi verified the direct MiniMax command shape is correct. The failure is
+  credential delivery, not model/provider routing.
+- Rumi verified without printing secrets:
+  - `/home/riche/.hermes/.env` has no `MINIMAX_API_KEY`;
+  - current shell env has `MINIMAX_API_KEY` present but empty, which is not
+    usable;
+  - Hermes `provider=minimax` expects a non-empty `MINIMAX_API_KEY` and routes
+    to `https://api.minimax.io/anthropic`.
+- Do not launch MiniMax reviewers until `MINIMAX_API_KEY` is non-empty in the
+  Hermes child environment, preferably injected by SCRIM.
+- Moka/SCRIM could not live-confirm whether the vault already contains
+  `MINIMAX_API_KEY` without a human unlock or existing live capability. Treat
+  live secret existence as operator-gated until SCRIM shows a masked
+  `MINIMAX_API_KEY` row or an approved SCRIM profile/grant lists it.
+- If the secret is absent, the operator gate is to add it to SCRIM as
+  `MINIMAX_API_KEY` for provider `minimax` through SCRIM's hidden/secure prompt
+  path, then approve the exact grant/profile.
+- For reviewer launches, do not use broad hcom/Hermes environment inheritance.
+  Use the reviewed wrapper with one positional slot arg per exact grant, or one
+  exact grant per fixed reviewer prompt/slot.
+- SCRIM owner-approved diagnostic smoke surface:
+  executable `/home/riche/.local/bin/hermes`; args
+  `chat --provider minimax --model MiniMax-M3 -Q --max-turns 1 -q "Reply exactly OK-MINIMAX"`;
+  working directory `/home/riche/MCPs/limux`; env mapping
+  `MINIMAX_API_KEY=MINIMAX_API_KEY`; network allow; timeout about 120 seconds;
+  capture redacted stdout/stderr.
+- SCRIM owner wrote the canonical grant recipe at
+  `/home/riche/Proj/SCRIM/coordination/operator-runbooks/LIMUX_HERMES_MINIMAX_SCRIM_GRANT_RECIPE_2026-06-30.md`.
+
+Historical conclusion before operator `.env` override:
+
+At that point, the requested Hermes reviewer wave had not completed. The
+blocker then was in Hermes provider routing and credential delivery, not in the
+Limux plan. This historical gate was superseded by the later operator-approved
+`.env` fallback recorded below.
+
+2026-06-30 post-operator override update:
+
+- The operator explicitly approved the interim SCRIM-skill fallback for only
+  `OLLAMA_API_KEY`, `MINIMAX_API_KEY`, and `FIRECRAWL_API_KEY` from
+  `/home/riche/Proj/CODEX_CLAUDE_CODE/.env`.
+- Only key names and non-empty status were printed. Plaintext values were not
+  printed, hcom-sent, copied into docs, committed, or placed in argv.
+- `ollama-cloud` / `glm-5.2` smoke passed:
+  `docs/reviews/limux-cursor-ide-integration-20260630/smoke-glm-ollama-cloud.txt`.
+- Direct `minimax` / `MiniMax-M3` smoke passed:
+  `docs/reviews/limux-cursor-ide-integration-20260630/smoke-minimax-direct.txt`.
+- `ollama-cloud` / `kimi-k2.7-code` returned `OK-KIMI`, then Hermes dumped core
+  during/after CLI cleanup and returned rc 134:
+  `docs/reviews/limux-cursor-ide-integration-20260630/smoke-kimi-ollama-cloud.txt`.
+- `ollama-cloud` / `kimi-k2.7` returned 404 and is not a fallback:
+  `docs/reviews/limux-cursor-ide-integration-20260630/smoke-kimi-ollama-cloud-k2dot7.txt`.
+- Rumi advised proceeding with GLM + direct MiniMax reviewers and parking Kimi
+  until the Hermes post-response core dump is isolated.
+
+Substantive review files now written:
+
+- `docs/reviews/limux-cursor-ide-integration-20260630/hcom-glm-architecture.md`
+- `docs/reviews/limux-cursor-ide-integration-20260630/hcom-glm-runtime.md`
+- `docs/reviews/limux-cursor-ide-integration-20260630/hcom-glm-cursor-api-rerun.md`
+- `docs/reviews/limux-cursor-ide-integration-20260630/hcom-glm-control-trust.md`
+- `docs/reviews/limux-cursor-ide-integration-20260630/hcom-minimax-security.md`
+- `docs/reviews/limux-cursor-ide-integration-20260630/hcom-minimax-runtime.md`
+- `docs/reviews/limux-cursor-ide-integration-20260630/hcom-minimax-tests.md`
+- `docs/reviews/limux-cursor-ide-integration-20260630/hcom-minimax-sequencing.md`
+
+`hcom-glm-cursor-api.md` is not counted because that GLM call returned exit 0
+with an empty response.
+
+Current conclusion:
+
+GLM and direct MiniMax adversarial review completed for this planning pass.
+Kimi remains a Hermes diagnostic follow-up, not an active Limux planning gate.
