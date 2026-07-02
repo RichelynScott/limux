@@ -95,6 +95,21 @@ Desktop entries are also channel-specific when requested, for example
 launcher or desktop-entry paths are moved into the timestamped archive
 directory before replacement; the installer does not delete them.
 
+## CLI Target Diagnostics
+
+`limux target-info` prints the resolved socket/channel without connecting to a
+running host. `socket-info` is an alias. This is intended for operator checks
+and wrapper smoke tests:
+
+```bash
+limux --channel preview target-info
+limux-preview target-info
+```
+
+The JSON form is available with `--json` and includes `resolved_socket`,
+`socket_mode`, `explicit_socket`, `explicit_channel`, inherited `LIMUX_*`
+values, and `connects: false`.
+
 ## Implementation Pointers
 
 - Channel parsing and socket paths: `rust/limux-control/src/socket_path.rs`
@@ -104,5 +119,5 @@ directory before replacement; the installer does not delete them.
 
 ## Next Work
 
-Task #19.4 should expand CLI targeting coverage and diagnostics around stable,
-preview, and inherited socket/channel combinations.
+Task #19.5 should add the dual-runtime smoke runbook and a maintained smoke
+path that verifies stable and preview can be launched side by side.
