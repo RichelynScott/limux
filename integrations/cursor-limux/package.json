@@ -17,6 +17,16 @@
   ],
   "main": "./extension.js",
   "contributes": {
+    "configuration": {
+      "title": "Limux",
+      "properties": {
+        "limux.socketPath": {
+          "type": "string",
+          "default": "",
+          "description": "Explicit Limux Unix socket path for Cursor to connect to before environment and runtime fallbacks."
+        }
+      }
+    },
     "views": {
       "explorer": [
         {
