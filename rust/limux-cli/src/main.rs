@@ -322,7 +322,7 @@ fn host_launch_command_with_inherited_target_env(
     channel: Option<&RuntimeChannel>,
 ) -> Command {
     let mut command = Command::new(host);
-    for key in host_launch_env_removals(inherited_target_env) {
+    for key in host_launch_env_removals(inherited_target_env, channel.is_some()) {
         command.env_remove(key);
     }
     if let Some(channel) = channel {
@@ -348,9 +348,12 @@ fn host_launch_has_inherited_target_env() -> bool {
         .any(|key| env::var_os(key).is_some())
 }
 
-fn host_launch_env_removals(inherited_target_env: bool) -> Vec<&'static str> {
+fn host_launch_env_removals(
+    inherited_target_env: bool,
+    explicit_channel: bool,
+) -> Vec<&'static str> {
     let mut removals = HOST_LAUNCH_TARGET_ENV_REMOVALS.to_vec();
-    if inherited_target_env {
+    if inherited_target_env || explicit_channel {
         removals.extend_from_slice(HOST_LAUNCH_SOCKET_ENV_REMOVALS);
         removals.extend_from_slice(HOST_LAUNCH_SESSION_ENV_REMOVALS);
     }
@@ -6282,7 +6285,7 @@ mod cli_arg_tests {
 
     #[test]
     fn host_launch_env_removals_clear_socket_when_target_env_is_inherited() {
-        let removals = host_launch_env_removals(true);
+        let removals = host_launch_env_removals(true, false);
         for key in HOST_LAUNCH_TARGET_ENV_REMOVALS
             .iter()
             .chain(HOST_LAUNCH_SOCKET_ENV_REMOVALS.iter())
@@ -6297,7 +6300,7 @@ mod cli_arg_tests {
 
     #[test]
     fn host_launch_env_removals_preserve_socket_without_inherited_target() {
-        let removals = host_launch_env_removals(false);
+        let removals = host_launch_env_removals(false, false);
         for key in HOST_LAUNCH_TARGET_ENV_REMOVALS {
             assert!(
                 removals.iter().any(|removed| removed == key),
@@ -6311,6 +6314,21 @@ mod cli_arg_tests {
             assert!(
                 !removals.iter().any(|removed| removed == key),
                 "runtime env should not be removed without inherited target env for {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn host_launch_env_removals_clear_socket_for_explicit_channel() {
+        let removals = host_launch_env_removals(false, true);
+        for key in HOST_LAUNCH_TARGET_ENV_REMOVALS
+            .iter()
+            .chain(HOST_LAUNCH_SOCKET_ENV_REMOVALS.iter())
+            .chain(HOST_LAUNCH_SESSION_ENV_REMOVALS.iter())
+        {
+            assert!(
+                removals.iter().any(|removed| removed == key),
+                "missing explicit channel env removal for {key}"
             );
         }
     }
