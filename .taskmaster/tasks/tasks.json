@@ -24,7 +24,17 @@
           "1"
         ],
         "status": "pending",
-        "subtasks": []
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Add channel-aware runtime socket resolution",
+            "description": "Supersedes the parent task resolver order where it omits LIMUX_CHANNEL.",
+            "details": "Resolver order must be: Cursor setting limux.socketPath, LIMUX_SOCKET, LIMUX_SOCKET_PATH, LIMUX_CHANNEL channel-derived sockets matching RuntimeChannel::from_env(), then the XDG_RUNTIME_DIR legacy default, then /tmp/limux.sock. stable maps to XDG_RUNTIME_DIR/limux/stable/limux.sock or /tmp/limux-stable.sock. preview maps to XDG_RUNTIME_DIR/limux/preview/default/limux.sock unless LIMUX_PREVIEW_ID is set. preview:<id> or preview/<id> maps to XDG_RUNTIME_DIR/limux/preview/<id>/limux.sock or /tmp/limux-preview-<id>.sock when XDG_RUNTIME_DIR is unavailable. Do not add /run/user/${uid}/limux/limux.sock as a separate Cursor fallback unless Limux source adds it first.",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 2
+          }
+        ]
       },
       {
         "id": 3,
@@ -340,7 +350,9 @@
       "completedCount": 4,
       "tags": [
         "master"
-      ]
+      ],
+      "created": "2026-07-02T08:41:18.436Z",
+      "description": "Tasks for master context"
     }
   }
 }

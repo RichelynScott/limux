@@ -65,7 +65,16 @@ Acceptance criteria:
 
 - [ ] The extension resolves the socket using the same order as Limux source:
       configured `limux.socketPath`, `LIMUX_SOCKET`, `LIMUX_SOCKET_PATH`,
-      `${XDG_RUNTIME_DIR}/limux/limux.sock`, then existing `/tmp/limux.sock`.
+      `LIMUX_CHANNEL` channel-derived sockets, `${XDG_RUNTIME_DIR}/limux/limux.sock`,
+      then existing `/tmp/limux.sock`.
+- [ ] Channel-derived socket resolution matches `RuntimeChannel::from_env()`:
+      `stable` maps to `${XDG_RUNTIME_DIR}/limux/stable/limux.sock`,
+      `preview` maps to `${XDG_RUNTIME_DIR}/limux/preview/default/limux.sock`
+      unless `LIMUX_PREVIEW_ID` is set, and `preview:<id>` or `preview/<id>`
+      maps to `${XDG_RUNTIME_DIR}/limux/preview/<id>/limux.sock`.
+- [ ] If `XDG_RUNTIME_DIR` is unavailable, channel-derived sockets use the
+      current Limux compatibility names under `/tmp`: `limux-stable.sock` and
+      `limux-preview-<id>.sock`.
 - [ ] The extension does not add `/run/user/${uid}/limux/limux.sock` as a
       separate fallback unless Limux source adds it first.
 - [ ] Every candidate socket is probed with a timeout and `system.identify`.
@@ -251,8 +260,9 @@ Acceptance criteria:
 ## 6. Technical Considerations
 
 - Existing source evidence:
-  - `rust/limux-control/src/socket_path.rs` currently resolves env paths,
-    `${XDG_RUNTIME_DIR}/limux/limux.sock`, then `/tmp/limux.sock`.
+  - `rust/limux-control/src/socket_path.rs` currently resolves explicit/env
+    paths, channel-derived stable/preview sockets from `LIMUX_CHANNEL`, then
+    `${XDG_RUNTIME_DIR}/limux/limux.sock` or `/tmp/limux.sock`.
   - `rust/limux-control/src/auth.rs` defaults to same-user `LocalUser`.
   - `rust/limux-host-linux/src/control_bridge.rs` advertises and dispatches a
     broad method set including `surface.send_text`, `surface.send_key`, and

@@ -92,8 +92,16 @@ fallback list. Current Limux source resolves runtime sockets in this order:
 1. Cursor setting: `limux.socketPath`.
 2. Environment: `LIMUX_SOCKET`.
 3. Environment: `LIMUX_SOCKET_PATH`.
-4. `${XDG_RUNTIME_DIR}/limux/limux.sock` when `XDG_RUNTIME_DIR` is set.
-5. `/tmp/limux.sock` only as the existing Limux compatibility fallback.
+4. Environment channel selection through `LIMUX_CHANNEL`, matching
+   `RuntimeChannel::from_env()`:
+   - `stable` -> `${XDG_RUNTIME_DIR}/limux/stable/limux.sock`, or
+     `/tmp/limux-stable.sock` when `XDG_RUNTIME_DIR` is unavailable.
+   - `preview`, `preview:<id>`, or `preview/<id>` -> `${XDG_RUNTIME_DIR}/limux/preview/<id>/limux.sock`,
+     or `/tmp/limux-preview-<id>.sock` when `XDG_RUNTIME_DIR` is unavailable.
+   - `LIMUX_CHANNEL=preview` may use `LIMUX_PREVIEW_ID`; otherwise the preview
+     id defaults to `default`.
+5. `${XDG_RUNTIME_DIR}/limux/limux.sock` when `XDG_RUNTIME_DIR` is set.
+6. `/tmp/limux.sock` only as the existing Limux compatibility fallback.
 
 Do not add `/run/user/${uid}/limux/limux.sock` as a separate Cursor fallback
 unless Limux's own resolver adds it first. On normal Linux desktops,
@@ -340,13 +348,15 @@ duplicate sockets do not attach silently.
 
 ## TaskMaster Status
 
-This repo currently has `.taskmaster/docs/*.md` notes but no live
-`.taskmaster/config.json`, `.taskmaster/state.json`, or
-`.taskmaster/tasks/tasks.json`. Per the Codex TaskMaster policy, this draft
-does not invent task IDs or manually create task storage.
+This repo now has durable TaskMaster state committed under `.taskmaster/`,
+including `.taskmaster/config.json`, `.taskmaster/state.json`, and
+`.taskmaster/tasks/tasks.json`. The Cursor integration PRD source is
+`.taskmaster/docs/limux-cursor-ide-integration-prd-20260630.md`.
 
-When the implementation lane opens, bootstrap or repair TaskMaster through the
-reviewed wrapper/runbook first, then import this plan as the PRD/task source.
+Use the reviewed TaskMaster wrapper for future status changes. Do not
+hand-edit `.taskmaster/tasks/tasks.json`; if task text needs correction, update
+it through the reviewed TaskMaster command path once the local wrapper can
+access its reviewed runtime.
 
 ## Source Notes
 
