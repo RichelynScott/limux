@@ -441,7 +441,7 @@
       "source_date": "2026-06-12",
       "theme": "runtime-isolation",
       "kind": "test",
-      "status": "task-created",
+      "status": "prd-needed",
       "priority": "high",
       "fit": "direct",
       "value_score": 5,
@@ -457,7 +457,7 @@
       ],
       "acceptance_sketch": "Starting two channel-isolated runtimes never causes the older one to lose copy/paste or control socket ownership.",
       "license_review_required": false,
-      "notes": "Fork has runtime-isolation work; add this as explicit regression coverage."
+      "notes": "Fork has runtime-isolation work, but explicit two-live-runtime smoke coverage remains pending."
     },
     {
       "id": "limux-upstream-20260702-006",
