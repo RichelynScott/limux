@@ -1,0 +1,29 @@
+{
+  "name": "cursor-limux",
+  "displayName": "Limux",
+  "description": "Limux workspace integration for Cursor and VS Code-compatible editors.",
+  "version": "0.0.1",
+  "publisher": "limux",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:limux"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "views": {
+      "explorer": [
+        {
+          "id": "limux",
+          "name": "Limux"
+        }
+      ]
+    }
+  }
+}
