@@ -26,7 +26,7 @@ use crate::shortcut_config::{NormalizedShortcut, ResolvedShortcutConfig, Shortcu
 use crate::terminal::{self, TerminalCallbacks};
 
 static NEXT_PANE_ID: AtomicU32 = AtomicU32::new(1);
-const PANE_ATTENTION_CSS_CLASS: &str = "limux-pane-attention";
+const PANE_CONTENT_ATTENTION_CSS_CLASS: &str = "limux-pane-content-attention";
 const PANE_ATTENTION_HOVER_CLEAR_MS: u64 = 3_000;
 
 fn next_pane_id() -> u32 {
@@ -203,9 +203,10 @@ pub fn mark_pane_needs_attention(pane_id: u32) -> bool {
         return false;
     };
 
-    internals.pane_outer.add_css_class(PANE_ATTENTION_CSS_CLASS);
+    let attention_widget: gtk::Widget = internals.content_overlay.clone().upcast();
+    attention_widget.add_css_class(PANE_CONTENT_ATTENTION_CSS_CLASS);
     if internals.attention_hovered.get() {
-        schedule_attention_clear(&internals.pane_outer, &internals.attention_clear_timer);
+        schedule_attention_clear(&attention_widget, &internals.attention_clear_timer);
     } else if let Some(source) = internals.attention_clear_timer.borrow_mut().take() {
         source.remove();
     }
@@ -224,15 +225,15 @@ pub fn set_workspace_dragging_all(active: bool) {
 
 fn install_attention_hover_clear(internals: &Rc<PaneInternals>) {
     let motion = gtk::EventControllerMotion::new();
-    let outer = internals.pane_outer.clone();
+    let attention_widget: gtk::Widget = internals.content_overlay.clone().upcast();
     let attention_clear_timer = internals.attention_clear_timer.clone();
     let attention_hovered = internals.attention_hovered.clone();
     motion.connect_enter(move |_, _, _| {
         attention_hovered.set(true);
-        if !outer.has_css_class(PANE_ATTENTION_CSS_CLASS) {
+        if !attention_widget.has_css_class(PANE_CONTENT_ATTENTION_CSS_CLASS) {
             return;
         }
-        schedule_attention_clear(&outer, &attention_clear_timer);
+        schedule_attention_clear(&attention_widget, &attention_clear_timer);
     });
 
     let attention_hovered = internals.attention_hovered.clone();
@@ -243,18 +244,18 @@ fn install_attention_hover_clear(internals: &Rc<PaneInternals>) {
 }
 
 fn schedule_attention_clear(
-    outer: &gtk::Box,
+    attention_widget: &gtk::Widget,
     attention_clear_timer: &Rc<RefCell<Option<glib::SourceId>>>,
 ) {
     if let Some(source) = attention_clear_timer.borrow_mut().take() {
         source.remove();
     }
-    let outer_for_timeout = outer.clone();
+    let attention_widget_for_timeout = attention_widget.clone();
     let timer_for_timeout = attention_clear_timer.clone();
     let source = glib::timeout_add_local_once(
         Duration::from_millis(PANE_ATTENTION_HOVER_CLEAR_MS),
         move || {
-            outer_for_timeout.remove_css_class(PANE_ATTENTION_CSS_CLASS);
+            attention_widget_for_timeout.remove_css_class(PANE_CONTENT_ATTENTION_CSS_CLASS);
             timer_for_timeout.borrow_mut().take();
         },
     );
@@ -377,9 +378,6 @@ struct TabContextMenuContext {
 // ---------------------------------------------------------------------------
 
 pub const PANE_CSS: &str = r#"
-.limux-pane-attention {
-    box-shadow: inset 0 0 0 2px @accent_bg_color;
-}
 .limux-pane-header {
     background-color: @window_bg_color;
     color: @window_fg_color;
@@ -387,9 +385,8 @@ pub const PANE_CSS: &str = r#"
     min-height: 30px;
     padding: 0 2px;
 }
-.limux-pane-attention {
+.limux-pane-content-attention {
     box-shadow: inset 0 0 0 2px #3584e4;
-    border-radius: 6px;
 }
 .limux-tab {
     background: none;
@@ -628,6 +625,7 @@ pub fn create_pane(
         tab_state: tab_state.clone(),
         tab_strip: tab_strip.clone(),
         content_stack: content_stack.clone(),
+        content_overlay: content_overlay.clone(),
         drop_indicator: drop_indicator.clone(),
         content_drop_overlay: content_drop_overlay.clone(),
         pane_outer: outer.clone(),
@@ -951,6 +949,7 @@ pub struct PaneInternals {
     tab_state: Rc<std::cell::RefCell<TabState>>,
     tab_strip: gtk::Box,
     content_stack: gtk::Stack,
+    content_overlay: gtk::Overlay,
     drop_indicator: gtk::Box,
     content_drop_overlay: gtk::Box,
     pane_outer: gtk::Box,
@@ -3578,6 +3577,12 @@ mod tests {
         #[cfg(feature = "webkit")]
         assert!(PANE_CSS.contains(BROWSER_WEB_VIEW_CSS_CLASS));
         assert!(!PANE_CSS.contains("border: 1px solid rgba(0, 145, 255, 0.5);"));
+    }
+
+    #[test]
+    fn pane_attention_css_targets_content_overlay_not_outer_shell() {
+        assert!(PANE_CSS.contains(".limux-pane-content-attention"));
+        assert!(!PANE_CSS.contains(".limux-pane-attention"));
     }
 
     #[test]

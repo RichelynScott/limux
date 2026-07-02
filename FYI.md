@@ -1818,3 +1818,38 @@ a separate reviewed action if the operator wants it live.
 PR #1 | `8798eaa83963ecbe411cda7cc7d3c6345bd0f90d` |
 `299a8fc762dc5f4a168d7d37c8148c58d0aedb08` |
 hcom `limux-g0-stability-20260620`
+
+## 2026-06-29 - Limux Resize Stability Fix Installed
+### What:
+Implemented and installed a Limux runtime mitigation for pane-resize corruption
+in Codex, Claude, and Hermes terminal chats. The active branch head is
+`60d960302cbd` on `lifo/hermes-workspace-highlight-resize-20260627`, and
+`~/.local/bin/limux` now points at
+`/home/riche/.local/limux-reviewed/resize-stability-60d9603/bin/limux`.
+
+### Why:
+cmux and tmux upstream evidence shows resize/reflow can commit TUI live-region
+redraws into scrollback, duplicate prompts/content, or restore cursor positions
+incorrectly. Limux was forwarding every GTK resize event directly to Ghostty,
+which made agent TUIs vulnerable during pane drag-resize, workspace switch, and
+refocus churn.
+
+### How:
+Added a trailing resize coalescer, skipped redundant
+`ghostty_surface_set_size` calls when Ghostty already has the requested
+physical pixel dimensions, preserved physical-pixel sizing, and made Ghostty
+shell-integration resources installable from `ghostty/src` even when compiled
+terminfo is absent. Verified with focused host tests, `./scripts/check.sh`,
+release builds, installer dry-run/apply, and CLI wrapper help.
+
+### Impact:
+The fix is installed for the next Limux launch. Existing open Limux windows
+still run the old `lifo-hermes-highlight-cedcb3a` host until closed and
+restarted. PR #6 was pushed and a fresh `@codex review` was requested; at
+2026-06-29 09:15 EDT, the bot had not yet posted a new review on `60d9603`.
+
+### Related:
+`60d960302cbd` | PR #6 |
+`rust/limux-host-linux/src/terminal.rs` |
+`rust/limux-host-linux/src/main.rs` |
+`scripts/user-local-install/install-user-local.sh`

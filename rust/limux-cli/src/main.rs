@@ -40,7 +40,7 @@ const AGENT_TEAM_DEFAULT_LEDGER_FILE: &str = "LIMUX_REVIEW_LEDGER.md";
 const AGENT_TEAM_LOCAL_POLICY_FILE: &str = "LIMUX_AGENTS.local.md";
 const AGENT_TEAM_INSTRUCTION_FILES: &[&str] = &["AGENTS.md", "CLAUDE.md", "GEMINI.md"];
 const REVIEW_DEFAULT_REVIEWS_DIR: &str = "reviews";
-const REVIEW_REVIEWERS: &[&str] = &["codex", "claude", "gemini", "opencode", "manual"];
+const REVIEW_REVIEWERS: &[&str] = &["codex", "claude", "gemini", "opencode", "hermes", "manual"];
 type HookInstallSpec = (&'static str, &'static str, Option<&'static str>);
 const REVIEW_LENSES: &[&str] = &[
     "security",
@@ -237,6 +237,12 @@ fn print_help() {
     );
     println!(
         "  review spawn: review spawn --review-id <id> [--cwd <path>] [--reviews-dir <path>] [--ledger-path <path>] [--evidence-path <path>] [--workspace <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--launch-mode direct|hcom] [--no-launch] [--dry-run]"
+    );
+    println!(
+        "  hermes-hook: alias of `limux hooks hermes <event>`; Hermes-side lifecycle plugin install remains external."
+    );
+    println!(
+        "  agent-team supports `--agents hermes` and hcom launch as `hcom hermes --run-here`."
     );
 }
 
@@ -922,7 +928,7 @@ async fn run_notify(client: &mut Client, args: &[String]) -> Result<Value> {
 }
 
 // ---------------------------------------------------------------------------
-// Agent hooks (claude-hook / opencode-hook / gemini-hook)
+// Agent hooks (claude-hook / opencode-hook / gemini-hook / hermes-hook)
 // ---------------------------------------------------------------------------
 //
 // These subcommands read a JSON hook event from stdin and translate it into
@@ -943,12 +949,29 @@ async fn run_notify(client: &mut Client, args: &[String]) -> Result<Value> {
 //   }
 //
 // OpenCode and Gemini use slightly different names; we fall back gracefully
-// when fields are missing.
+// when fields are missing. Hermes-side lifecycle payloads may also nest useful
+// fields under `extra` or `metadata`.
 
 /// Pull a string field from the hook JSON, trying multiple keys.
 fn hook_str<'a>(payload: &'a Value, keys: &[&str]) -> Option<&'a str> {
     keys.iter()
-        .find_map(|k| payload.get(*k).and_then(Value::as_str))
+        .find_map(|k| {
+            payload
+                .get(*k)
+                .and_then(Value::as_str)
+                .or_else(|| {
+                    payload
+                        .get("extra")
+                        .and_then(|value| value.get(*k))
+                        .and_then(Value::as_str)
+                })
+                .or_else(|| {
+                    payload
+                        .get("metadata")
+                        .and_then(|value| value.get(*k))
+                        .and_then(Value::as_str)
+                })
+        })
         .map(str::trim)
         .filter(|s| !s.is_empty())
 }
@@ -990,36 +1013,39 @@ async fn run_agent_hook(
     let agent_label = agent.label();
     persist_agent_hook_session(agent, args, &payload, &event)?;
     let tool_name = hook_str(&payload, &["tool_name", "toolName", "name"]).unwrap_or("");
-    let (title, body) = match event.as_str() {
-        "Notification" => (
+    let (title, body) = match canonical_agent_hook_display_event(&event) {
+        AgentHookDisplayEvent::Notification => (
             format!("{agent_label} needs you"),
-            hook_str(&payload, &["message", "notification"])
-                .unwrap_or("waiting for input")
-                .to_owned(),
+            hook_str(
+                &payload,
+                &["message", "notification", "description", "pattern_key"],
+            )
+            .unwrap_or("waiting for input")
+            .to_owned(),
         ),
-        "Stop" | "SubagentStop" => (
+        AgentHookDisplayEvent::Stop => (
             format!("{agent_label} finished"),
             hook_str(&payload, &["message", "reason"])
                 .unwrap_or("task complete")
                 .to_owned(),
         ),
-        "SessionStart" => (
+        AgentHookDisplayEvent::SessionStart => (
             format!("{agent_label} session started"),
-            hook_str(&payload, &["cwd", "source"])
+            hook_str(&payload, &["cwd", "directory", "source"])
                 .unwrap_or("")
                 .to_owned(),
         ),
-        "SessionEnd" => (
+        AgentHookDisplayEvent::SessionEnd => (
             format!("{agent_label} session ended"),
             hook_str(&payload, &["reason"]).unwrap_or("").to_owned(),
         ),
-        "PreToolUse" | "PostToolUse" => (
+        AgentHookDisplayEvent::ToolUse => (
             format!("{agent_label}: {}", non_empty_or(tool_name, "tool")),
-            hook_str(&payload, &["tool_input", "summary"])
+            hook_str(&payload, &["tool_input", "summary", "command", "path"])
                 .unwrap_or("")
                 .to_owned(),
         ),
-        "UserPromptSubmit" => (
+        AgentHookDisplayEvent::UserPromptSubmit => (
             format!("{agent_label}: new prompt"),
             hook_str(&payload, &["prompt"])
                 .unwrap_or("")
@@ -1027,12 +1053,20 @@ async fn run_agent_hook(
                 .take(120)
                 .collect(),
         ),
-        other => (
-            format!("{agent_label}: {other}"),
-            hook_str(&payload, &["message", "summary"])
-                .unwrap_or("")
-                .to_owned(),
-        ),
+        AgentHookDisplayEvent::Other => {
+            let event_label = event.trim();
+            let event_label = if event_label.is_empty() {
+                "event"
+            } else {
+                event_label
+            };
+            (
+                format!("{agent_label}: {event_label}"),
+                hook_str(&payload, &["message", "summary"])
+                    .unwrap_or("")
+                    .to_owned(),
+            )
+        }
     };
 
     let subtitle = hook_str(&payload, &["session_id"])
@@ -1087,6 +1121,41 @@ async fn run_agent_hook(
     Ok(agent_hook_output(&event, &payload))
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AgentHookDisplayEvent {
+    Notification,
+    Stop,
+    SessionStart,
+    SessionEnd,
+    ToolUse,
+    UserPromptSubmit,
+    Other,
+}
+
+fn canonical_agent_hook_display_event(event: &str) -> AgentHookDisplayEvent {
+    match event.trim() {
+        "Notification" | "notification" | "pre_approval_request" | "pre-approval-request" => {
+            AgentHookDisplayEvent::Notification
+        }
+        "Stop" | "stop" | "SubagentStop" | "subagent-stop" | "subagent_stop" | "post_llm_call"
+        | "post-llm-call" => AgentHookDisplayEvent::Stop,
+        "SessionStart" | "session-start" | "session_start" | "on_session_start"
+        | "session-started" => AgentHookDisplayEvent::SessionStart,
+        "SessionEnd"
+        | "session-end"
+        | "session_end"
+        | "on_session_end"
+        | "on_session_finalize"
+        | "session_finalize" => AgentHookDisplayEvent::SessionEnd,
+        "PreToolUse" | "pre-tool-use" | "pre_tool_use" | "PostToolUse" | "post-tool-use"
+        | "post_tool_use" | "pre_tool_call" | "pre-tool-call" | "post_tool_call"
+        | "post-tool-call" => AgentHookDisplayEvent::ToolUse,
+        "UserPromptSubmit" | "prompt-submit" | "user-prompt-submit" | "user_prompt_submit"
+        | "pre_llm_call" | "pre-llm-call" => AgentHookDisplayEvent::UserPromptSubmit,
+        _ => AgentHookDisplayEvent::Other,
+    }
+}
+
 fn agent_hook_notify_debug_details(
     socket: &Path,
     workspace: Option<&str>,
@@ -1139,10 +1208,16 @@ fn agent_hook_output(event: &str, payload: &Value) -> Value {
 
 fn canonical_hook_event_name(event: &str) -> Option<&'static str> {
     match event {
-        "SessionStart" | "session-start" => Some("SessionStart"),
-        "UserPromptSubmit" | "prompt-submit" => Some("UserPromptSubmit"),
-        "Stop" | "stop" | "Notification" => Some("Stop"),
-        "SessionEnd" | "session-end" => None,
+        "SessionStart" | "session-start" | "session_start" | "on_session_start" => {
+            Some("SessionStart")
+        }
+        "UserPromptSubmit" | "prompt-submit" | "user_prompt_submit" | "pre_llm_call" => {
+            Some("UserPromptSubmit")
+        }
+        "Stop" | "stop" | "Notification" | "notification" | "post_llm_call" => Some("Stop"),
+        "SessionEnd" | "session-end" | "session_end" | "on_session_end" | "on_session_finalize" => {
+            None
+        }
         "Cleanup" | "cleanup" | "restore-exit" => None,
         _ => None,
     }
@@ -1158,7 +1233,9 @@ enum AgentHookPersistenceAction {
 fn agent_hook_persistence_action(event: &str) -> AgentHookPersistenceAction {
     match event {
         "Cleanup" | "cleanup" | "restore-exit" => AgentHookPersistenceAction::Remove,
-        "SessionEnd" | "session-end" => AgentHookPersistenceAction::Preserve,
+        "SessionEnd" | "session-end" | "session_end" | "on_session_end" | "on_session_finalize" => {
+            AgentHookPersistenceAction::Preserve
+        }
         _ => AgentHookPersistenceAction::Upsert,
     }
 }
@@ -1184,6 +1261,7 @@ fn persist_agent_hook_session(
                 "payload_keys": payload_keys(payload),
                 "has_claude_code_session_env": limux_env_value("CLAUDE_CODE_SESSION_ID").is_some(),
                 "has_claude_session_env": limux_env_value("CLAUDE_SESSION_ID").is_some(),
+                "has_hermes_session_env": limux_env_value("HERMES_SESSION_ID").is_some(),
             }),
         );
         return Ok(());
@@ -1286,6 +1364,7 @@ fn hook_session_id(payload: &Value) -> Option<String> {
         .map(str::to_string)
         .or_else(|| limux_env_value("CLAUDE_CODE_SESSION_ID"))
         .or_else(|| limux_env_value("CLAUDE_SESSION_ID"))
+        .or_else(|| limux_env_value("HERMES_SESSION_ID"))
         .or_else(|| hook_session_id_from_transcript(payload))
         .filter(|value| !value.trim().is_empty())
 }
@@ -1609,6 +1688,9 @@ fn install_hook_target(agent: agent_hooks::AgentKind) -> Result<()> {
                 ("SessionEnd", "session-end", None),
             ],
         ),
+        agent_hooks::AgentKind::Hermes => bail!(
+            "Hermes hook installation is owned by the Hermes-side lifecycle plugin; Limux only provides `limux hooks hermes <event>` and `limux hermes-hook` receivers"
+        ),
     }
 }
 
@@ -1625,6 +1707,7 @@ fn uninstall_hook_target(agent: agent_hooks::AgentKind) -> Result<()> {
             opencode_config_unregister_plugin()
         }
         agent_hooks::AgentKind::Gemini => uninstall_json_hooks(&gemini_settings_path(), agent),
+        agent_hooks::AgentKind::Hermes => Ok(()),
     }
 }
 
@@ -1685,6 +1768,7 @@ fn hook_timeout(agent: agent_hooks::AgentKind) -> u64 {
         agent_hooks::AgentKind::Claude => 5,
         agent_hooks::AgentKind::Codex | agent_hooks::AgentKind::Gemini => 5000,
         agent_hooks::AgentKind::OpenCode => 0,
+        agent_hooks::AgentKind::Hermes => 5000,
     }
 }
 
@@ -1886,6 +1970,7 @@ fn hook_marker(agent: agent_hooks::AgentKind) -> &'static str {
         agent_hooks::AgentKind::Codex => "hooks codex",
         agent_hooks::AgentKind::OpenCode => "hooks opencode",
         agent_hooks::AgentKind::Gemini => "hooks gemini",
+        agent_hooks::AgentKind::Hermes => "hooks hermes",
     }
 }
 
@@ -2137,7 +2222,7 @@ async fn run_new_workspace(client: &mut Client, args: &[String]) -> Result<Value
 // ---------------------------------------------------------------------------
 //
 // Creates ONE workspace and one pane per requested agent (codex / claude /
-// opencode / gemini), launches each agent's CLI in its pane, captures the
+// opencode / gemini / hermes), launches each agent's CLI in its pane, captures the
 // pane/surface IDs, and writes LIMUX_AGENTS.md by default in the shared cwd
 // describing the XML-tagged message protocol and the peer directory so agents
 // can message each other. Use --protocol-path to choose a different output.
@@ -2197,6 +2282,9 @@ fn agent_launch_command_for_mode(
         )),
         "gemini" | "gemini-cli" => {
             Some(("gemini", agent_launch_command_text("gemini", launch_mode)))
+        }
+        "hermes" | "hermes-agent" | "hermes-cli" => {
+            Some(("hermes", agent_launch_command_text("hermes", launch_mode)))
         }
         _ => None,
     }
@@ -5674,11 +5762,12 @@ async fn execute_command(client: &mut Client, opts: &GlobalOptions) -> Result<Co
                 CommandOutput::Text("OK".to_string())
             }
         }
-        "claude-hook" | "opencode-hook" | "gemini-hook" => {
+        "claude-hook" | "opencode-hook" | "gemini-hook" | "hermes-hook" => {
             let agent = match command {
                 "claude-hook" => agent_hooks::AgentKind::Claude,
                 "opencode-hook" => agent_hooks::AgentKind::OpenCode,
                 "gemini-hook" => agent_hooks::AgentKind::Gemini,
+                "hermes-hook" => agent_hooks::AgentKind::Hermes,
                 _ => unreachable!(),
             };
             let payload = run_agent_hook(client, agent, args).await?;
@@ -6215,6 +6304,14 @@ mod cli_arg_tests {
             agent_hook_persistence_action("session-end"),
             AgentHookPersistenceAction::Preserve
         );
+        assert_eq!(
+            agent_hook_persistence_action("on_session_end"),
+            AgentHookPersistenceAction::Preserve
+        );
+        assert_eq!(
+            agent_hook_persistence_action("on_session_finalize"),
+            AgentHookPersistenceAction::Preserve
+        );
     }
 
     #[test]
@@ -6240,6 +6337,7 @@ mod cli_arg_tests {
             ]
         );
         assert!(!default_hook_targets().contains(&agent_hooks::AgentKind::OpenCode));
+        assert!(!default_hook_targets().contains(&agent_hooks::AgentKind::Hermes));
     }
 
     #[test]
@@ -6272,6 +6370,46 @@ mod cli_arg_tests {
             json!({
                 "continue": true,
                 "suppressOutput": false
+            })
+        );
+    }
+
+    #[test]
+    fn hermes_lifecycle_events_map_to_human_notification_types() {
+        assert_eq!(
+            canonical_agent_hook_display_event("pre_approval_request"),
+            AgentHookDisplayEvent::Notification
+        );
+        assert_eq!(
+            canonical_agent_hook_display_event("post_llm_call"),
+            AgentHookDisplayEvent::Stop
+        );
+        assert_eq!(
+            canonical_agent_hook_display_event("on_session_start"),
+            AgentHookDisplayEvent::SessionStart
+        );
+        assert_eq!(
+            canonical_agent_hook_display_event("pre_tool_call"),
+            AgentHookDisplayEvent::ToolUse
+        );
+    }
+
+    #[test]
+    fn hermes_session_start_hook_output_uses_canonical_schema() {
+        let output = agent_hook_output(
+            "on_session_start",
+            &json!({ "additionalContext": "Hermes session restore tracking active." }),
+        );
+
+        assert_eq!(
+            output,
+            json!({
+                "continue": true,
+                "suppressOutput": false,
+                "hookSpecificOutput": {
+                    "hookEventName": "SessionStart",
+                    "additionalContext": "Hermes session restore tracking active."
+                }
             })
         );
     }
@@ -6401,6 +6539,19 @@ mod cli_arg_tests {
             Some("explicit-session")
         );
     }
+
+    #[test]
+    fn hook_session_id_reads_nested_hermes_metadata() {
+        let payload = json!({
+            "extra": {
+                "session_id": "hermes-session",
+                "cwd": "/tmp/project"
+            }
+        });
+
+        assert_eq!(hook_session_id(&payload).as_deref(), Some("hermes-session"));
+        assert_eq!(hook_str(&payload, &["cwd"]), Some("/tmp/project"));
+    }
 }
 
 #[cfg(test)]
@@ -6433,12 +6584,22 @@ mod agent_team_tests {
             "opencode",
             "gemini",
             "gemini-cli",
+            "hermes",
+            "hermes-agent",
         ] {
             assert!(
                 agent_launch_command_for_mode(agent, AgentLaunchMode::Direct).is_some(),
                 "expected '{agent}' to be a known agent"
             );
         }
+    }
+
+    #[test]
+    fn hcom_launch_mode_uses_hermes_run_here_command() {
+        assert_eq!(
+            agent_launch_command_for_mode("hermes", AgentLaunchMode::Hcom),
+            Some(("hermes", "hcom hermes --run-here".to_string()))
+        );
     }
 
     #[test]

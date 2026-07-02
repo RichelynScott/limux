@@ -684,16 +684,39 @@ mod tests {
 
     #[test]
     fn rejects_resource_dirs_without_sibling_terminfo() {
-        let root = temp_path("missing-terminfo");
-        let resources_dir = root.join("ghostty/zig-out/share/ghostty");
-        let themes_dir = resources_dir.join("themes");
+        let root = temp_path("shell-integration-only");
+        let exe_dir = root.join("target/release");
+        let resources_dir = root.join("ghostty/src");
         let shell_integration_dir = resources_dir.join("shell-integration");
-        fs::create_dir_all(&themes_dir).unwrap();
+        fs::create_dir_all(&exe_dir).unwrap();
         fs::create_dir_all(&shell_integration_dir).unwrap();
 
+        let exe = exe_dir.join("limux");
+        assert!(resolve_ghostty_resources_dir(&exe).is_none());
         assert!(!is_ghostty_resources_dir(&resources_dir));
 
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn resource_env_ignores_shell_integration_without_terminfo() {
+        with_ghostty_env(|| {
+            let root = temp_path("env-shell-only");
+            let exe_dir = root.join("target/release");
+            let resources_dir = root.join("ghostty/src");
+            let shell_integration_dir = resources_dir.join("shell-integration");
+            fs::create_dir_all(&exe_dir).unwrap();
+            fs::create_dir_all(&shell_integration_dir).unwrap();
+
+            let exe = exe_dir.join("limux");
+            set_ghostty_runtime_env_for_exe(&exe);
+
+            assert!(std::env::var_os("GHOSTTY_RESOURCES_DIR").is_none());
+            assert!(std::env::var_os("GHOSTTY_SHELL_INTEGRATION_XDG_DIR").is_none());
+            assert!(std::env::var_os("TERMINFO").is_none());
+
+            fs::remove_dir_all(root).unwrap();
+        });
     }
 
     #[test]

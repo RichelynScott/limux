@@ -35,6 +35,7 @@ static GHOSTTY: OnceLock<GhosttyState> = OnceLock::new();
 static CURRENT_COLOR_SCHEME: AtomicI32 = AtomicI32::new(GHOSTTY_COLOR_SCHEME_LIGHT);
 static CURRENT_SCROLLBAR_ENABLED: AtomicBool = AtomicBool::new(true);
 static WAKEUP_IDLE_QUEUED: AtomicBool = AtomicBool::new(false);
+static KEY_DEBUG_ENABLED: OnceLock<bool> = OnceLock::new();
 static EMPTY_CLIPBOARD_TEXT: [u8; 1] = [0];
 
 type TitleChangedCallback = dyn Fn(&str);
@@ -411,6 +412,39 @@ pub struct TerminalWidget {
     pub handle: TerminalHandle,
 }
 
+const TERMINAL_RESIZE_COALESCE_MS: u64 = 16;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct SurfaceResizeSnapshot {
+    width_px: u32,
+    height_px: u32,
+    scale_factor: i32,
+}
+
+#[derive(Default)]
+struct SurfaceResizeCoalescer {
+    last_applied: Cell<Option<SurfaceResizeSnapshot>>,
+    pending: Cell<Option<SurfaceResizeSnapshot>>,
+    timeout: RefCell<Option<glib::SourceId>>,
+}
+
+impl SurfaceResizeCoalescer {
+    fn clear_pending(&self) {
+        self.pending.set(None);
+        if let Some(source) = self.timeout.borrow_mut().take() {
+            source.remove();
+        }
+    }
+
+    fn clear_pending_if_snapshot_is_applied(&self, snapshot: SurfaceResizeSnapshot) -> bool {
+        if surface_resize_needs_apply(self.last_applied.get(), snapshot) {
+            return false;
+        }
+        self.clear_pending();
+        true
+    }
+}
+
 fn terminal_search_action(query: &str) -> String {
     format!("search:{query}")
 }
@@ -427,22 +461,80 @@ fn physical_surface_size(width_css: i32, height_css: i32, scale_factor: i32) -> 
     Some((width, height))
 }
 
+fn surface_resize_snapshot(
+    width_css: i32,
+    height_css: i32,
+    scale_factor: i32,
+) -> Option<SurfaceResizeSnapshot> {
+    let (width_px, height_px) = physical_surface_size(width_css, height_css, scale_factor)?;
+    Some(SurfaceResizeSnapshot {
+        width_px,
+        height_px,
+        scale_factor: scale_factor.max(1),
+    })
+}
+
+fn surface_resize_needs_apply(
+    last_applied: Option<SurfaceResizeSnapshot>,
+    next: SurfaceResizeSnapshot,
+) -> bool {
+    last_applied != Some(next)
+}
+
+fn surface_size_matches_snapshot(
+    width_px: u32,
+    height_px: u32,
+    snapshot: SurfaceResizeSnapshot,
+) -> bool {
+    width_px == snapshot.width_px && height_px == snapshot.height_px
+}
+
 fn request_terminal_focus(gl_area: &gtk::GLArea, had_focus: &Cell<bool>) {
     had_focus.set(true);
     gl_area.grab_focus();
 }
 
+fn apply_surface_resize_snapshot(
+    surface: ghostty_surface_t,
+    gl_area: &gtk::GLArea,
+    snapshot: SurfaceResizeSnapshot,
+) {
+    let scale = snapshot.scale_factor.max(1) as f64;
+    unsafe {
+        ghostty_surface_set_content_scale(surface, scale, scale);
+        let current = ghostty_surface_size(surface);
+        if !surface_size_matches_snapshot(current.width_px, current.height_px, snapshot) {
+            ghostty_surface_set_size(surface, snapshot.width_px, snapshot.height_px);
+        }
+    }
+    unsafe { ghostty_surface_refresh(surface) };
+    gl_area.queue_render();
+}
+
+fn apply_surface_resize_from_cell(
+    coalescer: &SurfaceResizeCoalescer,
+    surface_cell: &Rc<RefCell<Option<ghostty_surface_t>>>,
+    gl_area: &gtk::GLArea,
+    snapshot: SurfaceResizeSnapshot,
+) {
+    if coalescer.clear_pending_if_snapshot_is_applied(snapshot) {
+        gl_area.queue_render();
+        return;
+    }
+    let Some(surface) = *surface_cell.borrow() else {
+        return;
+    };
+    apply_surface_resize_snapshot(surface, gl_area, snapshot);
+    coalescer.last_applied.set(Some(snapshot));
+}
+
 fn refresh_surface_display(surface: ghostty_surface_t, gl_area: &gtk::GLArea) {
     let alloc = gl_area.allocation();
-    let scale_factor = gl_area.scale_factor();
-    if let Some((width_px, height_px)) =
-        physical_surface_size(alloc.width(), alloc.height(), scale_factor)
+    if let Some(snapshot) =
+        surface_resize_snapshot(alloc.width(), alloc.height(), gl_area.scale_factor())
     {
-        let scale = scale_factor.max(1) as f64;
-        unsafe {
-            ghostty_surface_set_content_scale(surface, scale, scale);
-            ghostty_surface_set_size(surface, width_px, height_px);
-        }
+        apply_surface_resize_snapshot(surface, gl_area, snapshot);
+        return;
     }
     unsafe { ghostty_surface_refresh(surface) };
     gl_area.queue_render();
@@ -456,6 +548,51 @@ fn refresh_realized_surface_display(surface: ghostty_surface_t, gl_area: &gtk::G
         }
     }
     refresh_surface_display(surface, gl_area);
+}
+
+fn schedule_coalesced_surface_resize(
+    coalescer: &Rc<SurfaceResizeCoalescer>,
+    surface_cell: &Rc<RefCell<Option<ghostty_surface_t>>>,
+    gl_area: &gtk::GLArea,
+    width: i32,
+    height: i32,
+) {
+    let Some(snapshot) = surface_resize_snapshot(width, height, gl_area.scale_factor()) else {
+        coalescer.clear_pending();
+        return;
+    };
+
+    if coalescer.clear_pending_if_snapshot_is_applied(snapshot) {
+        gl_area.queue_render();
+        return;
+    }
+
+    if coalescer.timeout.borrow().is_none() {
+        apply_surface_resize_from_cell(coalescer, surface_cell, gl_area, snapshot);
+    } else {
+        coalescer.pending.set(Some(snapshot));
+        return;
+    }
+
+    let coalescer_for_timeout = coalescer.clone();
+    let surface_cell_for_timeout = surface_cell.clone();
+    let gl_area_for_timeout = gl_area.clone();
+    let source = glib::timeout_add_local_once(
+        Duration::from_millis(TERMINAL_RESIZE_COALESCE_MS),
+        move || {
+            coalescer_for_timeout.timeout.borrow_mut().take();
+            let Some(snapshot) = coalescer_for_timeout.pending.take() else {
+                return;
+            };
+            apply_surface_resize_from_cell(
+                &coalescer_for_timeout,
+                &surface_cell_for_timeout,
+                &gl_area_for_timeout,
+                snapshot,
+            );
+        },
+    );
+    *coalescer.timeout.borrow_mut() = Some(source);
 }
 
 fn clear_ghostty_preedit(surface: ghostty_surface_t) {
@@ -1266,6 +1403,7 @@ pub fn create_terminal(
     let extra_env = options.extra_env;
     let callbacks = Rc::new(RefCell::new(callbacks));
     let surface_cell: Rc<RefCell<Option<ghostty_surface_t>>> = Rc::new(RefCell::new(None));
+    let resize_coalescer = Rc::new(SurfaceResizeCoalescer::default());
     let had_focus = Rc::new(Cell::new(false));
     let scrollbar_syncing = Rc::new(Cell::new(false));
     let open_url_external = Rc::new(Cell::new(false));
@@ -1599,19 +1737,22 @@ pub fn create_terminal(
     // The actual GL viewport is set by GTK when the render signal fires,
     // so we must NOT call ghostty_surface_draw here — the viewport would
     // still be the old size. Instead we queue_render() and let the render
-    // callback draw with the correct viewport.
+    // callback draw with the correct viewport. During drag-resizes, apply the
+    // first size immediately and coalesce follow-ups to frame-scale cadence so
+    // Ghostty stays in sync with the visible pane without flooding chat TUIs.
     {
         let surface_cell = surface_cell.clone();
+        let resize_coalescer = resize_coalescer.clone();
         let gl_for_resize = gl_area.clone();
         let had_focus = had_focus.clone();
         gl_area.connect_resize(move |gl_area, width, height| {
-            if let Some(surface) = *surface_cell.borrow() {
-                let w = width as u32;
-                let h = height as u32;
-                if w > 0 && h > 0 {
-                    refresh_surface_display(surface, gl_area);
-                }
-            }
+            schedule_coalesced_surface_resize(
+                &resize_coalescer,
+                &surface_cell,
+                gl_area,
+                width,
+                height,
+            );
 
             if had_focus.get() {
                 let gl_for_focus = gl_for_resize.clone();
@@ -1675,6 +1816,7 @@ pub fn create_terminal(
                     event.text = ct.as_ptr();
                 }
 
+                debug_key_event("press", keyval, keycode, modifier, &event, c_text.as_ref());
                 let consumed = unsafe { ghostty_surface_key(surface, event) };
                 if consumed && ime_state_press.borrow().composing {
                     im_context_press.reset();
@@ -1721,6 +1863,7 @@ pub fn create_terminal(
                     keycode,
                     modifier,
                 );
+                debug_key_event("release", keyval, keycode, modifier, &event, None);
                 unsafe { ghostty_surface_key(surface, event) };
                 ime_state_release.borrow_mut().finish_key_event();
             }
@@ -1911,7 +2054,9 @@ pub fn create_terminal(
     // in connect_realize when the widget is re-realized.
     {
         let surface_cell = surface_cell.clone();
+        let resize_coalescer = resize_coalescer.clone();
         gl_area.connect_unrealize(move |gl_area| {
+            resize_coalescer.clear_pending();
             if let Some(surface) = *surface_cell.borrow() {
                 gl_area.make_current();
                 unsafe { ghostty_surface_display_unrealized(surface) };
@@ -2177,19 +2322,8 @@ fn translate_key_event(
     keycode: u32,
     modifier: gtk::gdk::ModifierType,
 ) -> ghostty_input_key_s {
-    let mut mods: c_int = GHOSTTY_MODS_NONE;
-    if modifier.contains(gtk::gdk::ModifierType::SHIFT_MASK) {
-        mods |= GHOSTTY_MODS_SHIFT;
-    }
-    if modifier.contains(gtk::gdk::ModifierType::CONTROL_MASK) {
-        mods |= GHOSTTY_MODS_CTRL;
-    }
-    if modifier.contains(gtk::gdk::ModifierType::ALT_MASK) {
-        mods |= GHOSTTY_MODS_ALT;
-    }
-    if modifier.contains(gtk::gdk::ModifierType::SUPER_MASK) {
-        mods |= GHOSTTY_MODS_SUPER;
-    }
+    let corrected_modifier = corrected_key_modifier_state(action, keyval, modifier);
+    let mods = translate_mouse_mods(corrected_modifier);
 
     let unshifted = widget
         .zip(key_event)
@@ -2208,6 +2342,41 @@ fn translate_key_event(
         text: ptr::null(),
         unshifted_codepoint: unshifted,
         composing: false,
+    }
+}
+
+fn corrected_key_modifier_state(
+    action: c_int,
+    keyval: gtk::gdk::Key,
+    modifier: gtk::gdk::ModifierType,
+) -> gtk::gdk::ModifierType {
+    let Some(mask) = modifier_mask_for_key(keyval) else {
+        return modifier;
+    };
+
+    let mut corrected = modifier;
+    match action {
+        GHOSTTY_ACTION_PRESS | GHOSTTY_ACTION_REPEAT => corrected.insert(mask),
+        GHOSTTY_ACTION_RELEASE => corrected.remove(mask),
+        _ => {}
+    }
+    corrected
+}
+
+fn modifier_mask_for_key(keyval: gtk::gdk::Key) -> Option<gtk::gdk::ModifierType> {
+    match keyval {
+        gtk::gdk::Key::Shift_L | gtk::gdk::Key::Shift_R => Some(gtk::gdk::ModifierType::SHIFT_MASK),
+        gtk::gdk::Key::Control_L | gtk::gdk::Key::Control_R => {
+            Some(gtk::gdk::ModifierType::CONTROL_MASK)
+        }
+        gtk::gdk::Key::Alt_L | gtk::gdk::Key::Alt_R => Some(gtk::gdk::ModifierType::ALT_MASK),
+        gtk::gdk::Key::Meta_L
+        | gtk::gdk::Key::Meta_R
+        | gtk::gdk::Key::Super_L
+        | gtk::gdk::Key::Super_R
+        | gtk::gdk::Key::Hyper_L
+        | gtk::gdk::Key::Hyper_R => Some(gtk::gdk::ModifierType::SUPER_MASK),
+        _ => None,
     }
 }
 
@@ -2418,6 +2587,45 @@ fn translate_mouse_mods(state: gtk::gdk::ModifierType) -> c_int {
     mods
 }
 
+fn key_debug_enabled() -> bool {
+    *KEY_DEBUG_ENABLED.get_or_init(|| {
+        std::env::var_os("LIMUX_DEBUG_KEYS").is_some_and(|value| {
+            let value = value.to_string_lossy();
+            !value.is_empty() && value != "0" && value != "off" && value != "false"
+        })
+    })
+}
+
+fn debug_key_event(
+    phase: &str,
+    keyval: gtk::gdk::Key,
+    keycode: u32,
+    raw_modifier: gtk::gdk::ModifierType,
+    event: &ghostty_input_key_s,
+    text: Option<&CString>,
+) {
+    if !key_debug_enabled() {
+        return;
+    }
+
+    let key_name = keyval
+        .name()
+        .map(|name| name.to_string())
+        .unwrap_or_else(|| format!("{keyval:?}"));
+    let text = text.and_then(|value| value.to_str().ok()).unwrap_or("");
+    eprintln!(
+        "limux-key phase={phase} action={} key={} keycode={} raw_mods={:?} ghostty_mods={} consumed_mods={} unshifted={} text={:?}",
+        event.action,
+        key_name,
+        keycode,
+        raw_modifier,
+        event.mods,
+        event.consumed_mods,
+        event.unshifted_codepoint,
+        text
+    );
+}
+
 fn ghostty_mouse_button_from_gdk(button: u32) -> c_int {
     match button {
         1 => GHOSTTY_MOUSE_LEFT,
@@ -2487,6 +2695,48 @@ mod tests {
     }
 
     #[test]
+    fn modifier_key_press_includes_the_pressed_modifier() {
+        let event = translate_key_event(
+            GHOSTTY_ACTION_PRESS,
+            None,
+            None,
+            gtk::gdk::Key::Control_L,
+            0,
+            gtk::gdk::ModifierType::empty(),
+        );
+
+        assert_eq!(event.mods & GHOSTTY_MODS_CTRL, GHOSTTY_MODS_CTRL);
+    }
+
+    #[test]
+    fn modifier_key_release_removes_the_released_modifier() {
+        let event = translate_key_event(
+            GHOSTTY_ACTION_RELEASE,
+            None,
+            None,
+            gtk::gdk::Key::Control_L,
+            0,
+            gtk::gdk::ModifierType::CONTROL_MASK,
+        );
+
+        assert_eq!(event.mods & GHOSTTY_MODS_CTRL, GHOSTTY_MODS_NONE);
+    }
+
+    #[test]
+    fn non_modifier_key_preserves_reported_modifiers() {
+        let event = translate_key_event(
+            GHOSTTY_ACTION_PRESS,
+            None,
+            None,
+            gtk::gdk::Key::V,
+            0,
+            gtk::gdk::ModifierType::CONTROL_MASK,
+        );
+
+        assert_eq!(event.mods & GHOSTTY_MODS_CTRL, GHOSTTY_MODS_CTRL);
+    }
+
+    #[test]
     fn terminal_search_action_formats_queries_for_ghostty() {
         assert_eq!(terminal_search_action(""), "search:");
         assert_eq!(terminal_search_action("needle"), "search:needle");
@@ -2499,6 +2749,92 @@ mod tests {
         assert_eq!(physical_surface_size(320, 240, 0), Some((320, 240)));
         assert_eq!(physical_surface_size(0, 240, 2), None);
         assert_eq!(physical_surface_size(-1, 240, 2), None);
+    }
+
+    #[test]
+    fn surface_resize_snapshot_tracks_physical_pixels_and_scale() {
+        assert_eq!(
+            surface_resize_snapshot(320, 240, 2),
+            Some(SurfaceResizeSnapshot {
+                width_px: 640,
+                height_px: 480,
+                scale_factor: 2,
+            })
+        );
+        assert_eq!(
+            surface_resize_snapshot(320, 240, 0),
+            Some(SurfaceResizeSnapshot {
+                width_px: 320,
+                height_px: 240,
+                scale_factor: 1,
+            })
+        );
+        assert_eq!(surface_resize_snapshot(0, 240, 2), None);
+    }
+
+    #[test]
+    fn surface_resize_coalescer_skips_duplicate_snapshot() {
+        let current = SurfaceResizeSnapshot {
+            width_px: 640,
+            height_px: 480,
+            scale_factor: 2,
+        };
+        assert!(!surface_resize_needs_apply(Some(current), current));
+        assert!(surface_resize_needs_apply(
+            Some(current),
+            SurfaceResizeSnapshot {
+                width_px: 642,
+                height_px: 480,
+                scale_factor: 2,
+            }
+        ));
+    }
+
+    #[test]
+    fn surface_resize_coalescer_clear_pending_drops_stale_snapshot() {
+        let coalescer = SurfaceResizeCoalescer::default();
+        coalescer.pending.set(Some(SurfaceResizeSnapshot {
+            width_px: 640,
+            height_px: 480,
+            scale_factor: 2,
+        }));
+
+        coalescer.clear_pending();
+
+        assert_eq!(coalescer.pending.get(), None);
+        assert!(coalescer.timeout.borrow().is_none());
+    }
+
+    #[test]
+    fn surface_resize_coalescer_drops_stale_pending_when_latest_matches_applied() {
+        let coalescer = SurfaceResizeCoalescer::default();
+        let applied = SurfaceResizeSnapshot {
+            width_px: 640,
+            height_px: 480,
+            scale_factor: 2,
+        };
+        let stale_pending = SurfaceResizeSnapshot {
+            width_px: 800,
+            height_px: 480,
+            scale_factor: 2,
+        };
+        coalescer.last_applied.set(Some(applied));
+        coalescer.pending.set(Some(stale_pending));
+
+        assert!(coalescer.clear_pending_if_snapshot_is_applied(applied));
+        assert_eq!(coalescer.pending.get(), None);
+    }
+
+    #[test]
+    fn surface_size_match_uses_physical_pixel_dimensions() {
+        let snapshot = SurfaceResizeSnapshot {
+            width_px: 640,
+            height_px: 480,
+            scale_factor: 2,
+        };
+        assert!(surface_size_matches_snapshot(640, 480, snapshot));
+        assert!(!surface_size_matches_snapshot(641, 480, snapshot));
+        assert!(!surface_size_matches_snapshot(640, 479, snapshot));
     }
 
     #[test]

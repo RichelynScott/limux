@@ -14,7 +14,7 @@ https://github.com/user-attachments/assets/6f3047c2-e2b6-49f2-b536-570a1570d0f8
 - **Tabbed terminals** within each pane
 - **Built-in browser** (WebKitGTK)
 - **Right-click context menu** with copy, paste, split, clear
-- **Drag-and-drop** workspace reordering with favorites/pinning
+- **Drag-and-drop** workspace reordering with favorites/pinning and manual highlights
 - **Animated sidebar** collapse/expand
 
 ## Install
@@ -125,10 +125,15 @@ Run the canonical local quality gate before committing:
 
 Repository maintainability rules live in [`docs/maintainability.md`](docs/maintainability.md).
 
+When validating user-local installs, also check
+[`docs/terminal-input-regression-20260701.md`](docs/terminal-input-regression-20260701.md).
+It records the June 2026 Ghostty resource packaging regression and the rule
+that `ghostty/src` must not be installed or resolved as runtime resources.
+
 ## Agent integrations
 
-Limux ships first-class hooks for coding agents (Codex, Claude Code, and
-Gemini CLI). Every terminal limux spawns auto-exports
+Limux ships first-class hooks for coding agents (Codex, Claude Code, Gemini CLI,
+and Hermes receiver events). Every terminal limux spawns auto-exports
 `LIMUX_WORKSPACE_ID` / `LIMUX_SURFACE_ID` / `LIMUX_PANE_ID` /
 `LIMUX_TAB_ID` / `LIMUX_SOCKET`, so the CLI auto-targets the right place
 with no flags needed from inside the agent's own terminal.
@@ -143,6 +148,10 @@ limux hooks setup
 # Drop-in hook handlers translate hook JSON on stdin into notify/session state
 echo '{"event":"stop"}' | limux claude-hook --event stop
 echo '{"event":"finished"}' | limux gemini-hook --event finished
+# Hermes lifecycle plugin payloads are receiver-only in Limux; installation is
+# owned by Hermes/hcom, while Limux handles the notification/restore event.
+echo '{"event":"pre_approval_request","extra":{"session_id":"h1","cwd":"'"$PWD"'"}}' \
+  | limux hermes-hook --event pre_approval_request
 
 # Spin up a multi-agent collaboration team in the active workspace.
 # Limux launches each agent CLI, writes LIMUX_AGENTS.md describing
@@ -154,6 +163,8 @@ limux agent-team --agents codex,claude --cwd "$PWD"
 limux agent-team --agents codex,claude --launch-mode hcom --cwd "$PWD"
 # This launches peer panes with `hcom codex --run-here` and
 # `hcom claude --run-here`, keeping those sessions inside Limux panes.
+# Hermes can be included too:
+limux agent-team --agents codex,claude,hermes --launch-mode hcom --cwd "$PWD"
 # → Codex and Claude can now do:
 #   limux send --surface "<peer-surface-id>" \
 #     $'<agent-msg from="codex" to="claude" id="…" ts="…">…</agent-msg>\n'
@@ -251,8 +262,10 @@ paths without host contact, and `--no-launch` to create the pane without typing
 the reviewer command or prompt.
 
 Checked-in hook templates live in [`hooks/`](hooks/). They mirror
-`limux hooks setup` for Codex, Claude Code, and Gemini CLI; OpenCode is
-omitted until its hook integration is ready.
+`limux hooks setup` for Codex, Claude Code, and Gemini CLI; Hermes notification
+receivers are supported through `limux hooks hermes <event>` / `limux
+hermes-hook`, but Hermes-side lifecycle plugin installation remains external.
+OpenCode is omitted until its hook integration is ready.
 
 Coding agents working on **limux itself** should read [`AGENTS.md`](AGENTS.md)
 and [`CLAUDE.md`](CLAUDE.md) in the repo root — those cover the build

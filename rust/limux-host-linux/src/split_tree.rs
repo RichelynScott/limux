@@ -8,8 +8,8 @@ use gtk4 as gtk;
 use crate::layout_state::{self, LayoutNodeState, PaneState, SplitOrientation, SplitState};
 use crate::pane;
 use crate::window::{
-    apply_split_ratio_after_layout, attach_split_position_persistence, update_split_ratio_state,
-    State,
+    apply_split_ratio_after_layout, attach_split_position_persistence,
+    minimum_split_extent_for_orientation, update_split_ratio_state, State,
 };
 
 // ---------------------------------------------------------------------------
@@ -458,15 +458,15 @@ fn build_widget_tree(node: &SplitNode, state: &State) -> gtk::Widget {
             paned.set_resize_start_child(true);
             paned.set_resize_end_child(true);
 
-            let ratio_val = *ratio.borrow();
-            update_split_ratio_state(&paned, ratio_val);
-            attach_split_position_persistence(state, &paned);
-
             // Flag to suppress position_notify during programmatic set_position calls
             // (initial layout and workspace re-map). Without this, set_position triggers
             // position_notify which recalculates the ratio from the not-yet-stable pixel
             // position, corrupting the stored ratio.
             let applying = Rc::new(Cell::new(false));
+
+            let ratio_val = *ratio.borrow();
+            update_split_ratio_state(&paned, ratio_val);
+            attach_split_position_persistence(state, &paned, applying.clone());
 
             // Wire resize drags back to the shared ratio cell in the data model.
             let shared_ratio = ratio.clone();
@@ -476,15 +476,17 @@ fn build_widget_tree(node: &SplitNode, state: &State) -> gtk::Widget {
                     return;
                 }
                 let allocation = paned.allocation();
-                let size = if paned.orientation() == gtk::Orientation::Horizontal {
+                let orientation = paned.orientation();
+                let size = if orientation == gtk::Orientation::Horizontal {
                     allocation.width()
                 } else {
                     allocation.height()
                 };
-                let new_ratio = layout_state::snapshot_split_ratio(
+                let new_ratio = layout_state::snapshot_split_ratio_with_min(
                     paned.position(),
                     size,
                     Some(*shared_ratio.borrow()),
+                    minimum_split_extent_for_orientation(orientation),
                 );
                 *shared_ratio.borrow_mut() = layout_state::clamp_split_ratio(new_ratio);
             });

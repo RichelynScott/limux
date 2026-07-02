@@ -262,6 +262,19 @@ fn build_notifications_page(input: &SettingsEditorInput) -> gtk::Widget {
     sound_row.set_activatable_widget(Some(&sound_dropdown));
     group.add(&sound_row);
 
+    let auto_open_sidebar_row = adw::ActionRow::builder()
+        .title("Auto-open workspaces sidebar")
+        .subtitle("Show the hidden sidebar when a background workspace needs attention")
+        .build();
+    auto_open_sidebar_row.set_title_lines(1);
+    auto_open_sidebar_row.set_subtitle_lines(2);
+    let auto_open_sidebar_switch = gtk::Switch::new();
+    auto_open_sidebar_switch.set_active(notifications.auto_open_sidebar);
+    auto_open_sidebar_switch.set_valign(gtk::Align::Center);
+    auto_open_sidebar_row.add_suffix(&auto_open_sidebar_switch);
+    auto_open_sidebar_row.set_activatable_widget(Some(&auto_open_sidebar_switch));
+    group.add(&auto_open_sidebar_row);
+
     page.add(&group);
 
     {
@@ -283,6 +296,16 @@ fn build_notifications_page(input: &SettingsEditorInput) -> gtk::Widget {
             let sound = NotificationSound::from_dropdown_index(dropdown.selected());
             apply_config_change(&config, &*on_changed, move |c| {
                 c.notifications.sound = sound;
+            });
+        });
+    }
+    {
+        let config = input.config.clone();
+        let on_changed = input.on_config_changed.clone();
+        auto_open_sidebar_switch.connect_active_notify(move |switch| {
+            let auto_open_sidebar = switch.is_active();
+            apply_config_change(&config, &*on_changed, move |c| {
+                c.notifications.auto_open_sidebar = auto_open_sidebar;
             });
         });
     }

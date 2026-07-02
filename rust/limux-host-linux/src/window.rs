@@ -19,7 +19,8 @@ use crate::control_bridge::{
 };
 use crate::keybind_editor;
 use crate::layout_state::{
-    self, AppSessionState, LayoutNodeState, LoadedSession, PaneState, WorkspaceState,
+    self, AppSessionState, LayoutNodeState, LoadedSession, PaneState, WorkspaceHighlightColor,
+    WorkspaceState,
 };
 use crate::pane::{self, PaneCallbacks};
 use crate::shortcut_config::{
@@ -32,6 +33,7 @@ const PANE_CREATE_COMMAND_READY_ATTEMPTS: u32 = 80;
 const PANE_CREATE_COMMAND_SETTLE_ATTEMPTS: u32 = 10;
 const PANE_CREATE_COMMAND_SUBMIT_DELAY_MS: u64 = 100;
 const ACTIVE_WORKSPACE_NOTIFICATION_MS: u64 = 3_000;
+const LIMUX_WINDOW_DECORATION_LAYOUT: &str = ":minimize,maximize,close";
 const HOST_LAUNCH_ENV_REMOVALS: &[&str] = &[
     "LIMUX_SOCKET",
     "LIMUX_SOCKET_PATH",
@@ -67,6 +69,8 @@ struct Workspace {
     unread: bool,
     /// Whether this workspace is favorited/pinned to top.
     favorite: bool,
+    /// Optional user-selected sidebar highlight color.
+    highlight: Option<WorkspaceHighlightColor>,
     /// Last known working directory from the terminal (via OSC 7).
     cwd: Rc<RefCell<Option<String>>>,
     /// The folder path this workspace was opened with.
@@ -105,6 +109,31 @@ pub(crate) struct AppState {
     _desktop_notification_token_signal: Option<gio::SignalSubscription>,
     _desktop_notification_action_signal: Option<gio::SignalSubscription>,
     _desktop_notification_closed_signal: Option<gio::SignalSubscription>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct WindowChromePolicy {
+    use_client_side_titlebar: bool,
+    decoration_layout: &'static str,
+}
+
+fn window_chrome_policy(_compositor_provides_decorations: bool) -> WindowChromePolicy {
+    // Server-side Wayland decorations have been observed to expose only a close
+    // button and a larger invisible resize hit area than Limux wants. Keep
+    // chrome under GTK/libadwaita so controls and hit testing stay consistent.
+    WindowChromePolicy {
+        use_client_side_titlebar: true,
+        decoration_layout: LIMUX_WINDOW_DECORATION_LAYOUT,
+    }
+}
+
+fn build_window_header(title: &str, decoration_layout: &str) -> adw::HeaderBar {
+    let bar = adw::HeaderBar::new();
+    bar.set_title_widget(Some(&gtk::Label::builder().label(title).build()));
+    bar.set_show_start_title_buttons(false);
+    bar.set_show_end_title_buttons(true);
+    bar.set_decoration_layout(Some(decoration_layout));
+    bar
 }
 
 impl AppState {
@@ -1045,6 +1074,7 @@ fn snapshot_session_state(state: &State) -> AppSessionState {
                 id: Some(workspace.id.clone()),
                 name: workspace.name.clone(),
                 favorite: workspace.favorite,
+                highlight: workspace.highlight,
                 cwd,
                 folder_path,
                 layout,
@@ -1154,8 +1184,19 @@ fn apply_ratio_value(
         return false;
     }
     applying.set(true);
-    paned.set_position(layout_state::split_position_from_ratio(ratio, size));
-    update_split_ratio_state(paned, ratio);
+    paned.set_position(layout_state::split_position_from_ratio_with_min(
+        ratio,
+        size,
+        minimum_split_extent_for_orientation(orientation),
+    ));
+    update_split_ratio_state(
+        paned,
+        layout_state::clamp_split_ratio_for_size(
+            ratio,
+            size,
+            minimum_split_extent_for_orientation(orientation),
+        ),
+    );
     applying.set(false);
     true
 }
@@ -1190,24 +1231,47 @@ pub(crate) fn apply_split_ratio_after_layout(
     });
 }
 
-pub(crate) fn attach_split_position_persistence(state: &State, paned: &gtk::Paned) {
-    update_split_ratio_state(paned, layout_state::DEFAULT_SPLIT_RATIO);
+pub(crate) fn attach_split_position_persistence(
+    state: &State,
+    paned: &gtk::Paned,
+    applying: Rc<Cell<bool>>,
+) {
     let state = state.clone();
     paned.connect_position_notify(move |paned| {
+        if applying.get() {
+            return;
+        }
         let allocation = paned.allocation();
-        let size = if paned.orientation() == gtk::Orientation::Horizontal {
-            allocation.width()
-        } else {
-            allocation.height()
-        };
-        let ratio = layout_state::snapshot_split_ratio(
+        let orientation = paned.orientation();
+        let size = split_extent_from_allocation(&allocation, orientation);
+        let ratio = layout_state::snapshot_split_ratio_with_min(
             paned.position(),
             size,
             split_ratio_state(paned).map(|ratio| *ratio.borrow()),
+            minimum_split_extent_for_orientation(orientation),
         );
         update_split_ratio_state(paned, ratio);
         request_session_save(&state);
     });
+}
+
+fn split_extent_from_allocation(
+    allocation: &gtk::Allocation,
+    orientation: gtk::Orientation,
+) -> i32 {
+    if orientation == gtk::Orientation::Horizontal {
+        allocation.width()
+    } else {
+        allocation.height()
+    }
+}
+
+pub(crate) fn minimum_split_extent_for_orientation(orientation: gtk::Orientation) -> i32 {
+    if orientation == gtk::Orientation::Horizontal {
+        pane::MIN_PANE_WIDTH
+    } else {
+        pane::MIN_PANE_HEIGHT
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1219,6 +1283,7 @@ const WORKSPACE_RENAME_ENTRY_CSS_CLASS: &str = "limux-ws-rename-entry";
 const WORKSPACE_RENAME_ENTRY_CSS_CLASSES: [&str; 2] =
     [HOST_ENTRY_CSS_CLASS, WORKSPACE_RENAME_ENTRY_CSS_CLASS];
 const SIDEBAR_HANDLE_CSS_CLASS: &str = "limux-sidebar-handle";
+const SIDEBAR_COLLAPSE_BUTTON_CSS_CLASS: &str = "limux-sidebar-collapse-btn";
 const SIDEBAR_HANDLE_CURSOR_NAME: &str = "col-resize";
 const SIDEBAR_RESIZE_HANDLE_WIDTH_PX: i32 = 3;
 
@@ -1354,6 +1419,73 @@ row:selected .limux-ws-star-btn {
     color: @window_fg_color;
     font-weight: 700;
 }
+.limux-sidebar-row-highlight-orange {
+    background-color: rgba(249, 115, 22, 0.14);
+    border-left: 3px solid #f97316;
+}
+.limux-sidebar-row-highlight-red {
+    background-color: rgba(239, 68, 68, 0.14);
+    border-left: 3px solid #ef4444;
+}
+.limux-sidebar-row-highlight-purple {
+    background-color: rgba(168, 85, 247, 0.14);
+    border-left: 3px solid #a855f7;
+}
+.limux-sidebar-row-highlight-pink {
+    background-color: rgba(236, 72, 153, 0.14);
+    border-left: 3px solid #ec4899;
+}
+.limux-sidebar-row-highlight-green {
+    background-color: rgba(34, 197, 94, 0.14);
+    border-left: 3px solid #22c55e;
+}
+.limux-sidebar-row-highlight-yellow {
+    background-color: rgba(234, 179, 8, 0.16);
+    border-left: 3px solid #eab308;
+}
+.limux-sidebar-row-highlight-teal {
+    background-color: rgba(20, 184, 166, 0.14);
+    border-left: 3px solid #14b8a6;
+}
+.limux-sidebar-row-highlight-cyan {
+    background-color: rgba(6, 182, 212, 0.14);
+    border-left: 3px solid #06b6d4;
+}
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-orange,
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-red,
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-purple,
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-pink,
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-green,
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-yellow,
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-teal,
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-cyan {
+    background-color: alpha(@accent_bg_color, 0.16);
+    border-left: 3px solid @accent_bg_color;
+}
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-orange {
+    box-shadow: inset 0 0 0 1px #f97316;
+}
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-red {
+    box-shadow: inset 0 0 0 1px #ef4444;
+}
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-purple {
+    box-shadow: inset 0 0 0 1px #a855f7;
+}
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-pink {
+    box-shadow: inset 0 0 0 1px #ec4899;
+}
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-green {
+    box-shadow: inset 0 0 0 1px #22c55e;
+}
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-yellow {
+    box-shadow: inset 0 0 0 1px #eab308;
+}
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-teal {
+    box-shadow: inset 0 0 0 1px #14b8a6;
+}
+.limux-sidebar-row-unread.limux-sidebar-row-highlight-cyan {
+    box-shadow: inset 0 0 0 1px #06b6d4;
+}
 .limux-drop-above .limux-sidebar-row-box {
     border-radius: 0;
     box-shadow: 0 -2px 0 0 @accent_bg_color;
@@ -1385,6 +1517,20 @@ row:selected .limux-ws-star-btn {
     transition: all 200ms ease;
 }
 .limux-sidebar-btn:hover {
+    background: alpha(@window_fg_color, 0.14);
+    color: @window_fg_color;
+}
+.limux-sidebar-collapse-btn {
+    background: alpha(@window_fg_color, 0.08);
+    color: alpha(@window_fg_color, 0.72);
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 3px 8px;
+    min-width: 0;
+    min-height: 0;
+    margin-right: 6px;
+}
+.limux-sidebar-collapse-btn:hover {
     background: alpha(@window_fg_color, 0.14);
     color: @window_fg_color;
 }
@@ -1527,22 +1673,20 @@ pub fn build_window(app: &adw::Application) {
         .build();
     apply_window_background_class(&window, background_opacity);
 
-    // On Wayland compositors with xdg-decoration support, the compositor
-    // already provides the window chrome, so keep Limux from rendering a
-    // duplicate header bar. X11 continues to use the in-app header.
-    let provides_decorations = display
+    let compositor_provides_decorations = display
         .clone()
         .downcast::<gdk4_wayland::WaylandDisplay>()
         .ok()
         .map(|display| display.query_registry("zxdg_decoration_manager_v1"))
         .unwrap_or(false);
+    let chrome_policy = window_chrome_policy(compositor_provides_decorations);
 
-    let header = if provides_decorations {
-        None
+    let header = if chrome_policy.use_client_side_titlebar {
+        let header = build_window_header(&title, chrome_policy.decoration_layout);
+        window.set_titlebar(Some(&header));
+        Some(header)
     } else {
-        let bar = adw::HeaderBar::new();
-        bar.set_title_widget(Some(&gtk::Label::builder().label(&title).build()));
-        Some(bar)
+        None
     };
 
     let stack = gtk::Stack::new();
@@ -1578,9 +1722,17 @@ pub fn build_window(app: &adw::Application) {
         .build();
     sidebar_title.append(&sidebar_title_label);
 
+    let sidebar_collapse_button = gtk::Button::builder()
+        .label("<")
+        .tooltip_text("Hide workspaces")
+        .valign(gtk::Align::Center)
+        .build();
+    sidebar_collapse_button.add_css_class(SIDEBAR_COLLAPSE_BUTTON_CSS_CLASS);
+    sidebar_title.append(&sidebar_collapse_button);
+
     {
         let window = window.clone();
-        let drag_title = sidebar_title.clone();
+        let drag_title = sidebar_title_label.clone();
         let drag = gtk::GestureClick::new();
         drag.set_button(1);
         drag.connect_pressed(move |gesture, _, x, y| {
@@ -1592,7 +1744,7 @@ pub fn build_window(app: &adw::Application) {
             begin_window_move_from_widget(&drag_title, &window, &device, button, x, y, timestamp);
             gesture.set_state(gtk::EventSequenceState::Claimed);
         });
-        sidebar_title.add_controller(drag);
+        sidebar_title_label.add_controller(drag);
     }
 
     let new_ws_btn = gtk::Button::builder()
@@ -1640,9 +1792,6 @@ pub fn build_window(app: &adw::Application) {
         build_sidebar_split(&sidebar, &stack);
 
     let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    if let Some(ref header) = header {
-        vbox.append(header);
-    }
     vbox.append(&main_split);
     window.set_content(Some(&vbox));
 
@@ -1680,11 +1829,18 @@ pub fn build_window(app: &adw::Application) {
         *slot.borrow_mut() = Some(state.clone());
     });
 
-    install_sidebar_resize(&state, &main_split, &sidebar_shell);
+    install_sidebar_resize(&state, &sidebar_handle, &sidebar_shell);
 
     {
         let state = state.clone();
         sidebar_restore_button.connect_clicked(move |_| {
+            toggle_sidebar(&state);
+        });
+    }
+
+    {
+        let state = state.clone();
+        sidebar_collapse_button.connect_clicked(move |_| {
             toggle_sidebar(&state);
         });
     }
@@ -1885,7 +2041,7 @@ fn build_sidebar_split(
     )
 }
 
-fn install_sidebar_resize(state: &State, main_split: &gtk::Box, sidebar_shell: &gtk::Box) {
+fn install_sidebar_resize(state: &State, sidebar_handle: &gtk::Box, sidebar_shell: &gtk::Box) {
     let resizing_sidebar = Rc::new(Cell::new(false));
     let drag_origin = Rc::new(Cell::new(SIDEBAR_WIDTH));
     let drag = gtk::GestureDrag::new();
@@ -1894,14 +2050,8 @@ fn install_sidebar_resize(state: &State, main_split: &gtk::Box, sidebar_shell: &
         let drag_origin = drag_origin.clone();
         let sidebar_shell = sidebar_shell.clone();
         let resizing_sidebar = resizing_sidebar.clone();
-        drag.connect_drag_begin(move |gesture, x, _| {
+        drag.connect_drag_begin(move |gesture, _, _| {
             let current_width = sidebar_width(&sidebar_shell);
-            let handle_start = current_width as f64;
-            let handle_end = handle_start + SIDEBAR_RESIZE_HANDLE_WIDTH_PX as f64;
-            if x < handle_start || x > handle_end {
-                gesture.set_state(gtk::EventSequenceState::Denied);
-                return;
-            }
             resizing_sidebar.set(true);
             drag_origin.set(current_width.max(SIDEBAR_MIN_WIDTH));
             gesture.set_state(gtk::EventSequenceState::Claimed);
@@ -1935,7 +2085,7 @@ fn install_sidebar_resize(state: &State, main_split: &gtk::Box, sidebar_shell: &
         });
     }
 
-    main_split.add_controller(drag);
+    sidebar_handle.add_controller(drag);
 }
 
 fn set_sidebar_width(sidebar_shell: &gtk::Box, width: i32) {
@@ -3171,13 +3321,13 @@ fn show_workspace_context_menu(state: &State, workspace_id: &str, row: &gtk::Lis
     menu_box.set_margin_start(4);
     menu_box.set_margin_end(4);
 
-    let is_unread = state
+    let (is_unread, current_highlight) = state
         .borrow()
         .workspaces
         .iter()
         .find(|workspace| workspace.id == workspace_id)
-        .map(|workspace| workspace.unread)
-        .unwrap_or(false);
+        .map(|workspace| (workspace.unread, workspace.highlight))
+        .unwrap_or((false, None));
 
     let unread_btn = gtk::Button::with_label(if is_unread {
         "Mark Read"
@@ -3192,6 +3342,41 @@ fn show_workspace_context_menu(state: &State, workspace_id: &str, row: &gtk::Lis
     delete_btn.add_css_class("destructive-action");
 
     menu_box.append(&unread_btn);
+    let highlight_label = gtk::Label::builder()
+        .label("Highlight")
+        .xalign(0.0)
+        .margin_top(4)
+        .margin_start(6)
+        .build();
+    highlight_label.add_css_class("dim-label");
+    menu_box.append(&highlight_label);
+
+    let highlight_grid = gtk::Grid::builder()
+        .column_spacing(2)
+        .row_spacing(2)
+        .build();
+    let off_btn = gtk::Button::with_label(if current_highlight.is_none() {
+        "Off *"
+    } else {
+        "Off"
+    });
+    off_btn.add_css_class("flat");
+    highlight_grid.attach(&off_btn, 0, 0, 1, 1);
+    let mut highlight_buttons: Vec<(gtk::Button, WorkspaceHighlightColor)> = Vec::new();
+    for (index, color) in WorkspaceHighlightColor::ALL.iter().copied().enumerate() {
+        let label = if current_highlight == Some(color) {
+            format!("{} *", color.label())
+        } else {
+            color.label().to_string()
+        };
+        let btn = gtk::Button::with_label(&label);
+        btn.add_css_class("flat");
+        let column = ((index + 1) % 2) as i32;
+        let row_idx = index.div_ceil(2) as i32;
+        highlight_grid.attach(&btn, column, row_idx, 1, 1);
+        highlight_buttons.push((btn, color));
+    }
+    menu_box.append(&highlight_grid);
     menu_box.append(&rename_btn);
     menu_box.append(&delete_btn);
 
@@ -3207,6 +3392,26 @@ fn show_workspace_context_menu(state: &State, workspace_id: &str, row: &gtk::Lis
         unread_btn.connect_clicked(move |_| {
             pop.popdown();
             set_workspace_manual_unread(&state, &ws_id, !is_unread);
+            request_session_save(&state);
+        });
+    }
+    {
+        let state = state.clone();
+        let ws_id = workspace_id.to_string();
+        let pop = popover.clone();
+        off_btn.connect_clicked(move |_| {
+            pop.popdown();
+            set_workspace_highlight(&state, &ws_id, None);
+            request_session_save(&state);
+        });
+    }
+    for (btn, color) in highlight_buttons {
+        let state = state.clone();
+        let ws_id = workspace_id.to_string();
+        let pop = popover.clone();
+        btn.connect_clicked(move |_| {
+            pop.popdown();
+            set_workspace_highlight(&state, &ws_id, Some(color));
             request_session_save(&state);
         });
     }
@@ -3276,6 +3481,25 @@ fn set_workspace_favorite_visual(workspace: &Workspace) {
             .favorite_button
             .remove_css_class("limux-ws-star-btn-active");
     }
+}
+
+fn apply_workspace_highlight_widgets(
+    sidebar_row: &gtk::ListBoxRow,
+    highlight: Option<WorkspaceHighlightColor>,
+) {
+    let Some(row_box) = sidebar_row.child() else {
+        return;
+    };
+    for color in WorkspaceHighlightColor::ALL {
+        row_box.remove_css_class(color.css_class());
+    }
+    if let Some(color) = highlight {
+        row_box.add_css_class(color.css_class());
+    }
+}
+
+fn set_workspace_highlight_visual(workspace: &Workspace) {
+    apply_workspace_highlight_widgets(&workspace.sidebar_row, workspace.highlight);
 }
 
 fn apply_workspace_unread_widgets(
@@ -3362,6 +3586,22 @@ fn set_workspace_manual_unread(state: &State, workspace_id: &str, unread: bool) 
                 &workspace.sidebar_row,
             );
         }
+    }
+}
+
+fn set_workspace_highlight(
+    state: &State,
+    workspace_id: &str,
+    highlight: Option<WorkspaceHighlightColor>,
+) {
+    let mut s = state.borrow_mut();
+    if let Some(workspace) = s
+        .workspaces
+        .iter_mut()
+        .find(|workspace| workspace.id == workspace_id)
+    {
+        workspace.highlight = highlight;
+        set_workspace_highlight_visual(workspace);
     }
 }
 
@@ -3738,6 +3978,7 @@ fn create_workspace_for_tab(state: &State, payload: &str) -> bool {
             notify_label,
             unread: false,
             favorite: false,
+            highlight: None,
             cwd: Rc::new(RefCell::new(seed.cwd.clone())),
             folder_path: seed.folder_path.clone(),
             path_label,
@@ -4174,6 +4415,7 @@ fn create_workspace_with_folder(state: &State, name: &str, folder_path: &str) {
         id: None,
         name: name.to_string(),
         favorite: false,
+        highlight: None,
         cwd: Some(folder_path.to_string()),
         folder_path: Some(folder_path.to_string()),
         layout: LayoutNodeState::Pane(PaneState::fallback(Some(folder_path))),
@@ -4855,6 +5097,7 @@ fn add_workspace_from_state(state: &State, workspace: &WorkspaceState) {
         notify_label,
         unread: false,
         favorite: workspace.favorite,
+        highlight: workspace.highlight,
         cwd,
         folder_path: workspace.folder_path.clone(),
         path_label,
@@ -4863,6 +5106,7 @@ fn add_workspace_from_state(state: &State, workspace: &WorkspaceState) {
     if workspace.favorite {
         set_workspace_favorite_visual(&ws);
     }
+    set_workspace_highlight_visual(&ws);
 
     {
         let mut s = state.borrow_mut();
@@ -6072,6 +6316,24 @@ fn should_emit_desktop_notification(
     desktop_notifications_enabled && (!window_active || !workspace_is_active || !source_focused)
 }
 
+fn should_auto_open_sidebar_for_notification(
+    auto_open_sidebar: bool,
+    sidebar_visible: bool,
+    workspace_is_active: bool,
+) -> bool {
+    auto_open_sidebar && !sidebar_visible && !workspace_is_active
+}
+
+fn show_sidebar(state: &State) {
+    let should_show = {
+        let s = state.borrow();
+        !sidebar_is_visible(&s)
+    };
+    if should_show {
+        toggle_sidebar(state);
+    }
+}
+
 fn pane_attention_target(source_focused: bool, target: &DesktopNotificationTarget) -> Option<u32> {
     if source_focused {
         None
@@ -6134,56 +6396,62 @@ fn mark_workspace_unread_with_message(
     let mut s = state.borrow_mut();
     let active_idx = s.active_idx;
     let window_active = s.window.is_active();
+    let sidebar_visible = sidebar_is_visible(&s);
     let notifications = s.config.borrow().notifications;
-    if let Some((idx, ws)) = s
+    let (idx, ws) = s
         .workspaces
         .iter_mut()
         .enumerate()
-        .find(|(_, w)| w.id == ws_id)
-    {
-        let workspace_is_active = idx == active_idx;
-        if let Some(pane_id) = pane_attention_target(source_focused, &target) {
-            pane::mark_pane_needs_attention(pane_id);
-        }
-        let desktop_request = should_emit_desktop_notification(
-            notifications.enabled,
-            window_active,
-            workspace_is_active,
-            source_focused,
-        )
-        .then(|| DesktopNotificationRequest {
-            summary: ws.name.clone(),
-            body: message.to_string(),
-            sound: notifications.sound,
-            target: target.clone(),
-        });
+        .find(|(_, w)| w.id == ws_id)?;
 
-        if idx != active_idx {
-            set_workspace_unread_visuals(ws, message);
-        } else if !source_focused && target.pane_id.is_none() {
-            active_notice = Some((
-                ws.notify_dot.clone(),
-                ws.notify_label.clone(),
-                ws.sidebar_row.clone(),
-                message.to_string(),
-            ));
-        }
+    let workspace_is_active = idx == active_idx;
+    let auto_open_sidebar = should_auto_open_sidebar_for_notification(
+        notifications.auto_open_sidebar,
+        sidebar_visible,
+        workspace_is_active,
+    );
+    if let Some(pane_id) = pane_attention_target(source_focused, &target) {
+        pane::mark_pane_needs_attention(pane_id);
+    }
+    let desktop_request = should_emit_desktop_notification(
+        notifications.enabled,
+        window_active,
+        workspace_is_active,
+        source_focused,
+    )
+    .then(|| DesktopNotificationRequest {
+        summary: ws.name.clone(),
+        body: message.to_string(),
+        sound: notifications.sound,
+        target: target.clone(),
+    });
 
-        drop(s);
-        if let Some((notify_dot, notify_label, sidebar_row, message)) = active_notice {
-            show_active_workspace_notification(
-                state,
-                ws_id.to_string(),
-                notify_dot,
-                notify_label,
-                sidebar_row,
-                message,
-            );
-        }
-        return desktop_request;
+    if idx != active_idx {
+        set_workspace_unread_visuals(ws, message);
+    } else if !source_focused && target.pane_id.is_none() {
+        active_notice = Some((
+            ws.notify_dot.clone(),
+            ws.notify_label.clone(),
+            ws.sidebar_row.clone(),
+            message.to_string(),
+        ));
     }
 
-    None
+    drop(s);
+    if auto_open_sidebar {
+        show_sidebar(state);
+    }
+    if let Some((notify_dot, notify_label, sidebar_row, message)) = active_notice {
+        show_active_workspace_notification(
+            state,
+            ws_id.to_string(),
+            notify_dot,
+            notify_label,
+            sidebar_row,
+            message,
+        );
+    }
+    desktop_request
 }
 
 fn desktop_notification_hints(
@@ -6290,15 +6558,16 @@ mod tests {
         queue_session_save_request, resolve_pane_create_source_id, resolved_system_prefers_dark,
         sanitize_background_opacity, shortcut_allowed_while_browser_find_active,
         shortcut_blocked_by_editable, shortcut_command_from_key_event,
-        shortcut_dispatch_propagation, should_emit_desktop_notification, sidebar_width_class,
-        snapshot_sidebar_width, surface_send_text_response, tab_drag_workspace_seed,
-        use_opaque_window_background, validate_typed_terminal_text,
-        validate_workspace_folder_input_with_dirs, workspace_drop_layout_path,
-        workspace_folder_path_from_input, workspace_notification_message,
-        DesktopNotificationTarget, Direction, EditableCaptureContext, NeighborScore, PaneBounds,
-        PaneCreateDirection, PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess,
-        SessionSaveRequest, WorkspaceSeedSource, BASE_CSS, HOST_ENTRY_CSS_CLASS,
-        HOST_LAUNCH_ENV_REMOVALS, SIDEBAR_COMPACT_CSS_CLASS, SIDEBAR_COMPACT_WIDTH,
+        shortcut_dispatch_propagation, should_auto_open_sidebar_for_notification,
+        should_emit_desktop_notification, sidebar_width_class, snapshot_sidebar_width,
+        surface_send_text_response, tab_drag_workspace_seed, use_opaque_window_background,
+        validate_typed_terminal_text, validate_workspace_folder_input_with_dirs,
+        window_chrome_policy, workspace_drop_layout_path, workspace_folder_path_from_input,
+        workspace_notification_message, DesktopNotificationTarget, Direction,
+        EditableCaptureContext, NeighborScore, PaneBounds, PaneCreateDirection,
+        PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest,
+        WorkspaceSeedSource, BASE_CSS, HOST_ENTRY_CSS_CLASS, HOST_LAUNCH_ENV_REMOVALS,
+        LIMUX_WINDOW_DECORATION_LAYOUT, SIDEBAR_COMPACT_CSS_CLASS, SIDEBAR_COMPACT_WIDTH,
         SIDEBAR_MIN_WIDTH, SIDEBAR_TINY_CSS_CLASS, SIDEBAR_TINY_WIDTH,
         WORKSPACE_RENAME_ENTRY_CSS_CLASS, WORKSPACE_RENAME_ENTRY_CSS_CLASSES,
     };
@@ -6330,6 +6599,28 @@ mod tests {
     fn favorites_prefix_len_counts_only_leading_favorites() {
         let flags = [true, true, false, true, false];
         assert_eq!(favorites_prefix_len(&flags), 2);
+    }
+
+    #[test]
+    fn window_chrome_policy_prefers_limux_controls_when_compositor_decorates() {
+        let with_compositor_decorations = window_chrome_policy(true);
+        let without_compositor_decorations = window_chrome_policy(false);
+
+        assert!(with_compositor_decorations.use_client_side_titlebar);
+        assert_eq!(
+            with_compositor_decorations.decoration_layout,
+            LIMUX_WINDOW_DECORATION_LAYOUT
+        );
+        assert_eq!(with_compositor_decorations, without_compositor_decorations);
+        assert!(with_compositor_decorations
+            .decoration_layout
+            .contains("minimize"));
+        assert!(with_compositor_decorations
+            .decoration_layout
+            .contains("maximize"));
+        assert!(with_compositor_decorations
+            .decoration_layout
+            .contains("close"));
     }
 
     #[test]
@@ -6636,6 +6927,14 @@ mod tests {
     }
 
     #[test]
+    fn workspace_highlight_css_preserves_unread_precedence() {
+        assert!(BASE_CSS.contains(".limux-sidebar-row-highlight-orange"));
+        assert!(BASE_CSS.contains("border-left: 3px solid #f97316;"));
+        assert!(BASE_CSS.contains(".limux-sidebar-row-unread.limux-sidebar-row-highlight-orange"));
+        assert!(BASE_CSS.contains("background-color: alpha(@accent_bg_color, 0.16);"));
+    }
+
+    #[test]
     fn desktop_notification_actions_include_default_open_action() {
         assert_eq!(
             desktop_notification_actions(),
@@ -6824,6 +7123,22 @@ mod tests {
             false, false, false, false
         ));
         assert!(!should_emit_desktop_notification(true, true, true, true));
+    }
+
+    #[test]
+    fn sidebar_auto_open_only_runs_for_hidden_background_workspace_notifications() {
+        assert!(should_auto_open_sidebar_for_notification(
+            true, false, false
+        ));
+        assert!(!should_auto_open_sidebar_for_notification(
+            false, false, false
+        ));
+        assert!(!should_auto_open_sidebar_for_notification(
+            true, true, false
+        ));
+        assert!(!should_auto_open_sidebar_for_notification(
+            true, false, true
+        ));
     }
 
     #[test]

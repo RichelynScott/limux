@@ -136,6 +136,7 @@ impl NotificationSound {
 pub struct NotificationConfig {
     pub enabled: bool,
     pub sound: NotificationSound,
+    pub auto_open_sidebar: bool,
 }
 
 impl Default for NotificationConfig {
@@ -143,6 +144,7 @@ impl Default for NotificationConfig {
         Self {
             enabled: true,
             sound: NotificationSound::Default,
+            auto_open_sidebar: false,
         }
     }
 }
@@ -249,6 +251,10 @@ fn parse_app_config_value(root: &Value) -> AppConfig {
         .and_then(Value::as_str)
         .and_then(NotificationSound::from_str)
         .unwrap_or(notification_defaults.sound);
+    let notification_auto_open_sidebar = notifications
+        .and_then(|notifications| notifications.get("auto_open_sidebar"))
+        .and_then(Value::as_bool)
+        .unwrap_or(notification_defaults.auto_open_sidebar);
 
     let font_size = root
         .get("font_size")
@@ -267,6 +273,7 @@ fn parse_app_config_value(root: &Value) -> AppConfig {
         notifications: NotificationConfig {
             enabled: notifications_enabled,
             sound: notification_sound,
+            auto_open_sidebar: notification_auto_open_sidebar,
         },
         font_size,
     }
@@ -300,6 +307,7 @@ fn save_to_path(path: &Path, config: &AppConfig) -> Result<(), String> {
         json!({
             "enabled": config.notifications.enabled,
             "sound": config.notifications.sound.as_str(),
+            "auto_open_sidebar": config.notifications.auto_open_sidebar,
         }),
     );
 
@@ -418,7 +426,8 @@ fn ensure_default_config_file(path: &Path) -> std::io::Result<()> {
         },
         "notifications": {
             "enabled": true,
-            "sound": "default"
+            "sound": "default",
+            "auto_open_sidebar": false
         }
     });
     let serialized = serde_json::to_string_pretty(&default_root)
@@ -496,6 +505,10 @@ mod tests {
         assert_eq!(
             parsed["notifications"]["sound"],
             Value::String("default".to_string())
+        );
+        assert_eq!(
+            parsed["notifications"]["auto_open_sidebar"],
+            Value::Bool(false)
         );
     }
 
@@ -577,7 +590,8 @@ mod tests {
             r#"{
   "notifications": {
     "enabled": false,
-    "sound": "bell"
+    "sound": "bell",
+    "auto_open_sidebar": true
   }
 }
 "#,
@@ -589,6 +603,7 @@ mod tests {
         assert!(loaded.warnings.is_empty());
         assert!(!loaded.config.notifications.enabled);
         assert_eq!(loaded.config.notifications.sound, NotificationSound::Bell);
+        assert!(loaded.config.notifications.auto_open_sidebar);
     }
 
     #[test]
@@ -680,6 +695,7 @@ mod tests {
         let mut config = AppConfig::default();
         config.notifications.enabled = false;
         config.notifications.sound = NotificationSound::Alert;
+        config.notifications.auto_open_sidebar = true;
         save_to_path(&path, &config).expect("save notifications");
 
         let raw = fs::read_to_string(&path).expect("read config");
@@ -688,6 +704,10 @@ mod tests {
         assert_eq!(
             parsed["notifications"]["sound"],
             Value::String("alert".to_string())
+        );
+        assert_eq!(
+            parsed["notifications"]["auto_open_sidebar"],
+            Value::Bool(true)
         );
     }
 
