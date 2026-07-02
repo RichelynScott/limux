@@ -49,8 +49,9 @@
         "dependencies": [
           "2"
         ],
-        "status": "pending",
-        "subtasks": []
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-07-02T09:42:52.254Z"
       },
       {
         "id": 4,
@@ -349,9 +350,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-02T09:25:14.052Z",
+      "lastModified": "2026-07-02T09:42:52.255Z",
       "taskCount": 20,
-      "completedCount": 6,
+      "completedCount": 7,
       "tags": [
         "master"
       ]
