@@ -16,10 +16,10 @@ function cleanPath(value) {
 
 function sanitizeChannelId(raw) {
   const value = cleanPath(raw);
-  if (!value || value.includes("/") || value.includes("\\") || value.includes("\0")) {
+  if (!value || value === "." || value === "..") {
     return null;
   }
-  return value;
+  return /^[A-Za-z0-9_-]+$/.test(value) ? value : null;
 }
 
 function parseRuntimeChannel(env = process.env) {

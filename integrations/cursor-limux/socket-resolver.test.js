@@ -120,6 +120,20 @@ assert.deepStrictEqual(
 
 assert.strictEqual(runtimeChannelSocketPath({ LIMUX_CHANNEL: "bogus" }), null);
 assert.strictEqual(runtimeChannelSocketPath({ LIMUX_CHANNEL: "preview:bad/slash" }), null);
+assert.strictEqual(runtimeChannelSocketPath({ LIMUX_CHANNEL: "preview:bad.value" }), null);
+assert.strictEqual(runtimeChannelSocketPath({ LIMUX_CHANNEL: "preview:." }), null);
+assert.strictEqual(runtimeChannelSocketPath({ LIMUX_CHANNEL: "preview:.." }), null);
+assert.deepStrictEqual(
+  runtimeChannelSocketPath({
+    LIMUX_CHANNEL: "preview",
+    LIMUX_PREVIEW_ID: "..",
+    XDG_RUNTIME_DIR: "/tmp/runtime",
+  }),
+  {
+    channel: "preview/default",
+    path: "/tmp/runtime/limux/preview/default/limux.sock",
+  },
+);
 
 (async () => {
   await withServer((socket) => {
