@@ -34,6 +34,13 @@ assert.deepStrictEqual(workspaceSelect({ workspace_id: "workspace:1" }), {
 });
 assert.strictEqual(windowPresent({}).method, "window.present");
 assert.strictEqual(cursorPaneCreateEmpty({}).method, "cursor.pane_create_empty");
+assert.deepStrictEqual(
+  cursorPaneCreateEmpty({ surface_id: "surface:1:tab", direction: "down" }),
+  {
+    method: "cursor.pane_create_empty",
+    params: { surface_id: "surface:1:tab", direction: "down" },
+  },
+);
 assert.strictEqual(surfaceReadText({ surface_id: "surface:1:tab" }).method, "surface.read_text");
 assert.strictEqual(
   cursorWorkspaceOpenFolder({ folder: "/tmp/limux" }).method,
@@ -57,4 +64,17 @@ for (const method of [
 
 for (const params of [null, [], "text", 42]) {
   assert.throws(() => buildRequest("workspace.list", params), /params must be a plain object/);
+}
+
+for (const field of ["command", "text", "key", "paste", "shell", "pty", "raw_pty"]) {
+  assert.throws(
+    () => cursorPaneCreateEmpty({ [field]: "unsafe" }),
+    new RegExp(`cursor\\.pane_create_empty unexpected parameter: ${field}`),
+    `${field} should be rejected by cursorPaneCreateEmpty`,
+  );
+  assert.throws(
+    () => buildRequest("cursor.pane_create_empty", { [field]: "unsafe" }),
+    new RegExp(`cursor\\.pane_create_empty unexpected parameter: ${field}`),
+    `${field} should be rejected by buildRequest`,
+  );
 }

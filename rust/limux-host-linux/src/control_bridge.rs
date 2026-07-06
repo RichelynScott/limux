@@ -49,6 +49,15 @@ const UNKNOWN_METHOD_CODE: i64 = -32601;
 const INTERNAL_ERROR_CODE: i64 = -32603;
 const NOT_FOUND_CODE: i64 = -32004;
 const CONFLICT_CODE: i64 = -32009;
+const CURSOR_PANE_CREATE_EMPTY_PARAMS: &[&str] = &[
+    "workspace_id",
+    "id",
+    "name",
+    "index",
+    "surface_id",
+    "pane_id",
+    "direction",
+];
 
 type BridgeResult = Result<Value, BridgeError>;
 
@@ -333,19 +342,9 @@ fn validate_cursor_restricted_request(
         "workspace.select" => {
             ensure_only_params(method, params, &["workspace_id", "id", "name", "index"])
         }
-        "cursor.pane_create_empty" => ensure_only_params(
-            method,
-            params,
-            &[
-                "workspace_id",
-                "id",
-                "name",
-                "index",
-                "surface_id",
-                "pane_id",
-                "direction",
-            ],
-        ),
+        "cursor.pane_create_empty" => {
+            ensure_only_params(method, params, CURSOR_PANE_CREATE_EMPTY_PARAMS)
+        }
         "surface.read_text" => ensure_only_params(
             method,
             params,
@@ -541,6 +540,12 @@ fn parse_create_pane_request(
 fn parse_cursor_pane_create_empty_request(
     params: &Map<String, Value>,
 ) -> Result<CreatePaneRequest, BridgeError> {
+    ensure_only_params(
+        "cursor.pane_create_empty",
+        params,
+        CURSOR_PANE_CREATE_EMPTY_PARAMS,
+    )?;
+
     let direction = match optional_string(params, &["direction"])
         .unwrap_or_else(|| "right".to_string())
         .as_str()
@@ -1279,6 +1284,34 @@ mod tests {
             response.error.as_ref().map(|error| error.code),
             Some(INVALID_PARAMS_CODE)
         );
+    }
+
+    #[test]
+    fn cursor_pane_create_empty_rejects_command_payload_fields_before_dispatch() {
+        for field in ["command", "text", "key", "paste", "shell", "pty", "raw_pty"] {
+            let mut params = Map::new();
+            params.insert(field.to_string(), json!("unsafe"));
+            let request = json!({
+                "id": 1,
+                "method": "cursor.pane_create_empty",
+                "params": Value::Object(params)
+            })
+            .to_string();
+
+            let response = dispatch_request(&request, &|command| {
+                panic!("cursor.pane_create_empty with {field} should not dispatch: {command:?}")
+            });
+
+            assert_eq!(response.result, None);
+            assert_eq!(
+                response.error.as_ref().map(|error| error.code),
+                Some(INVALID_PARAMS_CODE),
+                "{field} should be rejected"
+            );
+            let message = &response.error.as_ref().expect("error").message;
+            assert!(message.contains("cursor.pane_create_empty"));
+            assert!(message.contains(field));
+        }
     }
 
     #[test]
