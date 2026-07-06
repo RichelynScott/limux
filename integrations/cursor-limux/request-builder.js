@@ -4,6 +4,22 @@ const allowlist = require("./methods.json");
 
 const ALLOWED_METHODS = Object.freeze([...allowlist.methods]);
 const ALLOWED_METHOD_SET = new Set(ALLOWED_METHODS);
+const METHOD_PARAM_ALLOWLIST = Object.freeze({
+  "workspace.list": Object.freeze([]),
+  "workspace.select": Object.freeze(["workspace_id", "id", "name", "index"]),
+  "window.present": Object.freeze([]),
+  "cursor.pane_create_empty": Object.freeze([
+    "workspace_id",
+    "id",
+    "name",
+    "index",
+    "surface_id",
+    "pane_id",
+    "direction",
+  ]),
+  "surface.read_text": Object.freeze(["workspace_id", "name", "index", "surface_id"]),
+  "cursor.workspace_open_folder": Object.freeze(["path", "folder", "cwd", "name", "title"]),
+});
 
 function assertPlainObject(value, label) {
   if (
@@ -21,14 +37,26 @@ function normalizeParams(params) {
   return { ...params };
 }
 
+function assertAllowedParams(method, params) {
+  const allowed = METHOD_PARAM_ALLOWLIST[method] || [];
+  for (const key of Object.keys(params)) {
+    if (!allowed.includes(key)) {
+      throw new Error(`${method} unexpected parameter: ${key}`);
+    }
+  }
+}
+
 function buildRequest(method, params = {}, id) {
   if (!ALLOWED_METHOD_SET.has(method)) {
     throw new Error(`restricted Limux method is not allowlisted: ${method}`);
   }
 
+  const normalizedParams = normalizeParams(params);
+  assertAllowedParams(method, normalizedParams);
+
   const request = {
     method,
-    params: normalizeParams(params),
+    params: normalizedParams,
   };
 
   if (id !== undefined) {
