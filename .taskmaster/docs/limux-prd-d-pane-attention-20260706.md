@@ -9,7 +9,7 @@ task #20 and the existing plan note.
 
 - **Priority:** P0 (Wave 0 — roadmap W0.5; TaskMaster #20)
 - **Dependencies:** none. Verified live via the PRD-C checklist once both land.
-- **Effort:** M (Codex-revised from S: includes the tab.action bridge route +
+- **Effort:** M (Codex-revised from S: includes the pane.action bridge route +
   ControlCommand + window wiring that does not exist today — see US-2)
 - **Execution model:** lifo + subagents; `./scripts/check.sh` gate per commit
 - **Channel targeting:** preview build; live confirmation via PRD-C checklist
@@ -75,67 +75,72 @@ flags, preserving unread-state semantics; upstream precedent cmux PR
 - [ ] No `Gtk-CRITICAL` output introduced across the Xvfb suite.
 
 ### US-2: As the operator, I can color-tag panes to tell agents apart
-- [ ] New `tab-action` actions: `set_flag_color <color>` and `clear_flag_color`
-      (CLI: `limux tab-action --action set_flag_color --color <named>`).
-      (Codex-required — DEPENDENCY CALLOUT) `tab.action` does NOT route on
-      the live GTK bridge today: `control_bridge.rs` `METHODS` (lines 20-39)
-      has no `tab.action` and the bridge never forwards to core — it only
-      exists in the standalone dispatcher (`limux-core` lib.rs:6126). This
-      PRD therefore includes: a new bridge route + `ControlCommand` variant +
-      window.rs metadata application for `tab.action` (ALL existing actions:
-      rename/clear_name/pin/unpin/mark_unread/mark_read, plus the two new
-      ones) — this is the bulk of US-2's work, not an add-two-verbs edit.
-      If PRD-E's registry lands first, classify there instead of ad-hoc.
+- [ ] New pane-scoped action route: `pane.action` with
+      `set_flag_color <color>` and `clear_flag_color` (CLI:
+      `limux pane-action --pane <id|ref> --action set_flag_color --color <named>`;
+      inside a Limux pane, `LIMUX_PANE_ID` may be the default target).
+      (Codex-required — DEPENDENCY CALLOUT) no live GTK bridge route exists
+      for pane metadata actions today; this PRD therefore includes a new
+      `pane.action` core method, live bridge route, `ControlCommand` variant,
+      and window.rs metadata application. Do NOT piggyback on `tab.action` for
+      the color flag: a GTK pane owns multiple tabs, and the flag is a
+      per-pane operator marker. If PRD-E's registry lands first, classify the
+      new `pane.action` mutation there instead of ad-hoc.
 - [ ] (Codex-revised — kills the CSS-injection surface) v1 accepts the fixed
       NAMED palette only (≥6 colors); arbitrary `#rrggbb` is deferred.
       Validation is an allowlist match BEFORE any string reaches CSS; invalid
       color → clean error, no partial state.
-- [ ] Flag color renders as a compact, always-visible indicator on the pane's
-      tab AND a subtle pane-edge accent, visually distinct from both the
-      attention border and unread styling.
+- [ ] Flag color renders as a compact, always-visible indicator on the pane
+      chrome/tab-strip area AND a subtle pane-edge accent, visually distinct
+      from both the attention border and unread styling. The indicator follows
+      the pane across active-tab switches; it is not stored on individual tabs.
 - [ ] Flag color persists in `session.json` (layout_state) and restores on
       relaunch — restore test added beside the existing session-restore tests.
-- [ ] GUI affordance: context-menu entry on the tab (submenu of palette
-      colors + clear) — matching wherever existing tab actions (pin/rename)
-      surface today.
+- [ ] GUI affordance: context-menu entry on the pane chrome/content area
+      (submenu of palette colors + clear). If the visible affordance is placed
+      in the tab strip for convenience, the command still targets the owning
+      pane id, not the clicked tab id.
 
 ### US-3: As a developer, semantics stay clean
 - [ ] Attention (transient) and flag color (durable) are separate state
       fields — setting/clearing one never mutates the other (unit test).
 - [ ] Unread dot/styling unchanged when a flag color is set (regression test
       on the sidebar/tab unread path).
-- [ ] Flag color is carried additively in the live bridge's `pane.surfaces`
-      response (per-surface `flag_color` field) — `sidebar-state` is a
-      CLI-side aggregation over `workspace.list` (main.rs:4660) and holds no
-      per-tab data, so `pane.surfaces` is the named carrier; `sidebar-state`
-      folds it in from there. No existing fields renamed.
+- [ ] Flag color is carried additively in live bridge pane metadata:
+      `pane.list` rows gain a pane-scoped `flag_color`, and `pane.surfaces`
+      may mirror it as `pane_flag_color` for each returned row only as
+      redundant pane context. There is no per-surface/per-tab `flag_color`
+      field. `sidebar-state` folds pane metadata in from `pane.list` or the
+      bridge snapshot path. No existing fields renamed.
 
 ## Functional Requirements
 
 1. Rendering fix in `rust/limux-host-linux/src/pane.rs` (+ `window.rs` wiring
    if the overlay must be owned by the split container in
    `split_tree.rs`).
-2. State: extend the pane/tab model + `layout_state.rs` serialization with
+2. State: extend the pane model + `layout_state.rs` serialization with
    `flag_color: Option<String>`; additive `session.json` field (older builds
    ignore it — confirm serde tolerates unknown fields both directions).
-3. Protocol: extend `tab.action` in `rust/limux-core/src/lib.rs` AND the GTK
+3. Protocol: add `pane.action` in `rust/limux-core/src/lib.rs` AND the GTK
    bridge path so both the standalone dispatcher and live GUI accept the new
-   actions; CLI `tab-action` gains `--color`.
+   actions; CLI gains `pane-action --color`. `tab.action` remains out of scope
+   except for any existing behavior PRD-E later classifies.
 4. CSS: new classes (e.g. `.limux-pane-flag-<name>`), colors defined once.
 
 ## Non-Goals
 
 - No per-WORKSPACE color flags (sidebar workspace coloring exists via
-  highlight color; this PRD is pane/tab-scoped).
+  highlight color; this PRD is pane-scoped).
 - No auto-assignment of colors by agent type (manual only in v1).
 - No attention-behavior redesign (sound, blink, escalation — unchanged).
 - No settings-editor UI for the palette (fixed palette v1).
 
 ## Technical Considerations
 
-- ID plumbing: tab ids are uuid `String`s pane-locally (`LIMUX_SURFACE_ID` =
-  `"{pane_id}:{tab_id}"`); reuse the exact resolution path `tab.action`
-  already uses — no new ID scheme.
+- ID plumbing: target by pane id/ref (`pane_id`, `pane_ref`, or
+  `LIMUX_PANE_ID`). A surface id may be accepted only as a convenience for
+  resolving its owning pane; the stored state remains pane-scoped. No new ID
+  scheme.
 - The 2026-06 session.json lesson: 9× `terminal-0` tab ids are pane-local and
   VALID — do not "normalize" existing session files while adding the field
   (defect inventory §E5).
@@ -156,14 +161,14 @@ flags, preserving unread-state semantics; upstream precedent cmux PR
 ./scripts/check.sh
 cargo test -p limux-host-linux attention -- --nocapture
 cargo test -p limux-host-linux flag_color -- --nocapture
-cargo test -p limux-core tab_action -- --nocapture
+cargo test -p limux-core pane_action -- --nocapture
 LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh   # extended with flag-color + attention-overlay assertions
 ```
 
 ## Rollback Plan
 
 `git revert` the feature commits. `session.json` field is additive/optional —
-older builds load it safely (`TabState` uses serde defaults, no
+older builds load it safely (`PaneState` uses serde defaults, no
 `deny_unknown_fields`, layout_state.rs:159) but an older build that
 loads-then-saves silently DROPS `flag_color` (accepted). If the overlay
 approach causes regressions on WSLg, fall back to the current inset

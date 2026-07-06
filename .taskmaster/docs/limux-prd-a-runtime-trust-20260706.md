@@ -50,14 +50,20 @@ the build that produced it, and there is no one-shot command that answers
       version plumbing.
 - [ ] `limux-host` logs one start line containing the same identity fields
       before any other output.
-- [ ] `system.identify` response gains a `build` object:
+- [ ] `system.identify` response gains a `build` object on both identify paths
+      (standalone `limux-core` dispatcher and live GTK bridge):
       `{"sha":"a1b2c3d","dirty":false,"profile":"release","install_id":"…","channel":"…"}` —
       additive field, no existing keys changed.
 - [ ] Identity is embedded at compile time via a `build.rs` in
-      `rust/limux-cli/` and `rust/limux-host-linux/` (emit
+      `rust/limux-cli/`, `rust/limux-host-linux/`, and the standalone
+      control-server binary crate (`rust/limux-control/`) (emit
       `LIMUX_BUILD_SHA`, `LIMUX_BUILD_DIRTY`, `LIMUX_BUILD_PROFILE` env via
-      `cargo:rustc-env`); when git is unavailable at build time the value is
-      the literal `unknown`, never a fabricated SHA.
+      `cargo:rustc-env`). Because `limux-core` is a dependency crate, it MUST
+      NOT read binary-local `env!` values directly; add a `BuildInfo` value or
+      equivalent injected field on `ControlState`/`Dispatcher`, with
+      `unknown` defaults, and have each binary inject its own build identity
+      before serving `system.identify`. When git is unavailable at build time
+      the value is the literal `unknown`, never a fabricated SHA.
 - [ ] Install-id + channel are read at runtime from an `install-info.json`
       written by `scripts/user-local-install/install-user-local.sh` into the
       install root, located relative to `current_exe()` (walk up ≤3 levels);
@@ -122,7 +128,9 @@ the build that produced it, and there is no one-shot command that answers
 
 ## Functional Requirements
 
-1. `build.rs` for both binaries; SHA via `git rev-parse --short=12 HEAD`
+1. `build.rs` for identity-reporting binary crates (`rust/limux-cli`,
+   `rust/limux-host-linux`, and `rust/limux-control` for
+   `limux-control-server`); SHA via `git rev-parse --short=12 HEAD`
    (aligned with the installer's default install-id SHA length,
    install-user-local.sh:183), dirty via `git status --porcelain` non-empty;
    both tolerate non-git builds. (Codex-required) MUST emit
@@ -137,6 +145,8 @@ the build that produced it, and there is no one-shot command that answers
    source/index changes, the dirty field must be reported as `unknown`, never
    stale `false`. Otherwise incremental rebuilds bake stale SHA/dirty values,
    recreating the exact trust defect this PRD kills.
+   `limux-core` exposes shared build-info response shaping and stores injected
+   build identity; it does not own binary-specific `build.rs` env variables.
 2. Installer change: `install-user-local.sh` writes `install-info.json`
    (`install_id`, `channel`, `source_sha`, `created_utc`) into the install
    root next to `MANIFEST.md`; add it to the SHA256SUMS file list
@@ -164,7 +174,8 @@ the build that produced it, and there is no one-shot command that answers
 - `system.identify` is served by both the standalone dispatcher
   (`rust/limux-core/src/lib.rs`) and the GTK bridge
   (`rust/limux-host-linux/src/control_bridge.rs`) — the `build` object must be
-  added on both paths, sourced from the same const.
+  added on both paths with the same response type/shape, sourced from injected
+  `BuildInfo` rather than a dependency-crate binary env const.
 - Keep pure logic (pattern table, install-info parsing, drift evaluation)
   separate from I/O so it unit-tests without a display, per
   `docs/maintainability.md`.
