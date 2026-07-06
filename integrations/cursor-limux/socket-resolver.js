@@ -1,8 +1,8 @@
 "use strict";
 
 const fs = require("fs");
-const net = require("net");
 const path = require("path");
+const { LimuxClient } = require("./limux-client");
 
 const DEFAULT_PREVIEW_ID = "default";
 
@@ -111,26 +111,6 @@ function resolveSocketCandidates(options = {}, env = process.env) {
   return candidates;
 }
 
-function encodeRequest(request) {
-  return `${JSON.stringify(request)}\n`;
-}
-
-function parseResponse(line) {
-  const response = JSON.parse(line);
-  if (response && response.ok === true) {
-    return response.result === undefined ? null : response.result;
-  }
-  if (response && Object.prototype.hasOwnProperty.call(response, "result")) {
-    return response.result;
-  }
-  if (response && response.error) {
-    throw new Error(
-      typeof response.error === "string" ? response.error : JSON.stringify(response.error),
-    );
-  }
-  throw new Error("invalid Limux response envelope");
-}
-
 function socketFileLooksValid(socketPath) {
   try {
     return fs.statSync(socketPath).isSocket();
@@ -163,51 +143,16 @@ function probeSocket(socketPath, options = {}) {
     });
   }
 
-  return new Promise((resolve) => {
-    const socket = net.connect(socketPath);
-    let buffer = "";
-    let settled = false;
-    const timer = setTimeout(() => finish(false, null, "timeout"), timeoutMs);
-
-    function finish(connected, identity, error) {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timer);
-      socket.destroy();
-      resolve({ path: socketPath, connected, identity, error });
-    }
-
-    socket.setEncoding("utf8");
-    socket.once("connect", () => {
-      socket.write(
-        encodeRequest({
-          id: "cursor-identify-1",
-          method: "system.identify",
-          params: { caller: "cursor-limux" },
-        }),
-      );
-    });
-    socket.on("data", (chunk) => {
-      buffer += chunk;
-      const newline = buffer.indexOf("\n");
-      if (newline === -1) {
-        return;
-      }
-      try {
-        finish(true, parseResponse(buffer.slice(0, newline)), null);
-      } catch (error) {
-        finish(false, null, error.message);
-      }
-    });
-    socket.once("error", (error) => finish(false, null, error.code || error.message));
-    socket.once("end", () => {
-      if (!settled) {
-        finish(false, null, "connection closed before response");
-      }
-    });
-  });
+  const client = new LimuxClient(socketPath, { timeoutMs });
+  return client
+    .sendRequest("system.identify", { caller: "cursor-limux" })
+    .then((identity) => ({ path: socketPath, connected: true, identity, error: null }))
+    .catch((error) => ({
+      path: socketPath,
+      connected: false,
+      identity: null,
+      error: error.code || error.message,
+    }));
 }
 
 module.exports = {
