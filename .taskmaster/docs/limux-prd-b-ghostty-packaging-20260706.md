@@ -178,10 +178,10 @@ packaging task.
 ```bash
 ./scripts/check.sh
 bash scripts/tests/validate-ghostty-resources.sh          # new
-scripts/user-local-install/install-user-local.sh --dry-run --profile release --install-id prd-b-check
-scripts/user-local-install/install-user-local.sh --apply  --profile release --install-id prd-b-check
-infocmp -A ~/.local/limux-reviewed/prd-b-check/share/limux/terminfo xterm-ghostty
-test -f ~/.local/limux-reviewed/prd-b-check/share/limux/terminfo/x/xterm-ghostty
+scripts/user-local-install/install-user-local.sh --dry-run --channel preview --profile release --install-id prd-b-check
+scripts/user-local-install/install-user-local.sh --apply  --channel preview --profile release --install-id prd-b-check
+infocmp -A ~/.local/limux-reviewed/preview/default/prd-b-check/share/limux/terminfo xterm-ghostty
+test -f ~/.local/limux-reviewed/preview/default/prd-b-check/share/limux/terminfo/x/xterm-ghostty
 LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh
 ```
 
