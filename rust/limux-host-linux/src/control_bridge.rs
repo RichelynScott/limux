@@ -279,7 +279,7 @@ fn cursor_restricted_socket_path(runtime_path: &Path) -> PathBuf {
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("limux.sock");
-    if file_name.ends_with(".cursor.sock") {
+    if file_name.ends_with(".cursor.sock") || file_name.ends_with(".cursor") {
         return runtime_path.to_path_buf();
     }
     let cursor_file_name = file_name
@@ -1394,6 +1394,10 @@ mod tests {
         assert_eq!(
             cursor_restricted_socket_path(Path::new("/tmp/limux.cursor.sock")),
             PathBuf::from("/tmp/limux.cursor.sock")
+        );
+        assert_eq!(
+            cursor_restricted_socket_path(Path::new("/tmp/custom.cursor")),
+            PathBuf::from("/tmp/custom.cursor")
         );
     }
 

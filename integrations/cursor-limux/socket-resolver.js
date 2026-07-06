@@ -69,7 +69,7 @@ function runtimeChannelSocketPath(env = process.env) {
 
 function cursorRestrictedSocketPath(socketPath) {
   const parsed = path.parse(socketPath);
-  if (parsed.base.endsWith(".cursor.sock")) {
+  if (parsed.base.endsWith(".cursor.sock") || parsed.base.endsWith(".cursor")) {
     return socketPath;
   }
   const fileName = parsed.base.endsWith(".sock")

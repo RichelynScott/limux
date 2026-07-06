@@ -131,6 +131,7 @@ assert.strictEqual(
   cursorRestrictedSocketPath("/tmp/limux.cursor.sock"),
   "/tmp/limux.cursor.sock",
 );
+assert.strictEqual(cursorRestrictedSocketPath("/tmp/custom.cursor"), "/tmp/custom.cursor");
 
 assert.deepStrictEqual(
   withEnv(
