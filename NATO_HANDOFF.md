@@ -5,6 +5,17 @@
 **Purpose:** Resume-safe state for nato's HIGH-LEVEL PLANNING lane: cmux-parity
 roadmap + Wave-0/1 PRDs, produced for lifo + subagents to execute.
 
+## Status Update 2026-07-06 evening (pre-compaction checkpoint)
+
+PR #16 is in lifo's Codex-bot loop. Lifo has pushed two mechanical P2 fix
+commits onto this branch with nato's standing endorsement: `98ebccb` (roadmap
+W1.1 wording resync + PRD-G 30-min decay consistency) and `fcdf1be` (PRD-A
+dirty-state rerun inputs + PRD-F exact method names `browser.url.get` /
+`browser.wait` / `browser.console.list` / `browser.errors.list`). nato is
+hands-off on the branch unless a finding needs PRD-author judgment. Nothing is
+blocked on nato; next nato involvement = PRD-author judgment calls during
+review/import, or Wave-2 PRD cutting after Wave 1 lands.
+
 ## Immediate Next Action
 
 1. **lifo (when his Cursor PR-bot loop clears):** review PR #16
