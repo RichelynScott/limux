@@ -1,7 +1,7 @@
 //! Bridge the limux control socket onto the GTK host state.
 
 use std::io::{self, Write};
-use std::os::unix::net::UnixStream;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
@@ -1005,65 +1005,65 @@ fn spawn_control_listener(
     surface: MethodSurface,
     control_mode: SocketControlMode,
     dispatch: Arc<dyn Fn(ControlCommand) + Send + Sync + 'static>,
-) {
+) -> io::Result<()> {
+    let listener = bind_listener(
+        &path,
+        SocketMode::Runtime,
+        control_mode.requires_owner_only_socket(),
+    )?;
+
     std::thread::Builder::new()
         .name(name.into())
         .spawn(move || {
-            let listener = match bind_listener(
-                &path,
-                SocketMode::Runtime,
-                control_mode.requires_owner_only_socket(),
-            ) {
-                Ok(listener) => listener,
-                Err(error) => {
-                    eprintln!(
-                        "limux: control socket bind failed ({}): {error}",
-                        path.display()
-                    );
-                    return;
-                }
-            };
-
-            eprintln!("limux: control socket at {}", path.display());
-            let active_connections = Arc::new(AtomicUsize::new(0));
-
-            for stream in listener.incoming() {
-                match stream {
-                    Ok(stream) => {
-                        let Some(slot) = ConnectionSlot::try_acquire(active_connections.clone())
-                        else {
-                            eprintln!("limux: rejecting control client, too many active connections");
-                            continue;
-                        };
-                        let peer = match auth::authorize_peer(&stream, control_mode) {
-                            Ok(peer) => peer,
-                            Err(error) => {
-                                eprintln!("limux: rejected control client: {error}");
-                                continue;
-                            }
-                        };
-                        let dispatch = dispatch.clone();
-                        std::thread::Builder::new()
-                            .name("limux-ctrl-conn".into())
-                            .spawn(move || {
-                                let _slot = slot;
-                                if let Err(error) = handle_client(stream, dispatch.as_ref(), surface)
-                                {
-                                    eprintln!(
-                                        "limux: control connection error for pid={} uid={}: {error}",
-                                        peer.pid, peer.uid
-                                    );
-                                }
-                            })
-                            .ok();
-                    }
-                    Err(error) => {
-                        eprintln!("limux: control accept error: {error}");
-                    }
-                }
-            }
+            run_control_listener(listener, path, surface, control_mode, dispatch);
         })
-        .expect("failed to spawn control server thread");
+        .map_err(|error| io::Error::other(format!("failed to spawn {name} thread: {error}")))?;
+    Ok(())
+}
+
+fn run_control_listener(
+    listener: UnixListener,
+    path: PathBuf,
+    surface: MethodSurface,
+    control_mode: SocketControlMode,
+    dispatch: Arc<dyn Fn(ControlCommand) + Send + Sync + 'static>,
+) {
+    eprintln!("limux: control socket at {}", path.display());
+    let active_connections = Arc::new(AtomicUsize::new(0));
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(stream) => {
+                let Some(slot) = ConnectionSlot::try_acquire(active_connections.clone()) else {
+                    eprintln!("limux: rejecting control client, too many active connections");
+                    continue;
+                };
+                let peer = match auth::authorize_peer(&stream, control_mode) {
+                    Ok(peer) => peer,
+                    Err(error) => {
+                        eprintln!("limux: rejected control client: {error}");
+                        continue;
+                    }
+                };
+                let dispatch = dispatch.clone();
+                std::thread::Builder::new()
+                    .name("limux-ctrl-conn".into())
+                    .spawn(move || {
+                        let _slot = slot;
+                        if let Err(error) = handle_client(stream, dispatch.as_ref(), surface) {
+                            eprintln!(
+                                "limux: control connection error for pid={} uid={}: {error}",
+                                peer.pid, peer.uid
+                            );
+                        }
+                    })
+                    .ok();
+            }
+            Err(error) => {
+                eprintln!("limux: control accept error: {error}");
+            }
+        }
+    }
 }
 
 /// Start the control socket server in a background thread and dispatch each
@@ -1081,29 +1081,42 @@ pub fn start(dispatch: fn(ControlCommand)) {
         eprintln!(
             "limux: runtime socket path already targets Cursor restricted surface; binding restricted listener only"
         );
-        spawn_control_listener(
+        if let Err(error) = spawn_control_listener(
             "limux-cursor-control",
             cursor_path,
             MethodSurface::CursorRestricted,
             control_mode,
             dispatch,
-        );
+        ) {
+            eprintln!("limux: control socket bind failed: {error}");
+        }
         return;
     }
-    spawn_control_listener(
+    if let Err(error) = spawn_control_listener(
         "limux-control",
-        path,
+        path.clone(),
         MethodSurface::Unrestricted,
         control_mode,
         dispatch.clone(),
-    );
-    spawn_control_listener(
+    ) {
+        eprintln!(
+            "limux: control socket bind failed ({}): {error}; not starting Cursor restricted socket",
+            path.display()
+        );
+        return;
+    }
+    if let Err(error) = spawn_control_listener(
         "limux-cursor-control",
-        cursor_path,
+        cursor_path.clone(),
         MethodSurface::CursorRestricted,
         control_mode,
         dispatch,
-    );
+    ) {
+        eprintln!(
+            "limux: cursor control socket bind failed ({}): {error}",
+            cursor_path.display()
+        );
+    }
 }
 
 #[cfg(test)]
