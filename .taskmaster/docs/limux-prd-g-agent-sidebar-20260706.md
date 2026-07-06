@@ -181,8 +181,8 @@ documented.
   for v1; note in the registry's restricted-surface review (Cursor lane) that
   `surface.agent_event` should NOT be in the Cursor-restricted allowlist.
 - Aggregation lives with the state machine, not scattered in UI code.
-- The 10-min decay timer must be testable with injected clock (no sleeps in
-  tests).
+- The configurable 30-minute default decay timer must be testable with
+  injected clock (no sleeps in tests).
 
 ## Success Metrics
 
