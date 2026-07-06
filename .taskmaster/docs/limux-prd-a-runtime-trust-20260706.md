@@ -8,8 +8,13 @@ and every mismatch detectable in one command.
 
 - **Priority:** P0 (Wave 0 — roadmap W0.1 + W0.4)
 - **Dependencies:** none (unblocks PRD-C verify-loop)
-- **Effort:** S (2–4 subagent briefs)
-- **Execution model:** lifo + subagents; every commit gated by `./scripts/check.sh`
+- **Effort:** M (Codex-revised from S: 2× build.rs, installer edit, doctor
+  with 5 checks + JSON schema + staged-mismatch harness, log-triage
+  classifier + fixtures, panic hook, identity in two dispatchers)
+- **Execution model:** lifo + subagents; every commit gated by
+  `./scripts/check.sh` — gate policy: **no NEW failures vs baseline** (repo
+  CLAUDE.md documents a known-failing baseline test,
+  `hook_session_id_falls_back_to_transcript_stem`; verify baseline first)
 - **Channel targeting:** implement on a preview-channel install; stable untouched until verified
 
 ## Problem Statement
@@ -39,6 +44,10 @@ the build that produced it, and there is no one-shot command that answers
 - [ ] `limux --version` prints: crate version, git SHA (short), dirty flag,
       build profile, and — when resolvable from the install root — install-id
       and channel (e.g. `limux-cli 0.1.19 (a1b2c3d, release) install-id=foo-20260707 channel=stable`).
+      NOTE: `--version` does not exist today — limux-cli uses a hand-rolled
+      arg parser (string match arms, e.g. `"--socket"` at main.rs:179); this
+      is a NEW flag added to that parser, not an extension of existing
+      version plumbing.
 - [ ] `limux-host` logs one start line containing the same identity fields
       before any other output.
 - [ ] `system.identify` response gains a `build` object:
@@ -57,44 +66,77 @@ the build that produced it, and there is no one-shot command that answers
 ### US-2: As the operator or an agent, I can detect drift in one command
 - [ ] New CLI subcommand `limux doctor [--json]` reports, each as
       `ok | warn | fail` with a one-line explanation:
-      (a) symlink targets of `~/.local/bin/limux` and `~/.local/bin/limux-cli`
-      and whether they resolve into the same install root;
-      (b) every running `limux-host` process (via `/proc/<pid>/exe`) and
-      whether its binary path matches the current symlink install root;
+      (a) (Codex-revised — the installer creates CHANNEL-SPECIFIC launcher
+      names: legacy `limux`/`limux-cli`, stable `limux-stable*`, preview
+      `limux-preview[-<id>]*`, per `install-user-local.sh:201-229,433-434`)
+      doctor enumerates ALL `limux*` symlinks in `${prefix}/bin` that resolve
+      under `${prefix}/limux-reviewed/`, groups them by channel, and reports
+      each launcher's install root. Resolution must walk
+      symlink → bash wrapper script (`wrapper_content`,
+      install-user-local.sh:345-369) → the `libexec/` binary → install root
+      (the symlink target is a wrapper script, not the binary);
+      (b) every running Limux host process, discovered by iterating
+      `/proc/[0-9]*`, readlink of `exe` (skip on ANY error — EACCES/ENOENT
+      races), matching basename `limux-host` OR `limux` whose path contains
+      `limux-reviewed/` or `target/`, same-uid only — and whether its binary
+      path matches a known install root;
       (c) per discovered channel socket: connectable? and does the host's
       `system.identify.build.sha` match the CLI's own SHA?
       (d) stale socket files that fail to connect;
       (e) Ghostty resource shape of the active install (present/absent —
       shape validation itself stays in PRD-B).
-- [ ] A deliberately staged mismatch (test harness installs two fake install
-      roots and points the symlink at the older one while a fake host runs
-      from the newer) is detected and reported as `warn/fail` — regression
-      test in `rust/limux-cli/src/main.rs` test module or the Xvfb harness.
+- [ ] A deliberately staged mismatch is detected and reported as `warn/fail`.
+      (Codex-revised) Test-harness contract: doctor honors a prefix override
+      (`LIMUX_USER_PREFIX`, matching the installer's existing env) so the
+      test can stage two fake install roots under a temp prefix, point a
+      fake `limux*` symlink→wrapper at the older root, and run a copied
+      binary named `limux-host` from the newer root so `/proc/<pid>/exe`
+      resolves there. Regression test in `rust/limux-cli/src/main.rs` test
+      module or the Xvfb harness.
 - [ ] `limux doctor --json` output is stable/parseable (documented schema in
       the subcommand help text).
+- [ ] Exit codes (acceptance default; lifo may veto at import): `0` all ok,
+      `1` any fail, `2` warns only.
 - [ ] Doctor never mutates state (read-only; no socket writes beyond
       `system.ping`/`system.identify`).
 
 ### US-3: As a triaging agent, I can classify log noise mechanically
-- [ ] `limux doctor --log-triage [--lines N]` reads the newest host log
-      (`~/.local/state/limux/logs/limux-host.log`, and the preview-channel
-      equivalent) and classifies each matching line into
+- [ ] `limux doctor --log-triage [--lines N]` reads the host log
+      (`~/.local/state/limux/logs/limux-host.log` — NOTE (Codex-revised):
+      this is a SINGLE shared path for all channels today, resolved via
+      `LIMUX_HOST_LOG_PATH` override else `dirs::state_dir()`, per
+      `rust/limux-host-linux/src/main.rs:44-46,257-264`; per-channel log
+      paths do NOT exist and are explicitly out of scope for this PRD) and
+      classifies each matching line into
       `benign-env | limux-warning | limux-error | unknown` using a
       documented pattern table (EGL/MESA-LOADER/ZINK/dri2, compositor
       popup-remap → `benign-env`; `Gtk-CRITICAL`/`GLib-GIO-CRITICAL` →
       `limux-error`; unrecognized → `unknown`).
 - [ ] The pattern table lives in one source file with unit tests per pattern
       class (fixture lines lifted verbatim from the real log).
+- [ ] Triage OUTPUT strips ANSI/control bytes from echoed log content
+      (subprocess stderr in the log can carry escape sequences — terminal
+      escape injection into the operator/agent terminal is the risk).
 - [ ] A Rust panic hook in `limux-host` prints the build identity line to
       stderr before the default panic output.
 
 ## Functional Requirements
 
-1. `build.rs` for both binaries; SHA via `git rev-parse --short=9 HEAD`,
-   dirty via `git status --porcelain` non-empty; both tolerate non-git builds.
+1. `build.rs` for both binaries; SHA via `git rev-parse --short=12 HEAD`
+   (aligned with the installer's default install-id SHA length,
+   install-user-local.sh:183), dirty via `git status --porcelain` non-empty;
+   both tolerate non-git builds. (Codex-required) MUST emit
+   `cargo:rerun-if-changed` for the resolved git HEAD/ref paths —
+   worktree-aware: `.git` may be a FILE redirecting to
+   `.git/worktrees/<name>/HEAD` — otherwise incremental rebuilds bake a
+   stale SHA, recreating the exact trust defect this PRD kills.
 2. Installer change: `install-user-local.sh` writes `install-info.json`
    (`install_id`, `channel`, `source_sha`, `created_utc`) into the install
-   root next to `MANIFEST.md`; SHA256SUMS covers it.
+   root next to `MANIFEST.md`; add it to the SHA256SUMS file list
+   (currently a hardcoded list at install-user-local.sh:493-499; SHA256SUMS
+   is written in `--apply` mode only — the dry-run test cannot verify this
+   criterion). Malformed (not just absent) `install-info.json` → fields
+   omitted + a doctor `warn`.
 3. `doctor` dispatch added to the CLI match in `rust/limux-cli/src/main.rs`
    (search anchor: the `"identify" =>` arm) + `print_help()` entry.
 4. Host start-line + panic hook in `rust/limux-host-linux/src/main.rs`.

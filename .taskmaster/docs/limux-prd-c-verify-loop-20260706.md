@@ -19,7 +19,9 @@ clear the current needs-verification backlog on a fresh current-main install.
 
 ## Problem Statement
 
-Defect-inventory finding §E9: six fixes are merged but unverified live —
+Six items are unverified live (five merged fixes + one watch item) — this
+in-PRD list is the NORMATIVE backlog for US-3 (the "defect inventory"
+research artifact is not a committed repo file):
 keyboard/modifier (#14, marked `done` with no operator confirmation recorded
 anywhere), window controls (#15, `review`), resize-storm coalescing fixes,
 sidebar resize handle restore, runtime-channel isolation (merged after the
@@ -43,12 +45,15 @@ checklist, so verification happens ad-hoc and results evaporate.
 - [ ] `docs/verification/post-install-checklist-v1.md` exists with numbered
       steps, each: exact action → expected result → PASS/FAIL checkbox.
 - [ ] Checklist covers, at minimum: plain typing + modifier chords + paste
-      (Ctrl+V / Ctrl+Shift+V) in a fresh pane (#14 class); window controls
-      (minimize/maximize/close) + edge hitbox (#15 class); drag-resize soak
-      ≥30 s while a live agent TUI (claude or codex) is running (resize-storm
-      class); sidebar resize handle + collapse/restore; close-and-relaunch
-      session restore of a multi-workspace layout; `limux notify` toast +
-      sidebar dot; `limux doctor` reports clean/no-drift.
+      (Ctrl+V / Ctrl+Shift+V) in a fresh pane (#14 class); mouse
+      selection-copy → paste elsewhere, verifying no stuck-left-click state
+      (Codex-required — the sixth backlog item, `LIFO_HANDOFF.md` watch
+      item); window controls (minimize/maximize/close) + edge hitbox (#15
+      class); drag-resize soak ≥30 s while a live agent TUI (claude or
+      codex) is running (resize-storm class); sidebar resize handle +
+      collapse/restore; close-and-relaunch session restore of a
+      multi-workspace layout; `limux notify` toast + sidebar dot;
+      `limux doctor` reports clean/no-drift.
 - [ ] Setup section is copy-paste: install preview-channel build from current
       main, launch, run checklist (exact commands included).
 - [ ] Checklist header records: build SHA + install-id (from
@@ -72,12 +77,28 @@ checklist, so verification happens ad-hoc and results evaporate.
 - [ ] #14: typing/modifier/paste verdict recorded → task stays `done` or is
       reopened with the captured evidence (`LIMUX_DEBUG_KEYS=1` log if FAIL).
 - [ ] #15: window controls verdict recorded → `review` → `done` or reopened.
-- [ ] Resize-soak, sidebar-handle, and session-restore verdicts recorded.
+- [ ] Resize-soak, sidebar-handle, session-restore, and stuck-click/
+      selection-copy verdicts recorded.
 - [ ] Runtime-channel isolation smoke: stable + preview run simultaneously
       without socket interference (`scripts/tests/runtime-isolation-smoke.sh`
       as the scripted part; operator confirms both windows behave).
-- [ ] If all PASS: symlinks promoted to the new install; if any FAIL: verdict
-      + evidence recorded, promotion blocked, new TaskMaster task filed.
+- [ ] (Codex-revised — promotion defined as an exact operation) If ALL items
+      PASS on a **full** run (subset runs may close individual tasks but
+      NEVER promote): lifo promotes by running
+      `scripts/user-local-install/install-user-local.sh --apply --profile
+      release --channel stable --install-id <verified-sha-id>` from the SAME
+      source SHA the preview run verified — i.e. promotion is a fresh
+      stable-channel install of the verified source, not a symlink hand-edit.
+      The operator then relaunches from the stable launcher. NOTE: the
+      operator's current daily launcher is the LEGACY name
+      (`~/.local/bin/limux`); the checklist doc must state which launcher
+      name the operator uses post-promotion (`limux-stable`) or include the
+      explicit legacy-launcher update step — resolve at checklist-authoring
+      time with the operator. If any FAIL:
+      verdict + evidence recorded, promotion blocked, new TaskMaster task
+      filed via `task-master-reviewed add-task`; reopened tasks get
+      `task-master-reviewed set-status --id <n> --status pending` plus an
+      evidence note.
 
 ## Functional Requirements
 
@@ -108,10 +129,18 @@ checklist, so verification happens ad-hoc and results evaporate.
 - Runtime-channel isolation (task #19) shipped `--channel stable|preview[:id]`
   with separate sockets/app-IDs/state — the checklist's install step must use
   preview explicitly so the operator's daily driver is never displaced by an
-  unverified build (contract doc: `limux-runtime-channel-contract-20260702.md`).
-- Keep checklist items symptom-anchored to the defect inventory so a FAIL maps
-  directly to a known class (typing→#14/resource-shape, `?` glyphs→font-env,
-  bracketed paste→shell-mode — the symptom-split from `LIFO_HANDOFF.md`).
+  unverified build (contract doc:
+  `docs/future-improvements/limux-runtime-channel-contract-20260702.md`).
+- Run files record the checklist file's git SHA, closing the
+  version-freeze loophole cheaply.
+- Keep checklist items symptom-anchored so a FAIL maps directly to a known
+  class. The checklist doc MUST inline this three-row symptom-split table
+  (normative here; originally derived from the 2026-07-01 triage):
+  | Symptom | Likely class |
+  |---|---|
+  | Typing corrupted / keys act as shortcuts | keyboard-modifier (#14) or Ghostty resource shape (PRD-B) |
+  | `?` / boxed glyphs in prompt | environmental font (Nerd Font / Powerlevel10k) — NOT a Limux input bug |
+  | `00~...01~` around pasted text | bracketed-paste shell mode — NOT a Limux input bug |
 
 ## Success Metrics
 
@@ -134,7 +163,7 @@ Docs/process only — revert commits. No state migrations.
 
 ## Open Questions
 
-1. Should run files live in-repo (proposed) or only as FYI entries? Proposed:
-   in-repo — greppable history beats journal prose.
+1. ~~Run files in-repo vs FYI-only~~ — CLOSED: in-repo (US-2 acceptance is
+   binding); greppable history beats journal prose.
 2. Does the operator want a reminder surface (e.g. `limux doctor` warning when
    the running build has no recorded checklist run)? Deferred to v2.

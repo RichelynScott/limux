@@ -9,16 +9,27 @@ task #20 and the existing plan note.
 
 - **Priority:** P0 (Wave 0 — roadmap W0.5; TaskMaster #20)
 - **Dependencies:** none. Verified live via the PRD-C checklist once both land.
-- **Effort:** S
+- **Effort:** M (Codex-revised from S: includes the tab.action bridge route +
+  ControlCommand + window wiring that does not exist today — see US-2)
 - **Execution model:** lifo + subagents; `./scripts/check.sh` gate per commit
 - **Channel targeting:** preview build; live confirmation via PRD-C checklist
+- **Gate policy:** `./scripts/check.sh` per commit with **no NEW failures vs
+  baseline** (repo CLAUDE.md documents a known-failing baseline test)
 
 ## Problem Statement
 
-The attention system marks a pane needing operator input by adding the
-`.limux-pane-attention` CSS class with a hover-clear timer
-(`rust/limux-host-linux/src/pane.rs` — `mark_pane_needs_attention` lineage;
-`window.rs` focus/attention wiring). Live evidence (screenshot
+(Codex-revised — current-state baseline) The attention system marks a pane
+needing operator input by adding the `limux-pane-content-attention` CSS class
+(`rust/limux-host-linux/src/pane.rs:29`) to the pane's `content_overlay`,
+rendered as an **inset box-shadow** (`PANE_CSS`, pane.rs:388-390), with a
+hover-clear timer (`mark_pane_needs_attention` pane.rs:201,
+`schedule_attention_clear` pane.rs:246). A partial retarget already landed
+(commits `cedcb3a`/`c0a294c` lineage) — the OLD class name
+`.limux-pane-attention` no longer exists, and the guard test
+`pane_attention_css_targets_content_overlay_not_outer_shell` (pane.rs:3583)
+asserts its ABSENCE (executors: update/extend that guard test, do not trip
+it). The defect persists because a parent's inset box-shadow paints beneath
+its children, including the GLArea terminal. Live evidence (screenshot
 `docs/future-improvements/screenshots/limux-pane-attention-border-layering-20260701.png`,
 plan note `docs/future-improvements/limux-pane-attention-border-and-color-flags-20260701.md`)
 shows the border drawn *behind* pane content — largely hidden on the right
@@ -45,21 +56,39 @@ flags, preserving unread-state semantics; upstream precedent cmux PR
       `GtkOverlay` layer above the pane's content widget (or equivalent
       top-layer widget), not as a CSS border on a node that content overlaps.
 - [ ] Verified for: single pane, H-split right pane, V-split bottom pane,
-      nested 3-pane layout, and after drag-resizing the split — via Xvfb
-      screenshot assertions (`debug.window.screenshot` +
-      `debug.panel_snapshot` already exist in the debug surface) or a
-      widget-tree unit test asserting the overlay z-order.
+      nested 3-pane layout, and after drag-resizing the split — PRIMARY
+      acceptance is a widget-tree unit test asserting the overlay z-order
+      (overlay indicator is an `add_overlay` child of the pane's
+      `content_overlay`, which is already a `gtk::Overlay`, pane.rs:552 —
+      precedent: `content_drop_overlay` uses `add_overlay` +
+      `set_can_target(false)`, pane.rs:561-562). (Codex-revised) Do NOT use
+      `debug.window.screenshot`/`debug.panel_snapshot` as verification —
+      they return mock/core-state output (`write_mock_png`, lib.rs:4821) and
+      are not routed on the live bridge; real GTK pixel capture is out of
+      scope for this PRD.
 - [ ] Hover-clear behavior unchanged (existing timer semantics preserved —
       regression test).
-- [ ] Border remains visible with background opacity configured
-      (`sanitize_background_opacity` path).
+- [ ] Overlay indicator widget is opaque and independent of terminal
+      background opacity (`sanitize_background_opacity` path,
+      window.rs:2137) — asserted structurally (widget opacity property),
+      not visually.
 - [ ] No `Gtk-CRITICAL` output introduced across the Xvfb suite.
 
 ### US-2: As the operator, I can color-tag panes to tell agents apart
 - [ ] New `tab-action` actions: `set_flag_color <color>` and `clear_flag_color`
-      (CLI: `limux tab-action --action set_flag_color --color <named|#hex>`),
-      routed like existing `tab.action` verbs (CLI → bridge → core).
-- [ ] A small fixed named palette (≥6 colors) + `#rrggbb` accepted; invalid
+      (CLI: `limux tab-action --action set_flag_color --color <named>`).
+      (Codex-required — DEPENDENCY CALLOUT) `tab.action` does NOT route on
+      the live GTK bridge today: `control_bridge.rs` `METHODS` (lines 20-39)
+      has no `tab.action` and the bridge never forwards to core — it only
+      exists in the standalone dispatcher (`limux-core` lib.rs:6126). This
+      PRD therefore includes: a new bridge route + `ControlCommand` variant +
+      window.rs metadata application for `tab.action` (ALL existing actions:
+      rename/clear_name/pin/unpin/mark_unread/mark_read, plus the two new
+      ones) — this is the bulk of US-2's work, not an add-two-verbs edit.
+      If PRD-E's registry lands first, classify there instead of ad-hoc.
+- [ ] (Codex-revised — kills the CSS-injection surface) v1 accepts the fixed
+      NAMED palette only (≥6 colors); arbitrary `#rrggbb` is deferred.
+      Validation is an allowlist match BEFORE any string reaches CSS; invalid
       color → clean error, no partial state.
 - [ ] Flag color renders as a compact, always-visible indicator on the pane's
       tab AND a subtle pane-edge accent, visually distinct from both the
@@ -75,8 +104,11 @@ flags, preserving unread-state semantics; upstream precedent cmux PR
       fields — setting/clearing one never mutates the other (unit test).
 - [ ] Unread dot/styling unchanged when a flag color is set (regression test
       on the sidebar/tab unread path).
-- [ ] `sidebar-state --workspace <id>` output extended additively with flag
-      color info; no existing fields renamed.
+- [ ] Flag color is carried additively in the live bridge's `pane.surfaces`
+      response (per-surface `flag_color` field) — `sidebar-state` is a
+      CLI-side aggregation over `workspace.list` (main.rs:4660) and holds no
+      per-tab data, so `pane.surfaces` is the named carrier; `sidebar-state`
+      folds it in from there. No existing fields renamed.
 
 ## Functional Requirements
 
@@ -131,9 +163,11 @@ LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh   # extended with flag-co
 ## Rollback Plan
 
 `git revert` the feature commits. `session.json` field is additive/optional —
-older builds ignore it; no migration needed. If the overlay approach causes
-regressions on WSLg, fall back to the current CSS-border rendering (defect
-severity returns to status quo, not worse).
+older builds load it safely (`TabState` uses serde defaults, no
+`deny_unknown_fields`, layout_state.rs:159) but an older build that
+loads-then-saves silently DROPS `flag_color` (accepted). If the overlay
+approach causes regressions on WSLg, fall back to the current inset
+box-shadow rendering (defect severity returns to status quo, not worse).
 
 ## Open Questions
 

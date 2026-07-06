@@ -41,16 +41,36 @@ packaging task.
 ## User Stories
 
 ### US-1: As the operator, a fresh install gives me working shell integration and terminfo
-- [ ] After `install-user-local.sh --apply`, the install root contains
-      `share/ghostty/shell-integration/` and `share/ghostty/terminfo/` with a
-      compiled `xterm-ghostty` entry.
-- [ ] `infocmp -A <install-root>/share/ghostty/terminfo xterm-ghostty` exits 0.
-- [ ] The install `MANIFEST.md` records `Ghostty resources: <path>` and
-      `Ghostty terminfo: found` (exact strings kept grep-stable), plus the
-      resource origin (which build path produced them).
+- [ ] (Codex-revised — layout must match the RUNTIME contract, not a nested
+      shape) After `install-user-local.sh --apply`, the install root contains
+      `share/limux/ghostty/shell-integration/` AND the **sibling**
+      `share/limux/terminfo/` with compiled entry FILES at
+      `terminfo/x/xterm-ghostty` (and/or `terminfo/g/ghostty`). This is the
+      exact shape `is_ghostty_resources_dir` + `has_ghostty_terminfo` require
+      (`rust/limux-host-linux/src/main.rs:60-72`: shell-integration inside the
+      resources dir; terminfo as a sibling under the resources dir's parent —
+      NEVER nested inside `ghostty/`), and matches the installer's existing
+      target layout (`install-user-local.sh:395-414`).
+- [ ] `infocmp -A <install-root>/share/limux/terminfo xterm-ghostty` exits 0,
+      AND the entry file `share/limux/terminfo/x/xterm-ghostty` exists as a
+      regular file (the runtime checks file paths, not infocmp).
+- [ ] The install `MANIFEST.md` keeps the existing value shapes
+      (`Ghostty resources: <path>`, `Ghostty terminfo: <path>`) and adds two
+      new fields: `Ghostty resource shape: valid|DEGRADED` and
+      `Ghostty resource origin: <source description>` (origin NEVER goes into
+      the `Ghostty resources:` line — the historical invariant "a valid
+      install must not say `Ghostty resources: .../ghostty/src`" from
+      `docs/terminal-input-regression-20260701.md:89` must keep working as a
+      grep).
 - [ ] A pane opened in the installed build gets `TERM=xterm-ghostty` resolved
-      successfully (no `?` prompt-byte corruption) — verified via the Xvfb
-      smoke harness reading the pane's `echo $TERM` output.
+      successfully (no `?` prompt-byte corruption). (Codex-revised) Mechanism:
+      the Xvfb smoke harness currently runs the cargo build, not an install
+      root — this criterion requires a scoped harness extension that targets
+      the install root via the existing `LIMUX_HOST_BIN` override plus a
+      `read-screen` assertion on `echo $TERM`. If that extension proves
+      out-of-budget, the fallback acceptance is the repo-build proxy (staged
+      resources + `GHOSTTY_RESOURCES_DIR` pointed at the staged bundle) with
+      the install-root check deferred to the PRD-C live checklist.
 - [ ] `SHA256SUMS` covers the shipped resource files.
 
 ### US-2: As the operator, the installer refuses to produce a known-bad install
@@ -67,10 +87,13 @@ packaging task.
       verdict.
 
 ### US-3: As a maintainer, CI catches packaging regressions
-- [ ] A test (script under `scripts/tests/`, wired into CI like
-      `validate-split-icons.sh`) builds or stages a resource bundle and
-      asserts: shell-integration present, compiled terminfo present,
-      `infocmp` succeeds, manifest strings present.
+- [ ] A test script `scripts/tests/validate-ghostty-resources.sh` builds or
+      stages a resource bundle and asserts: shell-integration present,
+      compiled terminfo entry FILES present, `infocmp` succeeds, manifest
+      fields present. (Codex-revised) It is wired into CI as an explicit new
+      step in `.github/workflows/rust-quality.yml` — note `validate-split-icons.sh`
+      is currently wired into NO workflow, so it is not a precedent; add it
+      to the same new step while there.
 - [ ] A regression test encodes the `ghostty/src` failure class: given a
       staged source-only directory, the installer's shape check rejects it.
 - [ ] `docs/terminal-input-regression-20260701.md` gains a closing note
@@ -78,24 +101,36 @@ packaging task.
 
 ## Functional Requirements
 
-1. **Resource production** — decide at implementation time, in this order of
-   preference, and document the choice in the PRD's implementation notes:
+1. **Resource production** — deterministic default, in this order
+   (Codex-revised: the vendored tree contains NO tic-consumable terminfo
+   source — `ghostty/src/terminfo/` is Zig code; Ghostty's `ghostty.terminfo`
+   is generated at build time by running the built binary with `+terminfo`,
+   per `ghostty/src/build/GhosttyResources.zig:38-50` — so a source must be
+   vendored explicitly):
    a. If a vendored-Ghostty build output already exists
       (`ghostty/zig-out/share/ghostty/`), stage from it (current installer
       already prefers this path — keep).
-   b. Otherwise produce a minimal valid bundle without a full Ghostty build:
-      copy `shell-integration/` from the vendored source tree AND compile
-      terminfo standalone with `tic -x` from Ghostty's terminfo source into
-      `terminfo/` (this yields the exact valid shape the runtime check
-      requires). The vendored `ghostty/` tree itself remains read-only —
-      all outputs are staged into the install root or a build dir.
+   b. **Default path:** vendor a pinned `ghostty.terminfo` snapshot into
+      Limux at `scripts/user-local-install/resources/ghostty.terminfo` with a
+      provenance header (upstream Ghostty version + how it was generated +
+      date); at install time `tic -x` compiles it into
+      `share/limux/terminfo/`, and `shell-integration/` is copied from the
+      vendored source tree (`ghostty/src/shell-integration/` — bash, zsh,
+      fish, elvish, nushell). The vendored `ghostty/` tree itself remains
+      read-only; all outputs stage into the install root.
+      NOTE: the ghostty submodule may be uninitialized in fresh worktrees —
+      the installer/brief must run `git submodule update --init ghostty`
+      first (checkout-only; this does NOT trigger the zig-BUILD consensus
+      gate).
    c. Full `zig build` of vendored Ghostty is allowed but NOT required by
       this PRD (prior consensus gates on zig mutation work apply —
-      `docs/LIMUX_GHOSTTY_ZIG_CONSENSUS_GATE_2026-05-29.md`).
-2. **Shape validation function** shared, not duplicated: extract/reuse the
-   runtime validation logic from `rust/limux-host-linux/src/main.rs`
-   (`resolves_shell_integration_*` test lineage) OR implement the identical
-   contract in the installer script with the contract documented in both
+      `docs/LIMUX_GHOSTTY_ZIG_CONSENSUS_GATE_2026-05-29.md`; status there is
+      "GO for operator approval; execution WAIT").
+2. **Shape validation function** shared, not duplicated: the runtime contract
+   lives in `is_ghostty_resources_dir` + `has_ghostty_terminfo`
+   (`rust/limux-host-linux/src/main.rs:60-72`; current guard test:
+   `resource_env_ignores_shell_integration_without_terminfo`, main.rs:785).
+   The installer implements the IDENTICAL contract with a comment in both
    places referencing each other.
 3. Installer edits confined to `scripts/user-local-install/install-user-local.sh`
    (+ new helper under `scripts/user-local-install/` if needed).
@@ -118,10 +153,19 @@ packaging task.
   sibling terminfo — the installer's definition of "valid" must match it
   exactly, or installs will pass installer validation and still be rejected
   at runtime.
-- WSL2 note: `tic` writes hashed-db or directory-tree terminfo depending on
-  ncurses build; use `tic -x -o <dir>` to force the directory form the
-  runtime expects.
-- Keep the manifest strings stable — PRD-A's `doctor` greps them.
+- (Codex-revised) `tic -x -o <dir>` sets the output database LOCATION;
+  directory-tree vs hashed-db is fixed by the ncurses build (directory form
+  is the Debian/Ubuntu default). The load-bearing guard is asserting
+  `<dir>/x/xterm-ghostty` exists as a file AFTER tic, not trusting the flag.
+- SHA256SUMS currently hashes a fixed 6-file list apply-only
+  (`install-user-local.sh:492-499`); covering a variable resource file set
+  requires enumerating (`find share/limux -type f | sort | xargs sha256sum`
+  style). Dry-run can never verify SHA256SUMS or the tic compile — the
+  dry-run shape verdict is a plan statement, and the PRD accepts that.
+- Manifest field contract (`Ghostty resource shape:` / `Ghostty resource
+  origin:`) is shared with PRD-A's doctor resource-presence check — PRD-A
+  checks shape directly on disk; the manifest fields are the human/audit
+  record. Keep both consistent.
 
 ## Success Metrics
 
@@ -136,7 +180,8 @@ packaging task.
 bash scripts/tests/validate-ghostty-resources.sh          # new
 scripts/user-local-install/install-user-local.sh --dry-run --profile release --install-id prd-b-check
 scripts/user-local-install/install-user-local.sh --apply  --profile release --install-id prd-b-check
-infocmp -A ~/.local/limux-reviewed/prd-b-check/share/ghostty/terminfo xterm-ghostty
+infocmp -A ~/.local/limux-reviewed/prd-b-check/share/limux/terminfo xterm-ghostty
+test -f ~/.local/limux-reviewed/prd-b-check/share/limux/terminfo/x/xterm-ghostty
 LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh
 ```
 
