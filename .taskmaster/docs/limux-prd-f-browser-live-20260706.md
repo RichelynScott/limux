@@ -95,9 +95,9 @@ the decision doc is signed.
 - [ ] Wave-1 method set live-routed, using PRD-E's existing enum (registry
       class `gtk-mutation`; no new class): `browser.navigate` (exact core
       method name — `goto` is a CLI verb only, main.rs:5044) /
-      `browser.url/wait`, `browser.snapshot` (a11y-tree/text),
+      `browser.url.get`, `browser.wait`, `browser.snapshot` (a11y-tree/text),
       `browser.screenshot`, `browser.find.*`, `browser.click`,
-      `browser.fill`, `browser.get.*`, `browser.console.list/errors.list`,
+      `browser.fill`, `browser.get.*`, `browser.console.list`, `browser.errors.list`,
       `browser.tab.list/new/switch/close`. Registry classifications use
       EXACT core method names throughout.
 - [ ] (Codex-required — binding invariant against PRD-E) **No `browser.*`

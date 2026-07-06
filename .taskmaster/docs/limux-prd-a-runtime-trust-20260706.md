@@ -128,8 +128,13 @@ the build that produced it, and there is no one-shot command that answers
    both tolerate non-git builds. (Codex-required) MUST emit
    `cargo:rerun-if-changed` for the resolved git HEAD/ref paths —
    worktree-aware: `.git` may be a FILE redirecting to
-   `.git/worktrees/<name>/HEAD` — otherwise incremental rebuilds bake a
-   stale SHA, recreating the exact trust defect this PRD kills.
+   `.git/worktrees/<name>/HEAD` — and MUST also cover dirty-state inputs:
+   the worktree index path (`.git/index` or `.git/worktrees/<name>/index`)
+   plus each binary crate's `Cargo.toml`, `build.rs`, and `src/` tree. If
+   the implementation cannot make the dirty flag rerun on source/index
+   changes, the dirty field must be reported as `unknown`, never stale
+   `false`. Otherwise incremental rebuilds bake stale SHA/dirty values,
+   recreating the exact trust defect this PRD kills.
 2. Installer change: `install-user-local.sh` writes `install-info.json`
    (`install_id`, `channel`, `source_sha`, `created_utc`) into the install
    root next to `MANIFEST.md`; add it to the SHA256SUMS file list
