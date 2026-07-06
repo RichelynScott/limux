@@ -93,6 +93,17 @@ assert.throws(() => parseResponse("{}"), /invalid Limux response envelope/);
   const client = new LimuxClient("/tmp/limux.sock");
   await assert.rejects(() => client.sendRequest("", {}), /method must be a non-empty string/);
   await assert.rejects(() => client.sendRequest("workspace.list", []), /params must be a plain object/);
+  await assert.rejects(
+    () => client.sendRequest("workspace.list", { bad: BigInt(1) }),
+    /invalid Limux request JSON/,
+  );
+
+  const circular = {};
+  circular.self = circular;
+  await assert.rejects(
+    () => client.sendRequest("workspace.list", circular),
+    /invalid Limux request JSON/,
+  );
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

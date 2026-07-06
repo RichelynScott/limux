@@ -49,6 +49,13 @@ function sendRequest(socketPath, request, options = {}) {
     return Promise.reject(error);
   }
 
+  let encodedRequest;
+  try {
+    encodedRequest = encodeRequest(request);
+  } catch (error) {
+    return Promise.reject(new Error(`invalid Limux request JSON: ${error.message}`));
+  }
+
   const timeoutMs = options.timeoutMs || 500;
 
   return new Promise((resolve, reject) => {
@@ -82,7 +89,7 @@ function sendRequest(socketPath, request, options = {}) {
 
     socket.setEncoding("utf8");
     socket.once("connect", () => {
-      socket.write(encodeRequest(request));
+      socket.write(encodedRequest);
     });
     socket.on("data", (chunk) => {
       buffer += chunk;
