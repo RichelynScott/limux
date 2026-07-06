@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::env;
 use std::sync::{Arc, Mutex};
 
 use limux_protocol::{validate_terminal_text_payload, V2Request, V2Response};
@@ -173,6 +174,37 @@ const COMMANDS: &[&str] = &[
     "debug.type",
     "debug.window.screenshot",
 ];
+
+fn runtime_channel_label_from_env() -> Option<String> {
+    let raw = env::var("LIMUX_CHANNEL").ok()?;
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+
+    match raw {
+        "stable" => Some("stable".to_string()),
+        "preview" => {
+            let id = env::var("LIMUX_PREVIEW_ID")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "default".to_string());
+            Some(format!("preview/{id}"))
+        }
+        _ => Some(raw.replace(':', "/")),
+    }
+}
+
+fn runtime_identity_fields() -> (u32, Option<String>, String) {
+    let pid = std::process::id();
+    let channel = runtime_channel_label_from_env();
+    let runtime_id = match &channel {
+        Some(channel) => format!("limux-core:{pid}:{channel}"),
+        None => format!("limux-core:{pid}"),
+    };
+    (pid, channel, runtime_id)
+}
 
 type CommandPaletteSpec = (
     &'static str,
@@ -4820,10 +4852,14 @@ fn handle_command(
                 .get("caller")
                 .cloned()
                 .unwrap_or_else(|| focused.clone());
+            let (pid, channel, runtime_id) = runtime_identity_fields();
             Ok(json!({
                 "name": "limux-control",
                 "protocol": "v1+v2",
                 "version": env!("CARGO_PKG_VERSION"),
+                "pid": pid,
+                "channel": channel,
+                "runtime_id": runtime_id,
                 "focused": focused,
                 "caller": caller,
             }))
@@ -6144,6 +6180,11 @@ mod tests {
             .await;
         let identify_result = identify.result.expect("identify result");
         assert_eq!(identify_result["name"], "limux-control");
+        assert_eq!(identify_result["pid"], std::process::id());
+        assert!(identify_result["runtime_id"]
+            .as_str()
+            .expect("runtime_id should be a string")
+            .contains(&std::process::id().to_string()));
 
         let capabilities = dispatcher
             .dispatch(request("system.capabilities", json!({})))

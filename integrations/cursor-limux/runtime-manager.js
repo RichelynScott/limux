@@ -23,6 +23,8 @@ const IDENTITY_KEYS = [
   "version",
 ];
 
+const DISCRIMINATOR_KEYS = ["runtime_id", "instance_id", "pid"];
+
 function isPlainObject(value) {
   return (
     value !== null &&
@@ -50,6 +52,16 @@ function identityFingerprint(identity, socketPath) {
   return JSON.stringify({
     socketPath,
     identity: stableIdentity(identity),
+  });
+}
+
+function hasRuntimeDiscriminator(identity) {
+  if (!isPlainObject(identity)) {
+    return false;
+  }
+  return DISCRIMINATOR_KEYS.some((key) => {
+    const value = identity[key];
+    return value !== undefined && value !== null && String(value).trim().length > 0;
   });
 }
 
@@ -211,11 +223,20 @@ class RuntimeManager {
 
   async verifySelectedRuntime(options = {}) {
     const selected = await this.ensureRuntime(options);
+    if (!hasRuntimeDiscriminator(selected.identity)) {
+      this.clearSelection();
+      throw new Error("selected Limux runtime identity is missing a runtime discriminator");
+    }
+
     const timeoutMs = options.timeoutMs || this.timeoutMs;
     const current = await this.probeSocket(selected.path, { timeoutMs });
     if (!current.connected) {
       this.clearSelection();
       throw new Error(`selected Limux runtime is unavailable: ${current.error || "not connected"}`);
+    }
+    if (!hasRuntimeDiscriminator(current.identity)) {
+      this.clearSelection();
+      throw new Error("current Limux runtime identity is missing a runtime discriminator");
     }
 
     const currentFingerprint = identityFingerprint(current.identity, selected.path);
@@ -242,6 +263,7 @@ class RuntimeManager {
 
 module.exports = {
   RuntimeManager,
+  hasRuntimeDiscriminator,
   identityFingerprint,
   isStateChangingMethod,
   runtimeQuickPickItems,

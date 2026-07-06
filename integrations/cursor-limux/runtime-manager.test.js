@@ -1,7 +1,12 @@
 "use strict";
 
 const assert = require("assert");
-const { RuntimeManager, isStateChangingMethod, runtimeQuickPickItems } = require("./runtime-manager");
+const {
+  RuntimeManager,
+  hasRuntimeDiscriminator,
+  isStateChangingMethod,
+  runtimeQuickPickItems,
+} = require("./runtime-manager");
 
 function candidate(source, socketPath) {
   return { source, path: socketPath, explicit: source === "setting" };
@@ -44,6 +49,8 @@ assert.strictEqual(isStateChangingMethod("workspace.list"), false);
 assert.strictEqual(isStateChangingMethod("surface.read_text"), false);
 assert.strictEqual(isStateChangingMethod("workspace.select"), true);
 assert.strictEqual(isStateChangingMethod("cursor.workspace_open_folder"), true);
+assert.strictEqual(hasRuntimeDiscriminator({ name: "limux-control", version: "0.1.19" }), false);
+assert.strictEqual(hasRuntimeDiscriminator({ name: "limux-control", pid: 123 }), true);
 
 assert.deepStrictEqual(
   runtimeQuickPickItems([
@@ -155,6 +162,31 @@ assert.deepStrictEqual(
     /runtime identity changed/,
   );
   assert.strictEqual(clientCalled, false);
+
+  let oldHostClientCalled = false;
+  const oldHost = managerWith(
+    [
+      {
+        path: "/tmp/limux-old.sock",
+        connected: true,
+        identity: { name: "limux-control", protocol: "v1+v2", version: "0.1.19" },
+      },
+    ],
+    {
+      clientFactory: () => {
+        oldHostClientCalled = true;
+        return {
+          sendRequest: async () => ({ ok: true }),
+        };
+      },
+    },
+  );
+  await oldHost.selectRuntime();
+  await assert.rejects(
+    () => oldHost.sendRequest("workspace.select", { workspace_id: "workspace-a" }),
+    /missing a runtime discriminator/,
+  );
+  assert.strictEqual(oldHostClientCalled, false);
 
   let sent = null;
   const stable = managerWith(
