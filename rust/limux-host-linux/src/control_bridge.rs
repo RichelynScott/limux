@@ -279,6 +279,9 @@ fn cursor_restricted_socket_path(runtime_path: &Path) -> PathBuf {
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("limux.sock");
+    if file_name.ends_with(".cursor.sock") {
+        return runtime_path.to_path_buf();
+    }
     let cursor_file_name = file_name
         .strip_suffix(".sock")
         .map(|stem| format!("{stem}.cursor.sock"))
@@ -1074,6 +1077,19 @@ pub fn start(dispatch: fn(ControlCommand)) {
     let path = resolve_socket_path(None, SocketMode::Runtime);
     let cursor_path = cursor_restricted_socket_path(&path);
     let control_mode = SocketControlMode::from_env();
+    if path == cursor_path {
+        eprintln!(
+            "limux: runtime socket path already targets Cursor restricted surface; binding restricted listener only"
+        );
+        spawn_control_listener(
+            "limux-cursor-control",
+            cursor_path,
+            MethodSurface::CursorRestricted,
+            control_mode,
+            dispatch,
+        );
+        return;
+    }
     spawn_control_listener(
         "limux-control",
         path,
@@ -1361,6 +1377,10 @@ mod tests {
         assert_eq!(
             cursor_restricted_socket_path(Path::new("/tmp/custom")),
             PathBuf::from("/tmp/custom.cursor")
+        );
+        assert_eq!(
+            cursor_restricted_socket_path(Path::new("/tmp/limux.cursor.sock")),
+            PathBuf::from("/tmp/limux.cursor.sock")
         );
     }
 
