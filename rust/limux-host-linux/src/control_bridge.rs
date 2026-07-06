@@ -1473,12 +1473,18 @@ mod tests {
             r#"{"id":3,"method":"window.present","params":{}}"#,
             &|command| match command {
                 ControlCommand::PresentWindow { reply } => {
-                    let _ = reply.send(Ok(json!({ "state": "succeeded" })));
+                    let _ = reply.send(Ok(json!({
+                        "state": "presentation-requested",
+                        "success_confirmed": false
+                    })));
                 }
                 other => panic!("unexpected command: {other:?}"),
             },
         );
         assert_eq!(window_present.error, None);
+        let result = window_present.result.expect("window.present result");
+        assert_eq!(result["state"], "presentation-requested");
+        assert_eq!(result["success_confirmed"], false);
 
         let pane_create = dispatch_restricted_request(
             r#"{"id":4,"method":"cursor.pane_create_empty","params":{"surface_id":"surface:4:tab","direction":"down"}}"#,

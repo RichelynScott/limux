@@ -67,12 +67,33 @@ function runtimeChannelSocketPath(env = process.env) {
   return { channel: channel.label, path: path.join("/tmp", fileName) };
 }
 
+function cursorRestrictedSocketPath(socketPath) {
+  const parsed = path.parse(socketPath);
+  if (parsed.base.endsWith(".cursor.sock")) {
+    return socketPath;
+  }
+  const fileName = parsed.base.endsWith(".sock")
+    ? `${parsed.base.slice(0, -".sock".length)}.cursor.sock`
+    : `${parsed.base}.cursor`;
+  return path.join(parsed.dir, fileName);
+}
+
 function pushCandidate(candidates, seen, candidate) {
-  if (!candidate.path || seen.has(candidate.path)) {
+  if (!candidate.path) {
     return;
   }
-  seen.add(candidate.path);
-  candidates.push(candidate);
+  const runtimePath = candidate.path;
+  const restrictedPath = cursorRestrictedSocketPath(runtimePath);
+  if (seen.has(restrictedPath)) {
+    return;
+  }
+  seen.add(restrictedPath);
+  candidates.push({
+    ...candidate,
+    path: restrictedPath,
+    runtimePath,
+    restricted: true,
+  });
 }
 
 function resolveSocketCandidates(options = {}, env = process.env) {
@@ -156,6 +177,7 @@ function probeSocket(socketPath, options = {}) {
 }
 
 module.exports = {
+  cursorRestrictedSocketPath,
   parseRuntimeChannel,
   probeSocket,
   resolveSocketCandidates,

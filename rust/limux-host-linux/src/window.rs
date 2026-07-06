@@ -4469,7 +4469,10 @@ fn handle_control_command(state: &State, command: ControlCommand) {
             let result = {
                 let app_state = state.borrow();
                 app_state.window.present();
-                serde_json::json!({ "state": "succeeded" })
+                serde_json::json!({
+                    "state": "presentation-requested",
+                    "success_confirmed": false
+                })
             };
             let _ = reply.send(Ok(result));
         }
