@@ -169,7 +169,7 @@ LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh   # extended with flag-co
 
 `git revert` the feature commits. `session.json` field is additive/optional —
 older builds load it safely (`PaneState` uses serde defaults, no
-`deny_unknown_fields`, layout_state.rs:159) but an older build that
+`deny_unknown_fields`, layout_state.rs:149) but an older build that
 loads-then-saves silently DROPS `flag_color` (accepted). If the overlay
 approach causes regressions on WSLg, fall back to the current inset
 box-shadow rendering (defect severity returns to status quo, not worse).
