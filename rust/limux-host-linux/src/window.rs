@@ -10,6 +10,7 @@ use gtk::glib;
 use gtk::glib::variant::ToVariant;
 use gtk4 as gtk;
 use libadwaita as adw;
+use limux_control::socket_path::{resolve_socket_path, RuntimeChannel, SocketMode};
 use limux_protocol::validate_terminal_text_payload;
 
 use crate::app_config;
@@ -4442,10 +4443,22 @@ fn handle_control_command(state: &State, command: ControlCommand) {
         ControlCommand::Identify { caller, reply } => {
             let result = {
                 let focused = focused_surface_payload(state).unwrap_or(serde_json::Value::Null);
+                let socket_path = resolve_socket_path(None, SocketMode::Runtime);
+                let socket_path = socket_path.to_string_lossy().to_string();
+                let channel = RuntimeChannel::from_env().map(|channel| channel.label());
+                let pid = std::process::id();
+                let runtime_id = match &channel {
+                    Some(channel) => format!("limux-host:{pid}:{channel}:{socket_path}"),
+                    None => format!("limux-host:{pid}:{socket_path}"),
+                };
                 serde_json::json!({
                     "name": "limux-control",
                     "protocol": "v1+v2",
                     "version": env!("CARGO_PKG_VERSION"),
+                    "pid": pid,
+                    "channel": channel,
+                    "socket_path": socket_path,
+                    "runtime_id": runtime_id,
                     "focused": focused,
                     "caller": caller.unwrap_or_else(|| focused.clone()),
                 })
