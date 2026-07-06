@@ -1,7 +1,8 @@
 //! Bridge the limux control socket onto the GTK host state.
 
 use std::io::{self, Write};
-use std::os::unix::net::UnixStream;
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -13,7 +14,8 @@ use limux_control::auth::{self, SocketControlMode};
 use limux_control::request_io::{self, read_request_frame};
 use limux_control::socket_path::{bind_listener, resolve_socket_path, SocketMode};
 use limux_protocol::{
-    parse_v1_command_envelope, validate_terminal_text_payload, V2Request, V2Response,
+    parse_v1_command_envelope, restricted_method_allowlist, validate_restricted_method,
+    validate_terminal_text_payload, V2Request, V2Response,
 };
 use serde_json::{json, Map, Value};
 
@@ -21,6 +23,7 @@ const METHODS: &[&str] = &[
     "system.ping",
     "system.identify",
     "system.capabilities",
+    "window.present",
     "workspace.current",
     "workspace.list",
     "workspace.create",
@@ -36,6 +39,8 @@ const METHODS: &[&str] = &[
     "surface.send_text",
     "surface.send_key",
     "notification.create",
+    "cursor.pane_create_empty",
+    "cursor.workspace_open_folder",
 ];
 
 const PARSE_ERROR_CODE: i64 = -32700;
@@ -46,6 +51,12 @@ const NOT_FOUND_CODE: i64 = -32004;
 const CONFLICT_CODE: i64 = -32009;
 
 type BridgeResult = Result<Value, BridgeError>;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MethodSurface {
+    Unrestricted,
+    CursorRestricted,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WorkspaceTarget {
@@ -103,6 +114,9 @@ pub struct CreatePaneRequest {
 pub enum ControlCommand {
     Identify {
         caller: Option<Value>,
+        reply: mpsc::Sender<BridgeResult>,
+    },
+    PresentWindow {
         reply: mpsc::Sender<BridgeResult>,
     },
     CurrentWorkspace {
@@ -185,6 +199,7 @@ impl ControlCommand {
     pub fn respond(self, result: BridgeResult) {
         match self {
             Self::Identify { reply, .. }
+            | Self::PresentWindow { reply }
             | Self::CurrentWorkspace { reply }
             | Self::ListWorkspaces { reply }
             | Self::ListPanes { reply, .. }
@@ -256,6 +271,90 @@ fn parse_request(input: &str) -> Result<V2Request, BridgeError> {
             format!("invalid request payload: {error}"),
         )
         .with_data(json!({ "raw": input }))),
+    }
+}
+
+fn cursor_restricted_socket_path(runtime_path: &Path) -> PathBuf {
+    let file_name = runtime_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("limux.sock");
+    if file_name.ends_with(".cursor.sock") || file_name.ends_with(".cursor") {
+        return runtime_path.to_path_buf();
+    }
+    let cursor_file_name = file_name
+        .strip_suffix(".sock")
+        .map(|stem| format!("{stem}.cursor.sock"))
+        .unwrap_or_else(|| format!("{file_name}.cursor"));
+    runtime_path.with_file_name(cursor_file_name)
+}
+
+fn is_restricted_system_method(method: &str) -> bool {
+    matches!(
+        method,
+        "system.ping" | "system.identify" | "system.capabilities"
+    )
+}
+
+fn restricted_unknown_method(method: &str) -> BridgeError {
+    BridgeError::new(
+        UNKNOWN_METHOD_CODE,
+        format!("restricted Limux method is not allowlisted: {method}"),
+    )
+}
+
+fn ensure_only_params(
+    method: &str,
+    params: &Map<String, Value>,
+    allowed: &[&str],
+) -> Result<(), BridgeError> {
+    for key in params.keys() {
+        if !allowed.contains(&key.as_str()) {
+            return Err(BridgeError::invalid_params(format!(
+                "{method} unexpected parameter: {key}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_cursor_restricted_request(
+    method: &str,
+    params: &Map<String, Value>,
+) -> Result<(), BridgeError> {
+    if !is_restricted_system_method(method) {
+        validate_restricted_method(method).map_err(|_| restricted_unknown_method(method))?;
+    }
+
+    match method {
+        "system.ping" | "system.capabilities" => ensure_only_params(method, params, &[]),
+        "system.identify" => ensure_only_params(method, params, &["caller"]),
+        "workspace.list" | "window.present" => ensure_only_params(method, params, &[]),
+        "workspace.select" => {
+            ensure_only_params(method, params, &["workspace_id", "id", "name", "index"])
+        }
+        "cursor.pane_create_empty" => ensure_only_params(
+            method,
+            params,
+            &[
+                "workspace_id",
+                "id",
+                "name",
+                "index",
+                "surface_id",
+                "pane_id",
+                "direction",
+            ],
+        ),
+        "surface.read_text" => ensure_only_params(
+            method,
+            params,
+            &["workspace_id", "name", "index", "surface_id"],
+        ),
+        "cursor.workspace_open_folder" => {
+            ensure_only_params(method, params, &["path", "folder", "cwd", "name", "title"])
+        }
+        _ => Err(restricted_unknown_method(method)),
     }
 }
 
@@ -439,6 +538,64 @@ fn parse_create_pane_request(
     })
 }
 
+fn parse_cursor_pane_create_empty_request(
+    params: &Map<String, Value>,
+) -> Result<CreatePaneRequest, BridgeError> {
+    let direction = match optional_string(params, &["direction"])
+        .unwrap_or_else(|| "right".to_string())
+        .as_str()
+    {
+        "left" => PaneCreateDirection::Left,
+        "right" => PaneCreateDirection::Right,
+        "up" => PaneCreateDirection::Up,
+        "down" => PaneCreateDirection::Down,
+        _ => {
+            return Err(BridgeError::invalid_params(
+                "cursor.pane_create_empty direction must be one of left|right|up|down",
+            ));
+        }
+    };
+
+    Ok(CreatePaneRequest {
+        target: parse_optional_workspace_target(params, true)?,
+        source_pane_id: optional_ref_handle(params, &["pane_id"], "pane:")?,
+        source_surface_id: optional_ref_handle(params, &["surface_id"], "surface:")?,
+        direction,
+        pane_type: PaneCreateType::Terminal,
+        command: None,
+    })
+}
+
+fn parse_cursor_workspace_open_folder(
+    params: &Map<String, Value>,
+) -> Result<(Option<String>, String), BridgeError> {
+    let Some(raw_path) = optional_string(params, &["path", "folder", "cwd"]) else {
+        return Err(BridgeError::invalid_params(
+            "cursor.workspace_open_folder requires path/folder/cwd",
+        ));
+    };
+    let path = Path::new(&raw_path);
+    if !path.is_absolute() {
+        return Err(BridgeError::invalid_params(
+            "cursor.workspace_open_folder path must be absolute",
+        ));
+    }
+    let canonical = path.canonicalize().map_err(|error| {
+        BridgeError::invalid_params(format!(
+            "cursor.workspace_open_folder path is not accessible: {error}"
+        ))
+    })?;
+    if !canonical.is_dir() {
+        return Err(BridgeError::invalid_params(
+            "cursor.workspace_open_folder path must be an existing directory",
+        ));
+    }
+    Ok((
+        optional_string(params, &["name", "title"]),
+        canonical.to_string_lossy().to_string(),
+    ))
+}
+
 fn parse_required_workspace_target(
     params: &Map<String, Value>,
     allow_name: bool,
@@ -459,15 +616,31 @@ fn handle_method(
     method: &str,
     params: Value,
     dispatch: &dyn Fn(ControlCommand),
+    surface: MethodSurface,
 ) -> V2Response {
     let params = match params_object(&params) {
         Ok(params) => params,
         Err(error) => return error_response(id, error),
     };
+    if surface == MethodSurface::CursorRestricted {
+        if let Err(error) = validate_cursor_restricted_request(method, params) {
+            return error_response(id, error);
+        }
+    }
 
     let queued = match method {
         "system.ping" | "ping" => return V2Response::success(id, json!({ "pong": true })),
         "system.capabilities" => {
+            if surface == MethodSurface::CursorRestricted {
+                return V2Response::success(
+                    id,
+                    json!({
+                        "commands": restricted_method_allowlist(),
+                        "methods": restricted_method_allowlist(),
+                        "surface": "cursor-restricted"
+                    }),
+                );
+            }
             return V2Response::success(id, json!({ "commands": METHODS, "methods": METHODS }));
         }
         "system.identify" => {
@@ -479,6 +652,10 @@ fn handle_method(
                 },
                 rx,
             )
+        }
+        "window.present" => {
+            let (reply, rx) = mpsc::channel();
+            (ControlCommand::PresentWindow { reply }, rx)
         }
         "workspace.current" => {
             let (reply, rx) = mpsc::channel();
@@ -513,6 +690,14 @@ fn handle_method(
         }
         "pane.create" | "new-pane" => {
             let request = match parse_create_pane_request(params) {
+                Ok(request) => request,
+                Err(error) => return error_response(id, error),
+            };
+            let (reply, rx) = mpsc::channel();
+            (ControlCommand::CreatePane { request, reply }, rx)
+        }
+        "cursor.pane_create_empty" => {
+            let request = match parse_cursor_pane_create_empty_request(params) {
                 Ok(request) => request,
                 Err(error) => return error_response(id, error),
             };
@@ -621,6 +806,22 @@ fn handle_method(
             let (reply, rx) = mpsc::channel();
             (ControlCommand::CloseWorkspace { target, reply }, rx)
         }
+        "cursor.workspace_open_folder" => {
+            let (name, cwd) = match parse_cursor_workspace_open_folder(params) {
+                Ok(parsed) => parsed,
+                Err(error) => return error_response(id, error),
+            };
+            let (reply, rx) = mpsc::channel();
+            (
+                ControlCommand::CreateWorkspace {
+                    name,
+                    cwd: Some(cwd),
+                    command: None,
+                    reply,
+                },
+                rx,
+            )
+        }
         "surface.send_text" | "send-text" | "send" => {
             let Some(text) = optional_string(params, &["text"]) else {
                 return error_response(
@@ -722,16 +923,32 @@ fn error_response(id: Option<Value>, error: BridgeError) -> V2Response {
     V2Response::error(id, error.code, error.message, error.data)
 }
 
-fn dispatch_request(input: &str, dispatch: &dyn Fn(ControlCommand)) -> V2Response {
+fn dispatch_request_for_surface(
+    input: &str,
+    dispatch: &dyn Fn(ControlCommand),
+    surface: MethodSurface,
+) -> V2Response {
     match parse_request(input) {
-        Ok(request) => handle_method(request.id, &request.method, request.params, dispatch),
+        Ok(request) => handle_method(
+            request.id,
+            &request.method,
+            request.params,
+            dispatch,
+            surface,
+        ),
         Err(error) => error_response(None, error),
     }
+}
+
+#[cfg(test)]
+fn dispatch_request(input: &str, dispatch: &dyn Fn(ControlCommand)) -> V2Response {
+    dispatch_request_for_surface(input, dispatch, MethodSurface::Unrestricted)
 }
 
 fn handle_client(
     stream: UnixStream,
     dispatch: &(dyn Fn(ControlCommand) + Send + Sync + 'static),
+    surface: MethodSurface,
 ) -> io::Result<()> {
     stream.set_read_timeout(Some(request_io::CLIENT_IDLE_TIMEOUT))?;
     let reader_stream = stream.try_clone()?;
@@ -752,7 +969,7 @@ fn handle_client(
             continue;
         }
 
-        let response = dispatch_request(input, dispatch);
+        let response = dispatch_request_for_surface(input, dispatch, surface);
         let mut payload = serde_json::to_string(&response)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
         payload.push('\n');
@@ -782,6 +999,73 @@ impl Drop for ConnectionSlot {
     }
 }
 
+fn spawn_control_listener(
+    name: &'static str,
+    path: PathBuf,
+    surface: MethodSurface,
+    control_mode: SocketControlMode,
+    dispatch: Arc<dyn Fn(ControlCommand) + Send + Sync + 'static>,
+) -> io::Result<()> {
+    let listener = bind_listener(
+        &path,
+        SocketMode::Runtime,
+        control_mode.requires_owner_only_socket(),
+    )?;
+
+    std::thread::Builder::new()
+        .name(name.into())
+        .spawn(move || {
+            run_control_listener(listener, path, surface, control_mode, dispatch);
+        })
+        .map_err(|error| io::Error::other(format!("failed to spawn {name} thread: {error}")))?;
+    Ok(())
+}
+
+fn run_control_listener(
+    listener: UnixListener,
+    path: PathBuf,
+    surface: MethodSurface,
+    control_mode: SocketControlMode,
+    dispatch: Arc<dyn Fn(ControlCommand) + Send + Sync + 'static>,
+) {
+    eprintln!("limux: control socket at {}", path.display());
+    let active_connections = Arc::new(AtomicUsize::new(0));
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(stream) => {
+                let Some(slot) = ConnectionSlot::try_acquire(active_connections.clone()) else {
+                    eprintln!("limux: rejecting control client, too many active connections");
+                    continue;
+                };
+                let peer = match auth::authorize_peer(&stream, control_mode) {
+                    Ok(peer) => peer,
+                    Err(error) => {
+                        eprintln!("limux: rejected control client: {error}");
+                        continue;
+                    }
+                };
+                let dispatch = dispatch.clone();
+                std::thread::Builder::new()
+                    .name("limux-ctrl-conn".into())
+                    .spawn(move || {
+                        let _slot = slot;
+                        if let Err(error) = handle_client(stream, dispatch.as_ref(), surface) {
+                            eprintln!(
+                                "limux: control connection error for pid={} uid={}: {error}",
+                                peer.pid, peer.uid
+                            );
+                        }
+                    })
+                    .ok();
+            }
+            Err(error) => {
+                eprintln!("limux: control accept error: {error}");
+            }
+        }
+    }
+}
+
 /// Start the control socket server in a background thread and dispatch each
 /// command onto the GTK main context.
 pub fn start(dispatch: fn(ControlCommand)) {
@@ -790,64 +1074,49 @@ pub fn start(dispatch: fn(ControlCommand)) {
         context.invoke(move || dispatch(command));
     });
 
-    std::thread::Builder::new()
-        .name("limux-control".into())
-        .spawn(move || {
-            let path = resolve_socket_path(None, SocketMode::Runtime);
-            let control_mode = SocketControlMode::from_env();
-            let listener = match bind_listener(
-                &path,
-                SocketMode::Runtime,
-                control_mode.requires_owner_only_socket(),
-            ) {
-                Ok(listener) => listener,
-                Err(error) => {
-                    eprintln!(
-                        "limux: control socket bind failed ({}): {error}",
-                        path.display()
-                    );
-                    return;
-                }
-            };
-
-            eprintln!("limux: control socket at {}", path.display());
-            let active_connections = Arc::new(AtomicUsize::new(0));
-
-            for stream in listener.incoming() {
-                match stream {
-                    Ok(stream) => {
-                        let Some(slot) = ConnectionSlot::try_acquire(active_connections.clone()) else {
-                            eprintln!("limux: rejecting control client, too many active connections");
-                            continue;
-                        };
-                        let peer = match auth::authorize_peer(&stream, control_mode) {
-                            Ok(peer) => peer,
-                            Err(error) => {
-                                eprintln!("limux: rejected control client: {error}");
-                                continue;
-                            }
-                        };
-                        let dispatch = dispatch.clone();
-                        std::thread::Builder::new()
-                            .name("limux-ctrl-conn".into())
-                            .spawn(move || {
-                                let _slot = slot;
-                                if let Err(error) = handle_client(stream, dispatch.as_ref()) {
-                                    eprintln!(
-                                        "limux: control connection error for pid={} uid={}: {error}",
-                                        peer.pid, peer.uid
-                                    );
-                                }
-                            })
-                            .ok();
-                    }
-                    Err(error) => {
-                        eprintln!("limux: control accept error: {error}");
-                    }
-                }
-            }
-        })
-        .expect("failed to spawn control server thread");
+    let path = resolve_socket_path(None, SocketMode::Runtime);
+    let cursor_path = cursor_restricted_socket_path(&path);
+    let control_mode = SocketControlMode::from_env();
+    if path == cursor_path {
+        eprintln!(
+            "limux: runtime socket path already targets Cursor restricted surface; binding restricted listener only"
+        );
+        if let Err(error) = spawn_control_listener(
+            "limux-cursor-control",
+            cursor_path,
+            MethodSurface::CursorRestricted,
+            control_mode,
+            dispatch,
+        ) {
+            eprintln!("limux: control socket bind failed: {error}");
+        }
+        return;
+    }
+    if let Err(error) = spawn_control_listener(
+        "limux-control",
+        path.clone(),
+        MethodSurface::Unrestricted,
+        control_mode,
+        dispatch.clone(),
+    ) {
+        eprintln!(
+            "limux: control socket bind failed ({}): {error}; not starting Cursor restricted socket",
+            path.display()
+        );
+        return;
+    }
+    if let Err(error) = spawn_control_listener(
+        "limux-cursor-control",
+        cursor_path.clone(),
+        MethodSurface::CursorRestricted,
+        control_mode,
+        dispatch,
+    ) {
+        eprintln!(
+            "limux: cursor control socket bind failed ({}): {error}",
+            cursor_path.display()
+        );
+    }
 }
 
 #[cfg(test)]
@@ -1106,5 +1375,239 @@ mod tests {
             .expect("error")
             .message
             .contains("workspace.create command"));
+    }
+
+    fn dispatch_restricted_request(input: &str, dispatch: &dyn Fn(ControlCommand)) -> V2Response {
+        dispatch_request_for_surface(input, dispatch, MethodSurface::CursorRestricted)
+    }
+
+    #[test]
+    fn cursor_restricted_socket_path_is_sibling_of_runtime_socket() {
+        assert_eq!(
+            cursor_restricted_socket_path(Path::new("/tmp/limux.sock")),
+            PathBuf::from("/tmp/limux.cursor.sock")
+        );
+        assert_eq!(
+            cursor_restricted_socket_path(Path::new("/tmp/custom")),
+            PathBuf::from("/tmp/custom.cursor")
+        );
+        assert_eq!(
+            cursor_restricted_socket_path(Path::new("/tmp/limux.cursor.sock")),
+            PathBuf::from("/tmp/limux.cursor.sock")
+        );
+        assert_eq!(
+            cursor_restricted_socket_path(Path::new("/tmp/custom.cursor")),
+            PathBuf::from("/tmp/custom.cursor")
+        );
+    }
+
+    #[test]
+    fn restricted_capabilities_returns_cursor_allowlist() {
+        let response = dispatch_restricted_request(
+            r#"{"id":1,"method":"system.capabilities","params":{}}"#,
+            &|command| panic!("system.capabilities should not dispatch: {command:?}"),
+        );
+
+        assert_eq!(response.error, None);
+        let result = response.result.expect("capabilities result");
+        assert_eq!(result["surface"], "cursor-restricted");
+        assert_eq!(
+            result["methods"],
+            json!([
+                "workspace.list",
+                "workspace.select",
+                "window.present",
+                "cursor.pane_create_empty",
+                "surface.read_text",
+                "cursor.workspace_open_folder"
+            ])
+        );
+    }
+
+    #[test]
+    fn restricted_surface_rejects_forbidden_terminal_methods_and_aliases() {
+        for method in [
+            "surface.send_text",
+            "surface.send_key",
+            "send",
+            "pane.create.command",
+        ] {
+            let request = json!({
+                "id": 1,
+                "method": method,
+                "params": {}
+            })
+            .to_string();
+            let response = dispatch_restricted_request(&request, &|command| {
+                panic!("restricted method should not dispatch: {command:?}")
+            });
+
+            assert_eq!(response.result, None);
+            assert_eq!(
+                response.error.as_ref().map(|error| error.code),
+                Some(UNKNOWN_METHOD_CODE),
+                "{method} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn restricted_surface_rejects_unexpected_payload_fields() {
+        for request in [
+            json!({
+                "id": 1,
+                "method": "workspace.list",
+                "params": { "unexpected": true }
+            }),
+            json!({
+                "id": 2,
+                "method": "cursor.pane_create_empty",
+                "params": { "command": "codex" }
+            }),
+            json!({
+                "id": 3,
+                "method": "surface.read_text",
+                "params": { "scrollback": true }
+            }),
+        ] {
+            let response = dispatch_restricted_request(&request.to_string(), &|command| {
+                panic!("restricted request with unexpected fields should not dispatch: {command:?}")
+            });
+            assert_eq!(response.result, None);
+            assert_eq!(
+                response.error.as_ref().map(|error| error.code),
+                Some(INVALID_PARAMS_CODE)
+            );
+        }
+    }
+
+    #[test]
+    fn restricted_surface_allows_pinned_cursor_methods() {
+        let workspace_list = dispatch_restricted_request(
+            r#"{"id":1,"method":"workspace.list","params":{}}"#,
+            &|command| match command {
+                ControlCommand::ListWorkspaces { reply } => {
+                    let _ = reply.send(Ok(json!({ "workspaces": [] })));
+                }
+                other => panic!("unexpected command: {other:?}"),
+            },
+        );
+        assert_eq!(workspace_list.error, None);
+
+        let workspace_select = dispatch_restricted_request(
+            r#"{"id":2,"method":"workspace.select","params":{"workspace_id":"workspace:abc"}}"#,
+            &|command| match command {
+                ControlCommand::SelectWorkspace { target, reply } => {
+                    assert_eq!(target, WorkspaceTarget::Handle("workspace:abc".to_string()));
+                    let _ = reply.send(Ok(json!({ "selected": true })));
+                }
+                other => panic!("unexpected command: {other:?}"),
+            },
+        );
+        assert_eq!(workspace_select.error, None);
+
+        let window_present = dispatch_restricted_request(
+            r#"{"id":3,"method":"window.present","params":{}}"#,
+            &|command| match command {
+                ControlCommand::PresentWindow { reply } => {
+                    let _ = reply.send(Ok(json!({
+                        "state": "presentation-requested",
+                        "success_confirmed": false
+                    })));
+                }
+                other => panic!("unexpected command: {other:?}"),
+            },
+        );
+        assert_eq!(window_present.error, None);
+        let result = window_present.result.expect("window.present result");
+        assert_eq!(result["state"], "presentation-requested");
+        assert_eq!(result["success_confirmed"], false);
+
+        let pane_create = dispatch_restricted_request(
+            r#"{"id":4,"method":"cursor.pane_create_empty","params":{"surface_id":"surface:4:tab","direction":"down"}}"#,
+            &|command| match command {
+                ControlCommand::CreatePane { request, reply } => {
+                    assert_eq!(request.source_surface_id, Some("4:tab".to_string()));
+                    assert_eq!(request.direction, PaneCreateDirection::Down);
+                    assert_eq!(request.pane_type, PaneCreateType::Terminal);
+                    assert_eq!(request.command, None);
+                    let _ = reply.send(Ok(json!({
+                        "pane_ref": "pane:9",
+                        "surface_ref": "surface:9:tab"
+                    })));
+                }
+                other => panic!("unexpected command: {other:?}"),
+            },
+        );
+        assert_eq!(pane_create.error, None);
+
+        let read_text = dispatch_restricted_request(
+            r#"{"id":5,"method":"surface.read_text","params":{"surface_id":"surface:9:tab"}}"#,
+            &|command| match command {
+                ControlCommand::ReadSurfaceText {
+                    target,
+                    surface_hint,
+                    reply,
+                } => {
+                    assert_eq!(target, WorkspaceTarget::Active);
+                    assert_eq!(surface_hint, Some("9:tab".to_string()));
+                    let _ = reply.send(Ok(json!({ "text": "ready" })));
+                }
+                other => panic!("unexpected command: {other:?}"),
+            },
+        );
+        assert_eq!(read_text.error, None);
+
+        let expected_cwd = std::env::current_dir()
+            .expect("current dir")
+            .canonicalize()
+            .expect("canonical current dir")
+            .to_string_lossy()
+            .to_string();
+        let open_folder_request = json!({
+            "id": 6,
+            "method": "cursor.workspace_open_folder",
+            "params": { "path": expected_cwd.clone(), "name": "current" }
+        })
+        .to_string();
+        let open_folder =
+            dispatch_restricted_request(&open_folder_request, &|command| match command {
+                ControlCommand::CreateWorkspace {
+                    name,
+                    cwd,
+                    command,
+                    reply,
+                } => {
+                    assert_eq!(name, Some("current".to_string()));
+                    assert_eq!(cwd.expect("cwd"), expected_cwd);
+                    assert_eq!(command, None);
+                    let _ = reply.send(Ok(json!({ "workspace_ref": "workspace:1" })));
+                }
+                other => panic!("unexpected command: {other:?}"),
+            });
+        assert_eq!(open_folder.error, None);
+    }
+
+    #[test]
+    fn unrestricted_surface_remains_compatible_with_agent_terminal_methods() {
+        let response = dispatch_request(
+            r#"{"id":1,"method":"surface.send_text","params":{"workspace_id":"codex","surface_id":"surface:4:tab","text":"hello"}}"#,
+            &|command| match command {
+                ControlCommand::SendText {
+                    target,
+                    surface_hint,
+                    text,
+                    reply,
+                } => {
+                    assert_eq!(target, WorkspaceTarget::Name("codex".to_string()));
+                    assert_eq!(surface_hint, Some("surface:4:tab".to_string()));
+                    assert_eq!(text, "hello");
+                    let _ = reply.send(Ok(json!({ "sent": true })));
+                }
+                other => panic!("unexpected command: {other:?}"),
+            },
+        );
+
+        assert_eq!(response.error, None);
     }
 }

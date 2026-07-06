@@ -6,6 +6,7 @@ const net = require("net");
 const os = require("os");
 const path = require("path");
 const {
+  cursorRestrictedSocketPath,
   probeSocket,
   resolveSocketCandidates,
   runtimeChannelSocketPath,
@@ -72,19 +73,65 @@ assert.deepStrictEqual(
     () => resolveSocketCandidates({ socketPath: "/tmp/from-setting.sock" }),
   ),
   [
-    { source: "setting", path: "/tmp/from-setting.sock", explicit: true },
-    { source: "LIMUX_SOCKET", path: "/tmp/from-limux-socket.sock", explicit: true },
-    { source: "LIMUX_SOCKET_PATH", path: "/tmp/from-limux-socket-path.sock", explicit: true },
+    {
+      source: "setting",
+      path: "/tmp/from-setting.cursor.sock",
+      runtimePath: "/tmp/from-setting.sock",
+      explicit: true,
+      restricted: true,
+    },
+    {
+      source: "LIMUX_SOCKET",
+      path: "/tmp/from-limux-socket.cursor.sock",
+      runtimePath: "/tmp/from-limux-socket.sock",
+      explicit: true,
+      restricted: true,
+    },
+    {
+      source: "LIMUX_SOCKET_PATH",
+      path: "/tmp/from-limux-socket-path.cursor.sock",
+      runtimePath: "/tmp/from-limux-socket-path.sock",
+      explicit: true,
+      restricted: true,
+    },
     {
       source: "LIMUX_CHANNEL",
-      path: "/run/user/1000/limux/stable/limux.sock",
+      path: "/run/user/1000/limux/stable/limux.cursor.sock",
+      runtimePath: "/run/user/1000/limux/stable/limux.sock",
       explicit: false,
       channel: "stable",
+      restricted: true,
     },
-    { source: "XDG_RUNTIME_DIR", path: "/run/user/1000/limux/limux.sock", explicit: false },
-    { source: "fallback", path: "/tmp/limux.sock", explicit: false },
+    {
+      source: "XDG_RUNTIME_DIR",
+      path: "/run/user/1000/limux/limux.cursor.sock",
+      runtimePath: "/run/user/1000/limux/limux.sock",
+      explicit: false,
+      restricted: true,
+    },
+    {
+      source: "fallback",
+      path: "/tmp/limux.cursor.sock",
+      runtimePath: "/tmp/limux.sock",
+      explicit: false,
+      restricted: true,
+    },
   ],
 );
+
+assert.strictEqual(
+  cursorRestrictedSocketPath("/run/user/1000/limux/preview/default/limux.sock"),
+  "/run/user/1000/limux/preview/default/limux.cursor.sock",
+);
+assert.strictEqual(
+  cursorRestrictedSocketPath("/tmp/limux-preview-beta.sock"),
+  "/tmp/limux-preview-beta.cursor.sock",
+);
+assert.strictEqual(
+  cursorRestrictedSocketPath("/tmp/limux.cursor.sock"),
+  "/tmp/limux.cursor.sock",
+);
+assert.strictEqual(cursorRestrictedSocketPath("/tmp/custom.cursor"), "/tmp/custom.cursor");
 
 assert.deepStrictEqual(
   withEnv(

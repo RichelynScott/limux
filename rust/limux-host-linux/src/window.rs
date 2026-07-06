@@ -4465,6 +4465,17 @@ fn handle_control_command(state: &State, command: ControlCommand) {
             };
             let _ = reply.send(Ok(result));
         }
+        ControlCommand::PresentWindow { reply } => {
+            let result = {
+                let app_state = state.borrow();
+                app_state.window.present();
+                serde_json::json!({
+                    "state": "presentation-requested",
+                    "success_confirmed": false
+                })
+            };
+            let _ = reply.send(Ok(result));
+        }
         ControlCommand::CurrentWorkspace { reply } => {
             let result = {
                 let app_state = state.borrow();
