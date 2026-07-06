@@ -160,10 +160,10 @@ Cursor lane (lifo, continuous) ───────────┼────�
 
 | PRD | Covers | Size |
 |---|---|---|
-| PRD-A `runtime-trust` | W0.1 doctor/build-id + W0.4 log hygiene | S |
+| PRD-A `runtime-trust` | W0.1 doctor/build-id + W0.4 log hygiene | M |
 | PRD-B `ghostty-packaging` | W0.2 resources/terminfo + installer self-verify | S/M |
 | PRD-C `verify-loop` | W0.3 operator verification checklist + status write-back (mostly process + a little tooling) | S |
-| PRD-D `pane-attention` | W0.5 attention border + color flags (#20) | S |
+| PRD-D `pane-attention` | W0.5 attention border + color flags (#20) — includes the tab.action live-bridge route that doesn't exist yet | M |
 | PRD-E `bridge-parity` | W1.1 ControlState fall-through | M/L |
 | PRD-F `browser-live` | W1.2 browser panes + allowlist/audit (contains the WebKitGTK-vs-CDP decision) | L |
 | PRD-G `agent-sidebar` | W1.3 lifecycle states + sidebar scalability | M |

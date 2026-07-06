@@ -46,25 +46,63 @@ actually runs. Agents driving Limux hit an arbitrary vocabulary wall.
 
 Per the parity plan's designed-but-unbuilt approach, refined:
 
+- (Codex-required — the load-bearing unknown) **limux-core must grow a public
+  API first; none of this exists today.** Verified: the only `pub fn`s in
+  `rust/limux-core/src/lib.rs` are `Dispatcher::new` (:2757) and
+  `Dispatcher::with_state` (:2763, consumes state by value into a NEW
+  Arc<Mutex>); `ControlState` fields/methods are private; `dispatch_request`
+  is private; and `Dispatcher::dispatch` is `async` (:2769, body never
+  awaits) while bridge connection threads are sync. Therefore commit 2a of
+  this PRD is a **limux-core FR**: (i) a pub shared-state constructor
+  (`Dispatcher::with_shared_state(Arc<Mutex<ControlState>>)`), (ii) a pub
+  SYNC dispatch entry, (iii) a pub snapshot-import/sync surface on
+  `ControlState` so GTK state can be written into the mirror. This commit is
+  reviewed by lifo before anything builds on it.
 - The GTK app owns an `Arc<Mutex<ControlState>>` **mirror** kept in sync with
   live workspace/pane/surface/tab state at mutation points (create/close/
   rename/focus/reorder/split — the same code paths that already persist
-  `layout_state`).
-- **Read-only methods** (`*.list`, `*.current`, `workspace.next/previous/last`
-  resolution queries, `notification.list`, `surface.read_text` stays
-  bridge-native, etc.) fall through to `Dispatcher::dispatch` against the
-  mirror. CRITICAL INVARIANT: fall-through must be read-only — the bridge
-  MUST NOT let a mutating method reach the mirror dispatcher, or mirror and
-  GUI diverge silently. Enforce via the registry classification, deny-by-default:
-  unclassified methods stay `-32601`.
+  `layout_state`, e.g. window.rs:961 call sites).
+- **Read-only methods** (`*.list`, `*.current`, `notification.list`; NOT
+  `workspace.next/previous/last` — see mutation set; `surface.read_text`
+  stays bridge-native) fall through against the mirror. CRITICAL INVARIANT:
+  fall-through must be read-only — the bridge MUST NOT let a mutating method
+  reach the mirror dispatcher, or mirror and GUI diverge silently. Enforce
+  via the registry classification, deny-by-default: unclassified methods
+  stay `-32601`.
+  (Codex-required — read-path mutation contamination is REAL and broad:
+  `with_workspace_scope` (lib.rs:3118-3134), used by `surface.current`,
+  `surface.list`, and every workspace-scoped read, calls `select_workspace`
+  on entry AND restore, unconditionally clobbering `last_workspace_id` and
+  marking notifications read when app-active.) **Binding mitigation:
+  fall-through reads dispatch against a per-request CLONE of the mirror**
+  (`ControlState: Clone`, lib.rs:630) — correctness-safe by construction;
+  the cost (cloning surface text buffers per control-plane request) is
+  accepted and documented. A core read-path refactor (`&ControlState` reads)
+  is a later optimization, not v1.
 - **Mutation methods** get explicit `ControlCommand` variants executed on the
   GTK main loop (the existing pattern for the 18 natives), updating both the
   GUI and the mirror.
 - **ID mapping layer:** limux-core uses `u64` ids; host-linux uses `String`
   workspace ids, `u32` pane ids, uuid-`String` tab ids (repo CLAUDE.md
-  pitfall). The mirror maintains a bidirectional id map at the sync boundary;
-  wire-visible ids remain EXACTLY what today's bridge emits (no breaking
+  pitfall). A boundary map alone is NOT sufficient (Codex-required):
+  dispatcher RESPONSES embed ids in three non-generic shapes — synthetic
+  uuids via `encode_handle_id` (`"00000000-…-{id:012x}"`, lib.rs:2847),
+  `workspace:N`/`pane:N`/`surface:N` refs, and raw `u64` fields nested in
+  serialized Info structs (`WorkspaceInfo`/`SurfaceInfo`, lib.rs:277-312,
+  where a raw `id: 7` is indistinguishable from `flash_count: 7`
+  generically). Therefore: a **schema-aware, per-method-family response
+  id-rewrite** is a named FR — each fall-through family declares which
+  response fields are ids and maps them to host-native id forms so agents
+  see ONE coherent id vocabulary across native and fall-through methods.
+  Wire-visible ids remain EXACTLY what today's bridge emits (no breaking
   change to `refs`/`uuids` id-format behavior).
+- **`SurfaceInfo.text` divergence:** mirror-backed surface reads emit `text`
+  as empty/omitted (the mirror does not sync terminal text — a hot path
+  deliberately kept bridge-native via `surface.read_text`); documented +
+  tested, so headless-vs-live divergence is explicit, never silent.
+- **`window.list` semantics:** the mirror exposes exactly one window per
+  workspace, id = mapped host window (host-linux has no multi-window
+  structure; core models windows-within-workspaces, lib.rs:286-291).
 
 ## User Stories
 
@@ -75,7 +113,9 @@ Per the parity plan's designed-but-unbuilt approach, refined:
       `notification.list`, plus the read legs of tmux-compat verbs
       (`find-window`, `list-buffers`, `display-message` resolution).
 - [ ] For each read family, an Xvfb smoke assertion compares bridge output vs
-      mirror-dispatcher output for structural equality on the same live state.
+      mirror-dispatcher output for structural equality **modulo the declared
+      id-mapping and the documented `text`-field divergence** (Codex-revised
+      — raw equality is not executable across the two id vocabularies).
 - [ ] Unknown/unclassified methods still return `-32601` (deny-by-default
       regression test).
 - [ ] `system.capabilities` reports the registry: method name → routing class,
@@ -85,8 +125,11 @@ Per the parity plan's designed-but-unbuilt approach, refined:
 - [ ] Wave-1 mutation set, each as a `ControlCommand` with a focused test:
       `pane.focus`, `pane.resize` (+ `resize-pane`), `surface.split`
       (+ split-direction args), `surface.focus`, `surface.close`,
-      `workspace.reorder`, `workspace.next/previous/last` (selection),
-      `tab.action` (all existing actions), `notification.clear`.
+      `workspace.reorder`, `workspace.next/previous/last` (Codex-confirmed
+      MUTATION class — `select_workspace_relative`/`select_last_workspace`
+      write selection state + mark notifications read, lib.rs:882-909; OQ1
+      is hereby CLOSED as mutation), `tab.action` (all existing actions),
+      `notification.clear`.
 - [ ] Each mutation updates GUI AND mirror atomically (single main-loop hop);
       a follow-up read via fall-through reflects the mutation (test per method).
 - [ ] Deferred mutations (`pane.swap/break/join`, `surface.move/reorder/
@@ -100,7 +143,10 @@ Per the parity plan's designed-but-unbuilt approach, refined:
 - [ ] The method registry is one Rust source of truth that BOTH the parity
       routing and the Cursor-restricted allowlist consume
       (`integrations/cursor-limux/methods.json` is generated from or verified
-      against it by a test — no drift possible).
+      against it by a Rust check-in-sync test — no drift possible). NOTE:
+      methods.json currently names methods that exist only in lifo's
+      unmerged PR #15 (`window.present`, `cursor.*`) — the drift test lands
+      only AFTER the PR-#15 sequencing gate clears.
 - [ ] Registry shape is co-designed with lifo AFTER PR #15 merges (do not
       churn PR #15); the PRD execution's first commit is the registry
       extraction, reviewed by lifo before the fall-through lands.
@@ -119,10 +165,13 @@ Per the parity plan's designed-but-unbuilt approach, refined:
    fallthrough (read) | ControlCommand (mutation) | -32601.
 4. No changes to socket framing, error codes, or existing 18 methods' wire
    shapes.
-5. Commit decomposition (execution order): (1) registry extraction + deny-
-   by-default (no behavior change), (2) mirror + sync + read fall-through,
-   (3) mutation set in 2–3 commits by family, (4) capabilities reporting +
-   docs. Each commit passes `./scripts/check.sh` + Xvfb smoke.
+5. Commit decomposition (execution order, Codex-revised): (1) registry
+   extraction + deny-by-default (no behavior change), (2a) **limux-core
+   public API** (shared-state constructor, pub sync dispatch, snapshot-
+   import/sync surface) — reviewed by lifo before 2b, (2b) mirror + sync +
+   clone-per-read fall-through + id-rewrite layer, (3) mutation set in 2–3
+   commits by family, (4) capabilities reporting + docs. Each commit passes
+   `./scripts/check.sh` (no NEW failures vs baseline) + Xvfb smoke.
 
 ## Non-Goals
 
@@ -166,13 +215,16 @@ LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh   # extended: per-family 
 ## Rollback Plan
 
 Registry is deny-by-default: reverting the fall-through/mutation commits
-returns exactly today's 18-method behavior. Ship behind
-`LIMUX_BRIDGE_PARITY=0` env kill-switch (checked once at bridge init) for the
-first release so a live regression can be disabled without reinstall.
+returns exactly today's 18-method behavior. Ship behind an env kill-switch
+with precise semantics (Codex-revised): `LIMUX_BRIDGE_PARITY=0` ⇒ all
+fall-through + new mutation methods return `-32601` byte-identical to today,
+the 18 natives unaffected — with a regression test asserting exactly that.
+Checked once at bridge init, so disabling requires a GUI restart (accepted,
+documented).
 
 ## Open Questions
 
-1. Should `workspace.next/previous/last` be classified mutation (they select)
-   — proposed: yes, mutation class. Confirm at registry review.
+1. ~~`workspace.next/previous/last` classification~~ — CLOSED: mutation class
+   (code-verified, lib.rs:882-909).
 2. Registry home: host-linux module vs `limux-control` crate — decide with
    lifo at co-design (whichever PR #15 chose wins).

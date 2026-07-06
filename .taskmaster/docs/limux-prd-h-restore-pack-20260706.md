@@ -20,16 +20,26 @@ Limux already restores workspaces from `session.json`
 verified headless on 2026-06-22). But three correctness gaps remain, mirrored
 by cmux fixes upstream:
 
-1. **Split geometry/identity fidelity** (cmux PR #6892 class): split order,
-   ratios, and pane identity are not guaranteed to round-trip exactly —
-   there is no test asserting byte-level layout equivalence after
-   save→restore, and drag-adjusted ratios are the operator-visible casualty.
-2. **cwd loss on split/new-tab** (cmux PR #7165 / issue #7155 class): a new
-   split/tab from a pane hosting a resumed agent or deep working directory
-   starts in the default cwd, not the source pane's — high-friction for the
-   agent-heavy workflow Limux exists for.
-3. **No recovery from accidental close** (cmux v0.64.11 class): closing a
-   workspace/tab is irreversible — no recently-closed list, no focus history.
+1. **Split geometry/identity fidelity — VERIFY + REGRESSION-TEST, not
+   implement** (Codex-revised after code review): the machinery already
+   exists — ratios persist as f64 fractions (`SplitState.ratio`,
+   layout_state.rs:133-139), drag adjustments write back and trigger a save
+   (`attach_split_position_persistence` → `request_session_save`,
+   split_tree.rs:461-492 + window.rs:1235-1256), and restore reserves
+   persisted pane ids (`pane_id_for_initial_state`, pane.rs:51-59). What is
+   MISSING is any full-layout save→restore round-trip test (only
+   agent-metadata and keybind-tab round-trips exist, layout_state.rs:1664,
+   1902) — so fidelity is unproven, not known-broken.
+2. **cwd loss on split — REAL** (cmux PR #7165 / issue #7155 class): Limux
+   tracks live per-tab cwd via Ghostty's `GHOSTTY_ACTION_PWD` →
+   `on_pwd_changed` → `term_cwd` (terminal.rs:908-921, pane.rs:1186-1189,
+   exposed as `pane::tab_working_directory()`, pane.rs:1728-1736), yet
+   `split_pane` seeds new panes from the WORKSPACE `folder_path`/`cwd`
+   only (window.rs:5653-5679) — the tracked live cwd is never consulted.
+   High-friction for the agent-heavy workflow Limux exists for.
+3. **No recovery from accidental close — REAL** (cmux v0.64.11 class):
+   zero recently-closed / focus-history code exists (verified: no
+   `workspace.back/forward`, no `recent*` in core or bridge).
 
 ## Goals
 
@@ -43,41 +53,70 @@ by cmux fixes upstream:
 ## User Stories
 
 ### US-1: As the operator, my layout survives a restart exactly
-- [ ] A scripted kill/restart harness (Xvfb): build a 3-workspace layout with
-      mixed H/V nested splits at non-default ratios, pinned + renamed tabs;
-      snapshot `session.json`; kill host; relaunch; assert the restored
-      layout's serialized state is equivalent (structural equality; ratio
-      float tolerance ±0.5%).
+- [ ] A scripted kill/restart harness (Xvfb) — (Codex-revised) this is a
+      NAMED NEW DELIVERABLE, not an extension: `xvfb-smoke-test.sh` launches
+      once and has no restart flow today, so the harness gains a
+      second-launch mode (same session dir, ready-wait, post-restore
+      snapshot diff). Scenario: 3-workspace layout with mixed H/V nested
+      splits at non-default ratios, pinned + renamed tabs; snapshot
+      `session.json`; kill host; relaunch; assert equivalence.
+- [ ] Equivalence is defined against NORMALIZATION (Codex-revised —
+      `normalize_session` mutates on save/load: ratio clamp 0.08–0.92,
+      version stamp, active-tab fallback, within-pane tab-id dedupe,
+      layout_state.rs:520-588, so byte equality fails spuriously): compare
+      normalized-snapshot to normalized-snapshot; `pane_id` and
+      `active_tab_id` ARE in the equality set; ratio tolerance ±0.5% with
+      fixtures inside the clamp bounds (0.08–0.92).
 - [ ] Split RATIOS restore to their drag-adjusted values (explicit assertion —
       not just structure).
 - [ ] Restore preserves per-tab metadata: title, pinned, unread, and
       `flag_color` when PRD-D is merged (feature-gated assertion).
-- [ ] Save is atomic (write-temp + rename) and versioned: `session.json`
-      gains an additive `schema_version` field; loader accepts absent version
-      (current files) — never refuses to load an old file it can partially
-      restore.
-- [ ] A deliberately truncated/corrupt `session.json` produces a clean
-      degraded start (empty session + renamed `.corrupt-<ts>` preservation of
-      the bad file + one log line) — never a crash loop (test).
+- [ ] Atomic save + versioning are ALREADY IMPLEMENTED (Codex-revised:
+      `save_session_atomic_in` does write-temp + rename,
+      layout_state.rs:418-429; `AppSessionState.version` with
+      `SESSION_VERSION=1` + serde default exists, layout_state.rs:11,45-46,
+      stamped by `normalize_session:521`) — REUSE `version`, do NOT add a
+      second `schema_version` field; add tests for the atomic path if
+      untested. Loading is all-or-nothing today (any parse failure defaults
+      the whole session) — partial restore is explicitly OUT of scope v1.
+- [ ] Corrupt-file handling: degraded start already exists and is tested
+      (`load_returns_empty_state_for_corrupt_canonical_file`,
+      layout_state.rs:1254). The REAL gap (Codex-revised): the corrupt file
+      is silently CLOBBERED by the next save. New work = preserve it as
+      `session.json.corrupt-<ts>` + one log line before proceeding (test).
 - [ ] Contributor-docs note added: pane-local tab ids (e.g. multiple
       `terminal-0` across panes) are VALID — restore code must never
       "deduplicate" them (codifies the 2026-06-22 lesson).
 
 ### US-2: As the operator/agent, new panes start where I am
-- [ ] `surface.split` / `new-pane` (no explicit `--cwd`) inherits the SOURCE
-      pane's live cwd, resolved via the pane's shell-process cwd
-      (`/proc/<shell-pid>/cwd` readlink; the pane's child pid is already
-      tracked for PTY lifecycle — confirm the exact handle at implementation
-      and document it in the brief).
-- [ ] Fallbacks in order: source-pane live cwd → workspace cwd → `$HOME`;
+- [ ] (Codex-revised — use the SHIPPED mechanism, not `/proc`: no shell/child
+      pid handle exists anywhere in host-linux; libghostty spawns the shell
+      internally. Limux already tracks live per-tab cwd via Ghostty's
+      `GHOSTTY_ACTION_PWD` → `on_pwd_changed` → `term_cwd`,
+      terminal.rs:908-921 / pane.rs:1186-1189, exposed as
+      `pane::tab_working_directory()`, pane.rs:1728-1736 — already used for
+      tab-drag workspace seeding, window.rs:3922.) Splits/new panes (no
+      explicit `--cwd`) inherit the SOURCE pane's `term_cwd`.
+- [ ] Fallbacks in order: source-pane `term_cwd` → workspace cwd → `$HOME`;
       resolution failure is silent-fallback, never an error to the user.
+      Honest caveat, documented: pwd reporting requires shell integration
+      (PRD-B ships it); a shell that never reports pwd falls back to
+      workspace cwd — acceptable, stated.
+- [ ] Dual/triple landing called out (Codex-required): the inheritance lands
+      in (a) the GUI split path (`split_pane`, window.rs:5653-5679), (b) the
+      bridge's `pane.create` route, and (c) core `surface.split`
+      (core-only today, lib.rs:44 — zero matches in control_bridge.rs) —
+      three distinct code paths, one shared resolution helper.
 - [ ] Explicit `--cwd` always wins (regression test).
 - [ ] `new-workspace` behavior UNCHANGED (workspace-level cwd semantics stay;
       test pins this).
 - [ ] Works from resumed-agent panes (fixture: pane whose shell cd'd post-
       spawn; split inherits the new dir — the exact cmux #7155 case).
-- [ ] Restored panes (from session.json) restore their last-known cwd as the
-      spawn cwd (captured at save time per pane, additive field).
+- [ ] Restored panes restoring last-known cwd is ALREADY IMPLEMENTED per-tab
+      (Codex-revised: `snapshot_pane_state` saves live `state.cwd` into
+      `TabContentState::Terminal { cwd }`, pane.rs:1664-1694; restore spawns
+      with `cwd.as_deref().or(working_directory)`, pane.rs:1078) — REFRAME
+      to verify + regression-test; no new field.
 
 ### US-3: As the operator, I can undo a close and walk focus history
 - [ ] Closing a workspace or tab pushes a recently-closed entry (name, cwd,
@@ -102,16 +141,23 @@ by cmux fixes upstream:
 
 1. Geometry/identity work confined to `layout_state.rs` + `split_tree.rs`
    (+ `window.rs` restore wiring); pure round-trip logic unit-testable
-   headless.
-2. cwd capture: per-pane additive `last_cwd` in `session.json` at save; live
-   inheritance at split time from `/proc`; keep the resolution helper in a
-   pure module with injected proc-root for tests.
-3. Recently-closed/focus-history state machine in a pure module; ring-buffer
-   caps and serialization tested without GTK.
-4. New socket methods (`workspace.back/forward`, recently-closed list/reopen)
-   land in BOTH the core dispatcher and the live bridge path (or PRD-E
-   registry if merged first — coordinate at import time; do not fork the
-   method-adding pattern).
+   headless. Cite `normalize_pane_tab_ids` (layout_state.rs:567-588) in the
+   contributor-docs note: dedupe is within-one-pane only — cross-pane
+   duplicate tab ids are valid.
+2. cwd inheritance: shared resolution helper (`term_cwd` → workspace cwd →
+   `$HOME`) in a pure module; per-tab persistence already exists (verify +
+   test, US-2).
+3. Recently-closed/focus-history state machine: pure module in
+   **limux-host-linux** (Codex-revised — persistence lands in host
+   `session.json` and `workspace.select` has two independent handlers, core
+   lib.rs:4972 + bridge control_bridge.rs:587). The live bridge implements
+   `workspace.back/forward` + recently-closed list/reopen; the core
+   dispatcher gets mirror registrations for headless tests. The
+   user/CLI-vs-programmatic push flag threads BOTH `workspace.select`
+   handler paths. Ring-buffer caps and serialization tested without GTK;
+   layout snapshots capped in depth to avoid pathological nesting.
+4. Method landing coordinates with the PRD-E registry if merged first — do
+   not fork the method-adding pattern.
 5. All `session.json` changes additive; older builds must load newer files
    (serde unknown-field tolerance — verified by a cross-version fixture test)
    with the documented caveat that older builds drop the new fields on save.
@@ -128,17 +174,13 @@ by cmux fixes upstream:
 
 ## Technical Considerations
 
-- `/proc/<pid>/cwd` readlink races with process exit — treat every step as
-  fallible with the fallback chain; never block the split on it (readlink is
-  O(1), but guard with a short timeout pattern anyway if the handle requires
-  process-group walking).
-- Shell vs foreground process: the SHELL's cwd is the correct signal (agents
-  cd via their shell); do not walk to the foreground child. Document this
-  choice — it is the cmux-compatible semantic.
-- Ratio serialization: store as f64 fractions of the parent allocation (or
-  keep whatever `split_tree.rs` uses today if already fractional — discovery
-  step in the first brief; do NOT store pixels, which break across monitor/
-  scale changes — WSLg scale changes are common).
+- cwd signal semantics: `term_cwd` reflects the shell's OSC-reported pwd —
+  the correct signal (agents cd via their shell); no process walking, no
+  `/proc` (Codex-revised — the earlier `/proc/<shell-pid>/cwd` design was
+  based on a false premise; no pid handle exists in host-linux).
+- Ratio serialization: already f64 fractions (`SplitState.ratio`) — no
+  discovery needed; never introduce pixel storage (WSLg scale changes are
+  common).
 - Focus-history push must ignore programmatic rapid-fire selects (e.g.
   restore-time selection storm) — only user/CLI-initiated `workspace.select`
   pushes (flag on the internal call).

@@ -43,7 +43,7 @@ title/output update melts under many active workspaces.
 
 | Event source | Transition |
 |---|---|
-| Hook event: agent started / prompt submitted / tool activity (per-agent vocabularies already parsed by `claude-hook`/`codex-hook`/etc.) | → `running` |
+| Hook event: agent started / prompt submitted / tool activity (per-agent vocabularies parsed by the shims — note (Codex-revised): there is NO `codex-hook` alias; Codex routes via `limux hooks codex <event>`, dispatch main.rs:5855) | → `running` |
 | Hook event: awaiting user input / permission request / notification-class "needs attention" | → `needs-input` |
 | Hook event: stop/end-of-turn | → `idle` |
 | No hook data for the surface (non-agent pane, hooks not installed) | `unknown` (never guessed) |
@@ -52,7 +52,36 @@ title/output update melts under many active workspaces.
 State is per-surface, aggregated to workspace as: any `needs-input` →
 needs-input; else any `running` → running; else any `idle` → idle; else
 unknown. Unread semantics are untouched — state is a separate field, not a
-re-skin of unread.
+re-skin of unread. Closing a pane/tab/surface REMOVES its state from the
+machine (Codex-required — otherwise a closed surface stuck in `needs-input`
+pins the workspace aggregate forever; eviction test required). Operator
+interaction does NOT mutate state (state changes only on hook events); the
+visual urgency uses a separate `acknowledged` bit that clears on focus,
+mirroring unread — so socket-reported state and sidebar never disagree.
+
+**(Codex-required) Per-family reachable-state matrix — the installed hook
+wiring, not the parser, determines what is reachable, and today's installers
+break the model for 4 of 5 families:**
+
+| Family | Installed events today | Reachable states | In-scope fix (FR-2) |
+|---|---|---|---|
+| hermes | `pre_llm_call` / `pre_approval_request` / `post_llm_call` (main.rs:1170-1187) | ALL | none — reference family |
+| claude | `Notification` hook is installed mapped to positional event `stop` (`install_hook_target` main.rs:1709), and the positional event WINS over JSON `hook_event_name` (`parse_hook_event` main.rs:1012-1017) → needs-input arrives as `stop` = INVERTED to idle | broken as-is | remap installer to `("Notification", "notification")` (side effect is a bug fix: "Claude finished" toast on Notifications becomes "Claude needs you"); delivered via `limux hooks setup` re-run |
+| codex | SessionStart/UserPromptSubmit/Stop only (main.rs:1693-1701) — no needs-input source | running/idle/unknown | wire the Codex notification-class event if its hook vocabulary offers one; else document needs-input as unreachable for codex v1 |
+| gemini | SessionStart/BeforeAgent/AfterAgent/SessionEnd (main.rs:1714-1723) | running/idle/unknown | same treatment as codex |
+| opencode | plugin maps `session.idle/updated/status/compacted` → `prompt-submit`, NO stop-class event (main.rs:2210-2213) → idle unreachable, idle agents look `running` | broken as-is | rework plugin mapping: `session.idle` → stop-class |
+
+US-1's "works for every hooked agent family" acceptance is scoped BY THIS
+MATRIX: full three-state coverage is required only where the family's hook
+vocabulary provides the events; unreachable states per family are documented
+in the checklist doc, never silently wrong.
+
+**Running-state keepalive:** no family installs tool-activity hooks today
+(only the parser recognizes them, main.rs:1183-1185). FR-2 wires
+tool-activity (PreToolUse/PostToolUse-class) events for families that support
+them (claude does) as the `running` keepalive; for families without, the
+decay default is raised to 30 min and the mid-turn decay behavior is
+documented.
 
 ## User Stories
 
@@ -60,13 +89,18 @@ re-skin of unread.
 - [ ] Sidebar rows render a state indicator (icon or colored glyph +
       accessible tooltip naming the state) for the aggregated workspace state.
 - [ ] `needs-input` is visually dominant (distinct from unread dot AND from
-      PRD-D attention border; the three coexist without ambiguity — a
-      screenshot matrix in the Xvfb suite proves all 8 combinations render).
+      PRD-D attention border). The distinctness matrix's axes are named
+      (Codex-revised): {needs-input indicator on|off} × {unread dot on|off} ×
+      {attention border on|off} = 8 combinations, asserted structurally
+      (widget/CSS-class presence) in the Xvfb suite; PLUS one rendering
+      assertion each for the `running`, `idle`, and `unknown` indicator
+      variants.
 - [ ] State transitions arrive without focus changes (background workspace
       row updates when its agent stops — Xvfb fake-agent test).
 - [ ] Stale-state decay: `running` with no hook events for a configurable
-      period (default 10 min) degrades to `unknown` (never silently forever-
-      running).
+      period degrades to `unknown` (never silently forever-running).
+      Default 30 min (Codex-revised — long agent turns emit no events for
+      families without tool-activity hooks; see keepalive note above).
 - [ ] Works for every hooked agent family: claude, codex, gemini, opencode,
       hermes (fixture hook payloads per family in tests — reuse the payload
       shapes the hook shims already parse).
@@ -84,28 +118,42 @@ re-skin of unread.
       (`LIMUX_SURFACE_ID` env contract) — no new env vars required.
 
 ### US-3: As a maintainer, the sidebar scales
-- [ ] Title/message/state updates mutate the affected row widget only —
-      no full list-model rebuild per update (verified by instrumentation
-      counter exposed via the existing `debug.*` surface, asserted in a test
-      that pushes 100 updates across 20 workspaces and requires
-      rebuild-count == 0).
+- [ ] (Codex-revised — ground truth: the sidebar ALREADY does targeted
+      per-row widget updates via retained `gtk::ListBoxRow` + label/CSS
+      mutations, window.rs:3506-3521/4810/6390; there is no per-update
+      rebuild to fix) US-3 is therefore a REGRESSION GUARD-RAIL, not a fix:
+      the new agent-state rendering must preserve the targeted-update
+      pattern. Instrumentation counter (existing `debug.*` count/reset
+      precedent, e.g. `debug.flash.count`) increments on row
+      RE-CREATION and on full `sidebar_list` repopulation — those are the
+      named increment sites; a test pushing 100 state updates across 20
+      workspaces asserts counter == 0.
 - [ ] Batching: bursts of hook events within one frame coalesce to one row
       update (existing GTK idle/tick pattern; test with 50-event burst).
-- [ ] Measured before/after: the test harness records wall-time for the
-      100-update scenario; the PRD's merged result must include the numbers
-      in the PR description (target: no worse than 2× single-update cost).
+- [ ] Wall-time is the PRIMARY metric: the harness records the 100-update
+      scenario duration; merged PR description includes the numbers
+      (target: no worse than 2× single-update cost).
 
 ## Functional Requirements
 
 1. State machine in a pure module (`rust/limux-host-linux/src/agent_state.rs`
    or `limux-core` if the socket-visible fields land there) — unit-testable
-   without GTK; GTK wiring separate (`docs/maintainability.md`).
-2. Hook path: extend the existing `hooks <agent> <event>` translation layer in
-   `rust/limux-cli/src/main.rs` to ALSO emit a state-transition control call
-   (new method `surface.agent_event` — additive, classified in the PRD-E
-   registry as mutation; hook shims remain drop-in compatible: no user
-   reconfiguration of `~/.claude/settings.json` etc. beyond `limux hooks
-   setup` re-run).
+   without GTK; GTK wiring separate (`docs/maintainability.md`). Data model
+   records `AgentKind` per surface (feeds `agents-status` family column;
+   precedent `AgentHookSessionRecord`, agent_hooks.rs:85) and evicts on
+   surface/pane/tab close.
+2. Hook path: extend the existing `hooks <agent> <event>` translation layer
+   in `rust/limux-cli/src/main.rs` to ALSO emit a state-transition control
+   call (new method `surface.agent_event` — additive, classified in the
+   PRD-E registry as mutation). Call structure (Codex-revised, bound): the
+   shim makes it a SECOND fire-and-forget call after the existing awaited
+   `notification.create` (main.rs:1125-1131), connect+write timeout 2 s,
+   failures silent — hook latency budget stays within the existing 5 s
+   hook-side budget. Hook shims remain drop-in compatible EXCEPT the
+   installer mapping fixes in the per-family matrix (Claude Notification
+   remap, OpenCode plugin mapping, optional codex/gemini/tool-activity
+   wiring) — all delivered via `limux hooks setup` re-run; no manual user
+   config edits.
 3. Sidebar rendering in `window.rs` sidebar row builder; row-update
    instrumentation counter behind `debug.*`.
 4. Persistence: agent_state is runtime-only (NOT persisted to session.json —

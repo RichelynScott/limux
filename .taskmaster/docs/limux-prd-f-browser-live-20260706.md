@@ -16,19 +16,31 @@ a server-side domain allowlist + audit events from day one.
 
 ## Problem Statement
 
-`limux-core` carries a full `browser.*` vocabulary (~40 methods: navigation,
-snapshot, find/click/fill, cookies/storage, tabs/frames, console/errors,
-addscript, state save/load) and the CLI exposes a complete `browser` suite —
-but none of it works against the running GUI: `pane.create type=browser`
-fail-closes at bridge parse time, and the parity plan's only remaining Phase-2
-line is "Browser command bridge parity." Meanwhile cmux ships in-app browser
-panes as a headline feature (split browser next to terminal, scriptable
-a11y-tree API, auth import) and upstream's new Rust `mux` backend chose a
-different architecture: CDP-driving an existing Chrome instead of embedding an
-engine (cmux #7325). On WSL2 the embedded-engine tax is higher than on macOS:
-WebKitGTK under WSLg runs software-GL, spawns noisy subprocesses (already
-observed polluting the host log), and duplicates the browser the operator
-already runs on Windows.
+(Codex-revised — corrected starting point) Limux ALREADY SHIPS an interactive
+WebKitGTK browser pane as a **default cargo feature**
+(`rust/limux-host-linux/Cargo.toml:13-14,22` — `default = ["webkit"]`,
+`webkit6 = "0.6"`): `BrowserHandles` in `pane.rs:~2871` (webview, url_entry,
+search bar, find controller, inspector/console handlers), GUI-wired via
+`window.rs:5221 on_open_browser_here`, with WSLg GL mitigations already
+applied (`configure_browser_settings` sets `HardwareAccelerationPolicy`,
+pane.rs:~3195). `scripts/appimage-webkit.sh` bundles the WebKitWebProcess
+runtime.
+
+What does NOT work is the **scriptable/agent surface**: `limux-core` carries
+an 84-method `browser.*` vocabulary and the CLI exposes a complete `browser`
+suite, but the core handlers drive an **in-memory mock** (the CLI itself says
+"linux mock", `limux-cli/src/main.rs:5457`) — not the shipped WebKit pane —
+and `pane.create type=browser` fail-closes at bridge parse time
+(control_bridge.rs:83-99, :413-428). So agents cannot open, drive, or read a
+real browser pane; only a human can. The parity plan's remaining Phase-2 line
+is "browser command bridge parity."
+
+Meanwhile upstream's new Rust `mux` backend chose CDP-driving an existing
+Chrome instead of an embedded engine (cmux #7325). On WSL2 the
+embedded-engine tax is real: WebKitGTK under WSLg runs software-GL, spawns
+noisy subprocesses (already observed polluting the host log), and duplicates
+the browser the operator already runs on Windows — but it is also already
+built and shipped, which the decision must weigh honestly.
 
 ## Phase F1 — Architecture decision spike (timeboxed, decision doc required)
 
@@ -39,16 +51,28 @@ delegated lifo) sign-off on the decision doc before F2 begins.**
 
 | Candidate | Sketch |
 |---|---|
-| (a) WebKitGTK embedded pane | WebKitGTK widget as a pane surface type inside the GTK app; `browser.*` methods drive it in-process. Existing `scripts/appimage-webkit.sh` implies prior packaging intent. |
-| (b) CDP external browser | Limux launches/attaches to a Chromium-family browser via CDP (DevTools protocol over localhost); the pane renders a live view (embedded CEF-free: screencast frames into a GTK widget) or — v1-minimal — manages the external window while Limux owns control/automation. mux precedent: cmux #7325. |
+| (a) WebKitGTK embedded pane (SHIPPED today) | The existing default-feature WebKit pane becomes the engine behind `browser.*`. Evidence for (a) is **measured on the existing production pane**, not prototyped: memory at 3+ panes, subprocess/log hygiene, WSLg stability under the existing `HardwareAccelerationPolicy` mitigation. New work = engine bindings from `browser.*` methods to the live webview. |
+| (b) CDP external browser | Limux launches/attaches to a Chromium-family browser via CDP (DevTools protocol over localhost); the pane renders a live view (screencast frames into a GTK widget) or — v1-minimal — manages the external window while Limux owns control/automation. mux precedent: cmux #7325. Prototype required (throwaway, spike branch, not merged). |
 
-Decision criteria (weights in the doc): WSLg rendering stability (software GL,
-compositor popups) · memory footprint at 3+ browser panes · auth/profile reuse
-(operator's real browser state) · `browser.*` vocabulary coverage achievable ·
-subprocess/log hygiene · packaging weight (AppImage/AUR/RPM) · maintenance
-surface. Prototype evidence minimum: render a page + execute `browser.goto`,
-`browser.snapshot`, `browser.click` end-to-end under WSLg for each candidate
-(throwaway code, committed to a spike branch, not merged).
+Decision criteria (weights in the doc): WSLg rendering stability — including
+the WebKitGTK DMABUF/compositing crash class
+(`WEBKIT_DISABLE_DMABUF_RENDERER` / `WEBKIT_DISABLE_COMPOSITING_MODE`) and
+GDK backend choice (Wayland vs X11) · WSLg clipboard integration + IME/
+keyboard input into the webview · memory footprint at 3+ browser panes ·
+auth/profile reuse (operator's real browser state) · `browser.*` vocabulary
+coverage achievable · subprocess/log hygiene · packaging weight
+(AppImage/AUR/RPM; appimage-webkit.sh bundles WebKitWebProcess today) ·
+maintenance surface · for (b)'s screencast sub-variant: measured FPS +
+input-latency targets under software rendering · for (b)'s Windows-Chrome
+attach: localhost forwarding across the WSL2 boundary + version-skew risk
+(graded criteria, not open questions). Prototype evidence minimum for (b):
+render a page + execute `browser.navigate`, `browser.snapshot`,
+`browser.click` end-to-end under WSLg.
+
+**Mandatory decision-doc section — existing-pane disposition:** if (b) wins,
+the doc MUST specify what happens to the shipped WebKit pane (remove the
+default feature / coexist as GUI-only / migrate) — silence on this is a
+review-blocking gap.
 
 ## Phase F2 — Implementation (common invariants, architecture-specific detail)
 
@@ -68,27 +92,63 @@ the decision doc is signed.
       regression: create/close browser pane while agent TUI streams output).
 
 ### US-2: As an agent, the scriptable browser vocabulary works live
-- [ ] Wave-1 method set live-routed (registry class `gtk-mutation` or
-      `browser-native` per PRD-E registry): `browser.goto/url/wait`,
-      `browser.snapshot` (a11y-tree/text), `browser.screenshot`,
-      `browser.find.*`, `browser.click`, `browser.fill`, `browser.get.*`,
-      `browser.console.list/errors.list`, `browser.tab.list/new/switch/close`.
-- [ ] Remaining `browser.*` methods explicitly classified `deferred` in the
-      registry (documented, `-32601`).
+- [ ] Wave-1 method set live-routed, using PRD-E's existing enum (registry
+      class `gtk-mutation`; no new class): `browser.navigate` (exact core
+      method name — `goto` is a CLI verb only, main.rs:5044) /
+      `browser.url/wait`, `browser.snapshot` (a11y-tree/text),
+      `browser.screenshot`, `browser.find.*`, `browser.click`,
+      `browser.fill`, `browser.get.*`, `browser.console.list/errors.list`,
+      `browser.tab.list/new/switch/close`. Registry classifications use
+      EXACT core method names throughout.
+- [ ] (Codex-required — binding invariant against PRD-E) **No `browser.*`
+      method is EVER classified `fallthrough-read`**: the core `browser.*`
+      handlers drive an in-memory MOCK (`handle_browser_extended_command`
+      mutates counters/field-maps; the CLI calls it the "linux mock",
+      main.rs:5457) — fall-through would return fabricated data against the
+      live GUI. Every live browser method is a NEW ENGINE BINDING
+      (`gtk-mutation` class routing to the real webview/CDP), which is the
+      actual shape of F2's effort.
+- [ ] Remaining `browser.*` methods (84 total in core) explicitly classified
+      `deferred` in the registry (documented, `-32601`).
 - [ ] Every live method has an Xvfb (or headless-CDP) test against a local
       fixture page served from the test harness — no external-network tests.
 
 ### US-3: As the security posture owner, browsing is allowlisted + audited
-- [ ] Server-side domain allowlist enforced in the host (NOT client-side):
-      default-deny for `browser.goto`/`tab.new`/redirect-follow outside the
-      allowlist; config file (`~/.config/limux/browser-allowlist.json`) with
-      explicit `["*"]` opt-out documented as unsafe.
+- [ ] (Codex-revised — method-gating alone is bypassable) The allowlist is
+      enforced at the ENGINE POLICY LAYER, not only on socket methods: for
+      WebKit, the navigation-policy-decision (`decide-policy`) + new-window
+      (`create`) signal layer; for CDP, Fetch/Page navigation interception.
+      Coverage: top-level navigations, subframe/iframe navigations,
+      `window.open`/new-window, server 3xx redirects, JS-initiated
+      navigation, AND the GUI URL bar (the shipped pane's `url_entry` goes
+      through the same check). Subresource loads (fetch/img/script from an
+      allowlisted page to non-allowlisted hosts) are OUT of scope v1 —
+      documented explicitly as a residual.
+- [ ] Fixture tests per bypass vector: link-click, `window.open`, HTTP 302,
+      iframe navigation, meta-refresh — each denied when off-allowlist.
+- [ ] Allowlist matching rules (normative): exact-host match, plus explicit
+      `*.example.com` wildcard form for subdomains; NO suffix matching
+      (`evil-example.com` never matches `example.com`); https default —
+      an http entry requires the explicit scheme in the config; non-default
+      ports must be listed to match; IP literals match exactly; hosts are
+      punycode-normalized (A-label) before comparison. Config file
+      `~/.config/limux/browser-allowlist.json`; explicit `["*"]` opt-out
+      documented as unsafe.
+- [ ] Test-harness carve-out is explicit: the Xvfb suite injects a harness
+      allowlist containing its `127.0.0.1:<port>` fixture server — tests
+      never weaken the default config.
+- [ ] Session-restore URL replay is itself a navigation and re-checks the
+      (possibly changed) allowlist.
 - [ ] Navigation denials return a structured error (`-32009` conflict family)
-      naming the blocked domain.
+      naming the blocked domain; the pane-cap error (FR-5) uses the same
+      family.
 - [ ] Audit events: every navigation, click, fill, script-injection, and
       cookie/storage access emits a structured line to a dedicated audit log
-      (`~/.local/state/limux/logs/browser-audit.log`), including requesting
-      socket peer + method + target; log rotation by size.
+      (`~/.local/state/limux/logs/browser-audit.log`, created `0600`),
+      including requesting socket peer + method + target. (Codex-required —
+      no secrets in the audit trail) `browser.fill` VALUES and any script
+      bodies are NEVER logged — field/selector names and byte-lengths only.
+      Rotation by size, retention 5 files.
 - [ ] `browser.addscript`/`addinitscript`/`addstyle` and `browser.cookies/
       storage` mutations classified `deferred` in v1 UNLESS the F1 decision
       doc argues them in with a threat note (default: deferred — highest
