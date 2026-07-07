@@ -293,6 +293,14 @@ impl SplitTreeContainer {
         removed
     }
 
+    pub(crate) fn rebuild_for_pane_metadata(self: &Rc<Self>, target: &gtk::Widget) {
+        if !self.tree.borrow().contains_pane(target) {
+            return;
+        }
+        self.save_focus();
+        self.trigger_rebuild();
+    }
+
     /// Tear down the old widget tree and schedule a rebuild on the next idle
     /// tick. The one-tick separation between unrealize (teardown) and realize
     /// (rebuild) is what prevents GLArea breakage.
@@ -438,6 +446,182 @@ fn detach_pane_from_old_parent(pane_widget: &gtk::Widget) {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WidthLockSide {
+    Start,
+    End,
+}
+
+fn locked_width_position_for_horizontal_split(
+    side: WidthLockSide,
+    locked_width: i32,
+    total_width: i32,
+    min_child_width: i32,
+) -> Option<i32> {
+    if locked_width <= 0 || total_width < min_child_width.saturating_mul(2) {
+        return None;
+    }
+
+    let max_child_width = total_width.saturating_sub(min_child_width);
+    let locked_width = locked_width.clamp(min_child_width, max_child_width);
+    Some(match side {
+        WidthLockSide::Start => locked_width,
+        WidthLockSide::End => total_width - locked_width,
+    })
+}
+
+fn horizontal_extent_width_lock_panes(node: &SplitNode) -> Vec<gtk::Widget> {
+    match node {
+        SplitNode::Leaf { pane_widget } => vec![pane_widget.clone()],
+        SplitNode::Split {
+            orientation,
+            left,
+            right,
+            ..
+        } => {
+            if *orientation == gtk::Orientation::Horizontal {
+                Vec::new()
+            } else {
+                let mut panes = horizontal_extent_width_lock_panes(left);
+                panes.extend(horizontal_extent_width_lock_panes(right));
+                panes
+            }
+        }
+    }
+}
+
+fn first_locked_width(panes: &[gtk::Widget]) -> Option<i32> {
+    panes.iter().find_map(pane::pane_locked_width)
+}
+
+fn locked_width_position_from_panes(
+    start_lock_panes: &[gtk::Widget],
+    end_lock_panes: &[gtk::Widget],
+    total_width: i32,
+    min_child_width: i32,
+) -> Option<i32> {
+    first_locked_width(start_lock_panes)
+        .and_then(|width| {
+            locked_width_position_for_horizontal_split(
+                WidthLockSide::Start,
+                width,
+                total_width,
+                min_child_width,
+            )
+        })
+        .or_else(|| {
+            first_locked_width(end_lock_panes).and_then(|width| {
+                locked_width_position_for_horizontal_split(
+                    WidthLockSide::End,
+                    width,
+                    total_width,
+                    min_child_width,
+                )
+            })
+        })
+}
+
+fn apply_locked_width_position_from_panes(
+    paned: &gtk::Paned,
+    start_lock_panes: &[gtk::Widget],
+    end_lock_panes: &[gtk::Widget],
+    applying: &Rc<Cell<bool>>,
+) -> bool {
+    let has_active_lock = first_locked_width(start_lock_panes).is_some()
+        || first_locked_width(end_lock_panes).is_some();
+    if !has_active_lock {
+        return false;
+    }
+
+    let allocation = paned.allocation();
+    let Some(position) = locked_width_position_from_panes(
+        start_lock_panes,
+        end_lock_panes,
+        allocation.width(),
+        pane::MIN_PANE_WIDTH,
+    ) else {
+        return true;
+    };
+
+    if paned.position() != position {
+        applying.set(true);
+        paned.set_position(position);
+        applying.set(false);
+    }
+    true
+}
+
+fn attach_locked_width_enforcement(
+    paned: &gtk::Paned,
+    orientation: gtk::Orientation,
+    start_lock_panes: Vec<gtk::Widget>,
+    end_lock_panes: Vec<gtk::Widget>,
+    applying: Rc<Cell<bool>>,
+) {
+    if orientation != gtk::Orientation::Horizontal {
+        return;
+    }
+    if start_lock_panes.is_empty() && end_lock_panes.is_empty() {
+        return;
+    }
+
+    {
+        let paned = paned.clone();
+        let start_lock_panes = start_lock_panes.clone();
+        let end_lock_panes = end_lock_panes.clone();
+        let applying = applying.clone();
+        glib::idle_add_local_once(move || {
+            apply_locked_width_position_from_panes(
+                &paned,
+                &start_lock_panes,
+                &end_lock_panes,
+                &applying,
+            );
+        });
+    }
+
+    {
+        let start_lock_panes = start_lock_panes.clone();
+        let end_lock_panes = end_lock_panes.clone();
+        let applying = applying.clone();
+        paned.connect_map(move |paned| {
+            apply_locked_width_position_from_panes(
+                paned,
+                &start_lock_panes,
+                &end_lock_panes,
+                &applying,
+            );
+        });
+    }
+
+    glib::timeout_add_local_once(std::time::Duration::from_millis(16), {
+        let paned = paned.clone();
+        let start_lock_panes = start_lock_panes.clone();
+        let end_lock_panes = end_lock_panes.clone();
+        let applying = applying.clone();
+        move || {
+            apply_locked_width_position_from_panes(
+                &paned,
+                &start_lock_panes,
+                &end_lock_panes,
+                &applying,
+            );
+        }
+    });
+
+    glib::timeout_add_local_once(std::time::Duration::from_millis(80), {
+        let paned = paned.clone();
+        move || {
+            apply_locked_width_position_from_panes(
+                &paned,
+                &start_lock_panes,
+                &end_lock_panes,
+                &applying,
+            );
+        }
+    });
+}
+
 /// Build a GTK widget tree from the SplitNode data model.
 fn build_widget_tree(node: &SplitNode, state: &State) -> gtk::Widget {
     match node {
@@ -468,11 +652,24 @@ fn build_widget_tree(node: &SplitNode, state: &State) -> gtk::Widget {
             update_split_ratio_state(&paned, ratio_val);
             attach_split_position_persistence(state, &paned, applying.clone());
 
+            let start_lock_panes = horizontal_extent_width_lock_panes(left);
+            let end_lock_panes = horizontal_extent_width_lock_panes(right);
+
             // Wire resize drags back to the shared ratio cell in the data model.
             let shared_ratio = ratio.clone();
             let applying_for_notify = applying.clone();
+            let start_lock_panes_for_notify = start_lock_panes.clone();
+            let end_lock_panes_for_notify = end_lock_panes.clone();
             paned.connect_position_notify(move |paned| {
                 if applying_for_notify.get() {
+                    return;
+                }
+                if apply_locked_width_position_from_panes(
+                    paned,
+                    &start_lock_panes_for_notify,
+                    &end_lock_panes_for_notify,
+                    &applying_for_notify,
+                ) {
                     return;
                 }
                 let allocation = paned.allocation();
@@ -496,7 +693,14 @@ fn build_widget_tree(node: &SplitNode, state: &State) -> gtk::Widget {
             paned.set_start_child(Some(&left_widget));
             paned.set_end_child(Some(&right_widget));
 
-            apply_split_ratio_after_layout(&paned, *orientation, ratio.clone(), applying);
+            apply_split_ratio_after_layout(&paned, *orientation, ratio.clone(), applying.clone());
+            attach_locked_width_enforcement(
+                &paned,
+                *orientation,
+                start_lock_panes,
+                end_lock_panes,
+                applying,
+            );
 
             paned.upcast()
         }
@@ -602,6 +806,38 @@ pub(crate) fn build_split_node_from_layout(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn locked_width_position_preserves_start_child_width() {
+        assert_eq!(
+            locked_width_position_for_horizontal_split(WidthLockSide::Start, 420, 1_200, 260),
+            Some(420)
+        );
+    }
+
+    #[test]
+    fn locked_width_position_preserves_end_child_width() {
+        assert_eq!(
+            locked_width_position_for_horizontal_split(WidthLockSide::End, 380, 1_200, 260),
+            Some(820)
+        );
+    }
+
+    #[test]
+    fn locked_width_position_respects_minimum_child_widths() {
+        assert_eq!(
+            locked_width_position_for_horizontal_split(WidthLockSide::Start, 100, 1_200, 260),
+            Some(260)
+        );
+        assert_eq!(
+            locked_width_position_for_horizontal_split(WidthLockSide::End, 100, 1_200, 260),
+            Some(940)
+        );
+        assert_eq!(
+            locked_width_position_for_horizontal_split(WidthLockSide::Start, 600, 400, 260),
+            None
+        );
+    }
 
     #[test]
     fn split_extent_requires_room_for_both_children() {

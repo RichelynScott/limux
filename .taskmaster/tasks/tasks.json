@@ -350,12 +350,25 @@
         "status": "pending",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Add right-click pane width lock",
+            "description": "Allow a user to right-click a terminal pane and lock or unlock that pane's current width so later horizontal resizing preserves that exact pane width where possible.",
+            "details": "Scope: add a pane-local locked-width state captured from current allocation; expose Lock width / Unlock width in the terminal context menu; enforce the lock during horizontal GtkPaned resize/layout updates without changing broader terminal reflow behavior. Do not implement the larger resize-stability redesign in this subtask.",
+            "status": "done",
+            "dependencies": [],
+            "parentTaskId": 20,
+            "updatedAt": "2026-07-07T14:01:40.269Z",
+            "parentId": "20"
+          }
+        ],
+        "updatedAt": "2026-07-07T14:01:56.925Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-07T08:44:29.047Z",
+      "lastModified": "2026-07-07T14:01:56.925Z",
       "taskCount": 20,
       "completedCount": 10,
       "tags": [

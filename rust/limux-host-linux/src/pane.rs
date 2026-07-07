@@ -223,6 +223,24 @@ pub fn set_pane_flag_color(pane_widget: &gtk::Widget, flag_color: Option<PaneFla
     true
 }
 
+pub fn pane_locked_width(pane_widget: &gtk::Widget) -> Option<i32> {
+    find_pane_internals(pane_widget).and_then(|internals| internals.locked_width.get())
+}
+
+pub fn toggle_pane_width_lock(pane_widget: &gtk::Widget) -> Option<Option<i32>> {
+    let internals = find_pane_internals(pane_widget)?;
+    let next_width = if internals.locked_width.get().is_some() {
+        None
+    } else {
+        let width = internals.pane_outer.allocation().width();
+        (width > 0).then_some(width)
+    };
+
+    internals.locked_width.set(next_width);
+    (internals.callbacks.on_width_lock_changed)(pane_widget);
+    Some(next_width)
+}
+
 pub fn mark_pane_needs_attention(pane_id: u32) -> bool {
     let Some(internals) = lookup_pane_internals(pane_id) else {
         return false;
@@ -324,6 +342,7 @@ pub struct PaneCallbacks {
     pub on_pwd_changed: Box<PanePathCallback>,
     pub on_empty: Box<PaneEmptyCallback>,
     pub on_state_changed: Box<PaneSignalCallback>,
+    pub on_width_lock_changed: Box<PaneWidgetCallback>,
     pub on_split_with_tab: Box<PaneSplitWithTabCallback>,
     pub current_config: Box<PaneConfigCallback>,
     pub on_config_changed: Rc<PaneConfigChangedCallback>,
@@ -714,6 +733,7 @@ pub fn create_pane(
     let attention_hovered = Rc::new(Cell::new(false));
     let initial_flag_color = initial_state.and_then(|state| state.flag_color);
     let flag_color = Rc::new(RefCell::new(initial_flag_color));
+    let locked_width = Rc::new(Cell::new(None));
     let pane_id = pane_id_for_initial_state(initial_state);
     let internals = Rc::new(PaneInternals {
         pane_id,
@@ -731,6 +751,7 @@ pub fn create_pane(
         attention_clear_timer: attention_clear_timer.clone(),
         attention_hovered: attention_hovered.clone(),
         flag_color: flag_color.clone(),
+        locked_width: locked_width.clone(),
         new_terminal_button: new_term_btn.clone(),
         split_right_button: split_h_btn.clone(),
         split_down_button: split_v_btn.clone(),
@@ -1058,6 +1079,7 @@ pub struct PaneInternals {
     attention_clear_timer: Rc<RefCell<Option<glib::SourceId>>>,
     attention_hovered: Rc<Cell<bool>>,
     flag_color: Rc<RefCell<Option<PaneFlagColor>>>,
+    locked_width: Rc<Cell<Option<i32>>>,
     new_terminal_button: gtk::Button,
     split_right_button: gtk::Button,
     split_down_button: gtk::Button,
@@ -1257,6 +1279,7 @@ fn make_terminal_callbacks(
     let callbacks_for_split_down = internals.callbacks.clone();
     let callbacks_for_keybinds = internals.callbacks.clone();
     let callbacks_for_identity = internals.callbacks.clone();
+    let locked_width_for_state = internals.locked_width.clone();
     let tab_strip = internals.tab_strip.clone();
     let content_stack = internals.content_stack.clone();
     let tab_state = internals.tab_state.clone();
@@ -1360,6 +1383,14 @@ fn make_terminal_callbacks(
                 (callbacks_for_keybinds.on_open_keybinds)(&pane_widget);
             }
         }),
+        on_toggle_width_lock: Box::new({
+            let pane_outer = internals.pane_outer.clone();
+            move || {
+                let pane_widget: gtk::Widget = pane_outer.clone().upcast();
+                let _ = toggle_pane_width_lock(&pane_widget);
+            }
+        }),
+        pane_width_lock: Box::new(move || locked_width_for_state.get()),
         identity: Box::new({
             let pane_outer = internals.pane_outer.clone();
             let surface_id = format!("{}:{}", internals.pane_id, tab_id);
