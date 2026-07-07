@@ -622,6 +622,23 @@ fn attach_locked_width_enforcement(
     });
 }
 
+fn snapshot_current_split_ratio(paned: &gtk::Paned, shared_ratio: &Rc<RefCell<f64>>) {
+    let allocation = paned.allocation();
+    let orientation = paned.orientation();
+    let size = if orientation == gtk::Orientation::Horizontal {
+        allocation.width()
+    } else {
+        allocation.height()
+    };
+    let new_ratio = layout_state::snapshot_split_ratio_with_min(
+        paned.position(),
+        size,
+        Some(*shared_ratio.borrow()),
+        minimum_split_extent_for_orientation(orientation),
+    );
+    *shared_ratio.borrow_mut() = layout_state::clamp_split_ratio(new_ratio);
+}
+
 /// Build a GTK widget tree from the SplitNode data model.
 fn build_widget_tree(node: &SplitNode, state: &State) -> gtk::Widget {
     match node {
@@ -672,22 +689,10 @@ fn build_widget_tree(node: &SplitNode, state: &State) -> gtk::Widget {
                         &applying_for_notify,
                     )
                 {
+                    snapshot_current_split_ratio(paned, &shared_ratio);
                     return;
                 }
-                let allocation = paned.allocation();
-                let orientation = paned.orientation();
-                let size = if orientation == gtk::Orientation::Horizontal {
-                    allocation.width()
-                } else {
-                    allocation.height()
-                };
-                let new_ratio = layout_state::snapshot_split_ratio_with_min(
-                    paned.position(),
-                    size,
-                    Some(*shared_ratio.borrow()),
-                    minimum_split_extent_for_orientation(orientation),
-                );
-                *shared_ratio.borrow_mut() = layout_state::clamp_split_ratio(new_ratio);
+                snapshot_current_split_ratio(paned, &shared_ratio);
             });
 
             let left_widget = build_widget_tree(left, state);
