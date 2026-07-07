@@ -1337,6 +1337,36 @@ pub fn start(dispatch: fn(ControlCommand)) {
 mod tests {
     use super::*;
 
+    static WAVE1_ENV_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<std::ffi::OsString>,
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl EnvVarGuard {
+        fn clear(key: &'static str) -> Self {
+            let lock = WAVE1_ENV_TEST_LOCK.lock().expect("env test lock poisoned");
+            let previous = std::env::var_os(key);
+            std::env::remove_var(key);
+            Self {
+                key,
+                previous,
+                _lock: lock,
+            }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
     #[test]
     fn parses_v2_request_directly() {
         let request = parse_request(r#"{"id":"1","method":"system.ping","params":{}}"#)
@@ -1833,6 +1863,8 @@ mod tests {
 
     #[test]
     fn unrestricted_capabilities_do_not_advertise_unwired_wave1_or_deferred_routes() {
+        let _env_guard =
+            EnvVarGuard::clear(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV);
         let response = dispatch_request(
             r#"{"id":1,"method":"system.capabilities","params":{}}"#,
             &|command| panic!("system.capabilities should not dispatch: {command:?}"),

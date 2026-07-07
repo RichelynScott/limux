@@ -307,6 +307,7 @@ mod tests {
 
     #[test]
     fn wave1_mutation_methods_are_classified_and_only_wired_routes_are_advertised() {
+        let advertised = capability_methods_for_wave1_disabled(false);
         for method in [
             "pane.focus",
             "pane.resize",
@@ -327,7 +328,7 @@ mod tests {
                 "{method} should be in the Wave-1 mutation set"
             );
         }
-        assert!(capability_methods().contains(&"pane.focus"));
+        assert!(advertised.contains(&"pane.focus"));
         for method in [
             "pane.resize",
             "resize-pane",
@@ -342,7 +343,7 @@ mod tests {
             "tab.action",
         ] {
             assert!(
-                !capability_methods().contains(&method),
+                !advertised.contains(&method),
                 "{method} should not be advertised until a live GTK route is wired"
             );
         }
