@@ -423,6 +423,79 @@ pub struct NotificationInfo {
     pub unread: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ControlStateSnapshot {
+    pub workspaces: Vec<WorkspaceSnapshot>,
+    pub current_workspace_id: Option<u64>,
+    pub notifications: Vec<NotificationInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkspaceSnapshot {
+    pub id: u64,
+    pub name: String,
+    pub cwd: Option<String>,
+    pub host_window_id: u64,
+    pub windows: Vec<WindowSnapshot>,
+    pub current_window_id: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WindowSnapshot {
+    pub id: u64,
+    pub title: String,
+    pub panes: Vec<PaneSnapshot>,
+    pub current_pane_id: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PaneSnapshot {
+    pub id: u64,
+    pub surfaces: Vec<SurfaceSnapshot>,
+    pub current_surface_id: Option<u64>,
+    pub flag_color: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SurfaceSnapshot {
+    pub id: u64,
+    pub title: String,
+    pub text: String,
+    pub panel_type: String,
+    pub developer_tools_visible: bool,
+    pub pinned: bool,
+    pub unread: bool,
+    pub flash_count: u64,
+    pub refresh_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ControlStateSnapshotError {
+    EmptyWorkspaces,
+    EmptyWindows { workspace_id: u64 },
+    EmptyPanes { window_id: u64 },
+    EmptySurfaces { pane_id: u64 },
+    DuplicateId { kind: &'static str, id: u64 },
+}
+
+impl std::fmt::Display for ControlStateSnapshotError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyWorkspaces => write!(f, "control state snapshot has no workspaces"),
+            Self::EmptyWindows { workspace_id } => {
+                write!(f, "workspace {workspace_id} has no windows")
+            }
+            Self::EmptyPanes { window_id } => write!(f, "window {window_id} has no panes"),
+            Self::EmptySurfaces { pane_id } => write!(f, "pane {pane_id} has no surfaces"),
+            Self::DuplicateId { kind, id } => {
+                write!(f, "duplicate {kind} id in control state snapshot: {id}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ControlStateSnapshotError {}
+
 #[derive(Debug, Clone)]
 struct WorkspaceState {
     id: u64,
@@ -805,9 +878,217 @@ impl Default for ControlState {
     }
 }
 
+fn validate_snapshot(snapshot: &ControlStateSnapshot) -> Result<(), ControlStateSnapshotError> {
+    if snapshot.workspaces.is_empty() {
+        return Err(ControlStateSnapshotError::EmptyWorkspaces);
+    }
+
+    let mut workspace_ids = HashSet::new();
+    let mut window_ids = HashSet::new();
+    let mut pane_ids = HashSet::new();
+    let mut surface_ids = HashSet::new();
+    let mut notification_ids = HashSet::new();
+
+    for notification in &snapshot.notifications {
+        require_unique_snapshot_id(&mut notification_ids, "notification", notification.id)?;
+    }
+
+    for workspace in &snapshot.workspaces {
+        require_unique_snapshot_id(&mut workspace_ids, "workspace", workspace.id)?;
+
+        if workspace.windows.is_empty() {
+            return Err(ControlStateSnapshotError::EmptyWindows {
+                workspace_id: workspace.id,
+            });
+        }
+
+        for window in &workspace.windows {
+            require_unique_snapshot_id(&mut window_ids, "window", window.id)?;
+
+            if window.panes.is_empty() {
+                return Err(ControlStateSnapshotError::EmptyPanes {
+                    window_id: window.id,
+                });
+            }
+
+            for pane in &window.panes {
+                require_unique_snapshot_id(&mut pane_ids, "pane", pane.id)?;
+
+                if pane.surfaces.is_empty() {
+                    return Err(ControlStateSnapshotError::EmptySurfaces { pane_id: pane.id });
+                }
+
+                for surface in &pane.surfaces {
+                    require_unique_snapshot_id(&mut surface_ids, "surface", surface.id)?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn require_unique_snapshot_id(
+    seen: &mut HashSet<u64>,
+    kind: &'static str,
+    id: u64,
+) -> Result<(), ControlStateSnapshotError> {
+    if seen.insert(id) {
+        Ok(())
+    } else {
+        Err(ControlStateSnapshotError::DuplicateId { kind, id })
+    }
+}
+
+fn next_id_after(max_id: u64) -> u64 {
+    max_id.saturating_add(1).max(1)
+}
+
 impl ControlState {
     pub fn set_build_info(&mut self, build_info: BuildInfo) {
         self.build_info = build_info;
+    }
+
+    pub fn import_snapshot(
+        &mut self,
+        snapshot: ControlStateSnapshot,
+    ) -> Result<(), ControlStateSnapshotError> {
+        validate_snapshot(&snapshot)?;
+
+        let ControlStateSnapshot {
+            workspaces,
+            current_workspace_id,
+            notifications,
+        } = snapshot;
+
+        let mut max_workspace_id = 0;
+        let mut max_window_id = 0;
+        let mut max_pane_id = 0;
+        let mut max_surface_id = 0;
+        let max_notification_id = notifications
+            .iter()
+            .map(|notification| notification.id)
+            .max()
+            .unwrap_or(0);
+
+        let mut sidebar_visibility_by_window = HashMap::new();
+        let workspaces = workspaces
+            .into_iter()
+            .map(|workspace| {
+                max_workspace_id = max_workspace_id.max(workspace.id);
+
+                let windows = workspace
+                    .windows
+                    .into_iter()
+                    .map(|window| {
+                        max_window_id = max_window_id.max(window.id);
+                        sidebar_visibility_by_window.insert(
+                            window.id,
+                            self.sidebar_visibility_by_window
+                                .get(&window.id)
+                                .copied()
+                                .unwrap_or(self.debug_sidebar_visible),
+                        );
+
+                        let panes = window
+                            .panes
+                            .into_iter()
+                            .map(|pane| {
+                                max_pane_id = max_pane_id.max(pane.id);
+
+                                let surfaces = pane
+                                    .surfaces
+                                    .into_iter()
+                                    .map(|surface| {
+                                        max_surface_id = max_surface_id.max(surface.id);
+                                        SurfaceState {
+                                            id: surface.id,
+                                            title: surface.title,
+                                            text: surface.text,
+                                            shell_input: String::new(),
+                                            terminal_mode: TerminalMode::Idle,
+                                            panel_type: surface.panel_type,
+                                            developer_tools_visible: surface
+                                                .developer_tools_visible,
+                                            pinned: surface.pinned,
+                                            unread: surface.unread,
+                                            flash_count: surface.flash_count,
+                                            refresh_count: surface.refresh_count,
+                                        }
+                                    })
+                                    .collect::<Vec<_>>();
+
+                                let current_surface_id = pane
+                                    .current_surface_id
+                                    .filter(|id| surfaces.iter().any(|surface| surface.id == *id))
+                                    .or_else(|| surfaces.first().map(|surface| surface.id));
+
+                                PaneState {
+                                    id: pane.id,
+                                    surfaces,
+                                    current_surface_id,
+                                    last_surface_id: None,
+                                    flag_color: pane.flag_color,
+                                }
+                            })
+                            .collect::<Vec<_>>();
+
+                        let current_pane_id = window
+                            .current_pane_id
+                            .filter(|id| panes.iter().any(|pane| pane.id == *id))
+                            .or_else(|| panes.first().map(|pane| pane.id));
+
+                        WindowState {
+                            id: window.id,
+                            title: window.title,
+                            panes,
+                            current_pane_id,
+                            last_pane_id: None,
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                let current_window_id = workspace
+                    .current_window_id
+                    .filter(|id| windows.iter().any(|window| window.id == *id))
+                    .or_else(|| windows.first().map(|window| window.id));
+
+                WorkspaceState {
+                    id: workspace.id,
+                    name: workspace.name,
+                    cwd: workspace.cwd,
+                    host_window_id: workspace.host_window_id,
+                    windows,
+                    current_window_id,
+                    last_window_id: None,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let current_workspace_id = current_workspace_id
+            .filter(|id| workspaces.iter().any(|workspace| workspace.id == *id))
+            .unwrap_or_else(|| workspaces[0].id);
+
+        self.workspaces = workspaces;
+        self.current_workspace_id = current_workspace_id;
+        self.last_workspace_id = None;
+        self.next_workspace_id = next_id_after(max_workspace_id);
+        self.next_window_id = next_id_after(max_window_id);
+        self.next_pane_id = next_id_after(max_pane_id);
+        self.next_surface_id = next_id_after(max_surface_id);
+        self.next_notification_id = next_id_after(max_notification_id);
+        self.notifications = notifications;
+        self.command_palettes.clear();
+        self.sidebar_visibility_by_window = sidebar_visibility_by_window;
+        self.pane_right_neighbors.clear();
+        self.pane_down_neighbors.clear();
+        self.pane_size_overrides.clear();
+        self.panel_snapshot_baselines.clear();
+        self.next_snapshot_id = 1;
+        self.kitty_notification_chunks.clear();
+        self.browser = BrowserState::default();
+
+        Ok(())
     }
 
     fn make_workspace(&mut self, name: Option<String>) -> WorkspaceState {
@@ -2901,12 +3182,20 @@ impl Dispatcher {
         }
     }
 
-    pub async fn dispatch(&self, request: V2Request) -> V2Response {
+    pub fn with_shared_state(state: Arc<Mutex<ControlState>>) -> Self {
+        Self { state }
+    }
+
+    pub fn dispatch_sync(&self, request: V2Request) -> V2Response {
         let mut state = self
             .state
             .lock()
             .expect("control state lock should not be poisoned");
         dispatch_request(&mut state, request)
+    }
+
+    pub async fn dispatch(&self, request: V2Request) -> V2Response {
+        self.dispatch_sync(request)
     }
 }
 
@@ -6347,6 +6636,191 @@ mod tests {
             method: method.to_string(),
             params,
         }
+    }
+
+    #[test]
+    fn dispatcher_sync_dispatch_uses_existing_shared_state() {
+        let shared = Arc::new(Mutex::new(ControlState::default()));
+        let writer = Dispatcher::with_shared_state(Arc::clone(&shared));
+        let reader = Dispatcher::with_shared_state(shared);
+
+        let created = writer.dispatch_sync(request("workspace.create", json!({ "name": "dev" })));
+        assert_eq!(
+            created.result.expect("workspace create")["workspace"]["name"],
+            "dev"
+        );
+
+        let listed = reader.dispatch_sync(request("workspace.list", json!({})));
+        let workspaces = listed.result.expect("workspace list")["workspaces"]
+            .as_array()
+            .expect("workspace list array")
+            .clone();
+        assert!(
+            workspaces
+                .iter()
+                .any(|workspace| workspace["name"] == "dev"),
+            "reader should observe the writer's shared control state"
+        );
+    }
+
+    #[test]
+    fn control_state_import_snapshot_replaces_tree_and_preserves_build_info() {
+        let mut state = ControlState::default();
+        state.set_build_info(BuildInfo {
+            sha: "feedface".to_string(),
+            dirty: Some(false),
+            profile: "release".to_string(),
+            install_id: Some("preview-a".to_string()),
+            channel: Some("preview/test".to_string()),
+        });
+        state
+            .import_snapshot(ControlStateSnapshot {
+                current_workspace_id: Some(42),
+                workspaces: vec![WorkspaceSnapshot {
+                    id: 42,
+                    name: "gtk-main".to_string(),
+                    cwd: Some("/home/riche/project".to_string()),
+                    host_window_id: 700,
+                    current_window_id: Some(700),
+                    windows: vec![WindowSnapshot {
+                        id: 700,
+                        title: "host".to_string(),
+                        current_pane_id: Some(88),
+                        panes: vec![PaneSnapshot {
+                            id: 88,
+                            current_surface_id: Some(99),
+                            flag_color: Some("orange".to_string()),
+                            surfaces: vec![SurfaceSnapshot {
+                                id: 99,
+                                title: "agent".to_string(),
+                                text: "live text".to_string(),
+                                panel_type: "terminal".to_string(),
+                                developer_tools_visible: false,
+                                pinned: true,
+                                unread: true,
+                                flash_count: 3,
+                                refresh_count: 4,
+                            }],
+                        }],
+                    }],
+                }],
+                notifications: vec![NotificationInfo {
+                    id: 1000,
+                    message: "needs attention".to_string(),
+                    title: "Limux".to_string(),
+                    subtitle: String::new(),
+                    body: "body".to_string(),
+                    surface_id: Some(99),
+                    workspace_id: Some(42),
+                    unread: true,
+                }],
+            })
+            .expect("valid snapshot should import");
+
+        let dispatcher = Dispatcher::with_state(state);
+        let identify = dispatcher.dispatch_sync(request("system.identify", json!({})));
+        assert_eq!(
+            identify.result.expect("identify result")["build"]["sha"],
+            "feedface"
+        );
+
+        let current_workspace = dispatcher.dispatch_sync(request("workspace.current", json!({})));
+        assert_eq!(
+            current_workspace.result.expect("workspace current")["workspace"]["name"],
+            "gtk-main"
+        );
+
+        let current_surface = dispatcher.dispatch_sync(request("surface.current", json!({})));
+        let surface = &current_surface.result.expect("surface current")["surface"];
+        assert_eq!(surface["title"], "agent");
+        assert_eq!(surface["text"], "live text");
+        assert_eq!(surface["pane_flag_color"], "orange");
+
+        let notification_list = dispatcher.dispatch_sync(request("notification.list", json!({})));
+        assert_eq!(
+            notification_list.result.expect("notification list")["notifications"][0]["id"],
+            encode_handle_id(1000)
+        );
+
+        let created = dispatcher.dispatch_sync(request("workspace.create", json!({})));
+        assert_eq!(
+            created.result.expect("created workspace")["workspace"]["id"],
+            43
+        );
+    }
+
+    #[test]
+    fn control_state_import_snapshot_rejects_empty_tree() {
+        let mut state = ControlState::default();
+        let err = state
+            .import_snapshot(ControlStateSnapshot {
+                current_workspace_id: None,
+                workspaces: Vec::new(),
+                notifications: Vec::new(),
+            })
+            .expect_err("empty snapshot should be rejected");
+
+        assert_eq!(err, ControlStateSnapshotError::EmptyWorkspaces);
+    }
+
+    #[test]
+    fn control_state_import_snapshot_rejects_duplicate_ids() {
+        let mut state = ControlState::default();
+        let err = state
+            .import_snapshot(ControlStateSnapshot {
+                current_workspace_id: Some(1),
+                workspaces: vec![WorkspaceSnapshot {
+                    id: 1,
+                    name: "gtk-main".to_string(),
+                    cwd: None,
+                    host_window_id: 1,
+                    current_window_id: Some(1),
+                    windows: vec![WindowSnapshot {
+                        id: 1,
+                        title: "host".to_string(),
+                        current_pane_id: Some(1),
+                        panes: vec![PaneSnapshot {
+                            id: 1,
+                            current_surface_id: Some(1),
+                            flag_color: None,
+                            surfaces: vec![
+                                SurfaceSnapshot {
+                                    id: 1,
+                                    title: "first".to_string(),
+                                    text: String::new(),
+                                    panel_type: "terminal".to_string(),
+                                    developer_tools_visible: false,
+                                    pinned: false,
+                                    unread: false,
+                                    flash_count: 0,
+                                    refresh_count: 0,
+                                },
+                                SurfaceSnapshot {
+                                    id: 1,
+                                    title: "duplicate".to_string(),
+                                    text: String::new(),
+                                    panel_type: "terminal".to_string(),
+                                    developer_tools_visible: false,
+                                    pinned: false,
+                                    unread: false,
+                                    flash_count: 0,
+                                    refresh_count: 0,
+                                },
+                            ],
+                        }],
+                    }],
+                }],
+                notifications: Vec::new(),
+            })
+            .expect_err("duplicate surface ids should be rejected");
+
+        assert_eq!(
+            err,
+            ControlStateSnapshotError::DuplicateId {
+                kind: "surface",
+                id: 1
+            }
+        );
     }
 
     #[tokio::test]
