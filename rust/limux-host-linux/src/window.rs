@@ -377,6 +377,49 @@ struct PaneResizeTarget {
     direction: BridgePaneResizeDirection,
     amount: f64,
     pane_widget: gtk::Widget,
+    unread_snapshots: Vec<WorkspaceUnreadSnapshot>,
+}
+
+#[derive(Clone)]
+struct WorkspaceUnreadSnapshot {
+    workspace_id: String,
+    message: String,
+}
+
+fn workspace_unread_snapshot(workspace: &Workspace) -> Option<WorkspaceUnreadSnapshot> {
+    workspace.unread.then(|| WorkspaceUnreadSnapshot {
+        workspace_id: workspace.id.clone(),
+        message: workspace.notify_label.label().to_string(),
+    })
+}
+
+fn restore_workspace_unread_snapshots(state: &State, snapshots: &[WorkspaceUnreadSnapshot]) {
+    if snapshots.is_empty() {
+        return;
+    }
+
+    let mut restored = false;
+    {
+        let mut app_state = state.borrow_mut();
+        for snapshot in snapshots {
+            let Some(workspace) = app_state
+                .workspaces
+                .iter_mut()
+                .find(|workspace| workspace.id == snapshot.workspace_id)
+            else {
+                continue;
+            };
+            if workspace.unread {
+                continue;
+            }
+            set_workspace_unread_visuals(workspace, &snapshot.message);
+            restored = true;
+        }
+    }
+
+    if restored {
+        request_session_save(state);
+    }
 }
 
 fn resolve_pane_resize_target(
@@ -386,17 +429,30 @@ fn resolve_pane_resize_target(
     let pane_id = parse_pane_handle(&request.pane_id)
         .ok_or_else(|| BridgeError::invalid_params("pane.resize requires a valid pane_id"))?;
 
-    let (workspace_index, previous_active_idx, workspace_id, workspace_root) = {
+    let (workspace_index, previous_active_idx, workspace_id, workspace_root, unread_snapshots) = {
         let app_state = state.borrow();
         let Some(index) = workspace_index_for_target(&app_state, &request.target) else {
             return Err(BridgeError::not_found("workspace not found"));
         };
+        let previous_active_idx = app_state.active_idx;
         let workspace = &app_state.workspaces[index];
+        let mut unread_snapshots = Vec::new();
+        if index != previous_active_idx {
+            if let Some(snapshot) = workspace_unread_snapshot(workspace) {
+                unread_snapshots.push(snapshot);
+            }
+            if let Some(previous_workspace) = app_state.workspaces.get(previous_active_idx) {
+                if let Some(snapshot) = workspace_unread_snapshot(previous_workspace) {
+                    unread_snapshots.push(snapshot);
+                }
+            }
+        }
         (
             index,
-            app_state.active_idx,
+            previous_active_idx,
             workspace.id.clone(),
             workspace.root.clone(),
+            unread_snapshots,
         )
     };
 
@@ -411,6 +467,7 @@ fn resolve_pane_resize_target(
         direction: request.direction,
         amount: request.amount,
         pane_widget,
+        unread_snapshots,
     })
 }
 
@@ -439,14 +496,17 @@ fn send_pane_resize_response_after_settle(
 ) {
     let rollback_index = (target.workspace_index != target.previous_active_idx)
         .then_some(target.previous_active_idx);
+    let unread_snapshots = target.unread_snapshots.clone();
     glib::idle_add_local_once(move || match apply_pane_resize_target(&state, target) {
         Ok(outcome) => {
             let state = state.clone();
+            let unread_snapshots = unread_snapshots.clone();
             glib::idle_add_local_once(move || {
                 let payload = pane_resize_response_payload(outcome);
                 if let Some(index) = rollback_index {
                     switch_workspace(&state, index);
                 }
+                restore_workspace_unread_snapshots(&state, &unread_snapshots);
                 let _ = reply.send(Ok(payload));
             });
         }
@@ -454,6 +514,7 @@ fn send_pane_resize_response_after_settle(
             if let Some(index) = rollback_index {
                 switch_workspace(&state, index);
             }
+            restore_workspace_unread_snapshots(&state, &unread_snapshots);
             let _ = reply.send(Err(error));
         }
     });
