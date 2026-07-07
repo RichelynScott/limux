@@ -15,8 +15,8 @@ use limux_protocol::validate_terminal_text_payload;
 
 use crate::app_config;
 use crate::control_bridge::{
-    BridgeError, ControlCommand, PaneCreateDirection as BridgePaneCreateDirection, PaneCreateType,
-    WorkspaceTarget,
+    BridgeError, ControlCommand, PaneActionKind, PaneCreateDirection as BridgePaneCreateDirection,
+    PaneCreateType, WorkspaceTarget,
 };
 use crate::keybind_editor;
 use crate::layout_state::{
@@ -294,6 +294,22 @@ fn normalize_pane_handle(raw: &str) -> &str {
 
 fn parse_pane_handle(raw: &str) -> Option<u32> {
     normalize_pane_handle(raw).parse::<u32>().ok()
+}
+
+fn pane_action_target_pane_id(
+    explicit_pane_id: Option<&str>,
+    focused_pane_id: Option<u32>,
+) -> Result<u32, BridgeError> {
+    if let Some(raw) = explicit_pane_id {
+        return parse_pane_handle(raw)
+            .ok_or_else(|| BridgeError::invalid_params("pane.action requires a valid pane_id"));
+    }
+
+    focused_pane_id.ok_or_else(|| {
+        BridgeError::invalid_params(
+            "pane.action requires a valid pane_id or an active focused pane",
+        )
+    })
 }
 
 fn workspace_index_for_target(state: &AppState, target: &WorkspaceTarget) -> Option<usize> {
@@ -629,6 +645,12 @@ fn pane_list_payload(state: &State, workspace: &Workspace) -> serde_json::Value 
                 "surface_count".to_string(),
                 serde_json::json!(pane.surface_count),
             );
+            row.insert(
+                "flag_color".to_string(),
+                pane.flag_color
+                    .map(|color| serde_json::Value::String(color.name().to_string()))
+                    .unwrap_or(serde_json::Value::Null),
+            );
             let focused = focused_pane_id == Some(pane.pane_id);
             row.insert("focused".to_string(), serde_json::Value::Bool(focused));
             row.insert("selected".to_string(), serde_json::Value::Bool(focused));
@@ -675,6 +697,13 @@ fn surface_list_payload(
             row.insert(
                 "pane_ref".to_string(),
                 serde_json::Value::String(pane_ref(surface.pane_id)),
+            );
+            row.insert(
+                "pane_flag_color".to_string(),
+                surface
+                    .pane_flag_color
+                    .map(|color| serde_json::Value::String(color.name().to_string()))
+                    .unwrap_or(serde_json::Value::Null),
             );
             row.insert("index".to_string(), serde_json::json!(index));
             row.insert(
@@ -4563,6 +4592,52 @@ fn handle_control_command(state: &State, command: ControlCommand) {
 
             let _ = reply.send(Ok(result));
         }
+        ControlCommand::PaneAction { request, reply } => {
+            let resolved = {
+                let app_state = state.borrow();
+                workspace_index_for_target(&app_state, &request.target)
+            };
+
+            let Some(index) = resolved else {
+                let _ = reply.send(Err(BridgeError::not_found("workspace not found")));
+                return;
+            };
+
+            let (workspace_id, workspace_root) = {
+                let app_state = state.borrow();
+                let workspace = &app_state.workspaces[index];
+                (workspace.id.clone(), workspace.root.clone())
+            };
+            let pane_id = match pane_action_target_pane_id(
+                request.pane_id.as_deref(),
+                focused_ids_for_workspace(state, &workspace_id).0,
+            ) {
+                Ok(pane_id) => pane_id,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
+            };
+
+            let Some(pane_widget) = pane::pane_widget_for_root(&workspace_root, pane_id) else {
+                let _ = reply.send(Err(BridgeError::not_found("pane not found")));
+                return;
+            };
+
+            let flag_color = match request.action {
+                PaneActionKind::SetFlagColor(color) => Some(color),
+                PaneActionKind::ClearFlagColor => None,
+            };
+            pane::set_pane_flag_color(&pane_widget, flag_color);
+
+            let _ = reply.send(Ok(serde_json::json!({
+                "ok": true,
+                "workspace_id": workspace_id,
+                "pane_id": pane_id.to_string(),
+                "pane_ref": pane_ref(pane_id),
+                "flag_color": flag_color.map(|color| color.name()),
+            })));
+        }
         ControlCommand::CreatePane { request, reply } => {
             if !matches!(request.pane_type, PaneCreateType::Terminal) {
                 let _ = reply.send(Err(BridgeError::invalid_params(
@@ -6579,15 +6654,16 @@ mod tests {
         desktop_notification_closed_id_from_signal, desktop_notification_id_from_response,
         directional_neighbor_score, favorites_prefix_len, font_size_after_delta,
         ghostty_prefers_dark, gtk_system_prefers_dark_from_raw, new_instance_command,
-        next_active_workspace_index, pane_attention_target, pane_create_split_placement,
-        queue_session_save_request, resolve_pane_create_source_id, resolved_system_prefers_dark,
-        sanitize_background_opacity, shortcut_allowed_while_browser_find_active,
-        shortcut_blocked_by_editable, shortcut_command_from_key_event,
-        shortcut_dispatch_propagation, should_auto_open_sidebar_for_notification,
-        should_emit_desktop_notification, sidebar_width_class, snapshot_sidebar_width,
-        surface_send_text_response, tab_drag_workspace_seed, use_opaque_window_background,
-        validate_typed_terminal_text, validate_workspace_folder_input_with_dirs,
-        window_chrome_policy, workspace_drop_layout_path, workspace_folder_path_from_input,
+        next_active_workspace_index, pane_action_target_pane_id, pane_attention_target,
+        pane_create_split_placement, queue_session_save_request, resolve_pane_create_source_id,
+        resolved_system_prefers_dark, sanitize_background_opacity,
+        shortcut_allowed_while_browser_find_active, shortcut_blocked_by_editable,
+        shortcut_command_from_key_event, shortcut_dispatch_propagation,
+        should_auto_open_sidebar_for_notification, should_emit_desktop_notification,
+        sidebar_width_class, snapshot_sidebar_width, surface_send_text_response,
+        tab_drag_workspace_seed, use_opaque_window_background, validate_typed_terminal_text,
+        validate_workspace_folder_input_with_dirs, window_chrome_policy,
+        workspace_drop_layout_path, workspace_folder_path_from_input,
         workspace_notification_message, DesktopNotificationTarget, Direction,
         EditableCaptureContext, NeighborScore, PaneBounds, PaneCreateDirection,
         PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest,
@@ -6700,6 +6776,29 @@ mod tests {
             super::BridgeError::invalid_params(
                 "surface.send_text text contains disallowed terminal control character U+001B at byte 3; allowed control characters are tab, LF, and CR"
             )
+        );
+    }
+
+    #[test]
+    fn pane_action_target_rejects_malformed_explicit_pane_id_without_focus_fallback() {
+        assert_eq!(
+            pane_action_target_pane_id(Some("pane:7"), Some(42)).expect("valid pane ref"),
+            7
+        );
+        assert_eq!(
+            pane_action_target_pane_id(Some("7"), None).expect("valid raw pane id"),
+            7
+        );
+        assert_eq!(
+            pane_action_target_pane_id(None, Some(42)).expect("focused pane fallback"),
+            42
+        );
+
+        let err = pane_action_target_pane_id(Some("pane:abc"), Some(42))
+            .expect_err("malformed explicit pane id must not fall back to focus");
+        assert_eq!(
+            err,
+            super::BridgeError::invalid_params("pane.action requires a valid pane_id")
         );
     }
 

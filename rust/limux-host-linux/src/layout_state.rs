@@ -122,6 +122,82 @@ impl WorkspaceHighlightColor {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PaneFlagColor {
+    Orange,
+    Red,
+    Purple,
+    Pink,
+    Green,
+    Yellow,
+    Teal,
+    Cyan,
+}
+
+impl PaneFlagColor {
+    pub const ALL: [Self; 8] = [
+        Self::Orange,
+        Self::Red,
+        Self::Purple,
+        Self::Pink,
+        Self::Green,
+        Self::Yellow,
+        Self::Teal,
+        Self::Cyan,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Orange => "Orange",
+            Self::Red => "Red",
+            Self::Purple => "Purple",
+            Self::Pink => "Pink",
+            Self::Green => "Green",
+            Self::Yellow => "Yellow",
+            Self::Teal => "Teal",
+            Self::Cyan => "Cyan",
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Orange => "orange",
+            Self::Red => "red",
+            Self::Purple => "purple",
+            Self::Pink => "pink",
+            Self::Green => "green",
+            Self::Yellow => "yellow",
+            Self::Teal => "teal",
+            Self::Cyan => "cyan",
+        }
+    }
+
+    pub fn css_class(self) -> &'static str {
+        match self {
+            Self::Orange => "limux-pane-flag-orange",
+            Self::Red => "limux-pane-flag-red",
+            Self::Purple => "limux-pane-flag-purple",
+            Self::Pink => "limux-pane-flag-pink",
+            Self::Green => "limux-pane-flag-green",
+            Self::Yellow => "limux-pane-flag-yellow",
+            Self::Teal => "limux-pane-flag-teal",
+            Self::Cyan => "limux-pane-flag-cyan",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|color| color.name() == name.trim().to_ascii_lowercase())
+    }
+
+    pub fn allowed_names() -> &'static str {
+        "orange, red, purple, pink, green, yellow, teal, cyan"
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LayoutNodeState {
@@ -151,6 +227,8 @@ pub struct PaneState {
     pub pane_id: Option<u32>,
     #[serde(default)]
     pub active_tab_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flag_color: Option<PaneFlagColor>,
     #[serde(default)]
     pub tabs: Vec<TabState>,
 }
@@ -299,6 +377,7 @@ impl PaneState {
         Self {
             pane_id: None,
             active_tab_id: Some(tab.id.clone()),
+            flag_color: None,
             tabs: vec![tab],
         }
     }
@@ -308,6 +387,7 @@ impl PaneState {
         Self {
             pane_id: None,
             active_tab_id: Some(tab.id.clone()),
+            flag_color: None,
             tabs: vec![tab],
         }
     }
@@ -609,6 +689,7 @@ impl AppSessionState {
                     layout: LayoutNodeState::Pane(PaneState {
                         active_tab_id: Some(tab.id.clone()),
                         pane_id: None,
+                        flag_color: None,
                         tabs: vec![tab],
                     }),
                 }
@@ -1366,6 +1447,7 @@ mod tests {
         let mut layout = LayoutNodeState::Pane(PaneState {
             pane_id: Some(42),
             active_tab_id: Some("tab-a".to_string()),
+            flag_color: None,
             tabs: vec![TabState::terminal("tab-a", Some("/tmp/project"))],
         });
 
@@ -1577,6 +1659,7 @@ mod tests {
         let mut layout = LayoutNodeState::Pane(PaneState {
             pane_id: Some(42),
             active_tab_id: Some("tab-a".to_string()),
+            flag_color: None,
             tabs: vec![TabState {
                 id: "tab-a".to_string(),
                 custom_name: None,
@@ -1641,6 +1724,7 @@ mod tests {
         let mut layout = LayoutNodeState::Pane(PaneState {
             pane_id: None,
             active_tab_id: Some("tab-a".to_string()),
+            flag_color: None,
             tabs: vec![TabState::terminal("tab-a", Some("/tmp/project"))],
         });
 
@@ -1807,6 +1891,7 @@ mod tests {
         let mut layout = LayoutNodeState::Pane(PaneState {
             pane_id: None,
             active_tab_id: Some("missing".to_string()),
+            flag_color: None,
             tabs: vec![TabState {
                 id: "browser-1".to_string(),
                 custom_name: None,
@@ -1830,6 +1915,7 @@ mod tests {
         let mut layout = LayoutNodeState::Pane(PaneState {
             pane_id: Some(15),
             active_tab_id: Some("terminal-0".to_string()),
+            flag_color: None,
             tabs: vec![
                 TabState::terminal("terminal-0", Some("/tmp/first")),
                 TabState::terminal("terminal-0", Some("/tmp/second")),
@@ -1867,6 +1953,7 @@ mod tests {
         let mut layout = LayoutNodeState::Pane(PaneState {
             pane_id: None,
             active_tab_id: None,
+            flag_color: None,
             tabs: Vec::new(),
         });
 
@@ -1899,6 +1986,26 @@ mod tests {
     }
 
     #[test]
+    fn pane_flag_color_round_trips_and_defaults_from_legacy_json() {
+        let pane = PaneState {
+            pane_id: Some(7),
+            active_tab_id: Some("terminal-0".to_string()),
+            flag_color: Some(PaneFlagColor::Purple),
+            tabs: Vec::new(),
+        };
+
+        let raw = serde_json::to_string(&pane).expect("serialize pane state");
+        assert!(raw.contains(r#""flag_color":"purple""#));
+        let decoded: PaneState = serde_json::from_str(&raw).expect("decode pane state");
+        assert_eq!(decoded.flag_color, Some(PaneFlagColor::Purple));
+
+        let legacy: PaneState =
+            serde_json::from_str(r#"{"pane_id":7,"active_tab_id":"terminal-0","tabs":[]}"#)
+                .expect("decode legacy pane state");
+        assert_eq!(legacy.flag_color, None);
+    }
+
+    #[test]
     fn keybind_tab_round_trips_through_session_json() {
         let state = AppSessionState {
             top_bar_visible: false,
@@ -1912,6 +2019,7 @@ mod tests {
                 layout: LayoutNodeState::Pane(PaneState {
                     pane_id: None,
                     active_tab_id: Some("keybinds-1".to_string()),
+                    flag_color: None,
                     tabs: vec![TabState {
                         id: "keybinds-1".to_string(),
                         custom_name: None,

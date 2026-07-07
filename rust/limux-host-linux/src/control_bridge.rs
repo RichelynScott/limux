@@ -10,6 +10,8 @@ use std::time::Duration;
 
 use gtk::glib;
 use gtk4 as gtk;
+
+use crate::layout_state::PaneFlagColor;
 use limux_control::auth::{self, SocketControlMode};
 use limux_control::request_io::{self, read_request_frame};
 use limux_control::socket_path::{bind_listener, resolve_socket_path, SocketMode};
@@ -33,6 +35,7 @@ const METHODS: &[&str] = &[
     "pane.list",
     "pane.surfaces",
     "pane.create",
+    "pane.action",
     "surface.list",
     "surface.health",
     "surface.read_text",
@@ -119,6 +122,19 @@ pub struct CreatePaneRequest {
     pub command: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PaneActionKind {
+    SetFlagColor(PaneFlagColor),
+    ClearFlagColor,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PaneActionRequest {
+    pub target: WorkspaceTarget,
+    pub pane_id: Option<String>,
+    pub action: PaneActionKind,
+}
+
 #[derive(Debug)]
 pub enum ControlCommand {
     Identify {
@@ -145,6 +161,10 @@ pub enum ControlCommand {
     },
     CreatePane {
         request: CreatePaneRequest,
+        reply: mpsc::Sender<BridgeResult>,
+    },
+    PaneAction {
+        request: PaneActionRequest,
         reply: mpsc::Sender<BridgeResult>,
     },
     ListSurfaces {
@@ -214,6 +234,7 @@ impl ControlCommand {
             | Self::ListPanes { reply, .. }
             | Self::ListPaneSurfaces { reply, .. }
             | Self::CreatePane { reply, .. }
+            | Self::PaneAction { reply, .. }
             | Self::ListSurfaces { reply, .. }
             | Self::SurfaceHealth { reply, .. }
             | Self::ReadSurfaceText { reply, .. }
@@ -571,6 +592,39 @@ fn parse_cursor_pane_create_empty_request(
     })
 }
 
+fn parse_pane_action_request(
+    params: &Map<String, Value>,
+) -> Result<PaneActionRequest, BridgeError> {
+    let action = optional_string(params, &["action"])
+        .ok_or_else(|| BridgeError::invalid_params("pane.action requires action"))?;
+    let action = match action.as_str() {
+        "set_flag_color" | "set-flag-color" => {
+            let color = optional_string(params, &["color", "flag_color"]).ok_or_else(|| {
+                BridgeError::invalid_params("pane.action set_flag_color requires color")
+            })?;
+            let color = PaneFlagColor::from_name(&color).ok_or_else(|| {
+                BridgeError::invalid_params(format!(
+                    "pane.action color must be one of {}",
+                    PaneFlagColor::allowed_names()
+                ))
+            })?;
+            PaneActionKind::SetFlagColor(color)
+        }
+        "clear_flag_color" | "clear-flag-color" => PaneActionKind::ClearFlagColor,
+        _ => {
+            return Err(BridgeError::invalid_params(
+                "pane.action action must be set_flag_color or clear_flag_color",
+            ));
+        }
+    };
+
+    Ok(PaneActionRequest {
+        target: parse_optional_workspace_target(params, true)?,
+        pane_id: optional_ref_handle(params, &["pane_id", "pane"], "pane:")?,
+        action,
+    })
+}
+
 fn parse_cursor_workspace_open_folder(
     params: &Map<String, Value>,
 ) -> Result<(Option<String>, String), BridgeError> {
@@ -700,6 +754,14 @@ fn handle_method(
             };
             let (reply, rx) = mpsc::channel();
             (ControlCommand::CreatePane { request, reply }, rx)
+        }
+        "pane.action" => {
+            let request = match parse_pane_action_request(params) {
+                Ok(request) => request,
+                Err(error) => return error_response(id, error),
+            };
+            let (reply, rx) = mpsc::channel();
+            (ControlCommand::PaneAction { request, reply }, rx)
         }
         "cursor.pane_create_empty" => {
             let request = match parse_cursor_pane_create_empty_request(params) {

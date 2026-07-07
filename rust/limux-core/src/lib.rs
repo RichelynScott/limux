@@ -34,6 +34,7 @@ const COMMANDS: &[&str] = &[
     "pane.list",
     "pane.surfaces",
     "pane.create",
+    "pane.action",
     "pane.focus",
     "pane.swap",
     "pane.break",
@@ -176,6 +177,15 @@ const COMMANDS: &[&str] = &[
     "debug.type",
     "debug.window.screenshot",
 ];
+
+pub const PANE_FLAG_COLORS: &[&str] = &[
+    "orange", "red", "purple", "pink", "green", "yellow", "teal", "cyan",
+];
+
+pub fn is_valid_pane_flag_color(color: &str) -> bool {
+    let color = color.trim().to_ascii_lowercase();
+    PANE_FLAG_COLORS.contains(&color.as_str())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BuildInfo {
@@ -383,12 +393,14 @@ pub struct PaneInfo {
     pub id: u64,
     pub surface_count: usize,
     pub current_surface_id: Option<u64>,
+    pub flag_color: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SurfaceInfo {
     pub id: u64,
     pub pane_id: u64,
+    pub pane_flag_color: Option<String>,
     pub title: String,
     pub text: String,
     pub panel_type: String,
@@ -460,6 +472,7 @@ struct PaneState {
     surfaces: Vec<SurfaceState>,
     current_surface_id: Option<u64>,
     last_surface_id: Option<u64>,
+    flag_color: Option<String>,
 }
 
 impl PaneState {
@@ -468,6 +481,7 @@ impl PaneState {
             id: self.id,
             surface_count: self.surfaces.len(),
             current_surface_id: self.current_surface_id,
+            flag_color: self.flag_color.clone(),
         }
     }
 }
@@ -496,10 +510,11 @@ enum TerminalMode {
 }
 
 impl SurfaceState {
-    fn info(&self, pane_id: u64) -> SurfaceInfo {
+    fn info(&self, pane_id: u64, pane_flag_color: Option<&str>) -> SurfaceInfo {
         SurfaceInfo {
             id: self.id,
             pane_id,
+            pane_flag_color: pane_flag_color.map(ToOwned::to_owned),
             title: self.title.clone(),
             text: self.text.clone(),
             panel_type: self.panel_type.clone(),
@@ -845,6 +860,7 @@ impl ControlState {
             surfaces: vec![surface],
             current_surface_id,
             last_surface_id: None,
+            flag_color: None,
         }
     }
 
@@ -1224,7 +1240,7 @@ impl ControlState {
         Some(
             pane.surfaces
                 .iter()
-                .map(|surface| surface.info(pane.id))
+                .map(|surface| surface.info(pane.id, pane.flag_color.as_deref()))
                 .collect(),
         )
     }
@@ -1261,6 +1277,24 @@ impl ControlState {
         window.last_pane_id = window.current_pane_id;
         window.current_pane_id = Some(pane_id);
         Some(window.panes[idx].info())
+    }
+
+    fn set_pane_flag_color(
+        &mut self,
+        pane_id: Option<u64>,
+        flag_color: Option<String>,
+    ) -> Option<PaneInfo> {
+        let workspace_idx = self.current_workspace_idx()?;
+        let window_idx = self.current_window_idx(workspace_idx)?;
+        let window = self
+            .workspaces
+            .get_mut(workspace_idx)?
+            .windows
+            .get_mut(window_idx)?;
+        let target = pane_id.or(window.current_pane_id)?;
+        let pane = window.panes.iter_mut().find(|pane| pane.id == target)?;
+        pane.flag_color = flag_color;
+        Some(pane.info())
     }
 
     fn focus_last_pane(&mut self) -> Option<PaneInfo> {
@@ -1442,6 +1476,7 @@ impl ControlState {
             surfaces: vec![moved_surface],
             current_surface_id: Some(current_surface_id),
             last_surface_id: None,
+            flag_color: None,
         };
         let info = new_pane.info();
 
@@ -1464,7 +1499,7 @@ impl ControlState {
         let mut result = Vec::new();
         for pane in &window.panes {
             for surface in &pane.surfaces {
-                result.push(surface.info(pane.id));
+                result.push(surface.info(pane.id, pane.flag_color.as_deref()));
             }
         }
         Some(result)
@@ -1485,7 +1520,7 @@ impl ControlState {
             .get(pane_idx)?;
         pane.surfaces
             .get(surface_idx)
-            .map(|surface| surface.info(pane.id))
+            .map(|surface| surface.info(pane.id, pane.flag_color.as_deref()))
     }
 
     fn create_surface(&mut self, title: Option<String>) -> Option<SurfaceInfo> {
@@ -1511,7 +1546,7 @@ impl ControlState {
         pane.surfaces
             .iter()
             .find(|candidate| candidate.id == surface_id)
-            .map(|candidate| candidate.info(pane.id))
+            .map(|candidate| candidate.info(pane.id, pane.flag_color.as_deref()))
     }
 
     fn create_surface_in_pane(
@@ -1548,7 +1583,7 @@ impl ControlState {
         pane.surfaces
             .iter()
             .find(|surface| surface.id == surface_id)
-            .map(|surface| surface.info(pane_id))
+            .map(|surface| surface.info(pane_id, pane.flag_color.as_deref()))
     }
 
     fn split_surface_from_pane(
@@ -1672,7 +1707,7 @@ impl ControlState {
 
             pane.surfaces
                 .get(surface_idx)
-                .map(|surface| surface.info(pane.id))
+                .map(|surface| surface.info(pane.id, pane.flag_color.as_deref()))
         }?;
         if self.app_is_active() {
             let _ = self.mark_notifications_read_for_surface(surface_id);
@@ -1739,7 +1774,7 @@ impl ControlState {
             pane.current_surface_id = Some(fallback_id);
         }
 
-        Some(removed.info(pane_id))
+        Some(removed.info(pane_id, None))
     }
 
     fn move_surface(
@@ -1794,7 +1829,7 @@ impl ControlState {
             .iter()
             .find(|surface| surface.id == surface_id)?;
 
-        Some(moved.info(target_pane.id))
+        Some(moved.info(target_pane.id, target_pane.flag_color.as_deref()))
     }
 
     fn reorder_surface(&mut self, surface_id: u64, index: usize) -> Option<SurfaceInfo> {
@@ -1821,7 +1856,7 @@ impl ControlState {
         pane.surfaces
             .iter()
             .find(|surface| surface.id == surface_id)
-            .map(|surface| surface.info(pane.id))
+            .map(|surface| surface.info(pane.id, pane.flag_color.as_deref()))
     }
 
     fn drag_surface_to_split(
@@ -1872,7 +1907,7 @@ impl ControlState {
 
         let surface = pane.surfaces.get_mut(surface_idx)?;
         update(surface);
-        Some(surface.info(pane.id))
+        Some(surface.info(pane.id, pane.flag_color.as_deref()))
     }
 
     fn app_is_active(&self) -> bool {
@@ -3191,6 +3226,7 @@ fn pane_row(index: usize, focused_pane_id: Option<u64>, pane: &PaneInfo) -> Valu
         "pane_ref": pane_ref(pane.id),
         "surface_count": pane.surface_count,
         "focused": focused_pane_id == Some(pane.id),
+        "flag_color": pane.flag_color.clone(),
     })
 }
 
@@ -3203,6 +3239,7 @@ fn surface_row(index: usize, focused_surface_id: Option<u64>, surface: &SurfaceI
         "surface_ref": surface_ref(surface.id),
         "pane_id": encode_handle_id(surface.pane_id),
         "pane_ref": pane_ref(surface.pane_id),
+        "pane_flag_color": surface.pane_flag_color.clone(),
         "title": surface.title,
         "type": surface.panel_type,
         "developer_tools_visible": surface.developer_tools_visible,
@@ -3331,7 +3368,7 @@ fn update_surface_metadata(
                 if let Some(callback) = update.take() {
                     callback(surface);
                 }
-                return Some(surface.info(pane.id));
+                return Some(surface.info(pane.id, pane.flag_color.as_deref()));
             }
         }
     }
@@ -5315,6 +5352,49 @@ fn handle_command(
                 Ok(json!({ "surfaces": rows }))
             })
         }
+        "pane.action" => {
+            let params = params_object(params)?;
+            let workspace_id = optional_u64_param_any(params, &["workspace_id"])?;
+            let pane_id = optional_u64_param_any(params, &["pane_id", "id"])?;
+            let action = required_string_param(params, "action")?;
+            let flag_color = match action.as_str() {
+                "set_flag_color" | "set-flag-color" => {
+                    let raw_color = optional_string_param(params, "color")?
+                        .or_else(|| optional_string_param(params, "flag_color").ok().flatten())
+                        .ok_or_else(|| {
+                            CommandError::invalid_params(
+                                "pane.action set_flag_color requires color",
+                            )
+                        })?;
+                    let color = raw_color.trim().to_ascii_lowercase();
+                    if !is_valid_pane_flag_color(&color) {
+                        return Err(CommandError::invalid_params(format!(
+                            "pane.action color must be one of {}",
+                            PANE_FLAG_COLORS.join(", ")
+                        )));
+                    }
+                    Some(color)
+                }
+                "clear_flag_color" | "clear-flag-color" => None,
+                _ => {
+                    return Err(CommandError::invalid_params(
+                        "pane.action action must be set_flag_color or clear_flag_color",
+                    ));
+                }
+            };
+            with_workspace_scope(state, workspace_id, |scoped| {
+                let pane = scoped
+                    .set_pane_flag_color(pane_id, flag_color.clone())
+                    .ok_or_else(|| CommandError::not_found("pane not found"))?;
+                Ok(json!({
+                    "ok": true,
+                    "pane_id": encode_handle_id(pane.id),
+                    "pane_ref": pane_ref(pane.id),
+                    "flag_color": pane.flag_color.clone(),
+                    "pane": pane
+                }))
+            })
+        }
         "pane.create" => {
             let params = params_object(params)?;
             let contract = parse_pane_create_contract(params)?;
@@ -6444,6 +6524,53 @@ mod tests {
             cleared.result.expect("clear history")["surface"]["text"],
             ""
         );
+    }
+
+    #[tokio::test]
+    async fn dispatcher_handles_pane_flag_color_actions() {
+        let dispatcher = Dispatcher::new();
+
+        let set = dispatcher
+            .dispatch(request(
+                "pane.action",
+                json!({ "action": "set_flag_color", "color": "purple" }),
+            ))
+            .await;
+        let set_result = set.result.expect("set flag color");
+        assert_eq!(set_result["flag_color"], "purple");
+        assert_eq!(set_result["pane"]["flag_color"], "purple");
+
+        let panes = dispatcher.dispatch(request("pane.list", json!({}))).await;
+        assert_eq!(
+            panes.result.expect("pane list")["panes"][0]["flag_color"],
+            "purple"
+        );
+
+        let surfaces = dispatcher
+            .dispatch(request("pane.surfaces", json!({})))
+            .await;
+        assert_eq!(
+            surfaces.result.expect("surface list")["surfaces"][0]["pane_flag_color"],
+            "purple"
+        );
+
+        let invalid = dispatcher
+            .dispatch(request(
+                "pane.action",
+                json!({ "action": "set_flag_color", "color": "chartreuse" }),
+            ))
+            .await;
+        assert_eq!(invalid.error.expect("invalid color").code, -32602);
+
+        let clear = dispatcher
+            .dispatch(request(
+                "pane.action",
+                json!({ "action": "clear_flag_color" }),
+            ))
+            .await;
+        let clear_result = clear.result.expect("clear flag color");
+        assert_eq!(clear_result["flag_color"], Value::Null);
+        assert_eq!(clear_result["pane"]["flag_color"], Value::Null);
     }
 
     #[tokio::test]

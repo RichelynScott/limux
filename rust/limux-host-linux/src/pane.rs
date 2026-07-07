@@ -19,15 +19,17 @@ use webkit6::prelude::*;
 use crate::app_config::AppConfig;
 use crate::keybind_editor;
 use crate::layout_state::{
-    PaneState, RestorableAgentState, TabContentState, TabState as SavedTabState,
+    PaneFlagColor, PaneState, RestorableAgentState, TabContentState, TabState as SavedTabState,
 };
 use crate::settings_editor;
 use crate::shortcut_config::{NormalizedShortcut, ResolvedShortcutConfig, ShortcutId};
 use crate::terminal::{self, TerminalCallbacks};
 
 static NEXT_PANE_ID: AtomicU32 = AtomicU32::new(1);
-const PANE_CONTENT_ATTENTION_CSS_CLASS: &str = "limux-pane-content-attention";
+const PANE_ATTENTION_OVERLAY_CSS_CLASS: &str = "limux-pane-attention-overlay";
+const PANE_ATTENTION_ACTIVE_CSS_CLASS: &str = "needs-attention";
 const PANE_ATTENTION_HOVER_CLEAR_MS: u64 = 3_000;
+const PANE_FLAG_OVERLAY_CSS_CLASS: &str = "limux-pane-flag-overlay";
 
 fn next_pane_id() -> u32 {
     NEXT_PANE_ID.fetch_add(1, Ordering::Relaxed)
@@ -198,13 +200,37 @@ pub fn find_pane_widget_by_id(pane_id: u32) -> Option<gtk::Widget> {
     lookup_pane_internals(pane_id).map(|internals| internals.pane_outer.clone().upcast())
 }
 
+fn apply_pane_flag_color(overlay: &gtk::Box, flag_color: Option<PaneFlagColor>) {
+    for color in PaneFlagColor::ALL {
+        overlay.remove_css_class(color.css_class());
+    }
+    if let Some(color) = flag_color {
+        overlay.add_css_class(color.css_class());
+        overlay.set_visible(true);
+    } else {
+        overlay.set_visible(false);
+    }
+}
+
+pub fn set_pane_flag_color(pane_widget: &gtk::Widget, flag_color: Option<PaneFlagColor>) -> bool {
+    let Some(internals) = find_pane_internals(pane_widget) else {
+        return false;
+    };
+
+    *internals.flag_color.borrow_mut() = flag_color;
+    apply_pane_flag_color(&internals.flag_overlay, flag_color);
+    (internals.callbacks.on_state_changed)();
+    true
+}
+
 pub fn mark_pane_needs_attention(pane_id: u32) -> bool {
     let Some(internals) = lookup_pane_internals(pane_id) else {
         return false;
     };
 
-    let attention_widget: gtk::Widget = internals.content_overlay.clone().upcast();
-    attention_widget.add_css_class(PANE_CONTENT_ATTENTION_CSS_CLASS);
+    let attention_widget: gtk::Widget = internals.attention_overlay.clone().upcast();
+    attention_widget.set_visible(true);
+    attention_widget.add_css_class(PANE_ATTENTION_ACTIVE_CSS_CLASS);
     if internals.attention_hovered.get() {
         schedule_attention_clear(&attention_widget, &internals.attention_clear_timer);
     } else if let Some(source) = internals.attention_clear_timer.borrow_mut().take() {
@@ -225,12 +251,12 @@ pub fn set_workspace_dragging_all(active: bool) {
 
 fn install_attention_hover_clear(internals: &Rc<PaneInternals>) {
     let motion = gtk::EventControllerMotion::new();
-    let attention_widget: gtk::Widget = internals.content_overlay.clone().upcast();
+    let attention_widget: gtk::Widget = internals.attention_overlay.clone().upcast();
     let attention_clear_timer = internals.attention_clear_timer.clone();
     let attention_hovered = internals.attention_hovered.clone();
     motion.connect_enter(move |_, _, _| {
         attention_hovered.set(true);
-        if !attention_widget.has_css_class(PANE_CONTENT_ATTENTION_CSS_CLASS) {
+        if !attention_widget.has_css_class(PANE_ATTENTION_ACTIVE_CSS_CLASS) {
             return;
         }
         schedule_attention_clear(&attention_widget, &attention_clear_timer);
@@ -255,7 +281,8 @@ fn schedule_attention_clear(
     let source = glib::timeout_add_local_once(
         Duration::from_millis(PANE_ATTENTION_HOVER_CLEAR_MS),
         move || {
-            attention_widget_for_timeout.remove_css_class(PANE_CONTENT_ATTENTION_CSS_CLASS);
+            attention_widget_for_timeout.remove_css_class(PANE_ATTENTION_ACTIVE_CSS_CLASS);
+            attention_widget_for_timeout.set_visible(false);
             timer_for_timeout.borrow_mut().take();
         },
     );
@@ -369,6 +396,7 @@ struct TabContextMenuContext {
     tab_state: Rc<RefCell<TabState>>,
     callbacks: Rc<PaneCallbacks>,
     pane_outer: gtk::Box,
+    flag_color: Rc<RefCell<Option<PaneFlagColor>>>,
     label: gtk::Label,
     pin_icon: gtk::Label,
 }
@@ -385,8 +413,51 @@ pub const PANE_CSS: &str = r#"
     min-height: 30px;
     padding: 0 2px;
 }
-.limux-pane-content-attention {
-    box-shadow: inset 0 0 0 2px #3584e4;
+.limux-pane-attention-overlay {
+    background: transparent;
+    border: 2px solid #3584e4;
+    box-shadow: inset 0 0 0 1px #3584e4;
+    opacity: 1;
+}
+.limux-pane-attention-overlay.needs-attention {
+    background: rgba(53, 132, 228, 0.05);
+}
+.limux-pane-flag-overlay {
+    background: transparent;
+    border: 2px solid transparent;
+    opacity: 1;
+}
+.limux-pane-flag-overlay.limux-pane-flag-orange {
+    border-color: #ff7800;
+    box-shadow: inset 0 0 0 1px #ff7800;
+}
+.limux-pane-flag-overlay.limux-pane-flag-red {
+    border-color: #e01b24;
+    box-shadow: inset 0 0 0 1px #e01b24;
+}
+.limux-pane-flag-overlay.limux-pane-flag-purple {
+    border-color: #a347ba;
+    box-shadow: inset 0 0 0 1px #a347ba;
+}
+.limux-pane-flag-overlay.limux-pane-flag-pink {
+    border-color: #f661ac;
+    box-shadow: inset 0 0 0 1px #f661ac;
+}
+.limux-pane-flag-overlay.limux-pane-flag-green {
+    border-color: #33d17a;
+    box-shadow: inset 0 0 0 1px #33d17a;
+}
+.limux-pane-flag-overlay.limux-pane-flag-yellow {
+    border-color: #f6d32d;
+    box-shadow: inset 0 0 0 1px #f6d32d;
+}
+.limux-pane-flag-overlay.limux-pane-flag-teal {
+    border-color: #2ec27e;
+    box-shadow: inset 0 0 0 1px #2ec27e;
+}
+.limux-pane-flag-overlay.limux-pane-flag-cyan {
+    border-color: #1c71d8;
+    box-shadow: inset 0 0 0 1px #1c71d8;
 }
 .limux-tab {
     background: none;
@@ -561,6 +632,28 @@ pub fn create_pane(
     content_drop_overlay.set_can_target(false);
     content_overlay.add_overlay(&content_drop_overlay);
 
+    let flag_overlay = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    flag_overlay.add_css_class(PANE_FLAG_OVERLAY_CSS_CLASS);
+    flag_overlay.set_halign(gtk::Align::Fill);
+    flag_overlay.set_valign(gtk::Align::Fill);
+    flag_overlay.set_hexpand(true);
+    flag_overlay.set_vexpand(true);
+    flag_overlay.set_can_target(false);
+    flag_overlay.set_opacity(1.0);
+    flag_overlay.set_visible(false);
+    content_overlay.add_overlay(&flag_overlay);
+
+    let attention_overlay = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    attention_overlay.add_css_class(PANE_ATTENTION_OVERLAY_CSS_CLASS);
+    attention_overlay.set_halign(gtk::Align::Fill);
+    attention_overlay.set_valign(gtk::Align::Fill);
+    attention_overlay.set_hexpand(true);
+    attention_overlay.set_vexpand(true);
+    attention_overlay.set_can_target(false);
+    attention_overlay.set_opacity(1.0);
+    attention_overlay.set_visible(false);
+    content_overlay.add_overlay(&attention_overlay);
+
     // Action icons (right side)
     let actions = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -619,26 +712,31 @@ pub fn create_pane(
     let workspace_dragging = Rc::new(Cell::new(false));
     let attention_clear_timer = Rc::new(RefCell::new(None));
     let attention_hovered = Rc::new(Cell::new(false));
+    let initial_flag_color = initial_state.and_then(|state| state.flag_color);
+    let flag_color = Rc::new(RefCell::new(initial_flag_color));
     let pane_id = pane_id_for_initial_state(initial_state);
     let internals = Rc::new(PaneInternals {
         pane_id,
         tab_state: tab_state.clone(),
         tab_strip: tab_strip.clone(),
         content_stack: content_stack.clone(),
-        content_overlay: content_overlay.clone(),
         drop_indicator: drop_indicator.clone(),
         content_drop_overlay: content_drop_overlay.clone(),
+        flag_overlay: flag_overlay.clone(),
+        attention_overlay: attention_overlay.clone(),
         pane_outer: outer.clone(),
         callbacks: callbacks.clone(),
         working_directory: ws_wd.clone(),
         workspace_dragging: workspace_dragging.clone(),
         attention_clear_timer: attention_clear_timer.clone(),
         attention_hovered: attention_hovered.clone(),
+        flag_color: flag_color.clone(),
         new_terminal_button: new_term_btn.clone(),
         split_right_button: split_h_btn.clone(),
         split_down_button: split_v_btn.clone(),
         close_pane_button: close_btn.clone(),
     });
+    apply_pane_flag_color(&flag_overlay, initial_flag_color);
 
     if let Some(saved_state) = initial_state {
         restore_tabs_from_state(&internals, working_directory, saved_state);
@@ -949,15 +1047,17 @@ pub struct PaneInternals {
     tab_state: Rc<std::cell::RefCell<TabState>>,
     tab_strip: gtk::Box,
     content_stack: gtk::Stack,
-    content_overlay: gtk::Overlay,
     drop_indicator: gtk::Box,
     content_drop_overlay: gtk::Box,
+    flag_overlay: gtk::Box,
+    attention_overlay: gtk::Box,
     pane_outer: gtk::Box,
     callbacks: Rc<PaneCallbacks>,
     working_directory: Rc<std::cell::RefCell<Option<String>>>,
     workspace_dragging: Rc<Cell<bool>>,
     attention_clear_timer: Rc<RefCell<Option<glib::SourceId>>>,
     attention_hovered: Rc<Cell<bool>>,
+    flag_color: Rc<RefCell<Option<PaneFlagColor>>>,
     new_terminal_button: gtk::Button,
     split_right_button: gtk::Button,
     split_down_button: gtk::Button,
@@ -1686,9 +1786,11 @@ pub fn snapshot_pane_state(pane_widget: &gtk::Widget) -> Option<PaneState> {
             }
         })
         .collect();
+    let flag_color = *internals.flag_color.borrow();
     Some(PaneState {
         pane_id: Some(internals.pane_id),
         active_tab_id: ts.active_tab.clone(),
+        flag_color,
         tabs,
     })
 }
@@ -1740,12 +1842,14 @@ pub struct PaneSummary {
     pub pane_id: u32,
     pub surface_count: usize,
     pub active_surface_id: Option<String>,
+    pub flag_color: Option<PaneFlagColor>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SurfaceSummary {
     pub pane_id: u32,
     pub surface_id: String,
+    pub pane_flag_color: Option<PaneFlagColor>,
     pub title: String,
     pub kind: String,
     pub selected: bool,
@@ -1786,6 +1890,7 @@ pub fn pane_summaries_for_root(root: &gtk::Widget) -> Vec<PaneSummary> {
                 pane_id,
                 surface_count: tab_state.tabs.len(),
                 active_surface_id,
+                flag_color: *internals.flag_color.borrow(),
             }
         })
         .collect()
@@ -1804,6 +1909,7 @@ pub fn surface_summaries_for_root(root: &gtk::Widget) -> Vec<SurfaceSummary> {
 
     for internals in pane_internals_for_root(root) {
         let pane_id = internals.pane_id;
+        let pane_flag_color = *internals.flag_color.borrow();
         let tab_state = internals.tab_state.borrow();
         let active_tab = tab_state.active_tab.as_deref();
         for entry in &tab_state.tabs {
@@ -1827,6 +1933,7 @@ pub fn surface_summaries_for_root(root: &gtk::Widget) -> Vec<SurfaceSummary> {
             surfaces.push(SurfaceSummary {
                 pane_id,
                 surface_id: composite_surface_id(pane_id, &entry.id),
+                pane_flag_color,
                 title: entry.title_label.label().to_string(),
                 kind,
                 selected,
@@ -1859,9 +1966,11 @@ pub fn active_surface_summary(pane_widget: &gtk::Widget) -> Option<SurfaceSummar
         TabKind::Browser { state } => ("browser".to_string(), None, state.uri.borrow().clone()),
         TabKind::Keybinds => ("keybinds".to_string(), None, None),
     };
+    let pane_flag_color = *internals.flag_color.borrow();
     Some(SurfaceSummary {
         pane_id,
         surface_id: composite_surface_id(pane_id, &entry.id),
+        pane_flag_color,
         title: entry.title_label.label().to_string(),
         kind,
         selected: true,
@@ -2054,6 +2163,7 @@ fn build_tab_button_from_label(
             tab_state: internals.tab_state.clone(),
             callbacks: internals.callbacks.clone(),
             pane_outer: internals.pane_outer.clone(),
+            flag_color: internals.flag_color.clone(),
             label: label.clone(),
             pin_icon: pin_icon.clone(),
         };
@@ -2214,8 +2324,62 @@ fn show_tab_context_menu(tab_btn: &gtk::Box, tab_id: &str, context: &TabContextM
         });
     }
 
+    let current_flag_color = *context.flag_color.borrow();
+    let flag_label = gtk::Label::builder()
+        .label("Flag Color")
+        .xalign(0.0)
+        .margin_top(4)
+        .margin_start(6)
+        .build();
+    flag_label.add_css_class("dim-label");
+
+    let flag_grid = gtk::Grid::builder()
+        .column_spacing(2)
+        .row_spacing(2)
+        .build();
+    let off_btn = gtk::Button::with_label(if current_flag_color.is_none() {
+        "Off *"
+    } else {
+        "Off"
+    });
+    off_btn.add_css_class("flat");
+    flag_grid.attach(&off_btn, 0, 0, 1, 1);
+
+    let mut flag_buttons: Vec<(gtk::Button, PaneFlagColor)> = Vec::new();
+    for (index, color) in PaneFlagColor::ALL.iter().copied().enumerate() {
+        let label = if current_flag_color == Some(color) {
+            format!("{} *", color.label())
+        } else {
+            color.label().to_string()
+        };
+        let btn = gtk::Button::with_label(&label);
+        btn.add_css_class("flat");
+        let column = ((index + 1) % 2) as i32;
+        let row_idx = index.div_ceil(2) as i32;
+        flag_grid.attach(&btn, column, row_idx, 1, 1);
+        flag_buttons.push((btn, color));
+    }
+    {
+        let pane_widget: gtk::Widget = context.pane_outer.clone().upcast();
+        let menu_ref = menu.clone();
+        off_btn.connect_clicked(move |_| {
+            menu_ref.popdown();
+            set_pane_flag_color(&pane_widget, None);
+        });
+    }
+    for (btn, color) in flag_buttons {
+        let pane_widget: gtk::Widget = context.pane_outer.clone().upcast();
+        let menu_ref = menu.clone();
+        btn.connect_clicked(move |_| {
+            menu_ref.popdown();
+            set_pane_flag_color(&pane_widget, Some(color));
+        });
+    }
+
     menu_box.append(&rename_btn);
     menu_box.append(&pin_btn);
+    menu_box.append(&flag_label);
+    menu_box.append(&flag_grid);
     menu_box.append(&close_btn);
     menu.set_child(Some(&menu_box));
     menu.set_parent(tab_btn);
@@ -3521,7 +3685,8 @@ mod tests {
         normalize_browser_entry_input, normalize_reorder_insert_index, pane_action_tooltip,
         surface_hint_matches, ContentDropZone, TabDragPayload, BROWSER_SEARCH_ENTRY_CSS_CLASS,
         BROWSER_SEARCH_ENTRY_CSS_CLASSES, BROWSER_URL_ENTRY_CSS_CLASS,
-        BROWSER_URL_ENTRY_CSS_CLASSES, HOST_ENTRY_CSS_CLASS, PANE_CSS, TAB_RENAME_ENTRY_CSS_CLASS,
+        BROWSER_URL_ENTRY_CSS_CLASSES, HOST_ENTRY_CSS_CLASS, PANE_ATTENTION_ACTIVE_CSS_CLASS,
+        PANE_ATTENTION_OVERLAY_CSS_CLASS, PANE_CSS, TAB_RENAME_ENTRY_CSS_CLASS,
         TAB_RENAME_ENTRY_CSS_CLASSES,
     };
     #[cfg(feature = "webkit")]
@@ -3580,9 +3745,15 @@ mod tests {
     }
 
     #[test]
-    fn pane_attention_css_targets_content_overlay_not_outer_shell() {
-        assert!(PANE_CSS.contains(".limux-pane-content-attention"));
-        assert!(!PANE_CSS.contains(".limux-pane-attention"));
+    fn pane_attention_css_uses_overlay_indicator_not_parent_shadow() {
+        assert!(PANE_CSS.contains(&format!(".{PANE_ATTENTION_OVERLAY_CSS_CLASS} {{")));
+        assert!(PANE_CSS.contains(&format!(
+            ".{PANE_ATTENTION_OVERLAY_CSS_CLASS}.{PANE_ATTENTION_ACTIVE_CSS_CLASS}"
+        )));
+        assert!(PANE_CSS.contains("border: 2px solid #3584e4"));
+        assert!(PANE_CSS.contains("opacity: 1"));
+        assert!(!PANE_CSS.contains(".limux-pane-content-attention"));
+        assert!(!PANE_CSS.contains(".limux-pane-attention {"));
     }
 
     #[test]

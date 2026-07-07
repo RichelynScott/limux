@@ -5,6 +5,7 @@ dist/
 logs/
 *.tar.gz
 .worktrees/
+WORKTREES/
 linux/
 __pycache__/
 *.py[cod]
