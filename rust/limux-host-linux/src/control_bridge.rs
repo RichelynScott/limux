@@ -111,6 +111,12 @@ pub struct PaneActionRequest {
     pub action: PaneActionKind,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PaneFocusRequest {
+    pub target: WorkspaceTarget,
+    pub pane_id: String,
+}
+
 #[derive(Debug)]
 pub enum ControlCommand {
     Identify {
@@ -141,6 +147,10 @@ pub enum ControlCommand {
     },
     PaneAction {
         request: PaneActionRequest,
+        reply: mpsc::Sender<BridgeResult>,
+    },
+    FocusPane {
+        request: PaneFocusRequest,
         reply: mpsc::Sender<BridgeResult>,
     },
     ListSurfaces {
@@ -224,6 +234,7 @@ impl ControlCommand {
             | Self::ListPaneSurfaces { reply, .. }
             | Self::CreatePane { reply, .. }
             | Self::PaneAction { reply, .. }
+            | Self::FocusPane { reply, .. }
             | Self::ListSurfaces { reply, .. }
             | Self::CurrentSurface { reply, .. }
             | Self::SurfaceHealth { reply, .. }
@@ -510,6 +521,27 @@ fn parse_optional_workspace_target(
     Ok(WorkspaceTarget::Active)
 }
 
+fn parse_optional_workspace_target_without_id(
+    params: &Map<String, Value>,
+    allow_name: bool,
+) -> Result<WorkspaceTarget, BridgeError> {
+    if let Some(handle) = optional_handle(params, &["workspace_id"])? {
+        if allow_name && !looks_like_workspace_handle(&handle) {
+            return Ok(WorkspaceTarget::Name(handle));
+        }
+        return Ok(WorkspaceTarget::Handle(handle));
+    }
+    if allow_name {
+        if let Some(name) = optional_string(params, &["name"]) {
+            return Ok(WorkspaceTarget::Name(name));
+        }
+    }
+    if let Some(index) = optional_index(params, "index")? {
+        return Ok(WorkspaceTarget::Index(index));
+    }
+    Ok(WorkspaceTarget::Active)
+}
+
 #[cfg_attr(not(test), allow(dead_code))]
 fn parse_create_pane_request(
     params: &Map<String, Value>,
@@ -594,6 +626,15 @@ fn parse_cursor_pane_create_empty_request(
         direction,
         pane_type: PaneCreateType::Terminal,
         command: None,
+    })
+}
+
+fn parse_pane_focus_request(params: &Map<String, Value>) -> Result<PaneFocusRequest, BridgeError> {
+    let pane_id = optional_ref_handle(params, &["pane_id", "pane", "id"], "pane:")?
+        .ok_or_else(|| BridgeError::invalid_params("pane.focus requires pane_id/id"))?;
+    Ok(PaneFocusRequest {
+        target: parse_optional_workspace_target_without_id(params, true)?,
+        pane_id,
     })
 }
 
@@ -771,6 +812,25 @@ fn handle_method(
             };
             let (reply, rx) = mpsc::channel();
             (ControlCommand::PaneAction { request, reply }, rx)
+        }
+        "pane.focus" => {
+            if crate::control_registry::wave1_mutations_disabled() {
+                return error_response(
+                    id,
+                    BridgeError::new(
+                        UNKNOWN_METHOD_CODE,
+                        format!(
+                            "Wave-1 mutation route disabled by {WAVE1_MUTATION_KILL_SWITCH_ENV}: {method}"
+                        ),
+                    ),
+                );
+            }
+            let request = match parse_pane_focus_request(params) {
+                Ok(request) => request,
+                Err(error) => return error_response(id, error),
+            };
+            let (reply, rx) = mpsc::channel();
+            (ControlCommand::FocusPane { request, reply }, rx)
         }
         "cursor.pane_create_empty" => {
             let request = match parse_cursor_pane_create_empty_request(params) {
@@ -1277,6 +1337,36 @@ pub fn start(dispatch: fn(ControlCommand)) {
 mod tests {
     use super::*;
 
+    static WAVE1_ENV_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<std::ffi::OsString>,
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl EnvVarGuard {
+        fn clear(key: &'static str) -> Self {
+            let lock = WAVE1_ENV_TEST_LOCK.lock().expect("env test lock poisoned");
+            let previous = std::env::var_os(key);
+            std::env::remove_var(key);
+            Self {
+                key,
+                previous,
+                _lock: lock,
+            }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
     #[test]
     fn parses_v2_request_directly() {
         let request = parse_request(r#"{"id":"1","method":"system.ping","params":{}}"#)
@@ -1433,6 +1523,45 @@ mod tests {
             response.error.as_ref().map(|error| error.code),
             Some(INVALID_PARAMS_CODE)
         );
+    }
+
+    #[test]
+    fn pane_focus_route_queues_focus_pane_command() {
+        let response = dispatch_request(
+            r#"{"id":1,"method":"pane.focus","params":{"workspace_id":"workspace:dev","pane_id":"pane:7"}}"#,
+            &|command| match command {
+                ControlCommand::FocusPane { request, reply } => {
+                    assert_eq!(
+                        request.target,
+                        WorkspaceTarget::Handle("workspace:dev".to_string())
+                    );
+                    assert_eq!(request.pane_id, "7");
+                    let _ = reply.send(Ok(json!({
+                        "ok": true,
+                        "workspace_id": "dev",
+                        "workspace_ref": "workspace:dev",
+                        "pane_id": "7",
+                        "pane_ref": "pane:7"
+                    })));
+                }
+                other => panic!("unexpected command: {other:?}"),
+            },
+        );
+
+        assert_eq!(response.error, None);
+        let result = response.result.expect("pane.focus should return a result");
+        assert_eq!(result["ok"], true);
+        assert_eq!(result["pane_ref"], "pane:7");
+    }
+
+    #[test]
+    fn pane_focus_treats_id_as_pane_id_not_workspace_id() {
+        let params = json!({ "id": "pane:12" });
+        let request = parse_pane_focus_request(params.as_object().expect("object params"))
+            .expect("pane.focus should parse id as pane id");
+
+        assert_eq!(request.target, WorkspaceTarget::Active);
+        assert_eq!(request.pane_id, "12");
     }
 
     #[test]
@@ -1734,6 +1863,8 @@ mod tests {
 
     #[test]
     fn unrestricted_capabilities_do_not_advertise_unwired_wave1_or_deferred_routes() {
+        let _env_guard =
+            EnvVarGuard::clear(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV);
         let response = dispatch_request(
             r#"{"id":1,"method":"system.capabilities","params":{}}"#,
             &|command| panic!("system.capabilities should not dispatch: {command:?}"),
@@ -1742,7 +1873,11 @@ mod tests {
         assert_eq!(response.error, None);
         let result = response.result.expect("capabilities result");
         let methods = result["methods"].as_array().expect("methods array");
-        for method in ["pane.focus", "surface.split", "notification.clear"] {
+        assert!(
+            methods.iter().any(|entry| entry == "pane.focus"),
+            "pane.focus should be advertised after the live GTK route is wired"
+        );
+        for method in ["surface.split", "notification.clear"] {
             assert!(
                 !methods.iter().any(|entry| entry == method),
                 "{method} must stay out of capabilities until wired to live GTK state"
@@ -1759,7 +1894,7 @@ mod tests {
     #[test]
     fn wave1_mutation_route_returns_explicit_unwired_error() {
         let response = dispatch_request(
-            r#"{"id":1,"method":"pane.focus","params":{"pane_id":7}}"#,
+            r#"{"id":1,"method":"surface.split","params":{"surface_id":"surface:7","direction":"right"}}"#,
             &|command| panic!("unwired Wave-1 route should not dispatch: {command:?}"),
         );
 
