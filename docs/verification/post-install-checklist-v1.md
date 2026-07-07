@@ -42,10 +42,11 @@ checklist. The preview wrapper exports `LIMUX_CHANNEL=preview:default`, so it
 uses the preview socket/session namespace and must not interfere with stable.
 
 Before launching preview, make sure a stable Limux window is already open. If
-no stable window is open, launch stable first:
+no stable window is open, launch stable first from a separate terminal, the
+`Limux Stable` desktop entry, or a backgrounded shell command:
 
 ```bash
-~/.local/bin/limux-stable
+nohup ~/.local/bin/limux-stable >/tmp/limux-stable-checklist.log 2>&1 &
 ```
 
 After the stable window is open, launch preview:
@@ -222,18 +223,26 @@ Expected result:
 Verdict: `PASS` / `FAIL` / `N/A`
 Evidence:
 
-### 8. Notification Toast And Sidebar Dot
+### 8. Notification Toast, Sidebar Dot, And Pane Attention
 
 Action:
 1. From a non-focused preview pane or another terminal targeting preview, run:
    ```bash
    ~/.local/bin/limux-preview notify --title "Checklist ping" --body "Preview notification"
    ```
-2. Observe desktop toast, sidebar row state, and pane attention border.
+2. Observe desktop toast and sidebar row state.
+3. In a right-hand preview pane, run:
+   ```bash
+   sleep 2; printf '\a'
+   ```
+4. Before the bell fires, focus a different pane.
+5. Observe the pane attention border on the pane that emitted the bell.
 
 Expected result:
 - Toast appears when configured.
 - Workspace row gets the expected unread/sidebar marker.
+- The CLI `notify` command is treated as workspace-only and is not required to
+  draw a pane border.
 - The pane needing attention gets a visible blue border overlay.
 - The marker clears according to configured hover/focus behavior.
 

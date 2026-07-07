@@ -42,7 +42,7 @@ bash scripts/tests/runtime-isolation-smoke.sh
 | 5 | Drag-resize soak with live agent TUI | `PASS` / `FAIL` / `N/A` |  |
 | 6 | Sidebar resize, collapse, and restore | `PASS` / `FAIL` / `N/A` |  |
 | 7 | Multi-workspace session restore | `PASS` / `FAIL` / `N/A` |  |
-| 8 | Notification toast and sidebar dot | `PASS` / `FAIL` / `N/A` |  |
+| 8 | Notification toast, sidebar dot, and pane attention | `PASS` / `FAIL` / `N/A` |  |
 | 9 | Runtime channel isolation | `PASS` / `FAIL` / `N/A` |  |
 | 10 | Pane attention overlay and per-pane flags | `PASS` / `FAIL` / `N/A` |  |
 
