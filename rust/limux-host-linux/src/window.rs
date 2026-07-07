@@ -371,55 +371,57 @@ fn pane_resize_response_payload(outcome: PaneResizeOutcome) -> serde_json::Value
 
 struct PaneResizeTarget {
     workspace_index: usize,
-    previous_active_idx: usize,
     workspace_id: String,
     pane_id: u32,
     direction: BridgePaneResizeDirection,
     amount: f64,
     pane_widget: gtk::Widget,
-    unread_snapshots: Vec<WorkspaceUnreadSnapshot>,
 }
 
-#[derive(Clone)]
-struct WorkspaceUnreadSnapshot {
-    workspace_id: String,
-    message: String,
+struct TemporaryWorkspaceMapping {
+    stack: gtk::Stack,
+    restore_stack_name: String,
 }
 
-fn workspace_unread_snapshot(workspace: &Workspace) -> Option<WorkspaceUnreadSnapshot> {
-    workspace.unread.then(|| WorkspaceUnreadSnapshot {
-        workspace_id: workspace.id.clone(),
-        message: workspace.notify_label.label().to_string(),
+fn restore_workspace_mapping(mapping: Option<TemporaryWorkspaceMapping>) {
+    if let Some(mapping) = mapping {
+        mapping
+            .stack
+            .set_visible_child_name(&mapping.restore_stack_name);
+    }
+}
+
+fn with_workspace_temporarily_mapped(
+    state: &State,
+    workspace_index: usize,
+) -> Option<TemporaryWorkspaceMapping> {
+    let (stack, target_stack_name, restore_stack_name) = {
+        let app_state = state.borrow();
+        let stack = app_state.stack.clone();
+        let target_workspace = app_state.workspaces.get(workspace_index)?;
+        let target_stack_name = format!("ws-{}", target_workspace.id);
+        let restore_stack_name = stack
+            .visible_child_name()
+            .map(|name| name.to_string())
+            .or_else(|| {
+                app_state
+                    .workspaces
+                    .get(app_state.active_idx)
+                    .map(|workspace| format!("ws-{}", workspace.id))
+            })?;
+
+        (stack, target_stack_name, restore_stack_name)
+    };
+
+    if target_stack_name == restore_stack_name {
+        return None;
+    }
+
+    stack.set_visible_child_name(&target_stack_name);
+    Some(TemporaryWorkspaceMapping {
+        stack,
+        restore_stack_name,
     })
-}
-
-fn restore_workspace_unread_snapshots(state: &State, snapshots: &[WorkspaceUnreadSnapshot]) {
-    if snapshots.is_empty() {
-        return;
-    }
-
-    let mut restored = false;
-    {
-        let mut app_state = state.borrow_mut();
-        for snapshot in snapshots {
-            let Some(workspace) = app_state
-                .workspaces
-                .iter_mut()
-                .find(|workspace| workspace.id == snapshot.workspace_id)
-            else {
-                continue;
-            };
-            if workspace.unread {
-                continue;
-            }
-            set_workspace_unread_visuals(workspace, &snapshot.message);
-            restored = true;
-        }
-    }
-
-    if restored {
-        request_session_save(state);
-    }
 }
 
 fn resolve_pane_resize_target(
@@ -429,31 +431,13 @@ fn resolve_pane_resize_target(
     let pane_id = parse_pane_handle(&request.pane_id)
         .ok_or_else(|| BridgeError::invalid_params("pane.resize requires a valid pane_id"))?;
 
-    let (workspace_index, previous_active_idx, workspace_id, workspace_root, unread_snapshots) = {
+    let (workspace_index, workspace_id, workspace_root) = {
         let app_state = state.borrow();
         let Some(index) = workspace_index_for_target(&app_state, &request.target) else {
             return Err(BridgeError::not_found("workspace not found"));
         };
-        let previous_active_idx = app_state.active_idx;
         let workspace = &app_state.workspaces[index];
-        let mut unread_snapshots = Vec::new();
-        if index != previous_active_idx {
-            if let Some(snapshot) = workspace_unread_snapshot(workspace) {
-                unread_snapshots.push(snapshot);
-            }
-            if let Some(previous_workspace) = app_state.workspaces.get(previous_active_idx) {
-                if let Some(snapshot) = workspace_unread_snapshot(previous_workspace) {
-                    unread_snapshots.push(snapshot);
-                }
-            }
-        }
-        (
-            index,
-            previous_active_idx,
-            workspace.id.clone(),
-            workspace.root.clone(),
-            unread_snapshots,
-        )
+        (index, workspace.id.clone(), workspace.root.clone())
     };
 
     let pane_widget = pane::pane_widget_for_root(&workspace_root, pane_id)
@@ -461,13 +445,11 @@ fn resolve_pane_resize_target(
 
     Ok(PaneResizeTarget {
         workspace_index,
-        previous_active_idx,
         workspace_id,
         pane_id,
         direction: request.direction,
         amount: request.amount,
         pane_widget,
-        unread_snapshots,
     })
 }
 
@@ -492,29 +474,19 @@ fn apply_pane_resize_target(
 fn send_pane_resize_response_after_settle(
     state: State,
     target: PaneResizeTarget,
+    mapping: Option<TemporaryWorkspaceMapping>,
     reply: std::sync::mpsc::Sender<Result<serde_json::Value, BridgeError>>,
 ) {
-    let rollback_index = (target.workspace_index != target.previous_active_idx)
-        .then_some(target.previous_active_idx);
-    let unread_snapshots = target.unread_snapshots.clone();
     glib::idle_add_local_once(move || match apply_pane_resize_target(&state, target) {
         Ok(outcome) => {
-            let state = state.clone();
-            let unread_snapshots = unread_snapshots.clone();
             glib::idle_add_local_once(move || {
                 let payload = pane_resize_response_payload(outcome);
-                if let Some(index) = rollback_index {
-                    switch_workspace(&state, index);
-                }
-                restore_workspace_unread_snapshots(&state, &unread_snapshots);
+                restore_workspace_mapping(mapping);
                 let _ = reply.send(Ok(payload));
             });
         }
         Err(error) => {
-            if let Some(index) = rollback_index {
-                switch_workspace(&state, index);
-            }
-            restore_workspace_unread_snapshots(&state, &unread_snapshots);
+            restore_workspace_mapping(mapping);
             let _ = reply.send(Err(error));
         }
     });
@@ -5245,10 +5217,8 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 }
             };
 
-            if target.workspace_index != target.previous_active_idx {
-                switch_workspace(state, target.workspace_index);
-            }
-            send_pane_resize_response_after_settle(state.clone(), target, reply);
+            let mapping = with_workspace_temporarily_mapped(state, target.workspace_index);
+            send_pane_resize_response_after_settle(state.clone(), target, mapping, reply);
         }
         ControlCommand::CreatePane { request, reply } => {
             if !matches!(request.pane_type, PaneCreateType::Terminal) {
