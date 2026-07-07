@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::env;
+use std::fs;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use limux_protocol::{validate_terminal_text_payload, V2Request, V2Response};
@@ -174,6 +176,92 @@ const COMMANDS: &[&str] = &[
     "debug.type",
     "debug.window.screenshot",
 ];
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BuildInfo {
+    pub sha: String,
+    pub dirty: Option<bool>,
+    pub profile: String,
+    pub install_id: Option<String>,
+    pub channel: Option<String>,
+}
+
+impl Default for BuildInfo {
+    fn default() -> Self {
+        Self {
+            sha: "unknown".to_string(),
+            dirty: None,
+            profile: "unknown".to_string(),
+            install_id: None,
+            channel: None,
+        }
+    }
+}
+
+impl BuildInfo {
+    pub fn from_compile_env(sha: Option<&str>, dirty: Option<&str>, profile: Option<&str>) -> Self {
+        let mut build = Self {
+            sha: non_empty_or_unknown(sha),
+            dirty: parse_dirty_value(dirty),
+            profile: non_empty_or_unknown(profile),
+            ..Self::default()
+        };
+        if let Some(info) = install_info_near_current_exe() {
+            build.install_id = info.install_id;
+            build.channel = info.channel;
+        }
+        build
+    }
+
+    pub fn short_sha(&self) -> &str {
+        self.sha.as_str()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct InstallInfo {
+    pub install_id: Option<String>,
+    pub channel: Option<String>,
+    pub source_sha: Option<String>,
+    pub created_utc: Option<String>,
+}
+
+fn non_empty_or_unknown(value: Option<&str>) -> String {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+fn parse_dirty_value(value: Option<&str>) -> Option<bool> {
+    match value.map(str::trim) {
+        Some("true") => Some(true),
+        Some("false") => Some(false),
+        _ => None,
+    }
+}
+
+pub fn read_install_info(path: impl AsRef<Path>) -> Option<InstallInfo> {
+    let text = fs::read_to_string(path).ok()?;
+    serde_json::from_str::<InstallInfo>(&text).ok()
+}
+
+pub fn find_install_info_near_exe(exe: impl AsRef<Path>) -> Option<InstallInfo> {
+    let exe = exe.as_ref();
+    let start = exe.parent().unwrap_or(exe);
+    for dir in start.ancestors().take(4) {
+        if let Some(info) = read_install_info(dir.join("install-info.json")) {
+            return Some(info);
+        }
+    }
+    None
+}
+
+pub fn install_info_near_current_exe() -> Option<InstallInfo> {
+    let exe = env::current_exe().ok()?;
+    find_install_info_near_exe(exe)
+}
 
 fn runtime_channel_label_from_env() -> Option<String> {
     let raw = env::var("LIMUX_CHANNEL").ok()?;
@@ -629,6 +717,7 @@ struct PaletteRow {
 
 #[derive(Debug, Clone)]
 pub struct ControlState {
+    build_info: BuildInfo,
     workspaces: Vec<WorkspaceState>,
     current_workspace_id: u64,
     last_workspace_id: Option<u64>,
@@ -660,6 +749,7 @@ pub struct ControlState {
 impl Default for ControlState {
     fn default() -> Self {
         let mut state = Self {
+            build_info: BuildInfo::default(),
             workspaces: Vec::new(),
             current_workspace_id: 0,
             last_workspace_id: None,
@@ -701,6 +791,10 @@ impl Default for ControlState {
 }
 
 impl ControlState {
+    pub fn set_build_info(&mut self, build_info: BuildInfo) {
+        self.build_info = build_info;
+    }
+
     fn make_workspace(&mut self, name: Option<String>) -> WorkspaceState {
         let id = self.next_workspace_id;
         self.next_workspace_id += 1;
@@ -2758,6 +2852,12 @@ impl Dispatcher {
         Self {
             state: Arc::new(Mutex::new(ControlState::default())),
         }
+    }
+
+    pub fn with_build_info(build_info: BuildInfo) -> Self {
+        let mut state = ControlState::default();
+        state.set_build_info(build_info);
+        Self::with_state(state)
     }
 
     pub fn with_state(state: ControlState) -> Self {
@@ -4860,6 +4960,7 @@ fn handle_command(
                 "pid": pid,
                 "channel": channel,
                 "runtime_id": runtime_id,
+                "build": state.build_info.clone(),
                 "focused": focused,
                 "caller": caller,
             }))
@@ -6181,6 +6282,9 @@ mod tests {
         let identify_result = identify.result.expect("identify result");
         assert_eq!(identify_result["name"], "limux-control");
         assert_eq!(identify_result["pid"], std::process::id());
+        assert_eq!(identify_result["build"]["sha"], "unknown");
+        assert_eq!(identify_result["build"]["profile"], "unknown");
+        assert_eq!(identify_result["build"]["dirty"], Value::Null);
         assert!(identify_result["runtime_id"]
             .as_str()
             .expect("runtime_id should be a string")
@@ -6196,6 +6300,41 @@ mod tests {
                 .expect("capabilities array")
                 .contains(&Value::String("surface.send_text".to_string())));
         }
+    }
+
+    #[test]
+    fn install_info_parsing_is_optional_and_malformed_safe() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let valid = tmp.path().join("install-info.json");
+        std::fs::write(
+            &valid,
+            r#"{"install_id":"abc123","channel":"preview:test","source_sha":"feed","created_utc":"20260707T030000Z"}"#,
+        )
+        .expect("write valid install info");
+        let info = read_install_info(&valid).expect("valid install info");
+        assert_eq!(info.install_id.as_deref(), Some("abc123"));
+        assert_eq!(info.channel.as_deref(), Some("preview:test"));
+
+        let malformed = tmp.path().join("malformed.json");
+        std::fs::write(&malformed, "{not json").expect("write malformed install info");
+        assert_eq!(read_install_info(&malformed), None);
+        assert_eq!(read_install_info(tmp.path().join("missing.json")), None);
+    }
+
+    #[test]
+    fn find_install_info_walks_up_from_libexec_binary() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("limux-reviewed/test");
+        let libexec = root.join("libexec");
+        std::fs::create_dir_all(&libexec).expect("create libexec");
+        std::fs::write(
+            root.join("install-info.json"),
+            r#"{"install_id":"test","channel":"stable","source_sha":"feed","created_utc":"20260707T030000Z"}"#,
+        )
+        .expect("write install info");
+        let info = find_install_info_near_exe(libexec.join("limux-cli")).expect("install info");
+        assert_eq!(info.install_id.as_deref(), Some("test"));
+        assert_eq!(info.channel.as_deref(), Some("stable"));
     }
 
     #[tokio::test]

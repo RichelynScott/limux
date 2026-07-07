@@ -61,6 +61,25 @@ preview_target="$(readlink "${prefix}/bin/limux-preview")"
 [[ "$preview_target" == *"/limux-reviewed/preview/default/preview-smoke/bin/limux-preview" ]] \
     || fail "preview launcher target is not preview install: ${preview_target}"
 
+legacy_install_info="${prefix}/limux-reviewed/legacy-smoke/install-info.json"
+stable_install_info="${prefix}/limux-reviewed/stable/stable-smoke/install-info.json"
+preview_install_info="${prefix}/limux-reviewed/preview/default/preview-smoke/install-info.json"
+for install_info in "$legacy_install_info" "$stable_install_info" "$preview_install_info"; do
+    [[ -s "$install_info" ]] || fail "missing install-info.json: ${install_info}"
+done
+grep -q '"channel": "legacy"' "$legacy_install_info" \
+    || fail "legacy install-info channel mismatch"
+grep -q '"channel": "stable"' "$stable_install_info" \
+    || fail "stable install-info channel mismatch"
+grep -q '"channel": "preview:default"' "$preview_install_info" \
+    || fail "preview install-info channel mismatch"
+
+legacy_version="$("${prefix}/bin/limux" --version)"
+[[ "$legacy_version" == *"install-id=legacy-smoke"* ]] \
+    || fail "legacy --version missing install id: ${legacy_version}"
+[[ "$legacy_version" == *"channel=legacy"* ]] \
+    || fail "legacy --version missing channel: ${legacy_version}"
+
 preview_info="$(LIMUX_SOCKET="$inherited_socket" "${prefix}/bin/limux-preview" target-info)"
 stable_info="$("${prefix}/bin/limux-stable" target-info)"
 legacy_info="$("${prefix}/bin/limux" target-info)"

@@ -374,8 +374,9 @@
         "testStrategy": "Testing is multi-layered:\n\n1. **Unit tests for pattern table** — in the pattern table source file, one test per pattern class using fixture lines lifted verbatim from the real log. Verify each fixture classifies to the correct category.\n\n2. **Unit tests for install-info parsing** — test parsing of valid, absent, and malformed `install-info.json` (malformed → fields omitted, no panic).\n\n3. **Unit tests for drift evaluation logic** — pure function testing of symlink resolution, wrapper script parsing, and channel grouping logic without requiring a real filesystem.\n\n4. **Unit tests for ANSI stripping** — verify control bytes/escape sequences are stripped from log content in triage output.\n\n5. **Integration test for doctor** — in `rust/limux-cli/src/main.rs` test module or Xvfb harness: stage two fake install roots under a temp prefix (`LIMUX_USER_PREFIX`), point a fake `limux*` symlink→wrapper at the older root, run a copied `limux-host` binary from the newer root so `/proc/<pid>/exe` resolves there, and verify doctor detects and reports the mismatch as `warn`/`fail`.\n\n6. **Build identity tests** — `cargo test -p limux-host-linux build_identity -- --nocapture` verifies the host start-line and panic hook carry build identity.\n\n7. **System.identify tests** — verify `build` object appears on both standalone dispatcher and GTK bridge paths with correct shape.\n\n8. **Full gate** — `./scripts/check.sh` must pass with no new failures vs baseline (verify baseline `hook_session_id_falls_back_to_transcript_stem` first).\n\n9. **Smoke test** — `LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh` (extended with a doctor invocation) verifies end-to-end behavior.\n\n10. **Installer dry-run** — `scripts/user-local-install/install-user-local.sh --dry-run --profile release --install-id prd-a-check` verifies installer changes (note: SHA256SUMS not verifiable in dry-run).\n\n11. **Manual verification** — run `limux --version` and `limux doctor` on operator's machine to confirm stale-build condition is detected, then after clean install reports clean.",
         "priority": "high",
         "dependencies": [],
-        "status": "pending",
-        "subtasks": []
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-07-07T03:35:36.364Z"
       },
       {
         "id": 2,
@@ -470,10 +471,13 @@
       }
     ],
     "metadata": {
-      "created": "2026-07-07T01:13:36.631Z",
-      "updated": "2026-07-07T01:16:26.196Z",
-      "description": "Tasks for cmux-parity-20260707 context",
-      "taskCount": 8
+      "version": "1.0.0",
+      "lastModified": "2026-07-07T03:35:36.364Z",
+      "taskCount": 8,
+      "completedCount": 1,
+      "tags": [
+        "cmux-parity-20260707"
+      ]
     }
   }
 }
