@@ -44,8 +44,8 @@ by cmux fixes upstream:
 ## Goals
 
 1. Save→restore round-trips split structure exactly: order, orientation,
-   ratios (within float tolerance), pane identity, tab metadata (incl. PRD-D
-   `flag_color` if landed).
+   ratios (within float tolerance), pane identity, tab metadata, and pane
+   metadata (including PRD-D pane-scoped `flag_color` if landed).
 2. New splits/tabs inherit the source pane's current working directory.
 3. Recently-closed workspaces/tabs are listed and reopenable; workspace focus
    history supports back/forward.
@@ -69,8 +69,9 @@ by cmux fixes upstream:
       fixtures inside the clamp bounds (0.08–0.92).
 - [ ] Split RATIOS restore to their drag-adjusted values (explicit assertion —
       not just structure).
-- [ ] Restore preserves per-tab metadata: title, pinned, unread, and
-      `flag_color` when PRD-D is merged (feature-gated assertion).
+- [ ] Restore preserves per-tab metadata: title, pinned, unread. When PRD-D is
+      merged, restore also preserves pane-scoped `flag_color` as pane metadata,
+      not a duplicate tab/surface field (feature-gated assertion).
 - [ ] Atomic save + versioning are ALREADY IMPLEMENTED (Codex-revised:
       `save_session_atomic_in` does write-temp + rename,
       layout_state.rs:418-429; `AppSessionState.version` with

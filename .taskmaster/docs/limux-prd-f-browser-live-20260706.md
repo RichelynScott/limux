@@ -16,15 +16,21 @@ a server-side domain allowlist + audit events from day one.
 
 ## Problem Statement
 
-(Codex-revised — corrected starting point) Limux ALREADY SHIPS an interactive
-WebKitGTK browser pane as a **default cargo feature**
+(Codex-revised — corrected starting point) Limux already compiles an
+interactive WebKitGTK browser pane as a **default cargo feature**
 (`rust/limux-host-linux/Cargo.toml:13-14,22` — `default = ["webkit"]`,
 `webkit6 = "0.6"`): `BrowserHandles` in `pane.rs:~2871` (webview, url_entry,
 search bar, find controller, inspector/console handlers), GUI-wired via
 `window.rs:5221 on_open_browser_here`, with WSLg GL mitigations already
 applied (`configure_browser_settings` sets `HardwareAccelerationPolicy`,
 pane.rs:~3195). `scripts/appimage-webkit.sh` bundles the WebKitWebProcess
-runtime.
+runtime. It is NOT enabled for normal users today: `embedded_browser_enabled()`
+requires `LIMUX_ENABLE_WEBKIT_BROWSER` (`pane.rs:136-142`), the browser button
+is hidden when false (`pane.rs:582-584`), and `add_browser_tab_inner` returns
+early (`pane.rs:1414-1417`). F1 must therefore measure WebKit with the gate
+explicitly enabled in the preview harness, and F2 must either remove the gate
+or set it intentionally in the preview/stable installer/wrapper path if WebKit
+wins.
 
 What does NOT work is the **scriptable/agent surface**: `limux-core` carries
 an 84-method `browser.*` vocabulary and the CLI exposes a complete `browser`
@@ -51,7 +57,7 @@ delegated lifo) sign-off on the decision doc before F2 begins.**
 
 | Candidate | Sketch |
 |---|---|
-| (a) WebKitGTK embedded pane (SHIPPED today) | The existing default-feature WebKit pane becomes the engine behind `browser.*`. Evidence for (a) is **measured on the existing production pane**, not prototyped: memory at 3+ panes, subprocess/log hygiene, WSLg stability under the existing `HardwareAccelerationPolicy` mitigation. New work = engine bindings from `browser.*` methods to the live webview. |
+| (a) WebKitGTK embedded pane (compiled-by-default, runtime-gated today) | The existing gated WebKit pane becomes the engine behind `browser.*`. Evidence for (a) is **measured on the existing pane with `LIMUX_ENABLE_WEBKIT_BROWSER=1` in a preview harness**, not prototyped from scratch: memory at 3+ panes, subprocess/log hygiene, WSLg stability under the existing `HardwareAccelerationPolicy` mitigation. New work = activation decision (remove/wire the runtime gate) + engine bindings from `browser.*` methods to the live webview. |
 | (b) CDP external browser | Limux launches/attaches to a Chromium-family browser via CDP (DevTools protocol over localhost); the pane renders a live view (screencast frames into a GTK widget) or — v1-minimal — manages the external window while Limux owns control/automation. mux precedent: cmux #7325. Prototype required (throwaway, spike branch, not merged). |
 
 Decision criteria (weights in the doc): WSLg rendering stability — including
