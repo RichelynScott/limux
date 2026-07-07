@@ -100,10 +100,7 @@ pub async fn run(
     cli_build: BuildInfo,
 ) -> Result<DoctorRun> {
     let options = parse_options(args, global_json)?;
-    let prefix = env::var_os("LIMUX_USER_PREFIX")
-        .map(PathBuf::from)
-        .or_else(|| dirs::home_dir().map(|home| home.join(".local")))
-        .ok_or_else(|| anyhow!("could not resolve user prefix"))?;
+    let prefix = resolve_user_prefix().ok_or_else(|| anyhow!("could not resolve user prefix"))?;
 
     let launchers = discover_launchers(&prefix);
     let install_roots = known_install_roots(&launchers);
@@ -151,6 +148,26 @@ pub async fn run(
         text,
         exit_code,
     })
+}
+
+fn resolve_user_prefix() -> Option<PathBuf> {
+    env::var_os("LIMUX_USER_PREFIX")
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::current_exe()
+                .ok()
+                .and_then(|exe| user_prefix_from_installed_exe(&exe))
+        })
+        .or_else(|| dirs::home_dir().map(|home| home.join(".local")))
+}
+
+fn user_prefix_from_installed_exe(path: &Path) -> Option<PathBuf> {
+    for ancestor in path.ancestors() {
+        if ancestor.file_name().and_then(|name| name.to_str()) == Some("limux-reviewed") {
+            return ancestor.parent().map(Path::to_path_buf);
+        }
+    }
+    None
 }
 
 fn parse_options(args: &[String], global_json: bool) -> Result<DoctorOptions> {
@@ -814,6 +831,22 @@ exec "${INSTALL_ROOT}/libexec/limux-cli" "$@"
         assert_eq!(
             parse_wrapper_channel(wrapper).as_deref(),
             Some("preview:test")
+        );
+    }
+
+    #[test]
+    fn derives_prefix_from_installed_exe_path() {
+        let exe = Path::new(
+            "/custom/prefix/limux-reviewed/preview/default/test-install/libexec/limux-cli",
+        );
+
+        assert_eq!(
+            user_prefix_from_installed_exe(exe),
+            Some(PathBuf::from("/custom/prefix"))
+        );
+        assert_eq!(
+            user_prefix_from_installed_exe(Path::new("/repo/target/debug/limux-cli")),
+            None
         );
     }
 
