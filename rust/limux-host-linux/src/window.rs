@@ -335,16 +335,44 @@ fn pane_action_target_pane_id(
 }
 
 struct PaneResizeGeometry {
-    width: i32,
-    height: i32,
     split_position: i32,
     split_ratio: f64,
 }
 
-fn resize_pane_for_request(
+struct PaneResizeOutcome {
+    workspace_id: String,
+    pane_id: u32,
+    direction: BridgePaneResizeDirection,
+    amount: f64,
+    pane_widget: gtk::Widget,
+    geometry: PaneResizeGeometry,
+}
+
+fn pane_resize_response_payload(outcome: PaneResizeOutcome) -> serde_json::Value {
+    let allocation = outcome.pane_widget.allocation();
+    serde_json::json!({
+        "ok": true,
+        "workspace_id": outcome.workspace_id.as_str(),
+        "workspace_ref": workspace_ref(&outcome.workspace_id),
+        "pane_id": outcome.pane_id.to_string(),
+        "pane_ref": pane_ref(outcome.pane_id),
+        "direction": pane_resize_direction_name(outcome.direction),
+        "amount": outcome.amount,
+        "frame": {
+            "width": allocation.width(),
+            "height": allocation.height(),
+        },
+        "split": {
+            "position": outcome.geometry.split_position,
+            "ratio": outcome.geometry.split_ratio,
+        },
+    })
+}
+
+fn apply_pane_resize_for_request(
     state: &State,
     request: &crate::control_bridge::PaneResizeRequest,
-) -> Result<serde_json::Value, BridgeError> {
+) -> Result<PaneResizeOutcome, BridgeError> {
     let pane_id = parse_pane_handle(&request.pane_id)
         .ok_or_else(|| BridgeError::invalid_params("pane.resize requires a valid pane_id"))?;
     let resolved = {
@@ -368,23 +396,33 @@ fn resize_pane_for_request(
     let geometry = resize_pane_widget(&pane_widget, axis, target_delta)?;
     request_session_save(state);
 
-    Ok(serde_json::json!({
-        "ok": true,
-        "workspace_id": workspace_id.as_str(),
-        "workspace_ref": workspace_ref(&workspace_id),
-        "pane_id": pane_id.to_string(),
-        "pane_ref": pane_ref(pane_id),
-        "direction": pane_resize_direction_name(request.direction),
-        "amount": request.amount,
-        "frame": {
-            "width": geometry.width,
-            "height": geometry.height,
+    Ok(PaneResizeOutcome {
+        workspace_id,
+        pane_id,
+        direction: request.direction,
+        amount: request.amount,
+        pane_widget,
+        geometry,
+    })
+}
+
+fn send_pane_resize_response_after_settle(
+    state: State,
+    request: crate::control_bridge::PaneResizeRequest,
+    reply: std::sync::mpsc::Sender<Result<serde_json::Value, BridgeError>>,
+) {
+    glib::idle_add_local_once(
+        move || match apply_pane_resize_for_request(&state, &request) {
+            Ok(outcome) => {
+                glib::idle_add_local_once(move || {
+                    let _ = reply.send(Ok(pane_resize_response_payload(outcome)));
+                });
+            }
+            Err(error) => {
+                let _ = reply.send(Err(error));
+            }
         },
-        "split": {
-            "position": geometry.split_position,
-            "ratio": geometry.split_ratio,
-        },
-    }))
+    );
 }
 
 fn resize_pane_widget(
@@ -420,10 +458,7 @@ fn resize_pane_widget(
     );
     update_split_ratio_state(&paned, ratio);
 
-    let pane_allocation = pane_widget.allocation();
     Ok(PaneResizeGeometry {
-        width: pane_allocation.width(),
-        height: pane_allocation.height(),
         split_position: new_position,
         split_ratio: ratio,
     })
@@ -5122,15 +5157,10 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 index == app_state.active_idx
             };
 
-            if was_active {
-                let _ = reply.send(resize_pane_for_request(state, &request));
-            } else {
+            if !was_active {
                 switch_workspace(state, index);
-                let state = state.clone();
-                glib::idle_add_local_once(move || {
-                    let _ = reply.send(resize_pane_for_request(&state, &request));
-                });
             }
+            send_pane_resize_response_after_settle(state.clone(), request, reply);
         }
         ControlCommand::CreatePane { request, reply } => {
             if !matches!(request.pane_type, PaneCreateType::Terminal) {
