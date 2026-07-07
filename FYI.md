@@ -1857,7 +1857,8 @@ restarted. PR #6 was pushed and a fresh `@codex review` was requested; at
 ## 2026-07-06 - cmux Parity Roadmap And PRDs Merged
 ### What:
 Merged PR #16 into `main` at `16828118c19543af59b3c332fe2bd08bc1c12b49`,
-adding the cmux parity roadmap and PRDs A-H under `.taskmaster/docs/`.
+adding `docs/cmux-parity-roadmap-20260706.md` and PRDs A-H under
+`.taskmaster/docs/`.
 
 ### Why:
 The operator wanted the upstream Limux/cmux research and improvement options
