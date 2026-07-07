@@ -1,3 +1,4 @@
+mod agent_state;
 mod app_config;
 mod control_bridge;
 mod control_registry;
