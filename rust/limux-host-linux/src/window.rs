@@ -1865,9 +1865,7 @@ pub fn build_window(app: &adw::Application) {
     let chrome_policy = window_chrome_policy(compositor_provides_decorations);
 
     let header = if chrome_policy.use_client_side_titlebar {
-        let header = build_window_header(&title, chrome_policy.decoration_layout);
-        window.set_titlebar(Some(&header));
-        Some(header)
+        Some(build_window_header(&title, chrome_policy.decoration_layout))
     } else {
         None
     };
@@ -1976,7 +1974,14 @@ pub fn build_window(app: &adw::Application) {
 
     let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
     vbox.append(&main_split);
-    window.set_content(Some(&vbox));
+    if let Some(header) = &header {
+        let toolbar_view = adw::ToolbarView::new();
+        toolbar_view.add_top_bar(header);
+        toolbar_view.set_content(Some(&vbox));
+        window.set_content(Some(&toolbar_view));
+    } else {
+        window.set_content(Some(&vbox));
+    }
 
     let state: State = Rc::new(RefCell::new(AppState {
         app: app.clone(),
@@ -6925,6 +6930,15 @@ mod tests {
         assert!(with_compositor_decorations
             .decoration_layout
             .contains("close"));
+    }
+
+    #[test]
+    fn adw_application_window_header_is_composed_as_content_toolbar() {
+        let source = include_str!("window.rs");
+        let forbidden_titlebar_call = [".set", "_titlebar("].concat();
+
+        assert!(!source.contains(&forbidden_titlebar_call));
+        assert!(source.contains("adw::ToolbarView"));
     }
 
     #[test]
