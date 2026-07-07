@@ -46,6 +46,10 @@ include fields from `install-info.json`, including install id and channel.
 to a host. Use it to confirm whether a shell targets the default, stable, or
 preview runtime.
 
+JSON flag placement is a parser gotcha. Most commands use the global flag
+before the subcommand, such as `limux --json identify`; `doctor --json` is a
+subcommand-local exception.
+
 `doctor` checks launchers, running processes, socket reachability, stale
 sockets, Ghostty resources, and optional log triage.
 
@@ -72,8 +76,11 @@ environment values:
 limux --json identify
 limux --json list-workspaces
 limux --json list-panels --workspace "$LIMUX_WORKSPACE_ID"
-limux --json surface-health --surface "$LIMUX_SURFACE_ID"
+limux --json surface-health --workspace "$LIMUX_WORKSPACE_ID"
 ```
+
+`surface-health` is workspace-scoped today; do not pass `--surface` unless the
+CLI grows real surface-target support for that command.
 
 Useful global flags:
 

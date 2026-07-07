@@ -93,6 +93,10 @@ the install id and channel.
 connecting to a running host. Use it when checking whether a shell is targeting
 the default runtime, stable runtime, or a preview runtime.
 
+JSON flag placement is a parser gotcha: most commands use the global flag
+before the subcommand, such as `limux --json identify`, while `doctor --json`
+is a subcommand-local exception.
+
 `doctor` checks launchers, running processes, control socket reachability,
 stale sockets, Ghostty resource packaging, and optional log triage. Exit code
 `0` means all checks passed, `1` means at least one check failed, and `2` means
@@ -258,7 +262,7 @@ limux new-pane --workspace "$LIMUX_WORKSPACE_ID" --surface "$LIMUX_SURFACE_ID" \
   --pane "$LIMUX_PANE_ID" --direction down --command 'codex'
 
 # Keep both agents in the same workspace on separate splits/tabs:
-limux identify --json
+limux --json identify
 limux list-panels --workspace "$LIMUX_WORKSPACE_ID"
 limux send --workspace "$LIMUX_WORKSPACE_ID" --surface "<peer-surface-id>" \
   $'<agent-msg from="codex" to="claude" id="…" ts="…">…</agent-msg>\n'

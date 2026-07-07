@@ -51,6 +51,8 @@ Global flags and launch model:
 - `limux --socket <path>` targets an explicit control socket.
 - `limux --channel stable|preview[:id]` targets isolated runtime channels.
 - `limux --json` and `--id-format refs|both|uuids` are automation helpers.
+- Most JSON output uses the global flag before the subcommand, for example
+  `limux --json identify`. `doctor --json` is a subcommand-local exception.
 - `limux target-info` / `limux socket-info` prints the resolved socket/channel
   without connecting.
 - `limux doctor [--json] [--log-triage --lines <n>]` is the first diagnostic
@@ -58,7 +60,7 @@ Global flags and launch model:
 
 Workspace and pane operations:
 
-- `limux identify --json`
+- `limux --json identify`
 - `limux list-workspaces`
 - `limux list-panels --workspace <id|ref>`
 - `limux list-panes --workspace <id|ref>`

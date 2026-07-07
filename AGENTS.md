@@ -72,6 +72,11 @@ fields include version, source SHA, build profile, optional install id, and
 optional runtime channel. `target-info` / `socket-info` resolves the socket and
 channel without connecting to the host.
 
+JSON flag placement is intentionally uneven today. Most commands use the global
+flag before the subcommand, for example `limux --json identify`; `doctor --json`
+is a subcommand-local exception that was added with the doctor surface. Check
+the real parser/help before adding examples.
+
 `doctor` is the first-line runtime diagnostic for launcher drift, stale socket
 state, process identity, Ghostty resources, and optional log triage. Exit code
 `0` means all checks passed, `1` means at least one check failed, and `2` means
