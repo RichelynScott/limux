@@ -15,8 +15,8 @@ use limux_protocol::validate_terminal_text_payload;
 
 use crate::app_config;
 use crate::control_bridge::{
-    BridgeError, ControlCommand, PaneCreateDirection as BridgePaneCreateDirection, PaneCreateType,
-    WorkspaceTarget,
+    BridgeError, ControlCommand, PaneActionKind, PaneCreateDirection as BridgePaneCreateDirection,
+    PaneCreateType, WorkspaceTarget,
 };
 use crate::keybind_editor;
 use crate::layout_state::{
@@ -629,6 +629,12 @@ fn pane_list_payload(state: &State, workspace: &Workspace) -> serde_json::Value 
                 "surface_count".to_string(),
                 serde_json::json!(pane.surface_count),
             );
+            row.insert(
+                "flag_color".to_string(),
+                pane.flag_color
+                    .map(|color| serde_json::Value::String(color.name().to_string()))
+                    .unwrap_or(serde_json::Value::Null),
+            );
             let focused = focused_pane_id == Some(pane.pane_id);
             row.insert("focused".to_string(), serde_json::Value::Bool(focused));
             row.insert("selected".to_string(), serde_json::Value::Bool(focused));
@@ -675,6 +681,13 @@ fn surface_list_payload(
             row.insert(
                 "pane_ref".to_string(),
                 serde_json::Value::String(pane_ref(surface.pane_id)),
+            );
+            row.insert(
+                "pane_flag_color".to_string(),
+                surface
+                    .pane_flag_color
+                    .map(|color| serde_json::Value::String(color.name().to_string()))
+                    .unwrap_or(serde_json::Value::Null),
             );
             row.insert("index".to_string(), serde_json::json!(index));
             row.insert(
@@ -4562,6 +4575,54 @@ fn handle_control_command(state: &State, command: ControlCommand) {
             }
 
             let _ = reply.send(Ok(result));
+        }
+        ControlCommand::PaneAction { request, reply } => {
+            let resolved = {
+                let app_state = state.borrow();
+                workspace_index_for_target(&app_state, &request.target)
+            };
+
+            let Some(index) = resolved else {
+                let _ = reply.send(Err(BridgeError::not_found("workspace not found")));
+                return;
+            };
+
+            let (workspace_id, workspace_root) = {
+                let app_state = state.borrow();
+                let workspace = &app_state.workspaces[index];
+                (workspace.id.clone(), workspace.root.clone())
+            };
+            let pane_id = request
+                .pane_id
+                .as_deref()
+                .and_then(parse_pane_handle)
+                .or_else(|| focused_ids_for_workspace(state, &workspace_id).0);
+
+            let Some(pane_id) = pane_id else {
+                let _ = reply.send(Err(BridgeError::invalid_params(
+                    "pane.action requires a valid pane_id or an active focused pane",
+                )));
+                return;
+            };
+
+            let Some(pane_widget) = pane::pane_widget_for_root(&workspace_root, pane_id) else {
+                let _ = reply.send(Err(BridgeError::not_found("pane not found")));
+                return;
+            };
+
+            let flag_color = match request.action {
+                PaneActionKind::SetFlagColor(color) => Some(color),
+                PaneActionKind::ClearFlagColor => None,
+            };
+            pane::set_pane_flag_color(&pane_widget, flag_color);
+
+            let _ = reply.send(Ok(serde_json::json!({
+                "ok": true,
+                "workspace_id": workspace_id,
+                "pane_id": pane_id.to_string(),
+                "pane_ref": pane_ref(pane_id),
+                "flag_color": flag_color.map(|color| color.name()),
+            })));
         }
         ControlCommand::CreatePane { request, reply } => {
             if !matches!(request.pane_type, PaneCreateType::Terminal) {

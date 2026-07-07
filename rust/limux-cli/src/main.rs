@@ -256,7 +256,7 @@ fn parse_global_args() -> Result<GlobalOptions> {
 
 fn print_help() {
     println!(
-        "limux CLI\n\nUsage: limux [--socket <path>] [--channel stable|preview[:id]] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  --version\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  doctor [--json] [--log-triage [--lines <n>]]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  target-info (alias: socket-info) prints the resolved socket/channel without connecting\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--launch-mode direct|hcom] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the active workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, or hcom with --run-here when requested, writes\n      LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md plus\n      LIMUX_REVIEW_LEDGER.md when missing so peers can coordinate via durable\n      files and `limux send --surface <peer-surface-id> <envelope>`.\n  review prepare --artifact <path-or-ref> --reviewer <agent|manual> --lens <name> --summary <text> [--cwd <path>] [--ledger-path <path>] [--reviews-dir <path>] [--review-id <id>] [--dry-run]\n      Creates a durable review request file, appends a pending review-ledger\n      entry, and prints the reviewer prompt without launching a reviewer pane.\n"
+        "limux CLI\n\nUsage: limux [--socket <path>] [--channel stable|preview[:id]] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  --version\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  doctor [--json] [--log-triage [--lines <n>]]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  pane-action --action set_flag_color --color <orange|red|purple|pink|green|yellow|teal|cyan> [--workspace <id|ref>] [--pane <id|ref>]\n  pane-action --action clear_flag_color [--workspace <id|ref>] [--pane <id|ref>]\n  target-info (alias: socket-info) prints the resolved socket/channel without connecting\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--launch-mode direct|hcom] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the active workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, or hcom with --run-here when requested, writes\n      LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md plus\n      LIMUX_REVIEW_LEDGER.md when missing so peers can coordinate via durable\n      files and `limux send --surface <peer-surface-id> <envelope>`.\n  review prepare --artifact <path-or-ref> --reviewer <agent|manual> --lens <name> --summary <text> [--cwd <path>] [--ledger-path <path>] [--reviews-dir <path>] [--review-id <id>] [--dry-run]\n      Creates a durable review request file, appends a pending review-ledger\n      entry, and prints the reviewer prompt without launching a reviewer pane.\n"
     );
     println!(
         "  agent-team extra flags: --no-bootstrap skips the post-launch bootstrap prompt while still launching panes; --dry-run skips host contact but still materializes the protocol and seeds missing roster/ledger files."
@@ -559,6 +559,7 @@ fn trailing_title(args: &[String]) -> Option<String> {
             || arg == "--property"
             || arg == "--value"
             || arg == "--amount"
+            || arg == "--color"
             || arg == "--unset"
         {
             skip = true;
@@ -4975,6 +4976,43 @@ async fn run_tab_action(client: &mut Client, args: &[String]) -> Result<Value> {
     Ok(payload)
 }
 
+fn build_pane_action_request(
+    args: &[String],
+    env_lookup: impl Fn(&str) -> Option<String>,
+) -> Result<Value> {
+    let action = parse_opt(args, "--action")
+        .ok_or_else(|| anyhow!("pane-action requires --action <name>"))?;
+    let workspace =
+        nonempty(parse_opt(args, "--workspace").or_else(|| env_lookup("LIMUX_WORKSPACE_ID")));
+    let pane = nonempty(parse_opt(args, "--pane").or_else(|| env_lookup("LIMUX_PANE_ID")));
+    let color = nonempty(parse_opt(args, "--color"));
+
+    let mut params = Map::new();
+    params.insert("action".to_string(), Value::String(action));
+    if let Some(workspace) = workspace {
+        params.insert("workspace_id".to_string(), Value::String(workspace));
+    }
+    if let Some(pane) = pane {
+        params.insert("pane_id".to_string(), Value::String(pane));
+    }
+    if let Some(color) = color {
+        params.insert("color".to_string(), Value::String(color));
+    }
+
+    Ok(Value::Object(params))
+}
+
+async fn run_pane_action(client: &mut Client, args: &[String]) -> Result<Value> {
+    if parse_flag(args, "--help") {
+        return Ok(json!({
+            "help": "Usage: limux pane-action --action set_flag_color --color <orange|red|purple|pink|green|yellow|teal|cyan> [--workspace <id|ref>] [--pane <id|ref>]\n       limux pane-action --action clear_flag_color [--workspace <id|ref>] [--pane <id|ref>]\nDefaults:\n  --workspace falls back to LIMUX_WORKSPACE_ID\n  --pane falls back to LIMUX_PANE_ID"
+        }));
+    }
+
+    let params = build_pane_action_request(args, env_opt)?;
+    client.call("pane.action", params).await
+}
+
 async fn run_browser(
     client: &mut Client,
     args: &[String],
@@ -6058,6 +6096,16 @@ async fn execute_command(client: &mut Client, opts: &GlobalOptions) -> Result<Co
         }
         "tab-action" => {
             let payload = run_tab_action(client, args).await?;
+            if opts.json_output {
+                CommandOutput::Json(payload)
+            } else if let Some(help) = get_string(&payload, &["help"]) {
+                CommandOutput::Text(help)
+            } else {
+                CommandOutput::Text("OK".to_string())
+            }
+        }
+        "pane-action" => {
+            let payload = run_pane_action(client, args).await?;
             if opts.json_output {
                 CommandOutput::Json(payload)
             } else if let Some(help) = get_string(&payload, &["help"]) {
@@ -9000,6 +9048,50 @@ mod new_pane_tests {
             json!({
                 "direction": "right",
                 "type": "terminal"
+            })
+        );
+    }
+
+    #[test]
+    fn pane_action_serializes_env_defaults_and_color() {
+        let params = build_pane_action_request(
+            &args(&["--action", "set_flag_color", "--color", "orange"]),
+            test_env,
+        )
+        .expect("pane action request");
+
+        assert_eq!(
+            params,
+            json!({
+                "action": "set_flag_color",
+                "workspace_id": "workspace:agent",
+                "pane_id": "pane:11",
+                "color": "orange"
+            })
+        );
+    }
+
+    #[test]
+    fn pane_action_flags_override_env_and_clear_omits_color() {
+        let params = build_pane_action_request(
+            &args(&[
+                "--action",
+                "clear_flag_color",
+                "--workspace",
+                "workspace:manual",
+                "--pane",
+                "pane:77",
+            ]),
+            test_env,
+        )
+        .expect("pane action request");
+
+        assert_eq!(
+            params,
+            json!({
+                "action": "clear_flag_color",
+                "workspace_id": "workspace:manual",
+                "pane_id": "pane:77"
             })
         );
     }
