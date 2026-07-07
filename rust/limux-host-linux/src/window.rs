@@ -380,14 +380,18 @@ struct PaneResizeTarget {
 
 struct TemporaryWorkspaceMapping {
     stack: gtk::Stack,
+    target_stack_name: String,
     restore_stack_name: String,
 }
 
 fn restore_workspace_mapping(mapping: Option<TemporaryWorkspaceMapping>) {
     if let Some(mapping) = mapping {
-        mapping
-            .stack
-            .set_visible_child_name(&mapping.restore_stack_name);
+        if mapping.stack.visible_child_name().as_deref() == Some(mapping.target_stack_name.as_str())
+        {
+            mapping
+                .stack
+                .set_visible_child_name(&mapping.restore_stack_name);
+        }
     }
 }
 
@@ -420,6 +424,7 @@ fn with_workspace_temporarily_mapped(
     stack.set_visible_child_name(&target_stack_name);
     Some(TemporaryWorkspaceMapping {
         stack,
+        target_stack_name,
         restore_stack_name,
     })
 }
