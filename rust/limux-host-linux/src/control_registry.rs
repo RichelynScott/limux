@@ -356,7 +356,12 @@ mod tests {
     fn wired_wave1_capabilities_are_hidden_when_kill_switch_is_enabled() {
         let methods = capability_methods_for_wave1_disabled(true);
 
-        assert!(!methods.contains(&"pane.focus"));
+        for method in WIRED_WAVE1_MUTATIONS {
+            assert!(
+                !methods.contains(method),
+                "{method} should be hidden when Wave-1 mutations are disabled"
+            );
+        }
         assert!(methods.contains(&"workspace.list"));
         assert!(methods.contains(&"surface.current"));
     }
