@@ -296,6 +296,22 @@ fn parse_pane_handle(raw: &str) -> Option<u32> {
     normalize_pane_handle(raw).parse::<u32>().ok()
 }
 
+fn pane_action_target_pane_id(
+    explicit_pane_id: Option<&str>,
+    focused_pane_id: Option<u32>,
+) -> Result<u32, BridgeError> {
+    if let Some(raw) = explicit_pane_id {
+        return parse_pane_handle(raw)
+            .ok_or_else(|| BridgeError::invalid_params("pane.action requires a valid pane_id"));
+    }
+
+    focused_pane_id.ok_or_else(|| {
+        BridgeError::invalid_params(
+            "pane.action requires a valid pane_id or an active focused pane",
+        )
+    })
+}
+
 fn workspace_index_for_target(state: &AppState, target: &WorkspaceTarget) -> Option<usize> {
     match target {
         WorkspaceTarget::Active => (!state.workspaces.is_empty()).then_some(state.active_idx),
@@ -4592,17 +4608,15 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 let workspace = &app_state.workspaces[index];
                 (workspace.id.clone(), workspace.root.clone())
             };
-            let pane_id = request
-                .pane_id
-                .as_deref()
-                .and_then(parse_pane_handle)
-                .or_else(|| focused_ids_for_workspace(state, &workspace_id).0);
-
-            let Some(pane_id) = pane_id else {
-                let _ = reply.send(Err(BridgeError::invalid_params(
-                    "pane.action requires a valid pane_id or an active focused pane",
-                )));
-                return;
+            let pane_id = match pane_action_target_pane_id(
+                request.pane_id.as_deref(),
+                focused_ids_for_workspace(state, &workspace_id).0,
+            ) {
+                Ok(pane_id) => pane_id,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
             };
 
             let Some(pane_widget) = pane::pane_widget_for_root(&workspace_root, pane_id) else {
@@ -6640,15 +6654,16 @@ mod tests {
         desktop_notification_closed_id_from_signal, desktop_notification_id_from_response,
         directional_neighbor_score, favorites_prefix_len, font_size_after_delta,
         ghostty_prefers_dark, gtk_system_prefers_dark_from_raw, new_instance_command,
-        next_active_workspace_index, pane_attention_target, pane_create_split_placement,
-        queue_session_save_request, resolve_pane_create_source_id, resolved_system_prefers_dark,
-        sanitize_background_opacity, shortcut_allowed_while_browser_find_active,
-        shortcut_blocked_by_editable, shortcut_command_from_key_event,
-        shortcut_dispatch_propagation, should_auto_open_sidebar_for_notification,
-        should_emit_desktop_notification, sidebar_width_class, snapshot_sidebar_width,
-        surface_send_text_response, tab_drag_workspace_seed, use_opaque_window_background,
-        validate_typed_terminal_text, validate_workspace_folder_input_with_dirs,
-        window_chrome_policy, workspace_drop_layout_path, workspace_folder_path_from_input,
+        next_active_workspace_index, pane_action_target_pane_id, pane_attention_target,
+        pane_create_split_placement, queue_session_save_request, resolve_pane_create_source_id,
+        resolved_system_prefers_dark, sanitize_background_opacity,
+        shortcut_allowed_while_browser_find_active, shortcut_blocked_by_editable,
+        shortcut_command_from_key_event, shortcut_dispatch_propagation,
+        should_auto_open_sidebar_for_notification, should_emit_desktop_notification,
+        sidebar_width_class, snapshot_sidebar_width, surface_send_text_response,
+        tab_drag_workspace_seed, use_opaque_window_background, validate_typed_terminal_text,
+        validate_workspace_folder_input_with_dirs, window_chrome_policy,
+        workspace_drop_layout_path, workspace_folder_path_from_input,
         workspace_notification_message, DesktopNotificationTarget, Direction,
         EditableCaptureContext, NeighborScore, PaneBounds, PaneCreateDirection,
         PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest,
@@ -6761,6 +6776,29 @@ mod tests {
             super::BridgeError::invalid_params(
                 "surface.send_text text contains disallowed terminal control character U+001B at byte 3; allowed control characters are tab, LF, and CR"
             )
+        );
+    }
+
+    #[test]
+    fn pane_action_target_rejects_malformed_explicit_pane_id_without_focus_fallback() {
+        assert_eq!(
+            pane_action_target_pane_id(Some("pane:7"), Some(42)).expect("valid pane ref"),
+            7
+        );
+        assert_eq!(
+            pane_action_target_pane_id(Some("7"), None).expect("valid raw pane id"),
+            7
+        );
+        assert_eq!(
+            pane_action_target_pane_id(None, Some(42)).expect("focused pane fallback"),
+            42
+        );
+
+        let err = pane_action_target_pane_id(Some("pane:abc"), Some(42))
+            .expect_err("malformed explicit pane id must not fall back to focus");
+        assert_eq!(
+            err,
+            super::BridgeError::invalid_params("pane.action requires a valid pane_id")
         );
     }
 
