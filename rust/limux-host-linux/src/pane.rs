@@ -6,7 +6,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use gtk::glib;
@@ -26,10 +26,14 @@ use crate::shortcut_config::{NormalizedShortcut, ResolvedShortcutConfig, Shortcu
 use crate::terminal::{self, TerminalCallbacks};
 
 static NEXT_PANE_ID: AtomicU32 = AtomicU32::new(1);
+static RESTORED_AGENT_START_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 const PANE_ATTENTION_OVERLAY_CSS_CLASS: &str = "limux-pane-attention-overlay";
 const PANE_ATTENTION_ACTIVE_CSS_CLASS: &str = "needs-attention";
 const PANE_ATTENTION_HOVER_CLEAR_MS: u64 = 3_000;
 const PANE_FLAG_OVERLAY_CSS_CLASS: &str = "limux-pane-flag-overlay";
+const RESTORED_AGENT_START_BATCH_SIZE: usize = 2;
+const RESTORED_AGENT_START_BATCH_DELAY_MS: u64 = 750;
+const RESTORED_AGENT_START_MAX_DELAY_MS: u64 = 6_000;
 
 fn next_pane_id() -> u32 {
     NEXT_PANE_ID.fetch_add(1, Ordering::Relaxed)
@@ -1157,6 +1161,22 @@ fn append_hcom_identity_env_scrub(extra_env: &mut Vec<(String, String)>) {
     );
 }
 
+fn restored_agent_start_delay_ms(sequence: usize) -> u64 {
+    let batch_index = sequence / RESTORED_AGENT_START_BATCH_SIZE;
+    let delay_ms = batch_index as u64 * RESTORED_AGENT_START_BATCH_DELAY_MS;
+    delay_ms.min(RESTORED_AGENT_START_MAX_DELAY_MS)
+}
+
+fn stagger_restored_agent_command(command: String, sequence: usize) -> String {
+    let delay_ms = restored_agent_start_delay_ms(sequence);
+    if delay_ms == 0 {
+        return command;
+    }
+
+    let delay_seconds = delay_ms as f64 / 1_000.0;
+    format!("sleep {delay_seconds:.3} && {command}")
+}
+
 struct BrowserTabOptions<'a> {
     id: Option<&'a str>,
     custom_name: Option<&'a str>,
@@ -1454,7 +1474,11 @@ fn add_terminal_tab_inner(
     let startup_command = options
         .as_ref()
         .and_then(|value| value.agent.as_ref())
-        .and_then(|agent| agent.resume_command());
+        .and_then(|agent| agent.resume_command())
+        .map(|command| {
+            let sequence = RESTORED_AGENT_START_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+            stagger_restored_agent_command(command, sequence)
+        });
     if let Some(command) = startup_command.as_deref() {
         eprintln!(
             "limux: restoring agent terminal surface={}:{} command={}",
@@ -3721,8 +3745,9 @@ mod tests {
         append_hcom_identity_env_scrub, browser_feature_enabled_value, classify_content_drop_zone,
         content_drop_preview_rect, effective_drop_target_dimensions, is_localhost_input,
         next_active_after_tab_removal, normalize_browser_entry_input,
-        normalize_reorder_insert_index, pane_action_tooltip, surface_hint_matches, ContentDropZone,
-        TabDragPayload, BROWSER_SEARCH_ENTRY_CSS_CLASS, BROWSER_SEARCH_ENTRY_CSS_CLASSES,
+        normalize_reorder_insert_index, pane_action_tooltip, restored_agent_start_delay_ms,
+        stagger_restored_agent_command, surface_hint_matches, ContentDropZone, TabDragPayload,
+        BROWSER_SEARCH_ENTRY_CSS_CLASS, BROWSER_SEARCH_ENTRY_CSS_CLASSES,
         BROWSER_URL_ENTRY_CSS_CLASS, BROWSER_URL_ENTRY_CSS_CLASSES, HCOM_TERMINAL_IDENTITY_ENV,
         HOST_ENTRY_CSS_CLASS, PANE_ATTENTION_ACTIVE_CSS_CLASS, PANE_ATTENTION_OVERLAY_CSS_CLASS,
         PANE_CSS, TAB_RENAME_ENTRY_CSS_CLASS, TAB_RENAME_ENTRY_CSS_CLASSES,
@@ -3807,6 +3832,51 @@ mod tests {
                 "{name} should be explicitly cleared for spawned terminals"
             );
         }
+    }
+
+    #[test]
+    fn restored_agent_start_delay_batches_two_tabs_at_a_time() {
+        assert_eq!(restored_agent_start_delay_ms(0), 0);
+        assert_eq!(restored_agent_start_delay_ms(1), 0);
+        assert_eq!(restored_agent_start_delay_ms(2), 750);
+        assert_eq!(restored_agent_start_delay_ms(3), 750);
+        assert_eq!(restored_agent_start_delay_ms(4), 1_500);
+        assert_eq!(restored_agent_start_delay_ms(5), 1_500);
+    }
+
+    #[test]
+    fn restored_agent_start_delay_caps_at_six_seconds() {
+        assert_eq!(restored_agent_start_delay_ms(16), 6_000);
+        assert_eq!(restored_agent_start_delay_ms(17), 6_000);
+        assert_eq!(restored_agent_start_delay_ms(100), 6_000);
+    }
+
+    #[test]
+    fn stagger_restored_agent_command_leaves_first_batch_unchanged() {
+        assert_eq!(
+            stagger_restored_agent_command("exec codex resume abc".to_string(), 0),
+            "exec codex resume abc"
+        );
+        assert_eq!(
+            stagger_restored_agent_command("exec codex resume abc".to_string(), 1),
+            "exec codex resume abc"
+        );
+    }
+
+    #[test]
+    fn stagger_restored_agent_command_prefixes_later_batches_with_sleep() {
+        assert_eq!(
+            stagger_restored_agent_command("exec codex resume abc".to_string(), 2),
+            "sleep 0.750 && exec codex resume abc"
+        );
+        assert_eq!(
+            stagger_restored_agent_command("exec codex resume abc".to_string(), 4),
+            "sleep 1.500 && exec codex resume abc"
+        );
+        assert_eq!(
+            stagger_restored_agent_command("exec codex resume abc".to_string(), 100),
+            "sleep 6.000 && exec codex resume abc"
+        );
     }
 
     #[test]
