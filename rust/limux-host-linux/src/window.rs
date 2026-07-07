@@ -494,14 +494,11 @@ fn control_state_snapshot_for_fallthrough(
     }
 }
 
-fn focused_surface_payload(state: &State) -> Option<serde_json::Value> {
-    let (workspace_id, workspace_name, pane_widget) = {
-        let app_state = state.borrow();
-        let workspace = app_state.active_workspace()?;
-        let pane_widget = find_focused_pane(state).map(|(_, pane_widget)| pane_widget)?;
-        (workspace.id.clone(), workspace.name.clone(), pane_widget)
-    };
-    let surface = pane::active_surface_summary(&pane_widget)?;
+fn surface_summary_payload(
+    workspace_id: String,
+    workspace_name: String,
+    surface: pane::SurfaceSummary,
+) -> serde_json::Value {
     let mut payload = serde_json::Map::new();
     payload.insert(
         "workspace_id".to_string(),
@@ -551,7 +548,33 @@ fn focused_surface_payload(state: &State) -> Option<serde_json::Value> {
     if let Some(uri) = surface.uri.filter(|uri| !uri.is_empty()) {
         payload.insert("uri".to_string(), serde_json::Value::String(uri));
     }
-    Some(serde_json::Value::Object(payload))
+    serde_json::Value::Object(payload)
+}
+
+fn focused_surface_payload(state: &State) -> Option<serde_json::Value> {
+    let (workspace_id, workspace_name, pane_widget) = {
+        let app_state = state.borrow();
+        let workspace = app_state.active_workspace()?;
+        let pane_widget = find_focused_pane(state).map(|(_, pane_widget)| pane_widget)?;
+        (workspace.id.clone(), workspace.name.clone(), pane_widget)
+    };
+    let surface = pane::active_surface_summary(&pane_widget)?;
+    Some(surface_summary_payload(
+        workspace_id,
+        workspace_name,
+        surface,
+    ))
+}
+
+fn current_surface_payload_for_workspace(workspace: &Workspace) -> Option<serde_json::Value> {
+    let surface = pane::surface_summaries_for_root(&workspace.root)
+        .into_iter()
+        .find(|surface| surface.selected)?;
+    Some(surface_summary_payload(
+        workspace.id.clone(),
+        workspace.name.clone(),
+        surface,
+    ))
 }
 
 fn notification_list_payload(state: &State, unread_only: bool) -> serde_json::Value {
@@ -4961,8 +4984,28 @@ fn handle_control_command(state: &State, command: ControlCommand) {
             };
             let _ = reply.send(Ok(result));
         }
-        ControlCommand::CurrentSurface { reply } => {
-            let result = focused_surface_payload(state);
+        ControlCommand::CurrentSurface { target, reply } => {
+            let resolved = {
+                let app_state = state.borrow();
+                workspace_index_for_target(&app_state, &target)
+            };
+
+            let Some(index) = resolved else {
+                let _ = reply.send(Err(crate::control_bridge::BridgeError::not_found(
+                    "workspace not found",
+                )));
+                return;
+            };
+
+            let result = {
+                let app_state = state.borrow();
+                let workspace = &app_state.workspaces[index];
+                app_state
+                    .active_workspace()
+                    .filter(|active| active.id == workspace.id)
+                    .and_then(|_| focused_surface_payload(state))
+                    .or_else(|| current_surface_payload_for_workspace(workspace))
+            };
             let _ =
                 reply.send(result.ok_or_else(|| {
                     crate::control_bridge::BridgeError::not_found("surface not found")

@@ -148,6 +148,7 @@ pub enum ControlCommand {
         reply: mpsc::Sender<BridgeResult>,
     },
     CurrentSurface {
+        target: WorkspaceTarget,
         reply: mpsc::Sender<BridgeResult>,
     },
     SurfaceHealth {
@@ -224,7 +225,7 @@ impl ControlCommand {
             | Self::CreatePane { reply, .. }
             | Self::PaneAction { reply, .. }
             | Self::ListSurfaces { reply, .. }
-            | Self::CurrentSurface { reply }
+            | Self::CurrentSurface { reply, .. }
             | Self::SurfaceHealth { reply, .. }
             | Self::ReadSurfaceText { reply, .. }
             | Self::CreateWorkspace { reply, .. }
@@ -788,8 +789,12 @@ fn handle_method(
             (ControlCommand::ListSurfaces { target, reply }, rx)
         }
         "surface.current" => {
+            let target = match parse_optional_workspace_target(params, true) {
+                Ok(target) => target,
+                Err(error) => return error_response(id, error),
+            };
             let (reply, rx) = mpsc::channel();
-            (ControlCommand::CurrentSurface { reply }, rx)
+            (ControlCommand::CurrentSurface { target, reply }, rx)
         }
         "surface.health" | "surface-health" => {
             let target = match parse_optional_workspace_target(params, true) {
@@ -1556,9 +1561,10 @@ mod tests {
     #[test]
     fn surface_current_routes_to_live_bridge_surface_payload() {
         let response = dispatch_request(
-            r#"{"id":1,"method":"surface.current","params":{}}"#,
+            r#"{"id":1,"method":"surface.current","params":{"workspace_id":"workspace:dev"}}"#,
             &|command| match command {
-                ControlCommand::CurrentSurface { reply } => {
+                ControlCommand::CurrentSurface { target, reply } => {
+                    assert_eq!(target, WorkspaceTarget::Handle("workspace:dev".to_string()));
                     let _ = reply.send(Ok(json!({
                         "surface_id": "9:tab",
                         "surface_ref": "surface:9:tab",
