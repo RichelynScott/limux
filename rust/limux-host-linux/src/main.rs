@@ -57,6 +57,13 @@ fn append_env(key: &str, value: &str) {
     }
 }
 
+// Runtime Ghostty resource-shape contract: a resources dir is valid only when
+// it contains shell-integration/ AND a compiled sibling terminfo entry FILE
+// (terminfo/{x/xterm-ghostty,g/ghostty} under the resources dir's PARENT,
+// never nested inside it). The user-local installer stages bundles to the
+// identical contract — keep the two in sync:
+// scripts/user-local-install/install-user-local.sh ("Ghostty runtime resource
+// resolution" section).
 fn has_ghostty_terminfo(path: &Path) -> bool {
     let Some(parent) = path.parent() else {
         return false;

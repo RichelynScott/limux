@@ -25,6 +25,9 @@ Options:
   --ghostty-share <path>   Ghostty runtime share dir containing shell-integration
   --ghostty-terminfo <path>
                            Terminfo dir containing g/ghostty or x/xterm-ghostty
+  --allow-missing-ghostty-resources
+                           Proceed even when no valid Ghostty resource bundle
+                           can be staged (stamps the manifest DEGRADED)
   --manifest-out <path>    Also write the dry-run manifest to this path
   -h, --help               Show this help
 EOF_USAGE
@@ -85,6 +88,7 @@ desktop_entry="false"
 manifest_out=""
 ghostty_share_override="${LIMUX_GHOSTTY_SHARE_DIR:-}"
 ghostty_terminfo_override="${LIMUX_GHOSTTY_TERMINFO_DIR:-}"
+allow_missing_ghostty="false"
 
 parse_runtime_channel() {
     local raw="$1"
@@ -158,6 +162,10 @@ while [[ $# -gt 0 ]]; do
             [[ $# -ge 2 ]] || die "--ghostty-terminfo requires a value"
             ghostty_terminfo_override="$2"
             shift 2
+            ;;
+        --allow-missing-ghostty-resources)
+            allow_missing_ghostty="true"
+            shift
             ;;
         --manifest-out)
             [[ $# -ge 2 ]] || die "--manifest-out requires a value"
@@ -252,33 +260,123 @@ if [[ "$mode" == "apply" && -e "$install_root" ]]; then
     die "install root already exists; choose --install-id ${install_id}-${timestamp} if you want another copy: ${install_root}"
 fi
 
+# --- Ghostty runtime resource resolution ------------------------------------
+#
+# The staged bundle must satisfy the host's runtime contract — keep this in
+# sync with `is_ghostty_resources_dir` + `has_ghostty_terminfo` in
+# rust/limux-host-linux/src/main.rs (which carry a mirror comment pointing
+# back here):
+#
+#   <install-root>/share/limux/ghostty/shell-integration/   (directory)
+#   <install-root>/share/limux/terminfo/x/xterm-ghostty     (compiled entry
+#   and/or .../terminfo/g/ghostty                             FILES, sibling of
+#                                                             the ghostty/ dir,
+#                                                             never nested in it)
+#
+# A "source-only" shape (ghostty/src-style: shell-integration without compiled
+# sibling terminfo) caused the 2026-06-29 terminal-input regression
+# (docs/terminal-input-regression-20260701.md) and is rejected below.
+
+ghostty_source_tree_marker() {
+    # ghostty/src carries its terminfo as Zig code, not compiled entries —
+    # its presence identifies a Ghostty SOURCE tree, never a runtime share dir.
+    [[ -f "$1/terminfo/ghostty.zig" ]]
+}
+
 ghostty_share_src=""
-for candidate in \
-    "$ghostty_share_override" \
-    "${repo_root}/ghostty/zig-out/share/ghostty" \
-    "/usr/local/share/ghostty" \
-    "/usr/share/ghostty"
-do
-    [[ -n "$candidate" ]] || continue
-    if [[ -d "$candidate/shell-integration" ]]; then
-        ghostty_share_src="$candidate"
-        break
+if [[ -n "$ghostty_share_override" ]]; then
+    if ghostty_source_tree_marker "$ghostty_share_override"; then
+        die "refusing --ghostty-share ${ghostty_share_override}: this is a Ghostty SOURCE tree (ghostty/src-style), not runtime resources. Source-only shapes caused the 2026-06-29 terminal-input regression (docs/terminal-input-regression-20260701.md). Use ghostty/zig-out/share/ghostty from a Ghostty build, or drop the flag to stage the vendored snapshot."
     fi
-done
+    [[ -d "${ghostty_share_override}/shell-integration" ]] \
+        || die "--ghostty-share ${ghostty_share_override} has no shell-integration/ directory"
+    ghostty_share_src="$ghostty_share_override"
+else
+    for candidate in \
+        "${repo_root}/ghostty/zig-out/share/ghostty" \
+        "/usr/local/share/ghostty" \
+        "/usr/share/ghostty"
+    do
+        if [[ -d "$candidate/shell-integration" ]] && ! ghostty_source_tree_marker "$candidate"; then
+            ghostty_share_src="$candidate"
+            break
+        fi
+    done
+fi
+
+# Vendored fallback for shell integration: copy ONLY shell-integration/ out of
+# the (read-only) ghostty source tree — never the tree itself.
+vendored_shell_integration_src="${repo_root}/ghostty/src/shell-integration"
 
 ghostty_terminfo_src=""
-for candidate in \
-    "$ghostty_terminfo_override" \
-    "${repo_root}/ghostty/zig-out/share/terminfo" \
-    "/usr/local/share/terminfo" \
-    "/usr/share/terminfo"
-do
-    [[ -n "$candidate" ]] || continue
-    if [[ -f "$candidate/g/ghostty" || -f "$candidate/x/xterm-ghostty" ]]; then
-        ghostty_terminfo_src="$candidate"
-        break
+terminfo_plan="none"
+terminfo_unavailable_reason="no compiled terminfo entries found in any candidate directory"
+if [[ -n "$ghostty_terminfo_override" ]]; then
+    # An explicit override pins the terminfo source: no fallback beyond it.
+    if [[ -f "${ghostty_terminfo_override}/g/ghostty" || -f "${ghostty_terminfo_override}/x/xterm-ghostty" ]]; then
+        ghostty_terminfo_src="$ghostty_terminfo_override"
+        terminfo_plan="copy"
+    else
+        terminfo_unavailable_reason="--ghostty-terminfo ${ghostty_terminfo_override} contains no compiled entry files (g/ghostty or x/xterm-ghostty)"
     fi
-done
+else
+    for candidate in \
+        "${repo_root}/ghostty/zig-out/share/terminfo" \
+        "/usr/local/share/terminfo" \
+        "/usr/share/terminfo"
+    do
+        if [[ -f "$candidate/g/ghostty" || -f "$candidate/x/xterm-ghostty" ]]; then
+            ghostty_terminfo_src="$candidate"
+            terminfo_plan="copy"
+            break
+        fi
+    done
+fi
+
+# Default path: compile the vendored terminfo snapshot with tic at install
+# time (see the snapshot's provenance header for how it is produced).
+terminfo_snapshot="${script_dir}/resources/ghostty.terminfo"
+if [[ "$terminfo_plan" == "none" && -z "$ghostty_terminfo_override" ]]; then
+    if [[ ! -f "$terminfo_snapshot" ]]; then
+        terminfo_unavailable_reason="vendored snapshot missing: ${terminfo_snapshot}"
+    elif ! command -v tic >/dev/null 2>&1; then
+        terminfo_unavailable_reason="tic not found — install ncurses-bin (Debian/Ubuntu: sudo apt install ncurses-bin) to compile the vendored terminfo snapshot"
+    else
+        terminfo_plan="tic"
+    fi
+fi
+
+shell_integration_origin=""
+if [[ -n "$ghostty_share_src" ]]; then
+    shell_integration_origin="prebuilt share dir: ${ghostty_share_src}"
+elif [[ -d "$vendored_shell_integration_src" ]]; then
+    shell_integration_origin="vendored ghostty source tree (shell-integration/ only)"
+fi
+
+ghostty_resource_shape="DEGRADED"
+if [[ -n "$shell_integration_origin" && "$terminfo_plan" != "none" ]]; then
+    ghostty_resource_shape="valid"
+fi
+
+case "$terminfo_plan" in
+    copy) terminfo_origin="compiled entries copied from: ${ghostty_terminfo_src}" ;;
+    tic)  terminfo_origin="vendored snapshot scripts/user-local-install/resources/ghostty.terminfo, tic-compiled at install time" ;;
+    *)    terminfo_origin="none (${terminfo_unavailable_reason})" ;;
+esac
+
+ghostty_resource_origin="shell-integration: ${shell_integration_origin:-none}; terminfo: ${terminfo_origin}"
+
+if [[ "$ghostty_resource_shape" != "valid" && "$allow_missing_ghostty" != "true" ]]; then
+    missing_detail=""
+    if [[ -z "$shell_integration_origin" ]]; then
+        missing_detail="no shell-integration source found (run: git submodule update --init ghostty — checkout only, no build)"
+    else
+        missing_detail="shell-integration is available but no compiled terminfo can be staged: ${terminfo_unavailable_reason}. A source-only bundle (shell-integration without compiled sibling terminfo) is the exact shape behind the 2026-06-29 terminal-input regression and the runtime would reject it."
+    fi
+    die "cannot stage a valid Ghostty resource bundle — ${missing_detail}
+expected install shape: share/limux/ghostty/shell-integration/ plus sibling share/limux/terminfo/x/xterm-ghostty (and/or g/ghostty) entry FILES (contract: is_ghostty_resources_dir, rust/limux-host-linux/src/main.rs)
+pass --allow-missing-ghostty-resources to install anyway (manifest will be stamped DEGRADED)"
+fi
 
 declare -a planned_actions=()
 
@@ -394,22 +492,43 @@ run cp "$ghostty_lib_src" "${install_root}/lib/libghostty.so"
 if [[ -n "$ghostty_share_src" ]]; then
     run mkdir -p "${install_root}/share/limux/ghostty"
     run cp -R "${ghostty_share_src}/." "${install_root}/share/limux/ghostty/"
+elif [[ -d "$vendored_shell_integration_src" ]]; then
+    run mkdir -p "${install_root}/share/limux/ghostty"
+    run cp -R "$vendored_shell_integration_src" "${install_root}/share/limux/ghostty/shell-integration"
 else
-    plan "warning: no Ghostty resource directory found; installed host will fall back to built-in/default resource behavior"
+    plan "warning: DEGRADED install — no Ghostty shell-integration staged"
 fi
 
-if [[ -n "$ghostty_terminfo_src" ]]; then
-    run mkdir -p "${install_root}/share/limux/terminfo"
-    if [[ -f "${ghostty_terminfo_src}/g/ghostty" ]]; then
-        run mkdir -p "${install_root}/share/limux/terminfo/g"
-        run cp "${ghostty_terminfo_src}/g/ghostty" "${install_root}/share/limux/terminfo/g/ghostty"
-    fi
-    if [[ -f "${ghostty_terminfo_src}/x/xterm-ghostty" ]]; then
-        run mkdir -p "${install_root}/share/limux/terminfo/x"
-        run cp "${ghostty_terminfo_src}/x/xterm-ghostty" "${install_root}/share/limux/terminfo/x/xterm-ghostty"
-    fi
-else
-    plan "warning: no Ghostty terminfo entries found"
+case "$terminfo_plan" in
+    copy)
+        run mkdir -p "${install_root}/share/limux/terminfo"
+        if [[ -f "${ghostty_terminfo_src}/g/ghostty" ]]; then
+            run mkdir -p "${install_root}/share/limux/terminfo/g"
+            run cp "${ghostty_terminfo_src}/g/ghostty" "${install_root}/share/limux/terminfo/g/ghostty"
+        fi
+        if [[ -f "${ghostty_terminfo_src}/x/xterm-ghostty" ]]; then
+            run mkdir -p "${install_root}/share/limux/terminfo/x"
+            run cp "${ghostty_terminfo_src}/x/xterm-ghostty" "${install_root}/share/limux/terminfo/x/xterm-ghostty"
+        fi
+        ;;
+    tic)
+        run mkdir -p "${install_root}/share/limux/terminfo"
+        run tic -x -o "${install_root}/share/limux/terminfo" "$terminfo_snapshot"
+        ;;
+    *)
+        plan "warning: DEGRADED install — no Ghostty terminfo staged"
+        ;;
+esac
+
+if [[ "$mode" == "apply" && "$ghostty_resource_shape" == "valid" ]]; then
+    # Post-stage verification of the runtime contract on the real files.
+    # `tic -x -o` sets the database LOCATION only; whether it writes a
+    # directory tree (x/xterm-ghostty) or a hashed db depends on the ncurses
+    # build — so assert the entry FILES the runtime checks actually exist.
+    [[ -d "${install_root}/share/limux/ghostty/shell-integration" ]] \
+        || die "post-stage check failed: ${install_root}/share/limux/ghostty/shell-integration is not a directory"
+    [[ -f "${install_root}/share/limux/terminfo/x/xterm-ghostty" || -f "${install_root}/share/limux/terminfo/g/ghostty" ]] \
+        || die "post-stage check failed: no compiled terminfo entry file at ${install_root}/share/limux/terminfo/{x/xterm-ghostty,g/ghostty} (hashed-db ncurses tic output? the runtime requires the directory-tree form)"
 fi
 
 write_file "${install_root}/bin/${launcher_name}" "$(wrapper_content "$install_root" "$runtime_channel" "${wrapper_cli_args[@]}")"
@@ -439,6 +558,31 @@ if [[ "$desktop_entry" == "true" ]]; then
     run cp "${install_root}/share/applications/${desktop_file_name}" "${app_dir}/${desktop_file_name}"
 fi
 
+# Manifest value shapes are load-bearing: `Ghostty resources:` must stay a
+# path or `not found` — origin/provenance NEVER goes on that line, so the
+# historical audit grep from docs/terminal-input-regression-20260701.md
+# ("a valid install must not say `Ghostty resources: .../ghostty/src`")
+# keeps working. For the vendored-assembly path the value is the STAGED
+# bundle, which is what the runtime actually consumes.
+if [[ -n "$ghostty_share_src" ]]; then
+    manifest_ghostty_resources="$ghostty_share_src"
+elif [[ -d "$vendored_shell_integration_src" ]]; then
+    manifest_ghostty_resources="${install_root}/share/limux/ghostty"
+else
+    manifest_ghostty_resources="not found"
+fi
+case "$terminfo_plan" in
+    copy) manifest_ghostty_terminfo="$ghostty_terminfo_src" ;;
+    tic)  manifest_ghostty_terminfo="${install_root}/share/limux/terminfo" ;;
+    *)    manifest_ghostty_terminfo="not found" ;;
+esac
+# Field value is exactly `valid` or `DEGRADED`; the escape-hatch marker
+# line below is separate so both contracts stay grep-able.
+manifest_ghostty_degraded_marker=""
+if [[ "$ghostty_resource_shape" != "valid" ]]; then
+    manifest_ghostty_degraded_marker=$'\n- DEGRADED: no ghostty resources'
+fi
+
 manifest="$(
     cat <<EOF_MANIFEST
 # Limux User-Local Install Manifest
@@ -461,8 +605,10 @@ CLI launcher: ${bin_link_dir}/${cli_launcher_name}
 - CLI: ${cli_src}
 - Host: ${host_src}
 - Ghostty library: ${ghostty_lib_src}
-- Ghostty resources: ${ghostty_share_src:-not found}
-- Ghostty terminfo: ${ghostty_terminfo_src:-not found}
+- Ghostty resources: ${manifest_ghostty_resources}
+- Ghostty terminfo: ${manifest_ghostty_terminfo}
+- Ghostty resource shape: ${ghostty_resource_shape}
+- Ghostty resource origin: ${ghostty_resource_origin}${manifest_ghostty_degraded_marker}
 
 ## User Links
 
@@ -477,7 +623,7 @@ ${archive_dir}
 
 - No sudo.
 - No package manager.
-- No build step.
+- No cargo/zig build step (Ghostty terminfo may be tic-compiled from the vendored snapshot).
 - No /etc writes.
 - Existing link/file targets are moved into the archive directory, not deleted.
 - Browser/WebKit use remains gated separately.
@@ -489,14 +635,24 @@ write_file "${install_root}/MANIFEST.md" "${manifest}"$'\n'
 if [[ "$mode" == "apply" ]]; then
     (
         cd "$install_root"
-        sha256sum \
-            "bin/${launcher_name}" \
-            "bin/${cli_launcher_name}" \
-            libexec/limux-cli \
-            libexec/limux-host \
-            lib/libghostty.so \
-            MANIFEST.md \
-            > SHA256SUMS
+        {
+            printf '%s\n' \
+                "bin/${launcher_name}" \
+                "bin/${cli_launcher_name}" \
+                libexec/limux-cli \
+                libexec/limux-host \
+                lib/libghostty.so \
+                MANIFEST.md
+            # PRD-A stamps install-info.json at the install root; keep it
+            # covered whenever present (exists-check so either PR merge
+            # order works).
+            if [[ -f install-info.json ]]; then
+                printf 'install-info.json\n'
+            fi
+            # Shipped Ghostty resources (shell-integration + terminfo) are a
+            # variable file set — enumerate them so SHA256SUMS covers all.
+            find share/limux -type f | LC_ALL=C sort
+        } | xargs -d '\n' sha256sum > SHA256SUMS
     )
 fi
 
