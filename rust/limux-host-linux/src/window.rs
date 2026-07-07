@@ -11,6 +11,9 @@ use gtk::glib::variant::ToVariant;
 use gtk4 as gtk;
 use libadwaita as adw;
 use limux_control::socket_path::{resolve_socket_path, RuntimeChannel, SocketMode};
+use limux_core::{
+    ControlStateSnapshot, PaneSnapshot, SurfaceSnapshot, WindowSnapshot, WorkspaceSnapshot,
+};
 use limux_protocol::validate_terminal_text_payload;
 
 use crate::app_config;
@@ -355,6 +358,140 @@ fn workspace_payload(state: &AppState, index: usize) -> Option<serde_json::Value
         "title": workspace.name.as_str(),
         "name": workspace.name.as_str(),
     }))
+}
+
+fn fallback_surface_snapshot(surface_id: u64) -> SurfaceSnapshot {
+    SurfaceSnapshot {
+        id: surface_id,
+        title: "terminal".to_string(),
+        text: String::new(),
+        panel_type: "terminal".to_string(),
+        developer_tools_visible: false,
+        pinned: false,
+        unread: false,
+        flash_count: 0,
+        refresh_count: 0,
+    }
+}
+
+fn snapshot_current_pane_id(panes: &[PaneSnapshot], focused_pane_id: Option<u32>) -> Option<u64> {
+    focused_pane_id
+        .map(u64::from)
+        .filter(|id| panes.iter().any(|pane| pane.id == *id))
+        .or_else(|| panes.first().map(|pane| pane.id))
+}
+
+fn control_state_snapshot_for_fallthrough(
+    state: &AppState,
+    focused_pane_id: Option<u32>,
+) -> ControlStateSnapshot {
+    let mut next_surface_id = 1_u64;
+    let workspaces = state
+        .workspaces
+        .iter()
+        .enumerate()
+        .map(|(index, workspace)| {
+            let workspace_id = index as u64 + 1;
+            let window_id = workspace_id;
+            let cwd = workspace.cwd.borrow().clone();
+            let pane_summaries = pane::pane_summaries_for_root(&workspace.root);
+            let surface_summaries = pane::surface_summaries_for_root(&workspace.root);
+            let mut surfaces_by_pane = HashMap::new();
+            for surface in surface_summaries {
+                surfaces_by_pane
+                    .entry(surface.pane_id)
+                    .or_insert_with(Vec::new)
+                    .push(surface);
+            }
+
+            let panes = if pane_summaries.is_empty() {
+                let pane_id = 1_000_000 + workspace_id;
+                let surface_id = next_surface_id;
+                next_surface_id += 1;
+                vec![PaneSnapshot {
+                    id: pane_id,
+                    surfaces: vec![fallback_surface_snapshot(surface_id)],
+                    current_surface_id: Some(surface_id),
+                    flag_color: None,
+                }]
+            } else {
+                pane_summaries
+                    .into_iter()
+                    .map(|summary| {
+                        let mut first_surface_id = None;
+                        let mut current_surface_id = None;
+                        let mut surfaces = surfaces_by_pane
+                            .remove(&summary.pane_id)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .map(|surface| {
+                                let surface_id = next_surface_id;
+                                next_surface_id += 1;
+                                first_surface_id.get_or_insert(surface_id);
+                                if summary.active_surface_id.as_deref()
+                                    == Some(surface.surface_id.as_str())
+                                {
+                                    current_surface_id = Some(surface_id);
+                                }
+                                SurfaceSnapshot {
+                                    id: surface_id,
+                                    title: surface.title,
+                                    text: String::new(),
+                                    panel_type: surface.kind,
+                                    developer_tools_visible: false,
+                                    pinned: false,
+                                    unread: false,
+                                    flash_count: 0,
+                                    refresh_count: 0,
+                                }
+                            })
+                            .collect::<Vec<_>>();
+
+                        if surfaces.is_empty() {
+                            let surface_id = next_surface_id;
+                            next_surface_id += 1;
+                            first_surface_id = Some(surface_id);
+                            surfaces.push(fallback_surface_snapshot(surface_id));
+                        }
+
+                        PaneSnapshot {
+                            id: summary.pane_id as u64,
+                            surfaces,
+                            current_surface_id: current_surface_id.or(first_surface_id),
+                            flag_color: summary.flag_color.map(|color| color.name().to_string()),
+                        }
+                    })
+                    .collect()
+            };
+            let workspace_focused_pane_id = (index == state.active_idx)
+                .then_some(focused_pane_id)
+                .flatten();
+            let current_pane_id = snapshot_current_pane_id(&panes, workspace_focused_pane_id);
+
+            WorkspaceSnapshot {
+                id: workspace_id,
+                name: workspace.name.clone(),
+                cwd,
+                host_window_id: window_id,
+                windows: vec![WindowSnapshot {
+                    id: window_id,
+                    title: workspace.name.clone(),
+                    panes,
+                    current_pane_id,
+                }],
+                current_window_id: Some(window_id),
+            }
+        })
+        .collect();
+
+    ControlStateSnapshot {
+        current_workspace_id: state
+            .workspaces
+            .get(state.active_idx)
+            .map(|_| state.active_idx as u64 + 1),
+        workspaces,
+        notifications: Vec::new(),
+    }
 }
 
 fn focused_surface_payload(state: &State) -> Option<serde_json::Value> {
@@ -4527,6 +4664,29 @@ fn handle_control_command(state: &State, command: ControlCommand) {
             };
             let _ = reply.send(Ok(serde_json::json!({ "workspaces": workspaces })));
         }
+        ControlCommand::FallthroughRead {
+            method,
+            params,
+            reply,
+        } => {
+            let active_workspace_id = {
+                let app_state = state.borrow();
+                app_state
+                    .active_workspace()
+                    .map(|workspace| workspace.id.clone())
+            };
+            let focused_pane_id = active_workspace_id
+                .as_deref()
+                .and_then(|workspace_id| focused_ids_for_workspace(state, workspace_id).0);
+            let snapshot = {
+                let app_state = state.borrow();
+                control_state_snapshot_for_fallthrough(&app_state, focused_pane_id)
+            };
+            let response = crate::state_mirror::dispatch_snapshot(snapshot, method, params);
+            let _ = reply.send(crate::control_bridge::bridge_result_from_v2_response(
+                response,
+            ));
+        }
         ControlCommand::ListPanes { target, reply } => {
             let resolved = {
                 let app_state = state.borrow();
@@ -6660,10 +6820,10 @@ mod tests {
         shortcut_allowed_while_browser_find_active, shortcut_blocked_by_editable,
         shortcut_command_from_key_event, shortcut_dispatch_propagation,
         should_auto_open_sidebar_for_notification, should_emit_desktop_notification,
-        sidebar_width_class, snapshot_sidebar_width, surface_send_text_response,
-        tab_drag_workspace_seed, use_opaque_window_background, validate_typed_terminal_text,
-        validate_workspace_folder_input_with_dirs, window_chrome_policy,
-        workspace_drop_layout_path, workspace_folder_path_from_input,
+        sidebar_width_class, snapshot_current_pane_id, snapshot_sidebar_width,
+        surface_send_text_response, tab_drag_workspace_seed, use_opaque_window_background,
+        validate_typed_terminal_text, validate_workspace_folder_input_with_dirs,
+        window_chrome_policy, workspace_drop_layout_path, workspace_folder_path_from_input,
         workspace_notification_message, DesktopNotificationTarget, Direction,
         EditableCaptureContext, NeighborScore, PaneBounds, PaneCreateDirection,
         PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest,
@@ -7322,6 +7482,28 @@ mod tests {
             tab_id: None,
         };
         assert_eq!(pane_attention_target(false, &workspace_only), None);
+    }
+
+    #[test]
+    fn snapshot_current_pane_id_prefers_valid_focused_pane() {
+        let panes = vec![
+            limux_core::PaneSnapshot {
+                id: 1,
+                surfaces: Vec::new(),
+                current_surface_id: None,
+                flag_color: None,
+            },
+            limux_core::PaneSnapshot {
+                id: 2,
+                surfaces: Vec::new(),
+                current_surface_id: None,
+                flag_color: None,
+            },
+        ];
+
+        assert_eq!(snapshot_current_pane_id(&panes, Some(2)), Some(2));
+        assert_eq!(snapshot_current_pane_id(&panes, Some(404)), Some(1));
+        assert_eq!(snapshot_current_pane_id(&panes, None), Some(1));
     }
 
     #[test]

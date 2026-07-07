@@ -21,6 +21,7 @@ libc = "0.2"
 uuid = { version = "1", features = ["v4"] }
 webkit6 = { version = "0.6", optional = true }
 limux-control = { path = "../limux-control" }
+limux-core = { path = "../limux-core" }
 limux-protocol = { path = "../limux-protocol" }
 limux-ghostty-sys = { path = "../limux-ghostty-sys" }
 serde = { version = "1", features = ["derive"] }

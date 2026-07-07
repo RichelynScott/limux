@@ -794,6 +794,7 @@ dependencies = [
  "libadwaita",
  "libc",
  "limux-control",
+ "limux-core",
  "limux-ghostty-sys",
  "limux-protocol",
  "serde",
