@@ -369,60 +369,89 @@ fn pane_resize_response_payload(outcome: PaneResizeOutcome) -> serde_json::Value
     })
 }
 
-fn apply_pane_resize_for_request(
+struct PaneResizeTarget {
+    workspace_index: usize,
+    previous_active_idx: usize,
+    workspace_id: String,
+    pane_id: u32,
+    direction: BridgePaneResizeDirection,
+    amount: f64,
+    pane_widget: gtk::Widget,
+}
+
+fn resolve_pane_resize_target(
     state: &State,
     request: &crate::control_bridge::PaneResizeRequest,
-) -> Result<PaneResizeOutcome, BridgeError> {
+) -> Result<PaneResizeTarget, BridgeError> {
     let pane_id = parse_pane_handle(&request.pane_id)
         .ok_or_else(|| BridgeError::invalid_params("pane.resize requires a valid pane_id"))?;
-    let resolved = {
-        let app_state = state.borrow();
-        workspace_index_for_target(&app_state, &request.target)
-    };
 
-    let Some(index) = resolved else {
-        return Err(BridgeError::not_found("workspace not found"));
-    };
-
-    let (workspace_id, workspace_root) = {
+    let (workspace_index, previous_active_idx, workspace_id, workspace_root) = {
         let app_state = state.borrow();
+        let Some(index) = workspace_index_for_target(&app_state, &request.target) else {
+            return Err(BridgeError::not_found("workspace not found"));
+        };
         let workspace = &app_state.workspaces[index];
-        (workspace.id.clone(), workspace.root.clone())
+        (
+            index,
+            app_state.active_idx,
+            workspace.id.clone(),
+            workspace.root.clone(),
+        )
     };
 
     let pane_widget = pane::pane_widget_for_root(&workspace_root, pane_id)
         .ok_or_else(|| BridgeError::not_found("pane not found"))?;
-    let (axis, target_delta) = resize_axis_and_delta(request.direction, request.amount);
-    let geometry = resize_pane_widget(&pane_widget, axis, target_delta)?;
-    request_session_save(state);
 
-    Ok(PaneResizeOutcome {
+    Ok(PaneResizeTarget {
+        workspace_index,
+        previous_active_idx,
         workspace_id,
         pane_id,
         direction: request.direction,
         amount: request.amount,
         pane_widget,
+    })
+}
+
+fn apply_pane_resize_target(
+    state: &State,
+    target: PaneResizeTarget,
+) -> Result<PaneResizeOutcome, BridgeError> {
+    let (axis, target_delta) = resize_axis_and_delta(target.direction, target.amount);
+    let geometry = resize_pane_widget(&target.pane_widget, axis, target_delta)?;
+    request_session_save(state);
+
+    Ok(PaneResizeOutcome {
+        workspace_id: target.workspace_id,
+        pane_id: target.pane_id,
+        direction: target.direction,
+        amount: target.amount,
+        pane_widget: target.pane_widget,
         geometry,
     })
 }
 
 fn send_pane_resize_response_after_settle(
     state: State,
-    request: crate::control_bridge::PaneResizeRequest,
+    target: PaneResizeTarget,
     reply: std::sync::mpsc::Sender<Result<serde_json::Value, BridgeError>>,
 ) {
-    glib::idle_add_local_once(
-        move || match apply_pane_resize_for_request(&state, &request) {
-            Ok(outcome) => {
-                glib::idle_add_local_once(move || {
-                    let _ = reply.send(Ok(pane_resize_response_payload(outcome)));
-                });
+    let rollback_index = (target.workspace_index != target.previous_active_idx)
+        .then_some(target.previous_active_idx);
+    glib::idle_add_local_once(move || match apply_pane_resize_target(&state, target) {
+        Ok(outcome) => {
+            glib::idle_add_local_once(move || {
+                let _ = reply.send(Ok(pane_resize_response_payload(outcome)));
+            });
+        }
+        Err(error) => {
+            if let Some(index) = rollback_index {
+                switch_workspace(&state, index);
             }
-            Err(error) => {
-                let _ = reply.send(Err(error));
-            }
-        },
-    );
+            let _ = reply.send(Err(error));
+        }
+    });
 }
 
 fn resize_pane_widget(
@@ -5142,25 +5171,18 @@ fn handle_control_command(state: &State, command: ControlCommand) {
             });
         }
         ControlCommand::ResizePane { request, reply } => {
-            let resolved = {
-                let app_state = state.borrow();
-                workspace_index_for_target(&app_state, &request.target)
+            let target = match resolve_pane_resize_target(state, &request) {
+                Ok(target) => target,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
             };
 
-            let Some(index) = resolved else {
-                let _ = reply.send(Err(BridgeError::not_found("workspace not found")));
-                return;
-            };
-
-            let was_active = {
-                let app_state = state.borrow();
-                index == app_state.active_idx
-            };
-
-            if !was_active {
-                switch_workspace(state, index);
+            if target.workspace_index != target.previous_active_idx {
+                switch_workspace(state, target.workspace_index);
             }
-            send_pane_resize_response_after_settle(state.clone(), request, reply);
+            send_pane_resize_response_after_settle(state.clone(), target, reply);
         }
         ControlCommand::CreatePane { request, reply } => {
             if !matches!(request.pane_type, PaneCreateType::Terminal) {
