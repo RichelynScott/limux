@@ -1853,3 +1853,37 @@ restarted. PR #6 was pushed and a fresh `@codex review` was requested; at
 `rust/limux-host-linux/src/terminal.rs` |
 `rust/limux-host-linux/src/main.rs` |
 `scripts/user-local-install/install-user-local.sh`
+
+## 2026-07-06 - cmux Parity Roadmap And PRDs Merged
+### What:
+Merged PR #16 into `main` at `16828118c19543af59b3c332fe2bd08bc1c12b49`,
+adding `docs/cmux-parity-roadmap-20260706.md` and PRDs A-H under
+`.taskmaster/docs/`.
+
+### Why:
+The operator wanted the upstream Limux/cmux research and improvement options
+made durable before continuing implementation work. The final Codex bot loop
+had converged to docs-consistency issues only; the last unreviewed delta
+`2e61fd7` applied the bot's own PRD-C terminal paste wording fix.
+
+### How:
+Manually audited PR #16 after the watcher stalled: head `2e61fd7`, GitHub
+`MERGEABLE`, GraphQL `mergeStateStatus=CLEAN`, and zero unresolved review
+threads. Nato independently signed off on merging without another bot round
+because the connector has no approval terminal state and the remaining delta
+was bounded documentation text. Squash-merged the PR, fetched `origin/main`,
+and verified TaskMaster on current main now reports #6 and #9 done with next
+task #10.
+
+### Impact:
+The planning package is on `origin/main`; no live Limux runtime install was
+performed. The next Cursor integration task is TaskMaster #10, safe path
+determination and folder opening. The merged PRDs should be imported or
+expanded through the reviewed TaskMaster AI path before implementation work
+starts from them.
+
+### Related:
+PR #16 | `16828118c19543af59b3c332fe2bd08bc1c12b49` |
+`docs/cmux-parity-roadmap-20260706.md` |
+`.taskmaster/docs/limux-prd-a-runtime-trust-20260706.md` |
+`.taskmaster/docs/limux-prd-h-restore-pack-20260706.md`
