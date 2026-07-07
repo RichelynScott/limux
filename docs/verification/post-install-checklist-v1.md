@@ -281,10 +281,12 @@ Action:
    ```
 2. Before the bell fires, focus a different pane.
 3. Right-click a tab in the right-hand pane and set a flag color.
-4. Trigger unread attention on the same workspace with either the delayed bell
-   above or the workspace-only `~/.local/bin/limux-preview notify` command
-   from item 8.
-5. Clear the flag color.
+4. In the flagged right-hand pane, run a second delayed bell:
+   ```bash
+   sleep 2; printf '\a'
+   ```
+5. Before the second bell fires, focus a different pane.
+6. Clear the flag color.
 
 Expected result:
 - The blue attention border is visible around the actual pane, including
