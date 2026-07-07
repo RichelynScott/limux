@@ -44,8 +44,11 @@ checklist, so verification happens ad-hoc and results evaporate.
 ### US-1: As the operator, I can verify a fresh build in ~10 minutes without thinking
 - [ ] `docs/verification/post-install-checklist-v1.md` exists with numbered
       steps, each: exact action → expected result → PASS/FAIL checkbox.
-- [ ] Checklist covers, at minimum: plain typing + modifier chords + paste
-      (Ctrl+V / Ctrl+Shift+V) in a fresh pane (#14 class); mouse
+- [ ] Checklist covers, at minimum: plain typing + modifier chords + paste in
+      a fresh pane (#14 class): `Ctrl+Shift+V` performs Limux terminal paste,
+      while plain `Ctrl+V` is intentionally unclaimed by Limux and passes
+      through to terminal/native shell behavior (matches
+      `default_terminal_paste_does_not_claim_plain_ctrl_v`); mouse
       selection-copy → paste elsewhere, verifying no stuck-left-click state
       (Codex-required — the sixth backlog item, `LIFO_HANDOFF.md` watch
       item); window controls (minimize/maximize/close) + edge hitbox (#15
