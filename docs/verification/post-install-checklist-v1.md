@@ -231,13 +231,15 @@ Evidence:
 ### 9. Runtime Channel Isolation
 
 Action:
-1. Run the scripted smoke:
+1. Ensure a stable Limux runtime is open before launching preview. If no stable
+   window is open, launch `~/.local/bin/limux-stable` or the `Limux Stable`
+   desktop entry and open a simple stable workspace.
+2. Run the scripted smoke:
    ```bash
    bash scripts/tests/runtime-isolation-smoke.sh
    ```
-2. If a stable Limux runtime is already open, leave it open while launching the
-   preview runtime.
-3. Use both windows briefly.
+3. Launch the preview runtime with `~/.local/bin/limux-preview`.
+4. Use both stable and preview windows briefly.
 
 Expected result:
 - The smoke prints `runtime-isolation-smoke: PASS`.

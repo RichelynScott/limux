@@ -15,7 +15,7 @@ clearly dated correction note.
 | Install id | `<install-id>` |
 | Channel | `preview:default` / `stable` |
 | Launcher used | `~/.local/bin/limux-preview` |
-| `limux --version` output | `<paste output>` |
+| `<launcher used> --version` output | `<paste output from the launcher named above>` |
 | Date/time started | `<YYYY-MM-DD HH:MM TZ>` |
 | Date/time completed | `<YYYY-MM-DD HH:MM TZ>` |
 | Operator | `<name>` |
