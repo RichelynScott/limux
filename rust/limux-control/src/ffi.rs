@@ -5,7 +5,7 @@ use std::sync::{Mutex, OnceLock};
 use limux_protocol::{parse_v1_command_envelope, V2Request};
 use tokio::runtime::{Builder, Runtime};
 
-use crate::Dispatcher;
+use crate::{current_build_info, Dispatcher};
 
 static DISPATCHER_CELL: OnceLock<Mutex<Option<Dispatcher>>> = OnceLock::new();
 static RUNTIME_CELL: OnceLock<Mutex<Option<Runtime>>> = OnceLock::new();
@@ -35,7 +35,7 @@ pub extern "C" fn limux_control_init() -> i32 {
         Err(_) => return 1,
     };
 
-    let dispatcher = Dispatcher::new();
+    let dispatcher = Dispatcher::with_build_info(current_build_info());
 
     let mut runtime_guard = match runtime_slot().lock() {
         Ok(guard) => guard,
@@ -83,7 +83,7 @@ pub unsafe extern "C" fn limux_control_dispatch(message_ptr: *const u8, message_
 
     if runtime_guard.is_none() || dispatcher_guard.is_none() {
         *runtime_guard = Builder::new_multi_thread().enable_all().build().ok();
-        *dispatcher_guard = Some(Dispatcher::new());
+        *dispatcher_guard = Some(Dispatcher::with_build_info(current_build_info()));
     }
 
     let runtime = match runtime_guard.as_mut() {

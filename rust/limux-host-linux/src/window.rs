@@ -4459,6 +4459,7 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                     "channel": channel,
                     "socket_path": socket_path,
                     "runtime_id": runtime_id,
+                    "build": crate::build_info(),
                     "focused": focused,
                     "caller": caller.unwrap_or_else(|| focused.clone()),
                 })

@@ -5,3 +5,11 @@ pub mod server;
 pub mod socket_path;
 
 pub use limux_core::*;
+
+pub fn current_build_info() -> BuildInfo {
+    BuildInfo::from_compile_env(
+        option_env!("LIMUX_BUILD_SHA"),
+        option_env!("LIMUX_BUILD_DIRTY"),
+        option_env!("LIMUX_BUILD_PROFILE"),
+    )
+}

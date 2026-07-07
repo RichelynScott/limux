@@ -39,6 +39,14 @@ die() {
     exit 1
 }
 
+json_escape() {
+    local value="$1"
+    value="${value//\\/\\\\}"
+    value="${value//\"/\\\"}"
+    value="${value//$'\n'/\\n}"
+    printf '%s' "$value"
+}
+
 assert_split_icon_svg() {
     local path="$1"
     local prefix
@@ -229,6 +237,10 @@ case "$runtime_channel" in
 esac
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+source_sha="$(git -C "$repo_root" rev-parse --verify HEAD 2>/dev/null || true)"
+if [[ -z "$source_sha" ]]; then
+    source_sha="unknown"
+fi
 install_root="${prefix}/limux-reviewed/${install_subdir}"
 archive_dir="${prefix}/limux-reviewed/archive/${timestamp}"
 bin_link_dir="${prefix}/bin"
@@ -486,6 +498,18 @@ EOF_MANIFEST
 
 write_file "${install_root}/MANIFEST.md" "${manifest}"$'\n'
 
+install_info="$(
+    cat <<EOF_INSTALL_INFO
+{
+  "install_id": "$(json_escape "$install_id")",
+  "channel": "$(json_escape "$runtime_channel")",
+  "source_sha": "$(json_escape "$source_sha")",
+  "created_utc": "$(json_escape "$timestamp")"
+}
+EOF_INSTALL_INFO
+)"
+write_file "${install_root}/install-info.json" "${install_info}"$'\n'
+
 if [[ "$mode" == "apply" ]]; then
     (
         cd "$install_root"
@@ -496,6 +520,7 @@ if [[ "$mode" == "apply" ]]; then
             libexec/limux-host \
             lib/libghostty.so \
             MANIFEST.md \
+            install-info.json \
             > SHA256SUMS
     )
 fi
