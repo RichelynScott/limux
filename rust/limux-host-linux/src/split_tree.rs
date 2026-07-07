@@ -664,12 +664,14 @@ fn build_widget_tree(node: &SplitNode, state: &State) -> gtk::Widget {
                 if applying_for_notify.get() {
                     return;
                 }
-                if apply_locked_width_position_from_panes(
-                    paned,
-                    &start_lock_panes_for_notify,
-                    &end_lock_panes_for_notify,
-                    &applying_for_notify,
-                ) {
+                if paned.orientation() == gtk::Orientation::Horizontal
+                    && apply_locked_width_position_from_panes(
+                        paned,
+                        &start_lock_panes_for_notify,
+                        &end_lock_panes_for_notify,
+                        &applying_for_notify,
+                    )
+                {
                     return;
                 }
                 let allocation = paned.allocation();
