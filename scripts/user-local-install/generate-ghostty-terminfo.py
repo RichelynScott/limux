@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""Generate the vendored ghostty.terminfo snapshot from the Ghostty submodule.
+
+The vendored Ghostty tree defines its terminfo entry as Zig data
+(`ghostty/src/terminfo/ghostty.zig`); upstream renders it to terminfo source
+at build time via `Source.encode` (`ghostty/src/terminfo/Source.zig`). Limux
+cannot run that build step at install time, so this script performs the same
+rendering offline: it extracts the names + capabilities from the Zig
+definition and emits the identical terminfo source format `Source.encode`
+would produce, prefixed with a provenance header.
+
+Usage:
+  generate-ghostty-terminfo.py [--repo-root DIR] [--check FILE]
+
+Without --check, the rendered snapshot is written to stdout. With --check,
+the rendered output is compared against FILE (the committed snapshot at
+scripts/user-local-install/resources/ghostty.terminfo) and the script exits
+non-zero on drift — CI uses this to keep the snapshot in sync with the
+pinned submodule.
+"""
+
+from __future__ import annotations
+
+import argparse
+import pathlib
+import re
+import subprocess
+import sys
+
+ENTRY_RE = re.compile(
+    r'^\s*\.\{\s*\.name = "((?:[^"\\]|\\.)*)",'
+    r"\s*\.value = \.\{ \.(boolean|numeric|string|canceled)"
+    r'(?: = (?:\{\}|(\d+)|"((?:[^"\\]|\\.)*)"))? \}'
+)
+NAME_LINE_RE = re.compile(r'^\s*"((?:[^"\\]|\\.)*)",\s*(?://.*)?$')
+
+ZIG_SIMPLE_ESCAPES = {
+    "\\": "\\",
+    '"': '"',
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+    "'": "'",
+}
+
+
+def unescape_zig_string(literal: str) -> str:
+    """Decode the body of a Zig string literal (without surrounding quotes)."""
+    out: list[str] = []
+    i = 0
+    while i < len(literal):
+        ch = literal[i]
+        if ch != "\\":
+            out.append(ch)
+            i += 1
+            continue
+        if i + 1 >= len(literal):
+            raise ValueError(f"dangling backslash in Zig literal: {literal!r}")
+        nxt = literal[i + 1]
+        if nxt in ZIG_SIMPLE_ESCAPES:
+            out.append(ZIG_SIMPLE_ESCAPES[nxt])
+            i += 2
+        elif nxt == "x":
+            out.append(chr(int(literal[i + 2 : i + 4], 16)))
+            i += 4
+        else:
+            raise ValueError(f"unsupported Zig escape \\{nxt} in {literal!r}")
+    return "".join(out)
+
+
+def parse_ghostty_zig(path: pathlib.Path) -> tuple[list[str], list[tuple[str, str, str | None]]]:
+    text = path.read_text(encoding="utf-8")
+
+    names_block = re.search(r"\.names = &\.\{(.*?)\},\n", text, re.DOTALL)
+    if not names_block:
+        raise ValueError(f"could not locate .names block in {path}")
+    names: list[str] = []
+    for line in names_block.group(1).splitlines():
+        m = NAME_LINE_RE.match(line)
+        if m:
+            names.append(unescape_zig_string(m.group(1)))
+    if not names:
+        raise ValueError(f"no terminal names extracted from {path}")
+
+    caps: list[tuple[str, str, str | None]] = []
+    for line in text.splitlines():
+        m = ENTRY_RE.match(line)
+        if not m:
+            continue
+        name = unescape_zig_string(m.group(1))
+        kind = m.group(2)
+        if kind == "numeric":
+            caps.append((name, kind, m.group(3)))
+        elif kind == "string":
+            caps.append((name, kind, unescape_zig_string(m.group(4))))
+        else:
+            caps.append((name, kind, None))
+    if not caps:
+        raise ValueError(f"no capabilities extracted from {path}")
+    return names, caps
+
+
+def render(names: list[str], caps: list[tuple[str, str, str | None]], provenance: list[str]) -> str:
+    # Mirrors Source.encode in ghostty/src/terminfo/Source.zig: pipe-joined
+    # names line, then one tab-indented "name[@|#N|=S]," line per capability,
+    # in definition order.
+    lines = [f"# {p}" if p else "#" for p in provenance]
+    lines.append("|".join(names) + ",")
+    for name, kind, value in caps:
+        if kind == "boolean":
+            lines.append(f"\t{name},")
+        elif kind == "canceled":
+            lines.append(f"\t{name}@,")
+        elif kind == "numeric":
+            lines.append(f"\t{name}#{value},")
+        else:
+            lines.append(f"\t{name}={value},")
+    return "\n".join(lines) + "\n"
+
+
+def submodule_provenance(repo_root: pathlib.Path) -> list[str]:
+    ghostty = repo_root / "ghostty"
+    try:
+        commit = subprocess.run(
+            ["git", "-C", str(ghostty), "log", "-1", "--format=%H %cs"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        commit = "unknown (ghostty submodule metadata unavailable)"
+    version = "unknown"
+    zon = ghostty / "build.zig.zon"
+    if zon.is_file():
+        m = re.search(r'\.version = "([^"]+)"', zon.read_text(encoding="utf-8"))
+        if m:
+            version = m.group(1)
+    return [
+        "Vendored Ghostty terminfo source snapshot for the Limux user-local installer.",
+        "",
+        f"Upstream: Ghostty {version}, submodule commit {commit}",
+        "Generated by: scripts/user-local-install/generate-ghostty-terminfo.py, which",
+        "renders ghostty/src/terminfo/ghostty.zig exactly as upstream Source.encode",
+        "(ghostty/src/terminfo/Source.zig) would at build time.",
+        "Regenerate + verify: scripts/user-local-install/generate-ghostty-terminfo.py \\",
+        "  --check scripts/user-local-install/resources/ghostty.terminfo",
+        "Compiled at install time with: tic -x -o <install-root>/share/limux/terminfo",
+    ]
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--repo-root",
+        type=pathlib.Path,
+        default=pathlib.Path(__file__).resolve().parents[2],
+    )
+    parser.add_argument("--check", type=pathlib.Path, default=None)
+    args = parser.parse_args()
+
+    zig_path = args.repo_root / "ghostty" / "src" / "terminfo" / "ghostty.zig"
+    if not zig_path.is_file():
+        print(
+            f"generate-ghostty-terminfo: missing {zig_path}\n"
+            "hint: run `git submodule update --init ghostty` first",
+            file=sys.stderr,
+        )
+        return 2
+
+    names, caps = parse_ghostty_zig(zig_path)
+    rendered = render(names, caps, submodule_provenance(args.repo_root))
+
+    if args.check is None:
+        sys.stdout.write(rendered)
+        return 0
+
+    committed = args.check.read_text(encoding="utf-8") if args.check.is_file() else ""
+    if committed == rendered:
+        print(f"generate-ghostty-terminfo: {args.check} is in sync with the submodule")
+        return 0
+    print(
+        f"generate-ghostty-terminfo: {args.check} is OUT OF SYNC with "
+        "ghostty/src/terminfo/ghostty.zig — regenerate it:\n"
+        f"  {pathlib.Path(__file__).name} > {args.check}",
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

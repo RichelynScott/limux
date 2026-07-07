@@ -95,3 +95,30 @@ resources are bundled, the resolved resources directory must have:
 If the built checkout lacks `ghostty/zig-out/share/ghostty` and compiled
 terminfo, it is safer for Limux to run without setting `GHOSTTY_RESOURCES_DIR`
 than to point Ghostty at `ghostty/src`.
+
+## Closing Note (2026-07-07, PRD-B)
+
+The packaging-side guardrails for this regression class shipped with PRD-B
+(Wave 0, roadmap W0.2):
+
+- The user-local installer now stages a valid resource bundle by default:
+  `shell-integration/` (from a prebuilt Ghostty share dir, or the vendored
+  source tree's `shell-integration/` only) plus a compiled sibling
+  `share/limux/terminfo/` produced either by copying prebuilt entries or by
+  `tic -x`-compiling the vendored snapshot at
+  `scripts/user-local-install/resources/ghostty.terminfo` (provenance in the
+  file header; kept in sync with the submodule by
+  `scripts/user-local-install/generate-ghostty-terminfo.py --check`).
+- The installer aborts loudly when no valid bundle can be staged and rejects
+  source-only shapes (`ghostty/src`-style) outright — mirroring the runtime
+  contract in `is_ghostty_resources_dir` (`rust/limux-host-linux/src/main.rs`).
+  `--allow-missing-ghostty-resources` is the explicit escape hatch and stamps
+  the manifest `Ghostty resource shape: DEGRADED` plus a
+  `DEGRADED: no ghostty resources` marker.
+- Manifests now carry `Ghostty resource shape:` and `Ghostty resource origin:`
+  fields; the audit grep above ("must not say `Ghostty resources:
+  .../ghostty/src`") keeps working unchanged.
+- CI runs `scripts/tests/validate-ghostty-resources.sh`
+  (`.github/workflows/rust-quality.yml`), which asserts the staged shape,
+  the manifest invariants, SHA256SUMS coverage of shipped resources, and the
+  source-only rejection regression test.
