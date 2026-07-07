@@ -157,10 +157,16 @@ impl ApplyOutcome {
 ///
 /// Keys are the host-linux identifiers: workspace id (`String`) and surface
 /// id (the `LIMUX_SURFACE_ID` contract, `"{pane_id}:{tab_id}"`).
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct AgentStateStore {
     workspaces: BTreeMap<String, BTreeMap<String, SurfaceAgentRecord>>,
     stale_after_ms: u64,
+}
+
+impl Default for AgentStateStore {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AgentStateStore {
@@ -370,6 +376,15 @@ mod tests {
         assert_eq!(store.workspace_state(WS), AgentState::Unknown);
         assert!(!store.workspace_needs_attention(WS));
         assert_eq!(store.surfaces(WS).count(), 0);
+    }
+
+    #[test]
+    fn default_uses_documented_stale_window() {
+        let mut store = AgentStateStore::default();
+        assert_eq!(store.stale_after_ms(), DEFAULT_STALE_AFTER_MS);
+        store.apply_event(WS, "1:a", None, AgentEvent::Activity, 0);
+        assert_eq!(store.decay_stale(1), Vec::<String>::new());
+        assert_eq!(store.workspace_state(WS), AgentState::Running);
     }
 
     #[test]
