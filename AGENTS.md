@@ -45,6 +45,43 @@ cargo build -p limux-cli --bin limux-cli
 ./target/debug/limux-cli --help
 ```
 
+## CLI Diagnostics And Runtime Identity
+
+Use the top-level CLI help as the command-surface source of truth:
+
+```bash
+./target/debug/limux-cli --help
+```
+
+Some subcommands intentionally do not implement `--help`; do not probe an
+unknown subcommand help path against a live Limux runtime unless the command is
+known to be help-only. Prefer the top-level help, source code, or dry-run flags.
+
+Useful diagnostic commands:
+
+```bash
+./target/debug/limux-cli --version
+./target/debug/limux-cli target-info
+./target/debug/limux-cli doctor --json
+./target/debug/limux-cli doctor --log-triage --lines 200
+```
+
+`--version` is composed from compile-time build metadata and, for installed
+builds, the nearest `install-info.json` beside the executable. Expected identity
+fields include version, source SHA, build profile, optional install id, and
+optional runtime channel. `target-info` / `socket-info` resolves the socket and
+channel without connecting to the host.
+
+JSON flag placement is intentionally uneven today. Most commands use the global
+flag before the subcommand, for example `limux --json identify`; `doctor --json`
+is a subcommand-local exception that was added with the doctor surface. Check
+the real parser/help before adding examples.
+
+`doctor` is the first-line runtime diagnostic for launcher drift, stale socket
+state, process identity, Ghostty resources, and optional log triage. Exit code
+`0` means all checks passed, `1` means at least one check failed, and `2` means
+there were warnings but no failed checks.
+
 ## Quality Gate
 
 The canonical check is:
@@ -70,6 +107,16 @@ For live agent/control-socket behavior, prefer the maintained smoke harness:
 LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh
 ```
 
+For user-local runtime packaging and Ghostty resource regressions, also use:
+
+```bash
+bash scripts/tests/validate-ghostty-resources.sh
+```
+
+Before promoting a preview runtime to the daily-driver lane, complete the
+verification workflow in `docs/verification/post-install-checklist-v1.md` and
+record the run with `docs/verification/run-template.md`.
+
 ## Runtime Control Path
 
 There are two control-server paths:
@@ -84,6 +131,28 @@ not only the standalone dispatcher. The live bridge supports workspace, pane,
 surface, terminal send/key/read/health, notification, and terminal pane-create
 commands. Browser command bridge parity remains separate work; check
 `docs/cmux-parity-plan.md` before changing agent or browser automation.
+
+PRD-E mirror/bridge parity is partial. The GTK bridge has a native method
+registry and read-only state-mirror fallthrough, but only `window.list` and
+`window.current` are currently fallthrough methods. Keep remaining mirror API
+work, mutation routing, registry expansion, and kill-switch behavior tracked as
+open work until the PRD-E task is closed.
+
+## User-Local Runtime Channels
+
+`scripts/user-local-install/install-user-local.sh` supports isolated user-local
+runtime lanes:
+
+- `--channel legacy` writes the traditional `limux` / `limux-cli` launchers.
+- `--channel stable` writes `limux-stable` / `limux-stable-cli`.
+- `--channel preview` writes `limux-preview` / `limux-preview-cli`.
+- `--channel preview:<id>` writes `limux-preview-<id>` /
+  `limux-preview-<id>-cli`.
+
+The installer writes `install-info.json` with the install id, channel, source
+SHA, and creation time. Launchers pass the channel through to the CLI so stable
+and preview runtimes can resolve separate sockets and state without replacing
+the daily-driver runtime.
 
 ## IDs And Env
 
@@ -117,6 +186,13 @@ For Ghostty terminal env vars, build short-lived `CString` storage and
 the strings into its own config arena, so no static lifetime or leaked storage
 is needed.
 
+Pane attention and flag colors are user-visible state. `pane-action
+set_flag_color` accepts `orange`, `red`, `purple`, `pink`, `green`, `yellow`,
+`teal`, and `cyan`; `clear_flag_color` removes the manual flag. Pane-originated
+attention should render a visible blue pane border without hiding any manual
+flag color. CLI `notify` creates workspace/user attention and must not be used
+as proof that the pane overlay path itself works.
+
 ## Agent Integrations
 
 The CLI surface lives in `rust/limux-cli/src/main.rs`:
@@ -128,6 +204,18 @@ The CLI surface lives in `rust/limux-cli/src/main.rs`:
 Keep `limux agent-team --dry-run` working without a host. For live behavior,
 the Xvfb smoke script exercises the bridge, generated `LIMUX_AGENTS.md`,
 workspace discovery, and surface-target send path.
+
+`agent-team --launch-mode hcom` launches panes with `hcom <agent> --run-here`
+so sessions are registered with hcom while still living inside Limux panes.
+Keep the boundary explicit: Limux's Unix socket is the local GUI control bus;
+hcom is the cross-agent/session messaging bus. `LIMUX_SURFACE_ID` is the
+contract that lets hcom-started agents call back into the correct Limux pane.
+
+Hooks are installed by the current executable path. Run `limux hooks setup`
+from the intended installed/channel launcher, not from a temporary repo debug
+binary, unless the temporary hook target is intentional. PRD-G agent lifecycle
+sidebar state is still evolving; do not claim full hook/sidebar/socket CLI
+parity for every agent family until the PRD-G task closes.
 
 ## Repository Rules
 

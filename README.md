@@ -16,6 +16,11 @@ https://github.com/user-attachments/assets/6f3047c2-e2b6-49f2-b536-570a1570d0f8
 - **Right-click context menu** with copy, paste, split, clear
 - **Drag-and-drop** workspace reordering with favorites/pinning and manual highlights
 - **Animated sidebar** collapse/expand
+- **CLI diagnostics** with `doctor`, `target-info`, runtime identity, and log triage
+- **User-local stable/preview channels** for testing new Limux builds without
+  replacing the daily-driver runtime
+- **Agent hooks and pane orchestration** for Codex, Claude Code, Gemini, opt-in
+  OpenCode hooks, Hermes receiver events, and hcom-launched sessions
 
 ## Install
 
@@ -67,6 +72,38 @@ sudo ./install.sh --uninstall
 sudo apt install libgtk-4-1 libadwaita-1-0 libwebkitgtk-6.0-4
 ```
 
+## Runtime identity and diagnostics
+
+Installed packages expose `limux` as the user-facing CLI. Running `limux` with
+no arguments launches the GTK app; commands and diagnostics are handled by the
+same CLI entrypoint.
+
+```bash
+limux --version
+limux target-info
+limux doctor --json
+limux doctor --log-triage --lines 200
+```
+
+`--version` reports the CLI version and build identity. User-local installs also
+read `install-info.json` beside the executable, so version output can include
+the install id and channel.
+
+`target-info` / `socket-info` prints the resolved socket and channel without
+connecting to a running host. Use it when checking whether a shell is targeting
+the default runtime, stable runtime, or a preview runtime.
+
+JSON flag placement is a parser gotcha: most commands use the global flag
+before the subcommand, such as `limux --json identify`, while `doctor --json`
+is a subcommand-local exception.
+
+`doctor` checks launchers, running processes, control socket reachability,
+stale sockets, Ghostty resource packaging, and optional log triage. Exit code
+`0` means all checks passed, `1` means at least one check failed, and `2` means
+warnings were found but no check failed. `--log-triage` summarizes common
+runtime log warnings such as Mesa/GDK environment issues without requiring a
+full manual log scrape.
+
 ## Build from source
 
 ### Prerequisites
@@ -106,6 +143,31 @@ ln -s "$PWD/scripts/limux-dev" "$HOME/.local/bin/limux-cli"
 Use `LIMUX_LOCAL_PROFILE=debug scripts/limux-dev` when you want to run the
 debug binaries instead of the release binaries.
 
+### User-local stable and preview channels
+
+For development, prefer user-local channel installs over replacing the runtime
+you are actively using for work. The installer can create isolated launcher
+lanes:
+
+```bash
+# Traditional launcher names: ~/.local/bin/limux and ~/.local/bin/limux-cli
+scripts/user-local-install/install-user-local.sh --apply --channel legacy --profile release
+
+# Daily-driver candidate: ~/.local/bin/limux-stable and limux-stable-cli
+scripts/user-local-install/install-user-local.sh --apply --channel stable --profile release
+
+# Test runtime: ~/.local/bin/limux-preview and limux-preview-cli
+scripts/user-local-install/install-user-local.sh --apply --channel preview --profile release
+
+# Named test runtime: ~/.local/bin/limux-preview-lab and limux-preview-lab-cli
+scripts/user-local-install/install-user-local.sh --apply --channel preview:lab --profile release
+```
+
+Each install records `install-info.json` with the install id, channel, source
+SHA, and creation time. Channel-aware launchers pass the selected lane to the
+CLI so preview runtimes can be launched and tested without disturbing the
+stable/daily-driver socket and state.
+
 ### Package a release tarball
 
 ```bash
@@ -130,6 +192,18 @@ When validating user-local installs, also check
 It records the June 2026 Ghostty resource packaging regression and the rule
 that `ghostty/src` must not be installed or resolved as runtime resources.
 
+Ghostty runtime resource packaging has its own regression check:
+
+```bash
+bash scripts/tests/validate-ghostty-resources.sh
+```
+
+For preview-to-stable promotion, use the checklist workflow in
+[`docs/verification/post-install-checklist-v1.md`](docs/verification/post-install-checklist-v1.md)
+and record each verification run with
+[`docs/verification/run-template.md`](docs/verification/run-template.md).
+Stable promotion should wait for a full PASS on the preview runtime.
+
 ## Agent integrations
 
 Limux ships first-class hooks for coding agents (Codex, Claude Code, Gemini CLI,
@@ -142,8 +216,14 @@ with no flags needed from inside the agent's own terminal.
 # Fire a libadwaita toast + sidebar unread badge from any agent
 limux notify --subtitle "needs review" --body "blocked on auth choice" "Input needed"
 
+# Manually flag the current pane so you can return to it later
+limux pane-action --action set_flag_color --color orange
+limux pane-action --action clear_flag_color
+
 # Install Limux session-restore hooks for supported agents
 limux hooks setup
+# Default setup covers Codex, Claude Code, and Gemini. OpenCode is opt-in:
+limux hooks setup opencode
 
 # Drop-in hook handlers translate hook JSON on stdin into notify/session state
 echo '{"event":"stop"}' | limux claude-hook --event stop
@@ -182,7 +262,7 @@ limux new-pane --workspace "$LIMUX_WORKSPACE_ID" --surface "$LIMUX_SURFACE_ID" \
   --pane "$LIMUX_PANE_ID" --direction down --command 'codex'
 
 # Keep both agents in the same workspace on separate splits/tabs:
-limux identify --json
+limux --json identify
 limux list-panels --workspace "$LIMUX_WORKSPACE_ID"
 limux send --workspace "$LIMUX_WORKSPACE_ID" --surface "<peer-surface-id>" \
   $'<agent-msg from="codex" to="claude" id="…" ts="…">…</agent-msg>\n'
@@ -220,6 +300,20 @@ If you normally start agents with hcom, add `--launch-mode hcom` to
 `agent-team` or `review spawn`. Limux will create normal terminal panes, but the
 pane command becomes `hcom <agent> --run-here` so hcom registers the session
 without opening a separate external terminal window.
+
+Keep the bus boundary clear:
+
+- Limux's Unix socket is the local GUI control bus for panes, workspaces,
+  terminal text, notifications, and screen reads.
+- hcom is the cross-agent messaging and session bus for named agents,
+  transcripts, durable messages, resume/fork, and multi-project coordination.
+- `limux notify` creates user-visible Limux attention such as a toast/sidebar
+  badge; `hcom send` sends a message to another hcom agent and is not a pane
+  notification by itself.
+- Agents launched inside Limux inherit `LIMUX_WORKSPACE_ID`,
+  `LIMUX_SURFACE_ID`, `LIMUX_PANE_ID`, `LIMUX_TAB_ID`, and `LIMUX_SOCKET`.
+  hcom-launched workers can use those values to call back into the correct
+  Limux pane.
 
 `--dry-run` does not contact a running Limux host, but it still materializes the
 generated protocol and seeds missing roster/ledger files so agents can inspect
@@ -262,15 +356,24 @@ paths without host contact, and `--no-launch` to create the pane without typing
 the reviewer command or prompt.
 
 Checked-in hook templates live in [`hooks/`](hooks/). They mirror
-`limux hooks setup` for Codex, Claude Code, and Gemini CLI; Hermes notification
+`limux hooks setup` for Codex, Claude Code, and Gemini CLI. OpenCode hook
+installation is opt-in with `limux hooks setup opencode`. Hermes notification
 receivers are supported through `limux hooks hermes <event>` / `limux
 hermes-hook`, but Hermes-side lifecycle plugin installation remains external.
-OpenCode is omitted until its hook integration is ready.
 
 Coding agents working on **limux itself** should read [`AGENTS.md`](AGENTS.md)
 and [`CLAUDE.md`](CLAUDE.md) in the repo root — those cover the build
 loop, crate map, and the `feat/cmux-parity` roadmap tracked in
 [`docs/cmux-parity-plan.md`](docs/cmux-parity-plan.md).
+
+## Control bridge status
+
+The live GTK bridge is the production path for user-visible CLI behavior. It
+currently supports workspace, pane, surface, terminal send/key/read/health,
+notification, and terminal pane-create commands. PRD-E live-bridge parity is
+still partial: only `window.list` and `window.current` are read-only
+state-mirror fallthrough methods today. Browser-pane bridge parity and broader
+mirror API routing remain separate work until their PRD tasks are completed.
 
 ## Keyboard shortcuts
 
