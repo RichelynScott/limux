@@ -1919,3 +1919,28 @@ only promote to stable if every full-run item passes.
 `docs/verification/post-install-checklist-v1.md` |
 `docs/verification/run-template.md` |
 `docs/verification/runs/`
+
+## 2026-07-07 - Lifecycle Events And Agent-Team Staleness Intake
+### What:
+Recorded two follow-up items from the Limux/hcom disconnect audit: queryable
+pane/workspace lifecycle events, and agent-team peer-table self-heal when peer
+panes die or are manually closed.
+
+### Why:
+The operator manually closed panes that still appeared in generated
+agent-team context. Without queryable lifecycle state or stale-peer invalidation,
+protocol-following peers could send `agent-msg` envelopes to closed surfaces or
+to panes that had returned to a plain shell.
+
+### How:
+Added TaskMaster subtasks `5.1` and `7.1` under tag `cmux-parity-20260707`, and
+created `docs/future-improvements/limux-lifecycle-events-and-agent-team-staleness-20260707.md`
+with the problem statement, acceptance criteria, and non-goals. The lifecycle
+event surface is explicitly informational/queryable and must not create toast
+or sidebar notification spam.
+
+### Impact:
+Future PRD-E/PRD-G work now has durable acceptance criteria for pane/workspace
+close observability and stale peer routing. hcom identity/delivery follow-up
+remains in the hcom lane; Limux owns pane/workspace event state and generated
+agent-team protocol freshness.
