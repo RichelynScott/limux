@@ -1174,7 +1174,7 @@ fn stagger_restored_agent_command(command: String, sequence: usize) -> String {
     }
 
     let delay_seconds = delay_ms as f64 / 1_000.0;
-    format!("sleep {delay_seconds:.3}; {command}")
+    format!("sleep {delay_seconds:.3} && {command}")
 }
 
 struct BrowserTabOptions<'a> {
@@ -3867,15 +3867,15 @@ mod tests {
     fn stagger_restored_agent_command_prefixes_later_batches_with_sleep() {
         assert_eq!(
             stagger_restored_agent_command("exec codex resume abc".to_string(), 2),
-            "sleep 0.750; exec codex resume abc"
+            "sleep 0.750 && exec codex resume abc"
         );
         assert_eq!(
             stagger_restored_agent_command("exec codex resume abc".to_string(), 4),
-            "sleep 1.500; exec codex resume abc"
+            "sleep 1.500 && exec codex resume abc"
         );
         assert_eq!(
             stagger_restored_agent_command("exec codex resume abc".to_string(), 100),
-            "sleep 6.000; exec codex resume abc"
+            "sleep 6.000 && exec codex resume abc"
         );
     }
 
