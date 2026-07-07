@@ -1919,3 +1919,57 @@ only promote to stable if every full-run item passes.
 `docs/verification/post-install-checklist-v1.md` |
 `docs/verification/run-template.md` |
 `docs/verification/runs/`
+
+## 2026-07-07 - Lifecycle Events And Agent-Team Staleness Intake
+### What:
+Recorded two follow-up items from the Limux/hcom disconnect audit: queryable
+pane/workspace lifecycle events, and agent-team peer-table self-heal when peer
+panes die or are manually closed.
+
+### Why:
+The operator manually closed panes that still appeared in generated
+agent-team context. Without queryable lifecycle state or stale-peer invalidation,
+protocol-following peers could send `agent-msg` envelopes to closed surfaces or
+to panes that had returned to a plain shell.
+
+### How:
+Added TaskMaster subtasks `5.1` and `7.1` under tag `cmux-parity-20260707`, and
+created `docs/future-improvements/limux-lifecycle-events-and-agent-team-staleness-20260707.md`
+with the problem statement, acceptance criteria, and non-goals. The lifecycle
+event surface is explicitly informational/queryable and must not create toast
+or sidebar notification spam.
+
+### Impact:
+Future PRD-E/PRD-G work now has durable acceptance criteria for pane/workspace
+close observability and stale peer routing. hcom identity/delivery follow-up
+remains in the hcom lane; Limux owns pane/workspace event state and generated
+agent-team protocol freshness.
+
+## 2026-07-07 - Agent-Team Help Side-Effect Fix
+### What:
+Fixed `limux agent-team --help` so it is informational only and cannot create
+panes, write generated coordination files, or contact the running Limux host.
+
+### Why:
+The operator reported two unexpected panes appearing in the Zen-Master/PAL MCP
+workspace. hcom evidence showed a team-regeneration investigation ran
+`agent-team --help`; before this fix, that path flowed into normal
+`run_agent_team` execution and could target the currently focused workspace.
+
+### How:
+Added a top-of-function help return in `run_agent_team`, taught the dispatcher
+to render agent-team help payloads as help text, and added the regression
+`agent_team_help_is_side_effect_free` with a missing socket and temporary cwd.
+TaskMaster subtask `7.2` under tag `cmux-parity-20260707` records the fix as
+done.
+
+### Impact:
+`agent-team --help` now exits before any socket or filesystem side effects. The
+remaining product question is whether live `agent-team` should keep falling
+back to the focused workspace when invoked outside a Limux pane without
+`LIMUX_WORKSPACE_ID`, or require an explicit workspace target for safer
+non-interactive use.
+
+### Related:
+`docs/future-improvements/limux-lifecycle-events-and-agent-team-staleness-20260707.md` |
+TaskMaster `7.2`
