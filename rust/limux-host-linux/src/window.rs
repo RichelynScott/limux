@@ -4925,12 +4925,14 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 return;
             };
 
-            let (workspace_id, workspace_root, was_active) = {
+            let (workspace_id, workspace_root, sidebar_row, sidebar_list, was_active) = {
                 let app_state = state.borrow();
                 let workspace = &app_state.workspaces[index];
                 (
                     workspace.id.clone(),
                     workspace.root.clone(),
+                    workspace.sidebar_row.clone(),
+                    app_state.sidebar_list.clone(),
                     index == app_state.active_idx,
                 )
             };
@@ -4942,6 +4944,7 @@ fn handle_control_command(state: &State, command: ControlCommand) {
 
             if !was_active {
                 switch_workspace(state, index);
+                sidebar_list.select_row(Some(&sidebar_row));
             }
 
             let response = pane_focus_response_payload(&workspace_id, pane_id);
