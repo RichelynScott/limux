@@ -35,12 +35,24 @@ cargo build --release -p limux-cli --bin limux-cli
 cargo build --release -p limux-host-linux --bin limux
 scripts/user-local-install/install-user-local.sh --apply --profile release --channel preview --install-id "$install_id"
 ~/.local/bin/limux-preview --version
-~/.local/bin/limux-preview
 ```
 
 Use `~/.local/bin/limux-preview` and `~/.local/bin/limux-preview-cli` for this
 checklist. The preview wrapper exports `LIMUX_CHANNEL=preview:default`, so it
 uses the preview socket/session namespace and must not interfere with stable.
+
+Before launching preview, make sure a stable Limux window is already open. If
+no stable window is open, launch stable first:
+
+```bash
+~/.local/bin/limux-stable
+```
+
+After the stable window is open, launch preview:
+
+```bash
+~/.local/bin/limux-preview
+```
 
 Launcher resolution for promotion: if a full v1 run passes, promotion installs
 the verified source to the stable lane and the operator relaunches with

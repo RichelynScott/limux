@@ -65,7 +65,7 @@ bash scripts/tests/runtime-isolation-smoke.sh
 Record the exact reviewed TaskMaster commands run after this verification:
 
 ```bash
-task-master-reviewed set-status <id> <status>
+task-master-reviewed set-status --id=<id> --status=<status>
 task-master-reviewed update-task --id=<id> --prompt="<evidence note>"
 task-master-reviewed add-task --prompt="<new failing behavior and evidence>"
 ```
