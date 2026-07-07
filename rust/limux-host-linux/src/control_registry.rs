@@ -117,11 +117,11 @@ const ROUTES: &[RouteEntry] = &[
     },
     RouteEntry {
         method: "surface.current",
-        class: RouteClass::CoreRead,
+        class: RouteClass::BridgeNative,
     },
     RouteEntry {
         method: "notification.list",
-        class: RouteClass::CoreRead,
+        class: RouteClass::BridgeNative,
     },
     RouteEntry {
         method: "pane.focus",
@@ -265,8 +265,20 @@ mod tests {
     fn window_reads_are_fallthrough_methods() {
         assert_eq!(route_class("window.list"), Some(RouteClass::CoreRead));
         assert_eq!(route_class("window.current"), Some(RouteClass::CoreRead));
-        assert_eq!(route_class("surface.current"), Some(RouteClass::CoreRead));
-        assert_eq!(route_class("notification.list"), Some(RouteClass::CoreRead));
+    }
+
+    #[test]
+    fn live_reads_are_bridge_native_not_fallthrough() {
+        assert_eq!(
+            route_class("surface.current"),
+            Some(RouteClass::BridgeNative)
+        );
+        assert_eq!(
+            route_class("notification.list"),
+            Some(RouteClass::BridgeNative)
+        );
+        assert!(!is_read_only_fallthrough("surface.current"));
+        assert!(!is_read_only_fallthrough("notification.list"));
         assert!(capability_methods().contains(&"surface.current"));
         assert!(capability_methods().contains(&"notification.list"));
     }

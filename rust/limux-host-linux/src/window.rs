@@ -556,11 +556,11 @@ fn focused_surface_payload(state: &State) -> Option<serde_json::Value> {
 
 fn notification_list_payload(state: &State, unread_only: bool) -> serde_json::Value {
     let app_state = state.borrow();
+    let _ = unread_only; // Vocabulary-compatible flag; only unread workspace notifications exist here.
     let notifications = app_state
         .workspaces
         .iter()
         .enumerate()
-        .filter(|(_, workspace)| !unread_only || workspace.unread)
         .filter(|(_, workspace)| workspace.unread)
         .map(|(index, workspace)| {
             let message = workspace.notify_label.label().to_string();
