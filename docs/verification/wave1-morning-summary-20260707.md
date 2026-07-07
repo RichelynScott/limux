@@ -7,8 +7,11 @@ Base: `origin/main` at `eff00d788b22159fa1c97df88e9ce0273d2a1f48`
 ## Current Result
 
 Wave 1 has moved from setup and PRD import into merged runtime fixes and
-parallel follow-on implementation lanes. PRD-E 2a and 2b are merged to `main`;
-PRD-G and PRD-H are active in separate worktrees.
+parallel follow-on implementation lanes. PRD-E is partially landed: 2a core API
+and the 2b `window.list` / `window.current` read-only fallthrough slice are
+merged to `main`; the registry, remaining read fallthroughs, Wave 1 mutation
+set, and kill-switch remain open under TaskMaster #5. PRD-G and PRD-H are
+active in separate worktrees.
 
 No live user Limux install was restarted or replaced as part of this manager
 lane.
@@ -36,7 +39,7 @@ Tag: `cmux-parity-20260707`
 | #2 Ghostty resources | done | Merged in #21. |
 | #3 Post-install checklist/live run | in-progress | Checklist/run-template staged; first live run still pending. |
 | #4 Pane attention overlay | review | Code merged in #22; TaskMaster status should be reconciled after final owner review. |
-| #5 Live-bridge parity core fallthrough | in-progress | PRD-E 2a/2b merged; later mutation/capability/kill-switch slices remain. |
+| #5 Live-bridge parity core fallthrough | in-progress | PRD-E 2a core API and the `window.list` / `window.current` fallthrough slice are merged; registry, remaining reads, Wave 1 mutation set, and kill-switch remain open. |
 | #6 Browser command bridge ratification | pending | Not started in this wave. |
 | #7 Agent lifecycle/sidebar | in-progress | Worker `mupa` started in `WORKTREES/prd-g-agent-sidebar-20260707`. |
 | #8 Session restore pack | in-progress | Worker `hena` started in `WORKTREES/prd-h-restore-pack-20260707`. |
@@ -78,6 +81,9 @@ PRD-E 2b before merge:
   it as a status reconciliation item, not necessarily an implementation gap.
 - PRD-C still needs the first live post-install run before any stable install
   promotion decision.
+- PRD-E is not done. Treat merged PRs #24/#25 as the foundation plus the first
+  fallthrough slice only; registry, remaining read fallthroughs, Wave 1 mutation
+  set, and kill-switch still need follow-up under #5.
 - PRD-F is still pending and should not be conflated with PRD-E fallthrough.
 
 ## Next Actions
