@@ -477,6 +477,15 @@
             "status": "pending",
             "dependencies": [],
             "parentTaskId": 7
+          },
+          {
+            "id": 2,
+            "title": "Make agent-team help side-effect-free",
+            "description": "Fix agent-team help/introspection so it cannot create panes, write generated coordination files, or contact the live Limux host.",
+            "details": "Root cause observed 2026-07-07: invoking ./target/debug/limux-cli agent-team --help from a peer/orchestrator path proceeded through run_agent_team and could resolve the currently focused workspace, leading to unintended panes in the operator's Zen-Master workspace. Fixed by returning help before any parsing/validation/host calls and by rendering help text in the agent-team dispatcher path. Regression: cargo test -p limux-cli agent_team_help_is_side_effect_free -- --nocapture. Smoke: ./target/debug/limux-cli --socket /tmp/limux-agent-team-help-no-such.sock agent-team --help exits 0 and prints help.",
+            "status": "done",
+            "dependencies": [],
+            "parentTaskId": 7
           }
         ],
         "updatedAt": "2026-07-07T08:44:38.881Z"

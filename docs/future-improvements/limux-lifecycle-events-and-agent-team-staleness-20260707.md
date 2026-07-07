@@ -3,7 +3,7 @@
 Date: 2026-07-07
 Status: Follow-up intake from disconnect audit
 TaskMaster tag: `cmux-parity-20260707`
-Tracked tasks: `5.1`, `7.1`
+Tracked tasks: `5.1`, `7.1`, `7.2`
 
 ## Problem
 
@@ -22,6 +22,13 @@ That left two separate gaps:
 - `LIMUX_AGENTS.md` peer tables could point at closed surfaces. A
   protocol-following peer could then send an `agent-msg` envelope to a
   nonexistent pane, or worse, to a pane that had returned to a plain shell.
+
+Follow-up investigation also found an immediate CLI regression: `limux
+agent-team --help` was not side-effect-free. The command flowed into the normal
+team creation path, which could resolve the currently focused workspace and
+create unintended panes there. On 2026-07-07 this matched the operator report
+that new panes appeared in the Zen-Master/PAL MCP workspace while a separate
+team-regeneration flow was being investigated.
 
 The desired behavior is informational and queryable. It must not create toast or
 notification spam.
@@ -88,6 +95,35 @@ Acceptance:
   when enough inputs are supplied.
 - Lifecycle events from task `5.1` can explain why a peer disappeared when that
   information is available.
+
+## Task 7.2: Agent-Team Help Side-Effect Fix
+
+Status: done
+
+`limux agent-team --help` must be an informational command only.
+
+Shipped behavior:
+
+- `run_agent_team` returns help before resolving cwd sidecars, validating output
+  files, contacting the Unix socket, or creating panes.
+- Plain-text command output renders the help text instead of the normal
+  `OK agent-team ...` launch summary.
+- Regression coverage verifies that `agent-team --help --cwd <tmp>` succeeds
+  with a missing socket and does not create `LIMUX_AGENTS.md`,
+  `LIMUX_TEAM_ROSTER.md`, or `LIMUX_REVIEW_LEDGER.md`.
+
+Verification:
+
+```bash
+cargo test -p limux-cli agent_team_help_is_side_effect_free -- --nocapture
+./target/debug/limux-cli --socket /tmp/limux-agent-team-help-no-such.sock agent-team --help
+```
+
+Remaining product concern: live `agent-team` still falls back to the focused
+workspace when invoked outside a Limux pane without `LIMUX_WORKSPACE_ID`. That is
+convenient, but it is also the risky default that made this bug visible in the
+wrong workspace. Decide separately whether non-interactive or peer/orchestrator
+calls should require an explicit workspace target instead of using focus.
 
 ## Non-Goals
 

@@ -2302,6 +2302,10 @@ async fn run_new_workspace(client: &mut Client, args: &[String]) -> Result<Value
 // Each agent should watch for <agent-msg from="..."> blocks and reply with
 // the same envelope targeted back.
 
+fn agent_team_help_text() -> &'static str {
+    "Usage: limux agent-team [--agents codex,claude[,opencode,gemini,hermes]] [--launch-mode direct|hcom] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n\nSplits the active Limux workspace into one pane per agent, writes LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md plus LIMUX_REVIEW_LEDGER.md when missing.\n\nSafety:\n  --help is informational only and never contacts the running host.\n  --dry-run previews files without contacting the running host."
+}
+
 /// Built-in agent launcher commands. Chosen to match the CLIs the user
 /// actually has installed (see README); the launch command is what gets
 /// typed into the new workspace's terminal, so it also works as a fallback
@@ -2437,6 +2441,10 @@ async fn send_agent_team_bootstrap_prompt(
 }
 
 async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
+    if parse_flag(args, "--help") {
+        return Ok(json!({ "help": agent_team_help_text() }));
+    }
+
     // Parse --agents codex,claude (default: codex,claude).
     let agents_raw = parse_opt(args, "--agents").unwrap_or_else(|| "codex,claude".to_string());
     let agents: Vec<String> = agents_raw
@@ -5973,6 +5981,8 @@ async fn execute_command(client: &mut Client, opts: &GlobalOptions) -> Result<Co
             let payload = run_agent_team(client, args).await?;
             if opts.json_output {
                 CommandOutput::Json(payload)
+            } else if let Some(help) = get_string(&payload, &["help"]) {
+                CommandOutput::Text(help)
             } else {
                 let agents_md = payload
                     .get("agents_md")
@@ -6942,6 +6952,28 @@ mod agent_team_tests {
         let md = std::fs::read_to_string(cwd.join("LIMUX_AGENTS.md")).expect("read protocol");
         assert!(md.contains("| `codex` | `<dry-run-pane-0>` | `<dry-run-surface-codex>` | `hcom codex --run-here` |"));
         assert!(md.contains("| `claude` | `<dry-run-pane-1>` | `<dry-run-surface-claude>` | `hcom claude --run-here` |"));
+    }
+
+    #[tokio::test]
+    async fn agent_team_help_is_side_effect_free() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cwd = tmp.path();
+        let args = vec![
+            "--help".to_string(),
+            "--cwd".to_string(),
+            cwd.to_string_lossy().to_string(),
+        ];
+        let mut client = Client::new(cwd.join("missing.sock"));
+
+        let payload = run_agent_team(&mut client, &args)
+            .await
+            .expect("help should not contact host");
+
+        let help = payload["help"].as_str().expect("help text");
+        assert!(help.contains("Usage: limux agent-team"));
+        assert!(!cwd.join("LIMUX_AGENTS.md").exists());
+        assert!(!cwd.join("LIMUX_TEAM_ROSTER.md").exists());
+        assert!(!cwd.join("LIMUX_REVIEW_LEDGER.md").exists());
     }
 
     #[tokio::test]

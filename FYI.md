@@ -1944,3 +1944,32 @@ Future PRD-E/PRD-G work now has durable acceptance criteria for pane/workspace
 close observability and stale peer routing. hcom identity/delivery follow-up
 remains in the hcom lane; Limux owns pane/workspace event state and generated
 agent-team protocol freshness.
+
+## 2026-07-07 - Agent-Team Help Side-Effect Fix
+### What:
+Fixed `limux agent-team --help` so it is informational only and cannot create
+panes, write generated coordination files, or contact the running Limux host.
+
+### Why:
+The operator reported two unexpected panes appearing in the Zen-Master/PAL MCP
+workspace. hcom evidence showed a team-regeneration investigation ran
+`agent-team --help`; before this fix, that path flowed into normal
+`run_agent_team` execution and could target the currently focused workspace.
+
+### How:
+Added a top-of-function help return in `run_agent_team`, taught the dispatcher
+to render agent-team help payloads as help text, and added the regression
+`agent_team_help_is_side_effect_free` with a missing socket and temporary cwd.
+TaskMaster subtask `7.2` under tag `cmux-parity-20260707` records the fix as
+done.
+
+### Impact:
+`agent-team --help` now exits before any socket or filesystem side effects. The
+remaining product question is whether live `agent-team` should keep falling
+back to the focused workspace when invoked outside a Limux pane without
+`LIMUX_WORKSPACE_ID`, or require an explicit workspace target for safer
+non-interactive use.
+
+### Related:
+`docs/future-improvements/limux-lifecycle-events-and-agent-team-staleness-20260707.md` |
+TaskMaster `7.2`
