@@ -11,6 +11,7 @@ use std::time::Duration;
 use gtk::glib;
 use gtk4 as gtk;
 
+use crate::control_registry::{RouteClass, WAVE1_MUTATION_KILL_SWITCH_ENV};
 use crate::layout_state::PaneFlagColor;
 use limux_control::auth::{self, SocketControlMode};
 use limux_control::request_io::{self, read_request_frame};
@@ -20,33 +21,6 @@ use limux_protocol::{
     validate_terminal_text_payload, V2Request, V2Response,
 };
 use serde_json::{json, Map, Value};
-
-const METHODS: &[&str] = &[
-    "system.ping",
-    "system.identify",
-    "system.capabilities",
-    "window.list",
-    "window.current",
-    "window.present",
-    "workspace.current",
-    "workspace.list",
-    "workspace.create",
-    "workspace.select",
-    "workspace.rename",
-    "workspace.close",
-    "pane.list",
-    "pane.surfaces",
-    "pane.create",
-    "pane.action",
-    "surface.list",
-    "surface.health",
-    "surface.read_text",
-    "surface.send_text",
-    "surface.send_key",
-    "notification.create",
-    "cursor.pane_create_empty",
-    "cursor.workspace_open_folder",
-];
 
 const PARSE_ERROR_CODE: i64 = -32700;
 const INVALID_PARAMS_CODE: i64 = -32602;
@@ -708,7 +682,11 @@ fn handle_method(
                     }),
                 );
             }
-            return V2Response::success(id, json!({ "commands": METHODS, "methods": METHODS }));
+            let methods = crate::control_registry::capability_methods();
+            return V2Response::success(
+                id,
+                json!({ "commands": methods.clone(), "methods": methods }),
+            );
         }
         "system.identify" => {
             let (reply, rx) = mpsc::channel();
@@ -975,8 +953,9 @@ fn handle_method(
                 rx,
             )
         }
-        _ => {
-            if crate::control_registry::is_read_only_fallthrough(method) {
+        _ => match crate::control_registry::route_class(method) {
+            Some(RouteClass::CoreRead) => {
+                debug_assert!(crate::control_registry::is_read_only_fallthrough(method));
                 let (reply, rx) = mpsc::channel();
                 return dispatch_queued(
                     id,
@@ -989,11 +968,34 @@ fn handle_method(
                     dispatch,
                 );
             }
-            return error_response(
-                id,
-                BridgeError::new(UNKNOWN_METHOD_CODE, format!("unknown method: {method}")),
-            );
-        }
+            Some(RouteClass::Wave1Mutation) => {
+                let message = if crate::control_registry::wave1_mutations_disabled() {
+                    format!(
+                        "Wave-1 mutation route disabled by {WAVE1_MUTATION_KILL_SWITCH_ENV}: {method}"
+                    )
+                } else {
+                    format!(
+                        "Wave-1 mutation route classified but not wired to live GTK state yet: {method}"
+                    )
+                };
+                return error_response(id, BridgeError::new(UNKNOWN_METHOD_CODE, message));
+            }
+            Some(RouteClass::Deferred) => {
+                return error_response(
+                    id,
+                    BridgeError::new(
+                        UNKNOWN_METHOD_CODE,
+                        format!("PRD-E method deferred in Wave 1: {method}"),
+                    ),
+                );
+            }
+            Some(RouteClass::BridgeNative) | None => {
+                return error_response(
+                    id,
+                    BridgeError::new(UNKNOWN_METHOD_CODE, format!("unknown method: {method}")),
+                );
+            }
+        },
     };
 
     let (command, reply_rx) = queued;
@@ -1624,6 +1626,58 @@ mod tests {
         let methods = result["methods"].as_array().expect("methods array");
         assert!(methods.iter().any(|method| method == "window.list"));
         assert!(methods.iter().any(|method| method == "window.current"));
+    }
+
+    #[test]
+    fn unrestricted_capabilities_do_not_advertise_unwired_wave1_or_deferred_routes() {
+        let response = dispatch_request(
+            r#"{"id":1,"method":"system.capabilities","params":{}}"#,
+            &|command| panic!("system.capabilities should not dispatch: {command:?}"),
+        );
+
+        assert_eq!(response.error, None);
+        let result = response.result.expect("capabilities result");
+        let methods = result["methods"].as_array().expect("methods array");
+        for method in ["pane.focus", "surface.split", "notification.clear"] {
+            assert!(
+                !methods.iter().any(|entry| entry == method),
+                "{method} must stay out of capabilities until wired to live GTK state"
+            );
+        }
+        for method in ["pane.swap", "surface.move", "window.create"] {
+            assert!(
+                !methods.iter().any(|entry| entry == method),
+                "{method} must stay out of capabilities while explicitly deferred"
+            );
+        }
+    }
+
+    #[test]
+    fn wave1_mutation_route_returns_explicit_unwired_error() {
+        let response = dispatch_request(
+            r#"{"id":1,"method":"pane.focus","params":{"pane_id":7}}"#,
+            &|command| panic!("unwired Wave-1 route should not dispatch: {command:?}"),
+        );
+
+        assert_eq!(response.result, None);
+        let error = response.error.expect("error");
+        assert_eq!(error.code, UNKNOWN_METHOD_CODE);
+        assert!(error.message.contains("Wave-1 mutation"));
+        assert!(error.message.contains("live GTK"));
+    }
+
+    #[test]
+    fn deferred_route_returns_explicit_prd_e_error() {
+        let response = dispatch_request(
+            r#"{"id":1,"method":"surface.move","params":{}}"#,
+            &|command| panic!("deferred route should not dispatch: {command:?}"),
+        );
+
+        assert_eq!(response.result, None);
+        let error = response.error.expect("error");
+        assert_eq!(error.code, UNKNOWN_METHOD_CODE);
+        assert!(error.message.contains("deferred"));
+        assert!(error.message.contains("surface.move"));
     }
 
     #[test]

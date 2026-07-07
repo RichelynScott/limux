@@ -1,48 +1,244 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RouteClass {
     BridgeNative,
-    ReadOnlyFallthrough,
+    CoreRead,
+    Wave1Mutation,
+    Deferred,
 }
 
-const READ_ONLY_FALLTHROUGH_METHODS: &[&str] = &["window.list", "window.current"];
+pub(crate) const WAVE1_MUTATION_KILL_SWITCH_ENV: &str = "LIMUX_DISABLE_WAVE1_MUTATIONS";
 
-const BRIDGE_NATIVE_METHODS: &[&str] = &[
-    "system.ping",
-    "system.identify",
-    "system.capabilities",
-    "window.present",
-    "workspace.current",
-    "workspace.list",
-    "workspace.create",
-    "workspace.select",
-    "workspace.rename",
-    "workspace.close",
-    "pane.list",
-    "pane.surfaces",
-    "pane.create",
-    "pane.action",
-    "surface.list",
-    "surface.health",
-    "surface.read_text",
-    "surface.send_text",
-    "surface.send_key",
-    "notification.create",
-    "cursor.pane_create_empty",
-    "cursor.workspace_open_folder",
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct RouteEntry {
+    pub(crate) method: &'static str,
+    pub(crate) class: RouteClass,
+}
+
+const ROUTES: &[RouteEntry] = &[
+    RouteEntry {
+        method: "system.ping",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "system.identify",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "system.capabilities",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "window.present",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "workspace.current",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "workspace.list",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "workspace.create",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "workspace.select",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "workspace.rename",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "workspace.close",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "pane.list",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "pane.surfaces",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "pane.create",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "pane.action",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "surface.list",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "surface.health",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "surface.read_text",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "surface.send_text",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "surface.send_key",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "notification.create",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "cursor.pane_create_empty",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "cursor.workspace_open_folder",
+        class: RouteClass::BridgeNative,
+    },
+    RouteEntry {
+        method: "window.list",
+        class: RouteClass::CoreRead,
+    },
+    RouteEntry {
+        method: "window.current",
+        class: RouteClass::CoreRead,
+    },
+    RouteEntry {
+        method: "pane.focus",
+        class: RouteClass::Wave1Mutation,
+    },
+    RouteEntry {
+        method: "pane.resize",
+        class: RouteClass::Wave1Mutation,
+    },
+    RouteEntry {
+        method: "resize-pane",
+        class: RouteClass::Wave1Mutation,
+    },
+    RouteEntry {
+        method: "surface.split",
+        class: RouteClass::Wave1Mutation,
+    },
+    RouteEntry {
+        method: "surface.focus",
+        class: RouteClass::Wave1Mutation,
+    },
+    RouteEntry {
+        method: "surface.close",
+        class: RouteClass::Wave1Mutation,
+    },
+    RouteEntry {
+        method: "workspace.reorder",
+        class: RouteClass::Wave1Mutation,
+    },
+    RouteEntry {
+        method: "workspace.next",
+        class: RouteClass::Wave1Mutation,
+    },
+    RouteEntry {
+        method: "workspace.previous",
+        class: RouteClass::Wave1Mutation,
+    },
+    RouteEntry {
+        method: "workspace.last",
+        class: RouteClass::Wave1Mutation,
+    },
+    RouteEntry {
+        method: "notification.clear",
+        class: RouteClass::Wave1Mutation,
+    },
+    RouteEntry {
+        method: "pane.swap",
+        class: RouteClass::Deferred,
+    },
+    RouteEntry {
+        method: "pane.break",
+        class: RouteClass::Deferred,
+    },
+    RouteEntry {
+        method: "pane.join",
+        class: RouteClass::Deferred,
+    },
+    RouteEntry {
+        method: "surface.move",
+        class: RouteClass::Deferred,
+    },
+    RouteEntry {
+        method: "surface.reorder",
+        class: RouteClass::Deferred,
+    },
+    RouteEntry {
+        method: "surface.drag_to_split",
+        class: RouteClass::Deferred,
+    },
+    RouteEntry {
+        method: "workspace.move_to_window",
+        class: RouteClass::Deferred,
+    },
+    RouteEntry {
+        method: "window.create",
+        class: RouteClass::Deferred,
+    },
+    RouteEntry {
+        method: "window.close",
+        class: RouteClass::Deferred,
+    },
+    RouteEntry {
+        method: "window.focus",
+        class: RouteClass::Deferred,
+    },
 ];
 
-pub(crate) fn route_class(method: &str) -> Option<RouteClass> {
-    if READ_ONLY_FALLTHROUGH_METHODS.contains(&method) {
-        Some(RouteClass::ReadOnlyFallthrough)
-    } else if BRIDGE_NATIVE_METHODS.contains(&method) {
-        Some(RouteClass::BridgeNative)
-    } else {
-        None
+impl RouteClass {
+    fn is_capability_advertised(self) -> bool {
+        matches!(self, Self::BridgeNative | Self::CoreRead)
     }
 }
 
+pub(crate) fn routes() -> &'static [RouteEntry] {
+    ROUTES
+}
+
+pub(crate) fn route_class(method: &str) -> Option<RouteClass> {
+    routes()
+        .iter()
+        .find(|entry| entry.method == method)
+        .map(|entry| entry.class)
+}
+
+pub(crate) fn capability_methods() -> Vec<&'static str> {
+    routes()
+        .iter()
+        .filter(|entry| entry.class.is_capability_advertised())
+        .map(|entry| entry.method)
+        .collect()
+}
+
 pub(crate) fn is_read_only_fallthrough(method: &str) -> bool {
-    route_class(method) == Some(RouteClass::ReadOnlyFallthrough)
+    route_class(method) == Some(RouteClass::CoreRead)
+}
+
+pub(crate) fn wave1_mutations_disabled() -> bool {
+    wave1_mutations_disabled_from_env_value(
+        std::env::var(WAVE1_MUTATION_KILL_SWITCH_ENV)
+            .ok()
+            .as_deref(),
+    )
+}
+
+pub(crate) fn wave1_mutations_disabled_from_env_value(value: Option<&str>) -> bool {
+    matches!(
+        value.map(str::trim).map(str::to_ascii_lowercase).as_deref(),
+        Some("1" | "true" | "yes" | "on")
+    )
 }
 
 #[cfg(test)]
@@ -51,14 +247,8 @@ mod tests {
 
     #[test]
     fn window_reads_are_fallthrough_methods() {
-        assert_eq!(
-            route_class("window.list"),
-            Some(RouteClass::ReadOnlyFallthrough)
-        );
-        assert_eq!(
-            route_class("window.current"),
-            Some(RouteClass::ReadOnlyFallthrough)
-        );
+        assert_eq!(route_class("window.list"), Some(RouteClass::CoreRead));
+        assert_eq!(route_class("window.current"), Some(RouteClass::CoreRead));
     }
 
     #[test]
@@ -68,5 +258,75 @@ mod tests {
             Some(RouteClass::BridgeNative)
         );
         assert!(!is_read_only_fallthrough("surface.read_text"));
+    }
+
+    #[test]
+    fn wave1_mutation_methods_are_classified_but_not_capability_advertised() {
+        for method in [
+            "pane.focus",
+            "pane.resize",
+            "resize-pane",
+            "surface.split",
+            "surface.focus",
+            "surface.close",
+            "workspace.reorder",
+            "workspace.next",
+            "workspace.previous",
+            "workspace.last",
+            "notification.clear",
+        ] {
+            assert_eq!(
+                route_class(method),
+                Some(RouteClass::Wave1Mutation),
+                "{method} should be in the Wave-1 mutation set"
+            );
+            assert!(
+                !capability_methods().contains(&method),
+                "{method} should not be advertised until a live GTK route is wired"
+            );
+        }
+    }
+
+    #[test]
+    fn explicitly_deferred_methods_are_classified_and_not_advertised() {
+        for method in [
+            "pane.swap",
+            "pane.break",
+            "pane.join",
+            "surface.move",
+            "surface.reorder",
+            "surface.drag_to_split",
+            "workspace.move_to_window",
+            "window.create",
+            "window.close",
+            "window.focus",
+        ] {
+            assert_eq!(
+                route_class(method),
+                Some(RouteClass::Deferred),
+                "{method} should have an explicit PRD-E deferred classification"
+            );
+            assert!(
+                !capability_methods().contains(&method),
+                "{method} should not be advertised while deferred"
+            );
+        }
+    }
+
+    #[test]
+    fn wave1_mutation_kill_switch_accepts_standard_truthy_values() {
+        for value in ["1", "true", "TRUE", "yes", "on", " On "] {
+            assert!(
+                wave1_mutations_disabled_from_env_value(Some(value)),
+                "{value:?} should disable Wave-1 mutations"
+            );
+        }
+
+        for value in [None, Some(""), Some("0"), Some("false"), Some("off")] {
+            assert!(
+                !wave1_mutations_disabled_from_env_value(value),
+                "{value:?} should leave Wave-1 mutations enabled"
+            );
+        }
     }
 }
