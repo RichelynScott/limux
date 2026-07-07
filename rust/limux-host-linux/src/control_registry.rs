@@ -233,10 +233,15 @@ pub(crate) fn route_class(method: &str) -> Option<RouteClass> {
 }
 
 pub(crate) fn capability_methods() -> Vec<&'static str> {
+    capability_methods_for_wave1_disabled(wave1_mutations_disabled())
+}
+
+fn capability_methods_for_wave1_disabled(wave1_disabled: bool) -> Vec<&'static str> {
     routes()
         .iter()
         .filter(|entry| {
-            entry.class.is_capability_advertised() || is_wired_wave1_mutation(entry.method)
+            entry.class.is_capability_advertised()
+                || (!wave1_disabled && is_wired_wave1_mutation(entry.method))
         })
         .map(|entry| entry.method)
         .collect()
@@ -341,6 +346,15 @@ mod tests {
                 "{method} should not be advertised until a live GTK route is wired"
             );
         }
+    }
+
+    #[test]
+    fn wired_wave1_capabilities_are_hidden_when_kill_switch_is_enabled() {
+        let methods = capability_methods_for_wave1_disabled(true);
+
+        assert!(!methods.contains(&"pane.focus"));
+        assert!(methods.contains(&"workspace.list"));
+        assert!(methods.contains(&"surface.current"));
     }
 
     #[test]

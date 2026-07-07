@@ -193,6 +193,25 @@ fn pane_create_response_payload(
     })
 }
 
+fn pane_focus_response_payload(workspace_id: &str, pane_id: u32) -> serde_json::Value {
+    let pane_ref = pane_ref(pane_id);
+    serde_json::json!({
+        "ok": true,
+        "workspace_id": workspace_id,
+        "workspace_ref": workspace_ref(workspace_id),
+        "pane_id": pane_id.to_string(),
+        "pane_ref": pane_ref.as_str(),
+        "focused": true,
+        "pane": {
+            "id": pane_id.to_string(),
+            "pane_id": pane_id.to_string(),
+            "ref": pane_ref.as_str(),
+            "pane_ref": pane_ref.as_str(),
+            "focused": true,
+        },
+    })
+}
+
 fn surface_send_text_response(
     mut payload: serde_json::Value,
     sent: bool,
@@ -4925,34 +4944,16 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 switch_workspace(state, index);
             }
 
+            let response = pane_focus_response_payload(&workspace_id, pane_id);
             let focus_target = pane_widget.clone();
-            let focus_pane = move || {
+            glib::idle_add_local_once(move || {
                 if !pane::focus_active_tab_in_pane(&focus_target) {
                     focus_target.grab_focus();
                 }
-            };
-            if was_active {
-                focus_pane();
-            } else {
-                glib::idle_add_local_once(focus_pane);
-            }
-
-            let pane_ref = pane_ref(pane_id);
-            let _ = reply.send(Ok(serde_json::json!({
-                "ok": true,
-                "workspace_id": workspace_id.as_str(),
-                "workspace_ref": workspace_ref(&workspace_id),
-                "pane_id": pane_id.to_string(),
-                "pane_ref": pane_ref.as_str(),
-                "focused": true,
-                "pane": {
-                    "id": pane_id.to_string(),
-                    "pane_id": pane_id.to_string(),
-                    "ref": pane_ref.as_str(),
-                    "pane_ref": pane_ref.as_str(),
-                    "focused": true,
-                },
-            })));
+                glib::idle_add_local_once(move || {
+                    let _ = reply.send(Ok(response));
+                });
+            });
         }
         ControlCommand::CreatePane { request, reply } => {
             if !matches!(request.pane_type, PaneCreateType::Terminal) {
