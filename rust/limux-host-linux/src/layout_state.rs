@@ -1015,11 +1015,17 @@ fn build_hcom_resume_command(
     }
     let target = hcom_resume_name(launch).unwrap_or_else(|| session_id.to_string());
     let executable = hcom_executable(launch);
-    let command = [executable.as_str(), "r", target.as_str(), "--run-here"]
-        .iter()
-        .map(|part| shell_single_quote(part))
-        .collect::<Vec<_>>()
-        .join(" ");
+    let command = [
+        executable.as_str(),
+        "r",
+        target.as_str(),
+        "--run-here",
+        "--go",
+    ]
+    .iter()
+    .map(|part| shell_single_quote(part))
+    .collect::<Vec<_>>()
+    .join(" ");
     let cwd = cwd
         .and_then(normalized_str)
         .or_else(|| launch.cwd.as_deref().and_then(normalized_str));
@@ -2099,7 +2105,7 @@ mod tests {
         };
 
         let command = agent.resume_command().expect("resume command");
-        assert!(command.contains("cd '/tmp/project' && 'hcom' 'r' 'lifo' '--run-here'"));
+        assert!(command.contains("cd '/tmp/project' && 'hcom' 'r' 'lifo' '--run-here' '--go'"));
         assert!(!command.contains("'codex' 'resume'"));
         assert!(command.contains("hooks codex cleanup"));
     }
@@ -2123,8 +2129,9 @@ mod tests {
         };
 
         let command = agent.resume_command().expect("resume command");
-        assert!(command
-            .contains("cd '/tmp/project' && 'hcom' 'r' '20260624_132006_02638e' '--run-here'"));
+        assert!(command.contains(
+            "cd '/tmp/project' && 'hcom' 'r' '20260624_132006_02638e' '--run-here' '--go'"
+        ));
         assert!(!command.contains("'hermes' '--resume'"));
         assert!(command.contains("hooks hermes cleanup"));
     }
