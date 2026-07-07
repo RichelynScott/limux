@@ -476,6 +476,7 @@ pub enum ControlStateSnapshotError {
     EmptyPanes { window_id: u64 },
     EmptySurfaces { pane_id: u64 },
     DuplicateId { kind: &'static str, id: u64 },
+    DanglingCurrentId { kind: &'static str, id: u64 },
 }
 
 impl std::fmt::Display for ControlStateSnapshotError {
@@ -489,6 +490,12 @@ impl std::fmt::Display for ControlStateSnapshotError {
             Self::EmptySurfaces { pane_id } => write!(f, "pane {pane_id} has no surfaces"),
             Self::DuplicateId { kind, id } => {
                 write!(f, "duplicate {kind} id in control state snapshot: {id}")
+            }
+            Self::DanglingCurrentId { kind, id } => {
+                write!(
+                    f,
+                    "{kind} references missing id in control state snapshot: {id}"
+                )
             }
         }
     }
@@ -902,8 +909,10 @@ fn validate_snapshot(snapshot: &ControlStateSnapshot) -> Result<(), ControlState
             });
         }
 
+        let mut workspace_window_ids = HashSet::new();
         for window in &workspace.windows {
             require_unique_snapshot_id(&mut window_ids, "window", window.id)?;
+            workspace_window_ids.insert(window.id);
 
             if window.panes.is_empty() {
                 return Err(ControlStateSnapshotError::EmptyPanes {
@@ -911,19 +920,44 @@ fn validate_snapshot(snapshot: &ControlStateSnapshot) -> Result<(), ControlState
                 });
             }
 
+            let mut window_pane_ids = HashSet::new();
             for pane in &window.panes {
                 require_unique_snapshot_id(&mut pane_ids, "pane", pane.id)?;
+                window_pane_ids.insert(pane.id);
 
                 if pane.surfaces.is_empty() {
                     return Err(ControlStateSnapshotError::EmptySurfaces { pane_id: pane.id });
                 }
 
+                let mut pane_surface_ids = HashSet::new();
                 for surface in &pane.surfaces {
                     require_unique_snapshot_id(&mut surface_ids, "surface", surface.id)?;
+                    pane_surface_ids.insert(surface.id);
                 }
+                require_existing_snapshot_id(
+                    &pane_surface_ids,
+                    "current_surface_id",
+                    pane.current_surface_id,
+                )?;
             }
+            require_existing_snapshot_id(
+                &window_pane_ids,
+                "current_pane_id",
+                window.current_pane_id,
+            )?;
         }
+        require_existing_snapshot_id(
+            &workspace_window_ids,
+            "current_window_id",
+            workspace.current_window_id,
+        )?;
     }
+
+    require_existing_snapshot_id(
+        &workspace_ids,
+        "current_workspace_id",
+        snapshot.current_workspace_id,
+    )?;
 
     Ok(())
 }
@@ -937,6 +971,21 @@ fn require_unique_snapshot_id(
         Ok(())
     } else {
         Err(ControlStateSnapshotError::DuplicateId { kind, id })
+    }
+}
+
+fn require_existing_snapshot_id(
+    ids: &HashSet<u64>,
+    kind: &'static str,
+    id: Option<u64>,
+) -> Result<(), ControlStateSnapshotError> {
+    let Some(id) = id else {
+        return Ok(());
+    };
+    if ids.contains(&id) {
+        Ok(())
+    } else {
+        Err(ControlStateSnapshotError::DanglingCurrentId { kind, id })
     }
 }
 
@@ -6821,6 +6870,73 @@ mod tests {
                 id: 1
             }
         );
+    }
+
+    #[test]
+    fn control_state_import_snapshot_rejects_dangling_current_ids() {
+        let base = ControlStateSnapshot {
+            current_workspace_id: Some(1),
+            workspaces: vec![WorkspaceSnapshot {
+                id: 1,
+                name: "gtk-main".to_string(),
+                cwd: None,
+                host_window_id: 10,
+                current_window_id: Some(10),
+                windows: vec![WindowSnapshot {
+                    id: 10,
+                    title: "host".to_string(),
+                    current_pane_id: Some(20),
+                    panes: vec![PaneSnapshot {
+                        id: 20,
+                        current_surface_id: Some(30),
+                        flag_color: None,
+                        surfaces: vec![SurfaceSnapshot {
+                            id: 30,
+                            title: "terminal".to_string(),
+                            text: String::new(),
+                            panel_type: "terminal".to_string(),
+                            developer_tools_visible: false,
+                            pinned: false,
+                            unread: false,
+                            flash_count: 0,
+                            refresh_count: 0,
+                        }],
+                    }],
+                }],
+            }],
+            notifications: Vec::new(),
+        };
+
+        let mut dangling_workspace = base.clone();
+        dangling_workspace.current_workspace_id = Some(404);
+        let mut dangling_window = base.clone();
+        dangling_window.workspaces[0].current_window_id = Some(404);
+        let mut dangling_pane = base.clone();
+        dangling_pane.workspaces[0].windows[0].current_pane_id = Some(404);
+        let mut dangling_surface = base;
+        dangling_surface.workspaces[0].windows[0].panes[0].current_surface_id = Some(404);
+
+        for (label, snapshot, kind) in [
+            (
+                "current workspace",
+                dangling_workspace,
+                "current_workspace_id",
+            ),
+            ("current window", dangling_window, "current_window_id"),
+            ("current pane", dangling_pane, "current_pane_id"),
+            ("current surface", dangling_surface, "current_surface_id"),
+        ] {
+            let mut state = ControlState::default();
+            let err = match state.import_snapshot(snapshot) {
+                Ok(_) => panic!("{label} should be rejected"),
+                Err(err) => err,
+            };
+            assert_eq!(
+                err,
+                ControlStateSnapshotError::DanglingCurrentId { kind, id: 404 },
+                "{label} mismatch"
+            );
+        }
     }
 
     #[tokio::test]
