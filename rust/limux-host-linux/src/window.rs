@@ -441,8 +441,13 @@ fn send_pane_resize_response_after_settle(
         .then_some(target.previous_active_idx);
     glib::idle_add_local_once(move || match apply_pane_resize_target(&state, target) {
         Ok(outcome) => {
+            let state = state.clone();
             glib::idle_add_local_once(move || {
-                let _ = reply.send(Ok(pane_resize_response_payload(outcome)));
+                let payload = pane_resize_response_payload(outcome);
+                if let Some(index) = rollback_index {
+                    switch_workspace(&state, index);
+                }
+                let _ = reply.send(Ok(payload));
             });
         }
         Err(error) => {
