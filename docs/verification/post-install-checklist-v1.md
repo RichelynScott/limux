@@ -29,11 +29,19 @@ daily stable/legacy launcher.
 git fetch origin
 git switch main
 git pull --ff-only origin main
+git submodule update --init --recursive ghostty
+ghostty_zig_args=(-Doptimize=ReleaseFast -Dcpu=baseline)
+if ! pkg-config --exists gtk4-layer-shell-0 2>/dev/null; then
+  ghostty_zig_args+=(-fno-sys=gtk4-layer-shell)
+fi
+(cd ghostty && zig build -Dapp-runtime=none "${ghostty_zig_args[@]}")
+ghostty_resource_root="$(mktemp -d /tmp/limux-ghostty-resources.XXXXXX)"
+(cd ghostty && DESTDIR="$ghostty_resource_root" zig build --prefix /usr "${ghostty_zig_args[@]}" -Demit-docs=false)
 source_sha="$(git rev-parse --verify HEAD)"
 install_id="preview-${source_sha:0:12}-$(date -u +%Y%m%dT%H%M%SZ)"
 cargo build --release -p limux-cli --bin limux-cli
 cargo build --release -p limux-host-linux --bin limux
-scripts/user-local-install/install-user-local.sh --apply --profile release --channel preview --install-id "$install_id"
+scripts/user-local-install/install-user-local.sh --apply --profile release --channel preview --install-id "$install_id" --ghostty-share "$ghostty_resource_root/usr/share/ghostty" --ghostty-terminfo "$ghostty_resource_root/usr/share/terminfo"
 ~/.local/bin/limux-preview --version
 ```
 
@@ -41,15 +49,24 @@ Use `~/.local/bin/limux-preview` and `~/.local/bin/limux-preview-cli` for this
 checklist. The preview wrapper exports `LIMUX_CHANNEL=preview:default`, so it
 uses the preview socket/session namespace and must not interfere with stable.
 
-Before launching preview, make sure a stable Limux window is already open. If
-no stable window is open, launch stable first from a separate terminal, the
-`Limux Stable` desktop entry, or a backgrounded shell command:
+Before launching preview, make sure a daily-driver Limux window is already
+open. Prefer the stable lane when present; otherwise use the legacy daily
+launcher so first-run verification does not dead-end before stable has ever
+been promoted:
 
 ```bash
-nohup ~/.local/bin/limux-stable >/tmp/limux-stable-checklist.log 2>&1 &
+if [[ -x ~/.local/bin/limux-stable ]]; then
+  daily_driver="$HOME/.local/bin/limux-stable"
+elif [[ -x ~/.local/bin/limux ]]; then
+  daily_driver="$HOME/.local/bin/limux"
+else
+  echo "No daily-driver Limux launcher found at ~/.local/bin/limux-stable or ~/.local/bin/limux" >&2
+  exit 1
+fi
+nohup "$daily_driver" >/tmp/limux-daily-driver-checklist.log 2>&1 &
 ```
 
-After the stable window is open, launch preview:
+After the daily-driver window is open, launch preview:
 
 ```bash
 ~/.local/bin/limux-preview
@@ -210,13 +227,15 @@ Evidence:
 
 Action:
 1. Create at least two workspaces with different pane layouts.
-2. Open at least one split pane and one renamed or flagged pane if available.
-3. Close the preview Limux window.
-4. Relaunch with `~/.local/bin/limux-preview`.
+2. Open at least one split pane.
+3. Set a flag color on one pane and record the color in Evidence.
+4. Close the preview Limux window.
+5. Relaunch with `~/.local/bin/limux-preview`.
 
 Expected result:
 - Workspaces restore.
 - Pane splits restore.
+- The flagged pane restores with the same flag color.
 - Active tabs and saved operator-visible state restore.
 - No duplicate `terminal-0` stack warning causes broken UI.
 
@@ -231,19 +250,20 @@ Action:
    ~/.local/bin/limux-preview notify --title "Checklist ping" --body "Preview notification"
    ```
 2. Observe desktop toast and sidebar row state.
-3. In a right-hand preview pane, run:
+3. In a right-hand preview pane, run a delayed pane-originating desktop
+   notification:
    ```bash
-   sleep 2; printf '\a'
+   sleep 2; printf '\033]777;notify;Limux checklist;Pane attention\a'
    ```
-4. Before the bell fires, focus a different pane.
-5. Observe the pane attention border on the pane that emitted the bell.
+4. Before the notification fires, focus a different pane.
+5. Observe the pane attention border on the pane that emitted the notification.
 
 Expected result:
 - Toast appears when configured.
 - Workspace row gets the expected unread/sidebar marker.
 - The CLI `notify` command is treated as workspace-only and is not required to
   draw a pane border.
-- The pane needing attention gets a visible blue border overlay.
+- The pane-originating OSC 777 notification gets a visible blue border overlay.
 - The marker clears according to configured hover/focus behavior.
 
 Verdict: `PASS` / `FAIL` / `N/A`
@@ -252,9 +272,10 @@ Evidence:
 ### 9. Runtime Channel Isolation
 
 Action:
-1. Ensure a stable Limux runtime is open before launching preview. If no stable
-   window is open, launch `~/.local/bin/limux-stable` or the `Limux Stable`
-   desktop entry and open a simple stable workspace.
+1. Ensure a daily-driver Limux runtime is open before launching preview. Use
+   `~/.local/bin/limux-stable` when present, or fall back to the legacy
+   `~/.local/bin/limux` launcher on the first verification cycle before stable
+   promotion exists.
 2. Run the scripted smoke:
    ```bash
    bash scripts/tests/runtime-isolation-smoke.sh
@@ -264,9 +285,9 @@ Action:
 
 Expected result:
 - The smoke prints `runtime-isolation-smoke: PASS`.
-- Stable and preview sockets/session dirs are distinct.
-- Preview does not target or mutate the stable socket.
-- Stable and preview windows can coexist without copy/paste, border, or
+- Daily-driver and preview sockets/session dirs are distinct.
+- Preview does not target or mutate the daily-driver socket.
+- Daily-driver and preview windows can coexist without copy/paste, border, or
   workspace interference.
 
 Verdict: `PASS` / `FAIL` / `N/A`
@@ -275,17 +296,19 @@ Evidence:
 ### 10. Pane Attention Overlay And Per-Pane Flags
 
 Action:
-1. In a right-hand split pane, run:
+1. In a right-hand split pane, run a delayed pane-originating desktop
+   notification:
    ```bash
-   sleep 2; printf '\a'
+   sleep 2; printf '\033]777;notify;Limux checklist;Pane flag attention\a'
    ```
-2. Before the bell fires, focus a different pane.
+2. Before the notification fires, focus a different pane.
 3. Right-click a tab in the right-hand pane and set a flag color.
-4. In the flagged right-hand pane, run a second delayed bell:
+4. In the flagged right-hand pane, run a second delayed pane-originating
+   desktop notification:
    ```bash
-   sleep 2; printf '\a'
+   sleep 2; printf '\033]777;notify;Limux checklist;Flagged pane attention\a'
    ```
-5. Before the second bell fires, focus a different pane.
+5. Before the second notification fires, focus a different pane.
 6. Clear the flag color.
 
 Expected result:

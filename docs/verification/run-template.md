@@ -26,6 +26,8 @@ clearly dated correction note.
 
 ```bash
 git rev-parse --verify HEAD
+git submodule status ghostty
+test -f ghostty/zig-out/lib/libghostty.so
 ~/.local/bin/limux-preview --version
 ~/.local/bin/limux-preview doctor --json
 bash scripts/tests/runtime-isolation-smoke.sh
@@ -41,7 +43,7 @@ bash scripts/tests/runtime-isolation-smoke.sh
 | 4 | Window controls and edge hitbox | `PASS` / `FAIL` / `N/A` |  |
 | 5 | Drag-resize soak with live agent TUI | `PASS` / `FAIL` / `N/A` |  |
 | 6 | Sidebar resize, collapse, and restore | `PASS` / `FAIL` / `N/A` |  |
-| 7 | Multi-workspace session restore | `PASS` / `FAIL` / `N/A` |  |
+| 7 | Multi-workspace session and flag restore | `PASS` / `FAIL` / `N/A` |  |
 | 8 | Notification toast, sidebar dot, and pane attention | `PASS` / `FAIL` / `N/A` |  |
 | 9 | Runtime channel isolation | `PASS` / `FAIL` / `N/A` |  |
 | 10 | Pane attention overlay and per-pane flags | `PASS` / `FAIL` / `N/A` |  |
