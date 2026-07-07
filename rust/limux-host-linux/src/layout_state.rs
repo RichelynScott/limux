@@ -949,6 +949,9 @@ fn build_resume_command(
     cwd: Option<&str>,
 ) -> Option<String> {
     let session_id = normalized_str(session_id)?;
+    if let Some(command) = build_hcom_resume_command(kind, &session_id, launch, cwd) {
+        return Some(command);
+    }
     let fallback = kind.fallback_executable().to_string();
     let args = launch
         .map(|launch| launch.arguments.clone())
@@ -998,6 +1001,75 @@ fn build_resume_command(
         None => command,
     };
     Some(wrap_restored_agent_command(kind, &session_id, &run_command))
+}
+
+fn build_hcom_resume_command(
+    kind: RestorableAgentKind,
+    session_id: &str,
+    launch: Option<&AgentLaunchCommandState>,
+    cwd: Option<&str>,
+) -> Option<String> {
+    let launch = launch?;
+    if !is_hcom_managed_launch(launch) {
+        return None;
+    }
+    let target = hcom_resume_name(launch).unwrap_or_else(|| session_id.to_string());
+    let executable = hcom_executable(launch);
+    let command = [executable.as_str(), "r", target.as_str(), "--run-here"]
+        .iter()
+        .map(|part| shell_single_quote(part))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let cwd = cwd
+        .and_then(normalized_str)
+        .or_else(|| launch.cwd.as_deref().and_then(normalized_str));
+    let run_command = match cwd {
+        Some(cwd) => format!("cd {} && {command}", shell_single_quote(&cwd)),
+        None => command,
+    };
+    Some(wrap_restored_agent_command(kind, session_id, &run_command))
+}
+
+fn is_hcom_managed_launch(launch: &AgentLaunchCommandState) -> bool {
+    launch
+        .environment
+        .get("HCOM_PROCESS_ID")
+        .is_some_and(|value| normalized_str(value).is_some())
+        || launch
+            .environment
+            .get("HCOM_LAUNCHED")
+            .is_some_and(|value| value.trim() == "1")
+        || is_hcom_executable(&launch.executable)
+        || launch
+            .arguments
+            .first()
+            .is_some_and(|argument| is_hcom_executable(argument))
+}
+
+fn hcom_resume_name(launch: &AgentLaunchCommandState) -> Option<String> {
+    ["HCOM_NAME", "HCOM_INSTANCE_NAME"].iter().find_map(|name| {
+        launch
+            .environment
+            .get(*name)
+            .and_then(|value| normalized_str(value))
+    })
+}
+
+fn hcom_executable(launch: &AgentLaunchCommandState) -> String {
+    launch
+        .arguments
+        .first()
+        .filter(|value| is_hcom_executable(value))
+        .or_else(|| is_hcom_executable(&launch.executable).then_some(&launch.executable))
+        .cloned()
+        .unwrap_or_else(|| "hcom".to_string())
+}
+
+fn is_hcom_executable(value: &str) -> bool {
+    Path::new(value)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == "hcom")
 }
 
 fn wrap_restored_agent_command(
@@ -2005,6 +2077,56 @@ mod tests {
         assert!(command.contains("cd '/tmp/project' && 'codex' 'resume' 'sess-123'"));
         assert!(command.contains("hooks codex cleanup"));
         assert!(command.contains("exec \"${SHELL:-/bin/sh}\" -l"));
+    }
+
+    #[test]
+    fn restorable_hcom_agent_resume_command_prefers_hcom_name() {
+        let mut environment = BTreeMap::new();
+        environment.insert("HCOM_PROCESS_ID".to_string(), "hcom-process-1".to_string());
+        environment.insert("HCOM_NAME".to_string(), "lifo".to_string());
+        let agent = RestorableAgentState {
+            kind: RestorableAgentKind::Codex,
+            session_id: "sess-123".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            launch_command: Some(AgentLaunchCommandState {
+                executable: "codex".to_string(),
+                arguments: vec!["codex".to_string()],
+                cwd: Some("/tmp/project".to_string()),
+                environment,
+                captured_at: Some(12.0),
+            }),
+            restore_on_startup: true,
+        };
+
+        let command = agent.resume_command().expect("resume command");
+        assert!(command.contains("cd '/tmp/project' && 'hcom' 'r' 'lifo' '--run-here'"));
+        assert!(!command.contains("'codex' 'resume'"));
+        assert!(command.contains("hooks codex cleanup"));
+    }
+
+    #[test]
+    fn restorable_hcom_agent_resume_command_falls_back_to_session_id() {
+        let mut environment = BTreeMap::new();
+        environment.insert("HCOM_PROCESS_ID".to_string(), "hcom-process-1".to_string());
+        let agent = RestorableAgentState {
+            kind: RestorableAgentKind::Hermes,
+            session_id: "20260624_132006_02638e".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            launch_command: Some(AgentLaunchCommandState {
+                executable: "hermes".to_string(),
+                arguments: vec!["hermes".to_string()],
+                cwd: Some("/tmp/project".to_string()),
+                environment,
+                captured_at: Some(12.0),
+            }),
+            restore_on_startup: true,
+        };
+
+        let command = agent.resume_command().expect("resume command");
+        assert!(command
+            .contains("cd '/tmp/project' && 'hcom' 'r' '20260624_132006_02638e' '--run-here'"));
+        assert!(!command.contains("'hermes' '--resume'"));
+        assert!(command.contains("hooks hermes cleanup"));
     }
 
     #[test]
