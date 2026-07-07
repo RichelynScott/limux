@@ -1,6 +1,7 @@
 mod app_config;
 mod control_bridge;
 mod control_registry;
+mod cwd_inheritance;
 mod ghostty_config;
 mod keybind_editor;
 mod layout_state;

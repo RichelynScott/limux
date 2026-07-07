@@ -5897,7 +5897,7 @@ fn split_pane(
     orientation: gtk::Orientation,
     options: SplitPaneOptions,
 ) -> Option<gtk::Widget> {
-    let (shortcuts, wd, container) = {
+    let (shortcuts, workspace_wd, container) = {
         let s = state.borrow();
         (
             s.shortcuts.clone(),
@@ -5915,6 +5915,18 @@ fn split_pane(
     if !container.can_split(pane_widget, orientation) {
         return None;
     }
+
+    // PRD-H US-2: the new pane starts where the source pane currently is.
+    // Live shell-reported cwd (term_cwd) beats the workspace cwd; per-tab
+    // explicit cwds inside `initial_state` still win deeper in pane creation.
+    let source_cwd = pane::active_tab_working_directory(pane_widget);
+    let home = dirs::home_dir().map(|path| path.to_string_lossy().to_string());
+    let wd = crate::cwd_inheritance::resolve_new_pane_cwd(
+        None,
+        source_cwd.as_deref(),
+        workspace_wd.as_deref(),
+        home.as_deref(),
+    );
 
     let new_pane = create_pane_for_workspace(
         state,

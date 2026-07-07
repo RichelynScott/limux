@@ -1837,6 +1837,23 @@ pub fn tab_working_directory(pane_widget: &gtk::Widget, tab_id: &str) -> Option<
     }
 }
 
+/// The live shell-reported cwd of the pane's active tab (falling back to the
+/// first tab when no active tab is recorded). `None` for browser/keybinds
+/// tabs or when the shell has not reported a pwd yet.
+pub fn active_tab_working_directory(pane_widget: &gtk::Widget) -> Option<String> {
+    let internals = find_pane_internals(pane_widget)?;
+    let tab_state = internals.tab_state.borrow();
+    let active_id = tab_state
+        .active_tab
+        .clone()
+        .or_else(|| tab_state.tabs.first().map(|entry| entry.id.clone()))?;
+    let entry = tab_state.tabs.iter().find(|entry| entry.id == active_id)?;
+    match &entry.kind {
+        TabKind::Terminal { state } => state.cwd.borrow().clone(),
+        TabKind::Browser { .. } | TabKind::Keybinds => None,
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PaneSummary {
     pub pane_id: u32,
