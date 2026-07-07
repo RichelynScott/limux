@@ -244,7 +244,7 @@ pub struct TabState {
     pub content: TabContentState,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum RestorableAgentKind {
     Claude,
@@ -725,6 +725,7 @@ pub struct RestorableAgentIndex {
     by_surface: HashMap<(String, String), (RestorableAgentState, f64)>,
     by_any_workspace_surface: HashMap<String, Option<(RestorableAgentState, f64)>>,
     by_tab_id: HashMap<String, Option<(RestorableAgentState, f64)>>,
+    loaded_kinds: HashSet<RestorableAgentKind>,
 }
 
 impl RestorableAgentIndex {
@@ -748,6 +749,7 @@ impl RestorableAgentIndex {
             let Ok(file) = serde_json::from_str::<HookSessionFile>(&raw) else {
                 continue;
             };
+            index.loaded_kinds.insert(kind);
             for record in file.sessions.values() {
                 let Some(session_id) = normalized_str(&record.session_id) else {
                     continue;
@@ -848,6 +850,10 @@ impl RestorableAgentIndex {
             })
             .map(|(agent, _)| agent.clone())
     }
+
+    fn has_loaded_kind(&self, kind: RestorableAgentKind) -> bool {
+        self.loaded_kinds.contains(&kind)
+    }
 }
 
 pub fn attach_restorable_agents_to_layout(
@@ -869,6 +875,11 @@ pub fn attach_restorable_agents_to_layout(
                         index.agent_for_surface(workspace_id, pane.pane_id, &tab.id)
                     {
                         *agent = Some(restored_agent);
+                    } else if agent
+                        .as_ref()
+                        .is_some_and(|agent| index.has_loaded_kind(agent.kind))
+                    {
+                        *agent = None;
                     }
                 }
             }
@@ -1654,8 +1665,54 @@ mod tests {
     }
 
     #[test]
-    fn hook_merge_preserves_persisted_agent_when_index_misses() {
-        let index = RestorableAgentIndex::default();
+    fn hook_merge_clears_persisted_agent_when_index_misses() {
+        let dir = tempdir().expect("tempdir");
+        fs::write(
+            dir.path().join("codex-hook-sessions.json"),
+            r#"{"version":1,"sessions":{}}"#,
+        )
+        .expect("write empty hook state");
+        let index = RestorableAgentIndex::load_from_dir(dir.path());
+        let mut layout = LayoutNodeState::Pane(PaneState {
+            pane_id: Some(42),
+            active_tab_id: Some("tab-a".to_string()),
+            flag_color: None,
+            tabs: vec![TabState {
+                id: "tab-a".to_string(),
+                custom_name: None,
+                pinned: false,
+                content: TabContentState::Terminal {
+                    cwd: Some("/tmp/project".to_string()),
+                    agent: Some(RestorableAgentState {
+                        kind: RestorableAgentKind::Codex,
+                        session_id: "persisted-session".to_string(),
+                        cwd: Some("/tmp/project".to_string()),
+                        launch_command: None,
+                        restore_on_startup: true,
+                    }),
+                },
+            }],
+        });
+
+        attach_restorable_agents_to_layout(&mut layout, "workspace-a", &index);
+
+        let LayoutNodeState::Pane(pane) = layout else {
+            panic!("expected pane");
+        };
+        match &pane.tabs[0].content {
+            TabContentState::Terminal { agent, .. } => {
+                assert_eq!(agent, &None);
+            }
+            other => panic!("expected terminal tab, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn hook_merge_preserves_persisted_agent_when_kind_store_unavailable() {
+        let dir = tempdir().expect("tempdir");
+        fs::write(dir.path().join("codex-hook-sessions.json"), "not json")
+            .expect("write malformed hook state");
+        let index = RestorableAgentIndex::load_from_dir(dir.path());
         let mut layout = LayoutNodeState::Pane(PaneState {
             pane_id: Some(42),
             active_tab_id: Some("tab-a".to_string()),
@@ -1688,6 +1745,92 @@ mod tests {
                     agent.as_ref().map(|agent| agent.session_id.as_str()),
                     Some("persisted-session")
                 );
+            }
+            other => panic!("expected terminal tab, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn hook_merge_preserves_persisted_agent_when_different_kind_store_loaded() {
+        let dir = tempdir().expect("tempdir");
+        fs::write(
+            dir.path().join("claude-hook-sessions.json"),
+            r#"{"version":1,"sessions":{}}"#,
+        )
+        .expect("write empty hook state");
+        let index = RestorableAgentIndex::load_from_dir(dir.path());
+        let mut layout = LayoutNodeState::Pane(PaneState {
+            pane_id: Some(42),
+            active_tab_id: Some("tab-a".to_string()),
+            flag_color: None,
+            tabs: vec![TabState {
+                id: "tab-a".to_string(),
+                custom_name: None,
+                pinned: false,
+                content: TabContentState::Terminal {
+                    cwd: Some("/tmp/project".to_string()),
+                    agent: Some(RestorableAgentState {
+                        kind: RestorableAgentKind::Codex,
+                        session_id: "persisted-session".to_string(),
+                        cwd: Some("/tmp/project".to_string()),
+                        launch_command: None,
+                        restore_on_startup: true,
+                    }),
+                },
+            }],
+        });
+
+        attach_restorable_agents_to_layout(&mut layout, "workspace-a", &index);
+
+        let LayoutNodeState::Pane(pane) = layout else {
+            panic!("expected pane");
+        };
+        match &pane.tabs[0].content {
+            TabContentState::Terminal { agent, .. } => {
+                assert_eq!(
+                    agent.as_ref().map(|agent| agent.session_id.as_str()),
+                    Some("persisted-session")
+                );
+            }
+            other => panic!("expected terminal tab, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn hook_merge_preserves_no_resume_marker_when_index_misses() {
+        let index = RestorableAgentIndex::default();
+        let mut layout = LayoutNodeState::Pane(PaneState {
+            pane_id: Some(42),
+            active_tab_id: Some("tab-a".to_string()),
+            flag_color: None,
+            tabs: vec![TabState {
+                id: "tab-a".to_string(),
+                custom_name: None,
+                pinned: false,
+                content: TabContentState::Terminal {
+                    cwd: Some("/tmp/project".to_string()),
+                    agent: Some(RestorableAgentState {
+                        kind: RestorableAgentKind::Codex,
+                        session_id: "manual-no-resume".to_string(),
+                        cwd: Some("/tmp/project".to_string()),
+                        launch_command: None,
+                        restore_on_startup: false,
+                    }),
+                },
+            }],
+        });
+
+        attach_restorable_agents_to_layout(&mut layout, "workspace-a", &index);
+
+        let LayoutNodeState::Pane(pane) = layout else {
+            panic!("expected pane");
+        };
+        match &pane.tabs[0].content {
+            TabContentState::Terminal { agent, .. } => {
+                let agent = agent.as_ref().expect("no-resume marker");
+                assert_eq!(agent.session_id, "manual-no-resume");
+                assert!(!agent.restore_on_startup);
+                assert_eq!(agent.resume_command(), None);
             }
             other => panic!("expected terminal tab, got {other:?}"),
         }
