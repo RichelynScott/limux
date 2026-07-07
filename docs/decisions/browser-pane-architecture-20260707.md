@@ -11,8 +11,9 @@ measured evidence, a recommendation, and explicit operator or delegated-owner
 ratification.
 
 This file is intentionally a skeleton. It records the decision frame for the
-morning review and leaves measurement cells empty. No F1 spike code has been
-started from this document.
+morning review and leaves measurement cells empty. F1 measurements and prototype
+evidence are still required before ratification; this skeleton does not gate
+that evidence run.
 
 ## Decision Question
 
