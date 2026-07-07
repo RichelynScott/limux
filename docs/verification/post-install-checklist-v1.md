@@ -275,10 +275,16 @@ Evidence:
 ### 10. Pane Attention Overlay And Per-Pane Flags
 
 Action:
-1. Trigger a background notification for a right-hand split pane.
-2. Right-click a tab in a pane and set a flag color.
-3. Mark or trigger unread attention on the same workspace.
-4. Clear the flag color.
+1. In a right-hand split pane, run:
+   ```bash
+   sleep 2; printf '\a'
+   ```
+2. Before the bell fires, focus a different pane.
+3. Right-click a tab in the right-hand pane and set a flag color.
+4. Trigger unread attention on the same workspace with either the delayed bell
+   above or the workspace-only `~/.local/bin/limux-preview notify` command
+   from item 8.
+5. Clear the flag color.
 
 Expected result:
 - The blue attention border is visible around the actual pane, including
