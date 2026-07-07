@@ -25,6 +25,8 @@ const METHODS: &[&str] = &[
     "system.ping",
     "system.identify",
     "system.capabilities",
+    "window.list",
+    "window.current",
     "window.present",
     "workspace.current",
     "workspace.list",
@@ -222,6 +224,11 @@ pub enum ControlCommand {
         body: String,
         reply: mpsc::Sender<BridgeResult>,
     },
+    FallthroughRead {
+        method: String,
+        params: Value,
+        reply: mpsc::Sender<BridgeResult>,
+    },
 }
 
 impl ControlCommand {
@@ -244,7 +251,8 @@ impl ControlCommand {
             | Self::CloseWorkspace { reply, .. }
             | Self::SendText { reply, .. }
             | Self::SendKey { reply, .. }
-            | Self::CreateNotification { reply, .. } => {
+            | Self::CreateNotification { reply, .. }
+            | Self::FallthroughRead { reply, .. } => {
                 let _ = reply.send(result);
             }
         }
@@ -968,6 +976,19 @@ fn handle_method(
             )
         }
         _ => {
+            if crate::control_registry::is_read_only_fallthrough(method) {
+                let (reply, rx) = mpsc::channel();
+                return dispatch_queued(
+                    id,
+                    ControlCommand::FallthroughRead {
+                        method: method.to_string(),
+                        params: Value::Object(params.clone()),
+                        reply,
+                    },
+                    rx,
+                    dispatch,
+                );
+            }
             return error_response(
                 id,
                 BridgeError::new(UNKNOWN_METHOD_CODE, format!("unknown method: {method}")),
@@ -977,8 +998,16 @@ fn handle_method(
 
     let (command, reply_rx) = queued;
 
-    dispatch(command);
+    dispatch_queued(id, command, reply_rx, dispatch)
+}
 
+fn dispatch_queued(
+    id: Option<Value>,
+    command: ControlCommand,
+    reply_rx: mpsc::Receiver<BridgeResult>,
+    dispatch: &dyn Fn(ControlCommand),
+) -> V2Response {
+    dispatch(command);
     match reply_rx.recv_timeout(Duration::from_secs(5)) {
         Ok(Ok(result)) => V2Response::success(id, result),
         Ok(Err(error)) => error_response(id, error),
@@ -988,6 +1017,23 @@ fn handle_method(
 
 fn error_response(id: Option<Value>, error: BridgeError) -> V2Response {
     V2Response::error(id, error.code, error.message, error.data)
+}
+
+pub(crate) fn bridge_result_from_v2_response(response: V2Response) -> BridgeResult {
+    if response.ok {
+        return Ok(response.result.unwrap_or(Value::Null));
+    }
+
+    let Some(error) = response.error else {
+        return Err(BridgeError::internal(
+            "fallthrough response failed without an error payload",
+        ));
+    };
+    let mut bridge_error = BridgeError::new(error.code, error.message);
+    if let Some(data) = error.data {
+        bridge_error = bridge_error.with_data(data);
+    }
+    Err(bridge_error)
 }
 
 fn dispatch_request_for_surface(
@@ -1447,6 +1493,96 @@ mod tests {
     }
 
     #[test]
+    fn surface_read_text_method_stays_on_live_bridge_route() {
+        let response = dispatch_request(
+            r#"{"id":1,"method":"surface.read_text","params":{"surface_id":"surface:9:tab"}}"#,
+            &|command| match command {
+                ControlCommand::ReadSurfaceText {
+                    target,
+                    surface_hint,
+                    reply,
+                } => {
+                    assert_eq!(target, WorkspaceTarget::Active);
+                    assert_eq!(surface_hint, Some("9:tab".to_string()));
+                    let _ = reply.send(Ok(json!({ "text": "live viewport text" })));
+                }
+                other => panic!("surface.read_text must stay live-bridge native: {other:?}"),
+            },
+        );
+
+        assert_eq!(response.error, None);
+        assert_eq!(
+            response.result.expect("result")["text"],
+            "live viewport text"
+        );
+    }
+
+    #[test]
+    fn window_list_routes_to_read_only_core_fallthrough() {
+        let response = dispatch_request(
+            r#"{"id":1,"method":"window.list","params":{}}"#,
+            &|command| match command {
+                ControlCommand::FallthroughRead {
+                    method,
+                    params,
+                    reply,
+                } => {
+                    assert_eq!(method, "window.list");
+                    assert_eq!(params, json!({}));
+                    let _ = reply.send(Ok(json!({
+                        "windows": [
+                            {
+                                "id": 7,
+                                "title": "dev",
+                                "workspace_id": 3,
+                                "current": true,
+                                "pane_count": 1
+                            }
+                        ]
+                    })));
+                }
+                other => panic!("window.list should use read-only fallthrough: {other:?}"),
+            },
+        );
+
+        assert_eq!(response.error, None);
+        let result = response.result.expect("result");
+        assert_eq!(result["windows"][0]["title"], "dev");
+    }
+
+    #[test]
+    fn window_current_routes_to_read_only_core_fallthrough() {
+        let response = dispatch_request(
+            r#"{"id":1,"method":"window.current","params":{}}"#,
+            &|command| match command {
+                ControlCommand::FallthroughRead {
+                    method,
+                    params,
+                    reply,
+                } => {
+                    assert_eq!(method, "window.current");
+                    assert_eq!(params, json!({}));
+                    let _ = reply.send(Ok(json!({
+                        "window_id": "00007",
+                        "window_ref": "window:00007",
+                        "window": {
+                            "id": 7,
+                            "title": "dev",
+                            "pane_count": 1,
+                            "current_pane_id": 9
+                        }
+                    })));
+                }
+                other => panic!("window.current should use read-only fallthrough: {other:?}"),
+            },
+        );
+
+        assert_eq!(response.error, None);
+        let result = response.result.expect("result");
+        assert_eq!(result["window"]["title"], "dev");
+    }
+
+    #[test]
     fn workspace_create_route_rejects_disallowed_terminal_control_command_before_dispatch() {
         let request = json!({
             "id": 1,
@@ -1474,6 +1610,20 @@ mod tests {
 
     fn dispatch_restricted_request(input: &str, dispatch: &dyn Fn(ControlCommand)) -> V2Response {
         dispatch_request_for_surface(input, dispatch, MethodSurface::CursorRestricted)
+    }
+
+    #[test]
+    fn unrestricted_capabilities_include_read_only_fallthrough_methods() {
+        let response = dispatch_request(
+            r#"{"id":1,"method":"system.capabilities","params":{}}"#,
+            &|command| panic!("system.capabilities should not dispatch: {command:?}"),
+        );
+
+        assert_eq!(response.error, None);
+        let result = response.result.expect("capabilities result");
+        let methods = result["methods"].as_array().expect("methods array");
+        assert!(methods.iter().any(|method| method == "window.list"));
+        assert!(methods.iter().any(|method| method == "window.current"));
     }
 
     #[test]

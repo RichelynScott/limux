@@ -1,5 +1,6 @@
 mod app_config;
 mod control_bridge;
+mod control_registry;
 mod ghostty_config;
 mod keybind_editor;
 mod layout_state;
@@ -7,6 +8,7 @@ mod pane;
 mod settings_editor;
 mod shortcut_config;
 mod split_tree;
+mod state_mirror;
 mod terminal;
 mod window;
 

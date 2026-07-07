@@ -11,6 +11,9 @@ use gtk::glib::variant::ToVariant;
 use gtk4 as gtk;
 use libadwaita as adw;
 use limux_control::socket_path::{resolve_socket_path, RuntimeChannel, SocketMode};
+use limux_core::{
+    ControlStateSnapshot, PaneSnapshot, SurfaceSnapshot, WindowSnapshot, WorkspaceSnapshot,
+};
 use limux_protocol::validate_terminal_text_payload;
 
 use crate::app_config;
@@ -355,6 +358,127 @@ fn workspace_payload(state: &AppState, index: usize) -> Option<serde_json::Value
         "title": workspace.name.as_str(),
         "name": workspace.name.as_str(),
     }))
+}
+
+fn fallback_surface_snapshot(surface_id: u64) -> SurfaceSnapshot {
+    SurfaceSnapshot {
+        id: surface_id,
+        title: "terminal".to_string(),
+        text: String::new(),
+        panel_type: "terminal".to_string(),
+        developer_tools_visible: false,
+        pinned: false,
+        unread: false,
+        flash_count: 0,
+        refresh_count: 0,
+    }
+}
+
+fn control_state_snapshot_for_fallthrough(state: &AppState) -> ControlStateSnapshot {
+    let mut next_surface_id = 1_u64;
+    let workspaces = state
+        .workspaces
+        .iter()
+        .enumerate()
+        .map(|(index, workspace)| {
+            let workspace_id = index as u64 + 1;
+            let window_id = workspace_id;
+            let cwd = workspace.cwd.borrow().clone();
+            let pane_summaries = pane::pane_summaries_for_root(&workspace.root);
+            let surface_summaries = pane::surface_summaries_for_root(&workspace.root);
+            let mut surfaces_by_pane = HashMap::new();
+            for surface in surface_summaries {
+                surfaces_by_pane
+                    .entry(surface.pane_id)
+                    .or_insert_with(Vec::new)
+                    .push(surface);
+            }
+
+            let panes = if pane_summaries.is_empty() {
+                let pane_id = 1_000_000 + workspace_id;
+                let surface_id = next_surface_id;
+                next_surface_id += 1;
+                vec![PaneSnapshot {
+                    id: pane_id,
+                    surfaces: vec![fallback_surface_snapshot(surface_id)],
+                    current_surface_id: Some(surface_id),
+                    flag_color: None,
+                }]
+            } else {
+                pane_summaries
+                    .into_iter()
+                    .map(|summary| {
+                        let mut first_surface_id = None;
+                        let mut current_surface_id = None;
+                        let mut surfaces = surfaces_by_pane
+                            .remove(&summary.pane_id)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .map(|surface| {
+                                let surface_id = next_surface_id;
+                                next_surface_id += 1;
+                                first_surface_id.get_or_insert(surface_id);
+                                if summary.active_surface_id.as_deref()
+                                    == Some(surface.surface_id.as_str())
+                                {
+                                    current_surface_id = Some(surface_id);
+                                }
+                                SurfaceSnapshot {
+                                    id: surface_id,
+                                    title: surface.title,
+                                    text: String::new(),
+                                    panel_type: surface.kind,
+                                    developer_tools_visible: false,
+                                    pinned: false,
+                                    unread: false,
+                                    flash_count: 0,
+                                    refresh_count: 0,
+                                }
+                            })
+                            .collect::<Vec<_>>();
+
+                        if surfaces.is_empty() {
+                            let surface_id = next_surface_id;
+                            next_surface_id += 1;
+                            first_surface_id = Some(surface_id);
+                            surfaces.push(fallback_surface_snapshot(surface_id));
+                        }
+
+                        PaneSnapshot {
+                            id: summary.pane_id as u64,
+                            surfaces,
+                            current_surface_id: current_surface_id.or(first_surface_id),
+                            flag_color: summary.flag_color.map(|color| color.name().to_string()),
+                        }
+                    })
+                    .collect()
+            };
+            let current_pane_id = panes.first().map(|pane| pane.id);
+
+            WorkspaceSnapshot {
+                id: workspace_id,
+                name: workspace.name.clone(),
+                cwd,
+                host_window_id: window_id,
+                windows: vec![WindowSnapshot {
+                    id: window_id,
+                    title: workspace.name.clone(),
+                    panes,
+                    current_pane_id,
+                }],
+                current_window_id: Some(window_id),
+            }
+        })
+        .collect();
+
+    ControlStateSnapshot {
+        current_workspace_id: state
+            .workspaces
+            .get(state.active_idx)
+            .map(|_| state.active_idx as u64 + 1),
+        workspaces,
+        notifications: Vec::new(),
+    }
 }
 
 fn focused_surface_payload(state: &State) -> Option<serde_json::Value> {
@@ -4526,6 +4650,20 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                     .collect::<Vec<_>>()
             };
             let _ = reply.send(Ok(serde_json::json!({ "workspaces": workspaces })));
+        }
+        ControlCommand::FallthroughRead {
+            method,
+            params,
+            reply,
+        } => {
+            let snapshot = {
+                let app_state = state.borrow();
+                control_state_snapshot_for_fallthrough(&app_state)
+            };
+            let response = crate::state_mirror::dispatch_snapshot(snapshot, method, params);
+            let _ = reply.send(crate::control_bridge::bridge_result_from_v2_response(
+                response,
+            ));
         }
         ControlCommand::ListPanes { target, reply } => {
             let resolved = {
