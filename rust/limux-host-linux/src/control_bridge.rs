@@ -1569,7 +1569,19 @@ mod tests {
                         "surface_id": "9:tab",
                         "surface_ref": "surface:9:tab",
                         "pane_id": "9",
-                        "pane_ref": "pane:9"
+                        "pane_ref": "pane:9",
+                        "surface": {
+                            "id": "9:tab",
+                            "pane_id": "9",
+                            "title": "terminal",
+                            "text": "",
+                            "panel_type": "terminal",
+                            "developer_tools_visible": false,
+                            "pinned": false,
+                            "unread": false,
+                            "flash_count": 0,
+                            "refresh_count": 0
+                        }
                     })));
                 }
                 other => panic!("surface.current must use live GTK ids: {other:?}"),
@@ -1580,6 +1592,7 @@ mod tests {
         let result = response.result.expect("result");
         assert_eq!(result["surface_id"], "9:tab");
         assert_eq!(result["surface_ref"], "surface:9:tab");
+        assert_eq!(result["surface"]["id"], "9:tab");
     }
 
     #[test]

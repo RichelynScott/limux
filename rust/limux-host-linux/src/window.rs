@@ -499,6 +499,20 @@ fn surface_summary_payload(
     workspace_name: String,
     surface: pane::SurfaceSummary,
 ) -> serde_json::Value {
+    let nested_surface = serde_json::json!({
+        "id": surface.surface_id.as_str(),
+        "pane_id": surface.pane_id.to_string(),
+        "pane_flag_color": surface.pane_flag_color.map(|color| color.name()),
+        "title": surface.title.as_str(),
+        "text": "",
+        "panel_type": surface.kind.as_str(),
+        "developer_tools_visible": false,
+        "pinned": false,
+        "unread": false,
+        "flash_count": 0,
+        "refresh_count": 0,
+    });
+
     let mut payload = serde_json::Map::new();
     payload.insert(
         "workspace_id".to_string(),
@@ -532,6 +546,7 @@ fn surface_summary_payload(
         "surface_ref".to_string(),
         serde_json::Value::String(surface_ref(&surface.surface_id)),
     );
+    payload.insert("surface".to_string(), nested_surface);
     if !surface.title.is_empty() {
         payload.insert(
             "surface_title".to_string(),
@@ -579,7 +594,9 @@ fn current_surface_payload_for_workspace(workspace: &Workspace) -> Option<serde_
 
 fn notification_list_payload(state: &State, unread_only: bool) -> serde_json::Value {
     let app_state = state.borrow();
-    let _ = unread_only; // Vocabulary-compatible flag; only unread workspace notifications exist here.
+    // Vocabulary-compatible flag; only unread workspace notifications exist here.
+    // Active-workspace create notifications are transient notices, not stored unread history.
+    let _ = unread_only;
     let notifications = app_state
         .workspaces
         .iter()
@@ -6948,9 +6965,10 @@ mod tests {
         shortcut_command_from_key_event, shortcut_dispatch_propagation,
         should_auto_open_sidebar_for_notification, should_emit_desktop_notification,
         sidebar_width_class, snapshot_current_pane_id, snapshot_sidebar_width,
-        surface_send_text_response, tab_drag_workspace_seed, use_opaque_window_background,
-        validate_typed_terminal_text, validate_workspace_folder_input_with_dirs,
-        window_chrome_policy, workspace_drop_layout_path, workspace_folder_path_from_input,
+        surface_send_text_response, surface_summary_payload, tab_drag_workspace_seed,
+        use_opaque_window_background, validate_typed_terminal_text,
+        validate_workspace_folder_input_with_dirs, window_chrome_policy,
+        workspace_drop_layout_path, workspace_folder_path_from_input,
         workspace_notification_message, DesktopNotificationTarget, Direction,
         EditableCaptureContext, NeighborScore, PaneBounds, PaneCreateDirection,
         PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest,
@@ -7034,6 +7052,37 @@ mod tests {
 
         assert_eq!(result["ok"], true);
         assert_eq!(result["surface_id"], "7:tab-a");
+    }
+
+    #[test]
+    fn surface_summary_payload_includes_core_shaped_surface_object() {
+        let payload = surface_summary_payload(
+            "workspace-a".to_string(),
+            "Workspace A".to_string(),
+            crate::pane::SurfaceSummary {
+                pane_id: 7,
+                surface_id: "7:tab-a".to_string(),
+                pane_flag_color: None,
+                title: "Agent".to_string(),
+                kind: "terminal".to_string(),
+                selected: true,
+                cwd: Some("/tmp/project".to_string()),
+                uri: None,
+            },
+        );
+
+        assert_eq!(payload["surface_id"], "7:tab-a");
+        assert_eq!(payload["surface_ref"], "surface:7:tab-a");
+        assert_eq!(payload["surface"]["id"], "7:tab-a");
+        assert_eq!(payload["surface"]["pane_id"], "7");
+        assert_eq!(payload["surface"]["title"], "Agent");
+        assert_eq!(payload["surface"]["text"], "");
+        assert_eq!(payload["surface"]["panel_type"], "terminal");
+        assert_eq!(payload["surface"]["developer_tools_visible"], false);
+        assert_eq!(payload["surface"]["pinned"], false);
+        assert_eq!(payload["surface"]["unread"], false);
+        assert_eq!(payload["surface"]["flash_count"], 0);
+        assert_eq!(payload["surface"]["refresh_count"], 0);
     }
 
     #[test]
