@@ -4885,6 +4885,75 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 "flag_color": flag_color.map(|color| color.name()),
             })));
         }
+        ControlCommand::FocusPane { request, reply } => {
+            let pane_id = match parse_pane_handle(&request.pane_id) {
+                Some(pane_id) => pane_id,
+                None => {
+                    let _ = reply.send(Err(BridgeError::invalid_params(
+                        "pane.focus requires a valid pane_id",
+                    )));
+                    return;
+                }
+            };
+
+            let resolved = {
+                let app_state = state.borrow();
+                workspace_index_for_target(&app_state, &request.target)
+            };
+
+            let Some(index) = resolved else {
+                let _ = reply.send(Err(BridgeError::not_found("workspace not found")));
+                return;
+            };
+
+            let (workspace_id, workspace_root, was_active) = {
+                let app_state = state.borrow();
+                let workspace = &app_state.workspaces[index];
+                (
+                    workspace.id.clone(),
+                    workspace.root.clone(),
+                    index == app_state.active_idx,
+                )
+            };
+
+            let Some(pane_widget) = pane::pane_widget_for_root(&workspace_root, pane_id) else {
+                let _ = reply.send(Err(BridgeError::not_found("pane not found")));
+                return;
+            };
+
+            if !was_active {
+                switch_workspace(state, index);
+            }
+
+            let focus_target = pane_widget.clone();
+            let focus_pane = move || {
+                if !pane::focus_active_tab_in_pane(&focus_target) {
+                    focus_target.grab_focus();
+                }
+            };
+            if was_active {
+                focus_pane();
+            } else {
+                glib::idle_add_local_once(focus_pane);
+            }
+
+            let pane_ref = pane_ref(pane_id);
+            let _ = reply.send(Ok(serde_json::json!({
+                "ok": true,
+                "workspace_id": workspace_id.as_str(),
+                "workspace_ref": workspace_ref(&workspace_id),
+                "pane_id": pane_id.to_string(),
+                "pane_ref": pane_ref.as_str(),
+                "focused": true,
+                "pane": {
+                    "id": pane_id.to_string(),
+                    "pane_id": pane_id.to_string(),
+                    "ref": pane_ref.as_str(),
+                    "pane_ref": pane_ref.as_str(),
+                    "focused": true,
+                },
+            })));
+        }
         ControlCommand::CreatePane { request, reply } => {
             if !matches!(request.pane_type, PaneCreateType::Terminal) {
                 let _ = reply.send(Err(BridgeError::invalid_params(

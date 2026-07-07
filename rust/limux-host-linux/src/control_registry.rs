@@ -213,6 +213,8 @@ const ROUTES: &[RouteEntry] = &[
     },
 ];
 
+const WIRED_WAVE1_MUTATIONS: &[&str] = &["pane.focus"];
+
 impl RouteClass {
     fn is_capability_advertised(self) -> bool {
         matches!(self, Self::BridgeNative | Self::CoreRead)
@@ -233,13 +235,19 @@ pub(crate) fn route_class(method: &str) -> Option<RouteClass> {
 pub(crate) fn capability_methods() -> Vec<&'static str> {
     routes()
         .iter()
-        .filter(|entry| entry.class.is_capability_advertised())
+        .filter(|entry| {
+            entry.class.is_capability_advertised() || is_wired_wave1_mutation(entry.method)
+        })
         .map(|entry| entry.method)
         .collect()
 }
 
 pub(crate) fn is_read_only_fallthrough(method: &str) -> bool {
     route_class(method) == Some(RouteClass::CoreRead)
+}
+
+pub(crate) fn is_wired_wave1_mutation(method: &str) -> bool {
+    WIRED_WAVE1_MUTATIONS.contains(&method)
 }
 
 pub(crate) fn wave1_mutations_disabled() -> bool {
@@ -293,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn wave1_mutation_methods_are_classified_but_not_capability_advertised() {
+    fn wave1_mutation_methods_are_classified_and_only_wired_routes_are_advertised() {
         for method in [
             "pane.focus",
             "pane.resize",
@@ -313,6 +321,21 @@ mod tests {
                 Some(RouteClass::Wave1Mutation),
                 "{method} should be in the Wave-1 mutation set"
             );
+        }
+        assert!(capability_methods().contains(&"pane.focus"));
+        for method in [
+            "pane.resize",
+            "resize-pane",
+            "surface.split",
+            "surface.focus",
+            "surface.close",
+            "workspace.reorder",
+            "workspace.next",
+            "workspace.previous",
+            "workspace.last",
+            "notification.clear",
+            "tab.action",
+        ] {
             assert!(
                 !capability_methods().contains(&method),
                 "{method} should not be advertised until a live GTK route is wired"
