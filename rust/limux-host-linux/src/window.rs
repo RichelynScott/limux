@@ -554,6 +554,32 @@ fn focused_surface_payload(state: &State) -> Option<serde_json::Value> {
     Some(serde_json::Value::Object(payload))
 }
 
+fn notification_list_payload(state: &State, unread_only: bool) -> serde_json::Value {
+    let app_state = state.borrow();
+    let notifications = app_state
+        .workspaces
+        .iter()
+        .enumerate()
+        .filter(|(_, workspace)| !unread_only || workspace.unread)
+        .filter(|(_, workspace)| workspace.unread)
+        .map(|(index, workspace)| {
+            let message = workspace.notify_label.label().to_string();
+            serde_json::json!({
+                "index": index,
+                "id": workspace.id.as_str(),
+                "notification_id": workspace.id.as_str(),
+                "workspace_id": workspace.id.as_str(),
+                "workspace_ref": workspace_ref(&workspace.id),
+                "title": message,
+                "body": message,
+                "unread": workspace.unread,
+                "source": "workspace-unread",
+            })
+        })
+        .collect::<Vec<_>>();
+    serde_json::json!({ "notifications": notifications })
+}
+
 fn focused_ids_for_workspace(state: &State, workspace_id: &str) -> (Option<u32>, Option<String>) {
     let is_active = {
         let app_state = state.borrow();
@@ -4935,6 +4961,13 @@ fn handle_control_command(state: &State, command: ControlCommand) {
             };
             let _ = reply.send(Ok(result));
         }
+        ControlCommand::CurrentSurface { reply } => {
+            let result = focused_surface_payload(state);
+            let _ =
+                reply.send(result.ok_or_else(|| {
+                    crate::control_bridge::BridgeError::not_found("surface not found")
+                }));
+        }
         ControlCommand::SurfaceHealth {
             target,
             surface_hint,
@@ -5336,6 +5369,9 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 "body": body,
             });
             let _ = reply.send(Ok(payload));
+        }
+        ControlCommand::ListNotifications { unread_only, reply } => {
+            let _ = reply.send(Ok(notification_list_payload(state, unread_only)));
         }
     }
 }

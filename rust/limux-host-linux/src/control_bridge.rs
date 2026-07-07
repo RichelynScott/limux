@@ -147,6 +147,9 @@ pub enum ControlCommand {
         target: WorkspaceTarget,
         reply: mpsc::Sender<BridgeResult>,
     },
+    CurrentSurface {
+        reply: mpsc::Sender<BridgeResult>,
+    },
     SurfaceHealth {
         target: WorkspaceTarget,
         surface_hint: Option<String>,
@@ -198,6 +201,10 @@ pub enum ControlCommand {
         body: String,
         reply: mpsc::Sender<BridgeResult>,
     },
+    ListNotifications {
+        unread_only: bool,
+        reply: mpsc::Sender<BridgeResult>,
+    },
     FallthroughRead {
         method: String,
         params: Value,
@@ -217,6 +224,7 @@ impl ControlCommand {
             | Self::CreatePane { reply, .. }
             | Self::PaneAction { reply, .. }
             | Self::ListSurfaces { reply, .. }
+            | Self::CurrentSurface { reply }
             | Self::SurfaceHealth { reply, .. }
             | Self::ReadSurfaceText { reply, .. }
             | Self::CreateWorkspace { reply, .. }
@@ -226,6 +234,7 @@ impl ControlCommand {
             | Self::SendText { reply, .. }
             | Self::SendKey { reply, .. }
             | Self::CreateNotification { reply, .. }
+            | Self::ListNotifications { reply, .. }
             | Self::FallthroughRead { reply, .. } => {
                 let _ = reply.send(result);
             }
@@ -455,6 +464,19 @@ fn optional_index(params: &Map<String, Value>, key: &str) -> Result<Option<usize
     Err(BridgeError::invalid_params(format!(
         "{key} must be a non-negative integer"
     )))
+}
+
+fn optional_bool(params: &Map<String, Value>, key: &str) -> Result<Option<bool>, BridgeError> {
+    let Some(value) = params.get(key) else {
+        return Ok(None);
+    };
+    match value {
+        Value::Null => Ok(None),
+        Value::Bool(value) => Ok(Some(*value)),
+        _ => Err(BridgeError::invalid_params(format!(
+            "{key} must be a boolean"
+        ))),
+    }
 }
 
 fn looks_like_workspace_handle(raw: &str) -> bool {
@@ -765,6 +787,10 @@ fn handle_method(
             let (reply, rx) = mpsc::channel();
             (ControlCommand::ListSurfaces { target, reply }, rx)
         }
+        "surface.current" => {
+            let (reply, rx) = mpsc::channel();
+            (ControlCommand::CurrentSurface { reply }, rx)
+        }
         "surface.health" | "surface-health" => {
             let target = match parse_optional_workspace_target(params, true) {
                 Ok(target) => target,
@@ -952,6 +978,14 @@ fn handle_method(
                 },
                 rx,
             )
+        }
+        "notification.list" => {
+            let unread_only = match optional_bool(params, "unread_only") {
+                Ok(value) => value.unwrap_or(false),
+                Err(error) => return error_response(id, error),
+            };
+            let (reply, rx) = mpsc::channel();
+            (ControlCommand::ListNotifications { unread_only, reply }, rx)
         }
         _ => match crate::control_registry::route_class(method) {
             Some(RouteClass::CoreRead) => {
@@ -1517,6 +1551,57 @@ mod tests {
             response.result.expect("result")["text"],
             "live viewport text"
         );
+    }
+
+    #[test]
+    fn surface_current_routes_to_live_bridge_surface_payload() {
+        let response = dispatch_request(
+            r#"{"id":1,"method":"surface.current","params":{}}"#,
+            &|command| match command {
+                ControlCommand::CurrentSurface { reply } => {
+                    let _ = reply.send(Ok(json!({
+                        "surface_id": "9:tab",
+                        "surface_ref": "surface:9:tab",
+                        "pane_id": "9",
+                        "pane_ref": "pane:9"
+                    })));
+                }
+                other => panic!("surface.current must use live GTK ids: {other:?}"),
+            },
+        );
+
+        assert_eq!(response.error, None);
+        let result = response.result.expect("result");
+        assert_eq!(result["surface_id"], "9:tab");
+        assert_eq!(result["surface_ref"], "surface:9:tab");
+    }
+
+    #[test]
+    fn notification_list_routes_to_live_bridge_notifications() {
+        let response = dispatch_request(
+            r#"{"id":1,"method":"notification.list","params":{"unread_only":true}}"#,
+            &|command| match command {
+                ControlCommand::ListNotifications { unread_only, reply } => {
+                    assert!(unread_only);
+                    let _ = reply.send(Ok(json!({
+                        "notifications": [
+                            {
+                                "workspace_id": "dev",
+                                "workspace_ref": "workspace:dev",
+                                "unread": true
+                            }
+                        ]
+                    })));
+                }
+                other => {
+                    panic!("notification.list must use live GTK notification state: {other:?}")
+                }
+            },
+        );
+
+        assert_eq!(response.error, None);
+        let result = response.result.expect("result");
+        assert_eq!(result["notifications"][0]["workspace_id"], "dev");
     }
 
     #[test]
