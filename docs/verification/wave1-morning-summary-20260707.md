@@ -136,15 +136,17 @@ gates. It does not contain measurements, a recommendation, or spike code.
   remains under #7.
 - PRD-H is not done. US-2 cwd inheritance is merged, but restore round-trip,
   recently-closed/focus-history, and restart harness work remain under #8.
-- PRD-F F1 has a skeleton only. The decision evidence and ratification remain
-  required before implementation.
+- PRD-F F1 has a skeleton only. The next work is to collect measurement
+  evidence and write a recommendation; ratification gates F2 implementation,
+  not the F1 evidence run.
 
 ## Next Actions
 
 1. Run the PRD-C post-install checklist against the intended runtime candidate
    before promoting any build into the user's stable Limux install.
-2. Ratify or revise the PRD-F F1 decision skeleton before starting browser
-   architecture measurements or spike code.
+2. Run the PRD-F F1 browser architecture measurements in a dedicated evidence
+   lane, fill the decision skeleton with findings and a recommendation, then
+   ratify or revise it before any F2 browser implementation.
 3. Reconcile TaskMaster statuses for #4 and #5 after owner review confirms
    whether the remaining PRD-E slices should stay under #5 or become separate
    tasks.
