@@ -13,7 +13,7 @@ mod window;
 use adw::prelude::*;
 use libadwaita as adw;
 use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
+use std::io;
 use std::os::fd::AsRawFd;
 #[cfg(unix)]
 use std::os::unix::net::UnixStream;
@@ -44,6 +44,38 @@ const HOST_LOG_ENV: &str = "LIMUX_HOST_LOG";
 const HOST_LOG_PATH_ENV: &str = "LIMUX_HOST_LOG_PATH";
 const HOST_LOG_DIR_NAME: &str = "limux/logs";
 const HOST_LOG_FILE_NAME: &str = "limux-host.log";
+
+pub(crate) fn build_info() -> limux_control::BuildInfo {
+    limux_control::BuildInfo::from_compile_env(
+        option_env!("LIMUX_BUILD_SHA"),
+        option_env!("LIMUX_BUILD_DIRTY"),
+        option_env!("LIMUX_BUILD_PROFILE"),
+    )
+}
+
+fn render_build_identity(prefix: &str, build: &limux_control::BuildInfo) -> String {
+    let dirty = build
+        .dirty
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let install_id = build.install_id.as_deref().unwrap_or("none");
+    let channel = build.channel.as_deref().unwrap_or("none");
+    format!(
+        "{prefix} sha={} dirty={} profile={} install_id={} channel={}",
+        build.sha, dirty, build.profile, install_id, channel
+    )
+}
+
+fn install_panic_identity_hook(build: limux_control::BuildInfo) {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        eprintln!(
+            "{}",
+            render_build_identity("limux-host panic build", &build)
+        );
+        default_hook(info);
+    }));
+}
 
 /// Append a value to an environment variable (comma-separated), or set it.
 fn append_env(key: &str, value: &str) {
@@ -283,14 +315,7 @@ fn install_host_stderr_log() -> io::Result<Option<PathBuf>> {
         fs::create_dir_all(parent)?;
     }
 
-    let mut file = OpenOptions::new().create(true).append(true).open(&path)?;
-    writeln!(
-        file,
-        "\n--- limux-host start version={} pid={} ---",
-        VERSION,
-        std::process::id()
-    )?;
-    file.flush()?;
+    let file = OpenOptions::new().create(true).append(true).open(&path)?;
 
     let rc = unsafe { libc::dup2(file.as_raw_fd(), libc::STDERR_FILENO) };
     if rc < 0 {
@@ -326,12 +351,19 @@ fn main() {
         return;
     }
 
+    let build = build_info();
+    install_panic_identity_hook(build.clone());
+
     ensure_xdg_data_dirs_defaults();
     sanitize_inherited_limux_target_env_for_host();
 
     if let Err(err) = install_host_stderr_log() {
         eprintln!("limux: failed to initialize host log: {err}");
     }
+    eprintln!(
+        "{}",
+        render_build_identity("limux-host start build", &build)
+    );
     ensure_runtime_socket_does_not_collide();
 
     // Ghostty requires desktop OpenGL, not GLES. Must set the GTK renderer

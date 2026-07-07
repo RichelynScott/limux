@@ -17,6 +17,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 
 mod agent_hooks;
+mod doctor;
 
 const CLI_STATE_LOCK_TIMEOUT: Duration = Duration::from_secs(2);
 const CLI_STATE_LOCK_RETRY: Duration = Duration::from_millis(25);
@@ -91,6 +92,8 @@ struct GlobalOptions {
 enum CommandOutput {
     Text(String),
     Json(Value),
+    TextWithExit(String, i32),
+    JsonWithExit(Value, i32),
 }
 
 struct Client {
@@ -229,6 +232,10 @@ fn parse_global_args() -> Result<GlobalOptions> {
                 print_help();
                 std::process::exit(0);
             }
+            "--version" | "-V" => {
+                println!("{}", render_cli_version());
+                std::process::exit(0);
+            }
             _ => break,
         }
     }
@@ -249,7 +256,7 @@ fn parse_global_args() -> Result<GlobalOptions> {
 
 fn print_help() {
     println!(
-        "limux CLI\n\nUsage: limux [--socket <path>] [--channel stable|preview[:id]] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  target-info (alias: socket-info) prints the resolved socket/channel without connecting\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--launch-mode direct|hcom] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the active workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, or hcom with --run-here when requested, writes\n      LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md plus\n      LIMUX_REVIEW_LEDGER.md when missing so peers can coordinate via durable\n      files and `limux send --surface <peer-surface-id> <envelope>`.\n  review prepare --artifact <path-or-ref> --reviewer <agent|manual> --lens <name> --summary <text> [--cwd <path>] [--ledger-path <path>] [--reviews-dir <path>] [--review-id <id>] [--dry-run]\n      Creates a durable review request file, appends a pending review-ledger\n      entry, and prints the reviewer prompt without launching a reviewer pane.\n"
+        "limux CLI\n\nUsage: limux [--socket <path>] [--channel stable|preview[:id]] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  --version\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  doctor [--json] [--log-triage [--lines <n>]]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  target-info (alias: socket-info) prints the resolved socket/channel without connecting\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--launch-mode direct|hcom] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the active workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, or hcom with --run-here when requested, writes\n      LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md plus\n      LIMUX_REVIEW_LEDGER.md when missing so peers can coordinate via durable\n      files and `limux send --surface <peer-surface-id> <envelope>`.\n  review prepare --artifact <path-or-ref> --reviewer <agent|manual> --lens <name> --summary <text> [--cwd <path>] [--ledger-path <path>] [--reviews-dir <path>] [--review-id <id>] [--dry-run]\n      Creates a durable review request file, appends a pending review-ledger\n      entry, and prints the reviewer prompt without launching a reviewer pane.\n"
     );
     println!(
         "  agent-team extra flags: --no-bootstrap skips the post-launch bootstrap prompt while still launching panes; --dry-run skips host contact but still materializes the protocol and seeds missing roster/ledger files."
@@ -263,6 +270,31 @@ fn print_help() {
     println!(
         "  agent-team supports `--agents hermes` and hcom launch as `hcom hermes --run-here`."
     );
+}
+
+fn current_cli_build_info() -> limux_control::BuildInfo {
+    limux_control::BuildInfo::from_compile_env(
+        option_env!("LIMUX_BUILD_SHA"),
+        option_env!("LIMUX_BUILD_DIRTY"),
+        option_env!("LIMUX_BUILD_PROFILE"),
+    )
+}
+
+fn render_cli_version() -> String {
+    let build = current_cli_build_info();
+    let mut text = format!(
+        "limux-cli {} ({}, {})",
+        env!("CARGO_PKG_VERSION"),
+        build.short_sha(),
+        build.profile
+    );
+    if let Some(install_id) = build.install_id {
+        text.push_str(&format!(" install-id={install_id}"));
+    }
+    if let Some(channel) = build.channel {
+        text.push_str(&format!(" channel={channel}"));
+    }
+    text
 }
 
 fn should_launch_host(opts: &GlobalOptions) -> bool {
@@ -5818,6 +5850,20 @@ async fn execute_command(client: &mut Client, opts: &GlobalOptions) -> Result<Co
             }
         }
         "identify" => CommandOutput::Json(run_identify(client, args).await?),
+        "doctor" => {
+            let run = doctor::run(
+                args,
+                opts.json_output || doctor::wants_json(args, false),
+                client.socket.clone(),
+                current_cli_build_info(),
+            )
+            .await?;
+            if run.json_output {
+                CommandOutput::JsonWithExit(run.payload, run.exit_code)
+            } else {
+                CommandOutput::TextWithExit(run.text, run.exit_code)
+            }
+        }
         "list-panels" | "list-panes" | "list-workspaces" | "surface-health" => {
             let payload = run_list(client, command, args).await?;
             if opts.json_output {
@@ -6131,6 +6177,31 @@ async fn main() -> Result<()> {
                     "{}",
                     serde_json::to_string(&value).context("failed to encode json output")?
                 );
+            }
+            Ok(())
+        }
+        Ok(CommandOutput::TextWithExit(text, code)) => {
+            println!("{}", text);
+            if code != 0 {
+                std::process::exit(code);
+            }
+            Ok(())
+        }
+        Ok(CommandOutput::JsonWithExit(value, code)) => {
+            if opts.pretty {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&value)
+                        .context("failed to pretty print response")?
+                );
+            } else {
+                println!(
+                    "{}",
+                    serde_json::to_string(&value).context("failed to encode json output")?
+                );
+            }
+            if code != 0 {
+                std::process::exit(code);
             }
             Ok(())
         }

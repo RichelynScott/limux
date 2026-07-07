@@ -53,7 +53,8 @@ async fn main() -> anyhow::Result<()> {
                 .open(&log_path);
         }
     }
-    let dispatcher = limux_control::Dispatcher::new();
+    let dispatcher =
+        limux_control::Dispatcher::with_build_info(limux_control::current_build_info());
     limux_control::server::run_server(&socket, socket_mode, dispatcher).await?;
     Ok(())
 }
