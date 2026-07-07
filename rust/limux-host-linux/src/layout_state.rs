@@ -716,7 +716,7 @@ struct HookSessionRecord {
 
 #[derive(serde::Deserialize)]
 struct HookSessionFile {
-    #[serde(default)]
+    version: u32,
     sessions: BTreeMap<String, HookSessionRecord>,
 }
 
@@ -749,6 +749,9 @@ impl RestorableAgentIndex {
             let Ok(file) = serde_json::from_str::<HookSessionFile>(&raw) else {
                 continue;
             };
+            if file.version == 0 {
+                continue;
+            }
             index.loaded_kinds.insert(kind);
             for record in file.sessions.values() {
                 let Some(session_id) = normalized_str(&record.session_id) else {
@@ -1712,6 +1715,52 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         fs::write(dir.path().join("codex-hook-sessions.json"), "not json")
             .expect("write malformed hook state");
+        let index = RestorableAgentIndex::load_from_dir(dir.path());
+        let mut layout = LayoutNodeState::Pane(PaneState {
+            pane_id: Some(42),
+            active_tab_id: Some("tab-a".to_string()),
+            flag_color: None,
+            tabs: vec![TabState {
+                id: "tab-a".to_string(),
+                custom_name: None,
+                pinned: false,
+                content: TabContentState::Terminal {
+                    cwd: Some("/tmp/project".to_string()),
+                    agent: Some(RestorableAgentState {
+                        kind: RestorableAgentKind::Codex,
+                        session_id: "persisted-session".to_string(),
+                        cwd: Some("/tmp/project".to_string()),
+                        launch_command: None,
+                        restore_on_startup: true,
+                    }),
+                },
+            }],
+        });
+
+        attach_restorable_agents_to_layout(&mut layout, "workspace-a", &index);
+
+        let LayoutNodeState::Pane(pane) = layout else {
+            panic!("expected pane");
+        };
+        match &pane.tabs[0].content {
+            TabContentState::Terminal { agent, .. } => {
+                assert_eq!(
+                    agent.as_ref().map(|agent| agent.session_id.as_str()),
+                    Some("persisted-session")
+                );
+            }
+            other => panic!("expected terminal tab, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn hook_merge_preserves_persisted_agent_when_sessions_field_is_missing() {
+        let dir = tempdir().expect("tempdir");
+        fs::write(
+            dir.path().join("codex-hook-sessions.json"),
+            r#"{"version":1}"#,
+        )
+        .expect("write malformed hook state");
         let index = RestorableAgentIndex::load_from_dir(dir.path());
         let mut layout = LayoutNodeState::Pane(PaneState {
             pane_id: Some(42),
