@@ -213,7 +213,7 @@ const ROUTES: &[RouteEntry] = &[
     },
 ];
 
-const WIRED_WAVE1_MUTATIONS: &[&str] = &["pane.focus"];
+const WIRED_WAVE1_MUTATIONS: &[&str] = &["pane.focus", "pane.resize", "resize-pane"];
 
 impl RouteClass {
     fn is_capability_advertised(self) -> bool {
@@ -328,10 +328,13 @@ mod tests {
                 "{method} should be in the Wave-1 mutation set"
             );
         }
-        assert!(advertised.contains(&"pane.focus"));
+        for method in ["pane.focus", "pane.resize", "resize-pane"] {
+            assert!(
+                advertised.contains(&method),
+                "{method} should be advertised after the live GTK route is wired"
+            );
+        }
         for method in [
-            "pane.resize",
-            "resize-pane",
             "surface.split",
             "surface.focus",
             "surface.close",

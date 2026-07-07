@@ -117,6 +117,22 @@ pub struct PaneFocusRequest {
     pub pane_id: String,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct PaneResizeRequest {
+    pub target: WorkspaceTarget,
+    pub pane_id: String,
+    pub direction: PaneResizeDirection,
+    pub amount: f64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PaneResizeDirection {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
 #[derive(Debug)]
 pub enum ControlCommand {
     Identify {
@@ -151,6 +167,10 @@ pub enum ControlCommand {
     },
     FocusPane {
         request: PaneFocusRequest,
+        reply: mpsc::Sender<BridgeResult>,
+    },
+    ResizePane {
+        request: PaneResizeRequest,
         reply: mpsc::Sender<BridgeResult>,
     },
     ListSurfaces {
@@ -235,6 +255,7 @@ impl ControlCommand {
             | Self::CreatePane { reply, .. }
             | Self::PaneAction { reply, .. }
             | Self::FocusPane { reply, .. }
+            | Self::ResizePane { reply, .. }
             | Self::ListSurfaces { reply, .. }
             | Self::CurrentSurface { reply, .. }
             | Self::SurfaceHealth { reply, .. }
@@ -638,6 +659,52 @@ fn parse_pane_focus_request(params: &Map<String, Value>) -> Result<PaneFocusRequ
     })
 }
 
+fn optional_f64(params: &Map<String, Value>, key: &str) -> Result<Option<f64>, BridgeError> {
+    let Some(value) = params.get(key) else {
+        return Ok(None);
+    };
+    match value {
+        Value::Null => Ok(None),
+        Value::Number(number) => number
+            .as_f64()
+            .filter(|value| value.is_finite() && *value >= 0.0)
+            .map(Some)
+            .ok_or_else(|| {
+                BridgeError::invalid_params(format!("{key} must be a non-negative number"))
+            }),
+        _ => Err(BridgeError::invalid_params(format!(
+            "{key} must be a non-negative number"
+        ))),
+    }
+}
+
+fn parse_pane_resize_request(
+    params: &Map<String, Value>,
+) -> Result<PaneResizeRequest, BridgeError> {
+    let pane_id = optional_ref_handle(params, &["pane_id", "pane", "id"], "pane:")?
+        .ok_or_else(|| BridgeError::invalid_params("pane.resize requires pane_id/id"))?;
+    let direction = match optional_string(params, &["direction"])
+        .unwrap_or_else(|| "right".to_string())
+        .as_str()
+    {
+        "left" => PaneResizeDirection::Left,
+        "right" => PaneResizeDirection::Right,
+        "up" => PaneResizeDirection::Up,
+        "down" => PaneResizeDirection::Down,
+        _ => {
+            return Err(BridgeError::invalid_params(
+                "pane.resize direction must be one of left|right|up|down",
+            ));
+        }
+    };
+    Ok(PaneResizeRequest {
+        target: parse_optional_workspace_target_without_id(params, true)?,
+        pane_id,
+        direction,
+        amount: optional_f64(params, "amount")?.unwrap_or(1.0),
+    })
+}
+
 fn parse_pane_action_request(
     params: &Map<String, Value>,
 ) -> Result<PaneActionRequest, BridgeError> {
@@ -831,6 +898,25 @@ fn handle_method(
             };
             let (reply, rx) = mpsc::channel();
             (ControlCommand::FocusPane { request, reply }, rx)
+        }
+        "pane.resize" | "resize-pane" => {
+            if crate::control_registry::wave1_mutations_disabled() {
+                return error_response(
+                    id,
+                    BridgeError::new(
+                        UNKNOWN_METHOD_CODE,
+                        format!(
+                            "Wave-1 mutation route disabled by {WAVE1_MUTATION_KILL_SWITCH_ENV}: {method}"
+                        ),
+                    ),
+                );
+            }
+            let request = match parse_pane_resize_request(params) {
+                Ok(request) => request,
+                Err(error) => return error_response(id, error),
+            };
+            let (reply, rx) = mpsc::channel();
+            (ControlCommand::ResizePane { request, reply }, rx)
         }
         "cursor.pane_create_empty" => {
             let request = match parse_cursor_pane_create_empty_request(params) {
@@ -1565,6 +1651,65 @@ mod tests {
     }
 
     #[test]
+    fn pane_resize_route_queues_resize_pane_command() {
+        let response = dispatch_request(
+            r#"{"id":1,"method":"pane.resize","params":{"workspace_id":"workspace:dev","pane_id":"pane:7","direction":"left","amount":24}}"#,
+            &|command| match command {
+                ControlCommand::ResizePane { request, reply } => {
+                    assert_eq!(
+                        request.target,
+                        WorkspaceTarget::Handle("workspace:dev".to_string())
+                    );
+                    assert_eq!(request.pane_id, "7");
+                    assert_eq!(request.direction, PaneResizeDirection::Left);
+                    assert_eq!(request.amount, 24.0);
+                    let _ = reply.send(Ok(json!({
+                        "ok": true,
+                        "pane_id": "7",
+                        "pane_ref": "pane:7",
+                        "direction": "left",
+                        "amount": 24.0,
+                        "frame": { "width": 320, "height": 200 }
+                    })));
+                }
+                other => panic!("unexpected command: {other:?}"),
+            },
+        );
+
+        assert_eq!(response.error, None);
+        let result = response.result.expect("pane.resize should return a result");
+        assert_eq!(result["pane_ref"], "pane:7");
+        assert_eq!(result["frame"]["width"], 320);
+    }
+
+    #[test]
+    fn resize_pane_alias_uses_same_parser_and_treats_id_as_pane_id() {
+        let response = dispatch_request(
+            r#"{"id":1,"method":"resize-pane","params":{"id":"pane:9","direction":"down"}}"#,
+            &|command| match command {
+                ControlCommand::ResizePane { request, reply } => {
+                    assert_eq!(request.target, WorkspaceTarget::Active);
+                    assert_eq!(request.pane_id, "9");
+                    assert_eq!(request.direction, PaneResizeDirection::Down);
+                    assert_eq!(request.amount, 1.0);
+                    let _ = reply.send(Ok(json!({
+                        "ok": true,
+                        "pane_id": "9",
+                        "pane_ref": "pane:9",
+                        "direction": "down",
+                        "amount": 1.0,
+                        "frame": { "width": 100, "height": 101 }
+                    })));
+                }
+                other => panic!("unexpected command: {other:?}"),
+            },
+        );
+
+        assert_eq!(response.error, None);
+        assert_eq!(response.result.expect("result")["pane_id"], "9");
+    }
+
+    #[test]
     fn cursor_pane_create_empty_rejects_command_payload_fields_before_dispatch() {
         for field in ["command", "text", "key", "paste", "shell", "pty", "raw_pty"] {
             let mut params = Map::new();
@@ -1873,10 +2018,12 @@ mod tests {
         assert_eq!(response.error, None);
         let result = response.result.expect("capabilities result");
         let methods = result["methods"].as_array().expect("methods array");
-        assert!(
-            methods.iter().any(|entry| entry == "pane.focus"),
-            "pane.focus should be advertised after the live GTK route is wired"
-        );
+        for method in ["pane.focus", "pane.resize", "resize-pane"] {
+            assert!(
+                methods.iter().any(|entry| entry == method),
+                "{method} should be advertised after the live GTK route is wired"
+            );
+        }
         for method in ["surface.split", "notification.clear"] {
             assert!(
                 !methods.iter().any(|entry| entry == method),
