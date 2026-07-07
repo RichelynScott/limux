@@ -869,6 +869,8 @@ pub fn attach_restorable_agents_to_layout(
                         index.agent_for_surface(workspace_id, pane.pane_id, &tab.id)
                     {
                         *agent = Some(restored_agent);
+                    } else {
+                        *agent = None;
                     }
                 }
             }
@@ -1654,7 +1656,7 @@ mod tests {
     }
 
     #[test]
-    fn hook_merge_preserves_persisted_agent_when_index_misses() {
+    fn hook_merge_clears_persisted_agent_when_index_misses() {
         let index = RestorableAgentIndex::default();
         let mut layout = LayoutNodeState::Pane(PaneState {
             pane_id: Some(42),
@@ -1684,10 +1686,47 @@ mod tests {
         };
         match &pane.tabs[0].content {
             TabContentState::Terminal { agent, .. } => {
-                assert_eq!(
-                    agent.as_ref().map(|agent| agent.session_id.as_str()),
-                    Some("persisted-session")
-                );
+                assert_eq!(agent, &None);
+            }
+            other => panic!("expected terminal tab, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn hook_merge_preserves_no_resume_marker_when_index_misses() {
+        let index = RestorableAgentIndex::default();
+        let mut layout = LayoutNodeState::Pane(PaneState {
+            pane_id: Some(42),
+            active_tab_id: Some("tab-a".to_string()),
+            flag_color: None,
+            tabs: vec![TabState {
+                id: "tab-a".to_string(),
+                custom_name: None,
+                pinned: false,
+                content: TabContentState::Terminal {
+                    cwd: Some("/tmp/project".to_string()),
+                    agent: Some(RestorableAgentState {
+                        kind: RestorableAgentKind::Codex,
+                        session_id: "manual-no-resume".to_string(),
+                        cwd: Some("/tmp/project".to_string()),
+                        launch_command: None,
+                        restore_on_startup: false,
+                    }),
+                },
+            }],
+        });
+
+        attach_restorable_agents_to_layout(&mut layout, "workspace-a", &index);
+
+        let LayoutNodeState::Pane(pane) = layout else {
+            panic!("expected pane");
+        };
+        match &pane.tabs[0].content {
+            TabContentState::Terminal { agent, .. } => {
+                let agent = agent.as_ref().expect("no-resume marker");
+                assert_eq!(agent.session_id, "manual-no-resume");
+                assert!(!agent.restore_on_startup);
+                assert_eq!(agent.resume_command(), None);
             }
             other => panic!("expected terminal tab, got {other:?}"),
         }
