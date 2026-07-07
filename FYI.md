@@ -1887,3 +1887,35 @@ PR #16 | `16828118c19543af59b3c332fe2bd08bc1c12b49` |
 `docs/cmux-parity-roadmap-20260706.md` |
 `.taskmaster/docs/limux-prd-a-runtime-trust-20260706.md` |
 `.taskmaster/docs/limux-prd-h-restore-pack-20260706.md`
+
+## 2026-07-07 - Post-Install Verification Loop Staged
+### What:
+Added the first versioned post-install verification checklist and run template
+under `docs/verification/` for preview-channel Limux testing before stable
+promotion.
+
+### Why:
+Recent Limux fixes affected operator-visible behavior: typing/paste, Ghostty
+resources, runtime isolation, pane resizing, sidebar handling, notification
+attention, and pane flag colors. Those fixes need a repeatable write-back loop
+so a PR is not treated as truly done until a full or relevant subset checklist
+run records a verdict.
+
+### How:
+The checklist installs `origin/main` into the preview lane with
+`--channel preview`, tests the current needs-verification backlog, records
+PASS/FAIL/N/A per item, and blocks stable promotion on any failure. Promotion,
+when allowed, is a fresh stable-lane install from the same source SHA using
+`--channel stable`; the post-promotion launcher is `~/.local/bin/limux-stable`,
+not the legacy `~/.local/bin/limux`.
+
+### Impact:
+Future behavior-changing Limux PRs have a durable verification path. The first
+live GUI run is still operator-gated and should write a filled run file under
+`docs/verification/runs/`, update TaskMaster via `task-master-reviewed`, and
+only promote to stable if every full-run item passes.
+
+### Related:
+`docs/verification/post-install-checklist-v1.md` |
+`docs/verification/run-template.md` |
+`docs/verification/runs/`
