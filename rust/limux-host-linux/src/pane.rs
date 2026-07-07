@@ -1137,6 +1137,26 @@ struct TerminalTabOptions<'a> {
     agent: Option<RestorableAgentState>,
 }
 
+const HCOM_TERMINAL_IDENTITY_ENV: &[&str] = &[
+    "HCOM_NAME",
+    "HCOM_INSTANCE_NAME",
+    "HCOM_PROCESS_ID",
+    "HCOM_LAUNCHED",
+    "HCOM_LAUNCH_EVENT_ID",
+    "HCOM_LAUNCHED_BY",
+    "HCOM_LAUNCH_BATCH_ID",
+    "HCOM_IS_FORK",
+    "HCOM_FORK_OF_SESSION",
+];
+
+fn append_hcom_identity_env_scrub(extra_env: &mut Vec<(String, String)>) {
+    extra_env.extend(
+        HCOM_TERMINAL_IDENTITY_ENV
+            .iter()
+            .map(|name| ((*name).to_string(), String::new())),
+    );
+}
+
 struct BrowserTabOptions<'a> {
     id: Option<&'a str>,
     custom_name: Option<&'a str>,
@@ -1430,6 +1450,7 @@ fn add_terminal_tab_inner(
     {
         extra_env.push(("LIMUX_SOCKET".to_string(), sock.to_string()));
     }
+    append_hcom_identity_env_scrub(&mut extra_env);
     let startup_command = options
         .as_ref()
         .and_then(|value| value.agent.as_ref())
@@ -3697,14 +3718,14 @@ fn create_browser_widget(
 #[cfg(test)]
 mod tests {
     use super::{
-        browser_feature_enabled_value, classify_content_drop_zone, content_drop_preview_rect,
-        effective_drop_target_dimensions, is_localhost_input, next_active_after_tab_removal,
-        normalize_browser_entry_input, normalize_reorder_insert_index, pane_action_tooltip,
-        surface_hint_matches, ContentDropZone, TabDragPayload, BROWSER_SEARCH_ENTRY_CSS_CLASS,
-        BROWSER_SEARCH_ENTRY_CSS_CLASSES, BROWSER_URL_ENTRY_CSS_CLASS,
-        BROWSER_URL_ENTRY_CSS_CLASSES, HOST_ENTRY_CSS_CLASS, PANE_ATTENTION_ACTIVE_CSS_CLASS,
-        PANE_ATTENTION_OVERLAY_CSS_CLASS, PANE_CSS, TAB_RENAME_ENTRY_CSS_CLASS,
-        TAB_RENAME_ENTRY_CSS_CLASSES,
+        append_hcom_identity_env_scrub, browser_feature_enabled_value, classify_content_drop_zone,
+        content_drop_preview_rect, effective_drop_target_dimensions, is_localhost_input,
+        next_active_after_tab_removal, normalize_browser_entry_input,
+        normalize_reorder_insert_index, pane_action_tooltip, surface_hint_matches, ContentDropZone,
+        TabDragPayload, BROWSER_SEARCH_ENTRY_CSS_CLASS, BROWSER_SEARCH_ENTRY_CSS_CLASSES,
+        BROWSER_URL_ENTRY_CSS_CLASS, BROWSER_URL_ENTRY_CSS_CLASSES, HCOM_TERMINAL_IDENTITY_ENV,
+        HOST_ENTRY_CSS_CLASS, PANE_ATTENTION_ACTIVE_CSS_CLASS, PANE_ATTENTION_OVERLAY_CSS_CLASS,
+        PANE_CSS, TAB_RENAME_ENTRY_CSS_CLASS, TAB_RENAME_ENTRY_CSS_CLASSES,
     };
     #[cfg(feature = "webkit")]
     use super::{
@@ -3771,6 +3792,21 @@ mod tests {
         assert!(PANE_CSS.contains("opacity: 1"));
         assert!(!PANE_CSS.contains(".limux-pane-content-attention"));
         assert!(!PANE_CSS.contains(".limux-pane-attention {"));
+    }
+
+    #[test]
+    fn terminal_env_scrub_clears_inherited_hcom_identity() {
+        let mut extra_env = vec![("LIMUX_WORKSPACE_ID".to_string(), "workspace-a".to_string())];
+
+        append_hcom_identity_env_scrub(&mut extra_env);
+
+        assert!(extra_env.contains(&("LIMUX_WORKSPACE_ID".to_string(), "workspace-a".to_string())));
+        for name in HCOM_TERMINAL_IDENTITY_ENV {
+            assert!(
+                extra_env.contains(&((*name).to_string(), String::new())),
+                "{name} should be explicitly cleared for spawned terminals"
+            );
+        }
     }
 
     #[test]

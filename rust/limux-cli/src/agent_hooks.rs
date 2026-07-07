@@ -440,22 +440,30 @@ fn split_nul_or_space_separated(raw: String) -> Vec<String> {
 }
 
 fn selected_environment() -> BTreeMap<String, String> {
-    let allowlist: BTreeSet<&'static str> = [
+    let allowlist = selected_environment_allowlist();
+
+    std::env::vars()
+        .filter(|(key, value)| allowlist.contains(key.as_str()) && !value.trim().is_empty())
+        .collect()
+}
+
+fn selected_environment_allowlist() -> BTreeSet<&'static str> {
+    [
         "CODEX_HOME",
         "CLAUDE_CONFIG_DIR",
         "OPENCODE_CONFIG_DIR",
         "GEMINI_CONFIG_DIR",
         "HERMES_HOME",
+        "HCOM_NAME",
+        "HCOM_INSTANCE_NAME",
+        "HCOM_PROCESS_ID",
+        "HCOM_LAUNCHED",
         "ANTHROPIC_BASE_URL",
         "ANTHROPIC_MODEL",
         "ANTHROPIC_SMALL_FAST_MODEL",
     ]
     .into_iter()
-    .collect();
-
-    std::env::vars()
-        .filter(|(key, value)| allowlist.contains(key.as_str()) && !value.trim().is_empty())
-        .collect()
+    .collect()
 }
 
 #[cfg(test)]
@@ -562,6 +570,15 @@ mod tests {
         );
         assert_eq!(AgentKind::Hermes.store_name(), "hermes");
         assert_eq!(AgentKind::Hermes.label(), "Hermes");
+    }
+
+    #[test]
+    fn environment_allowlist_preserves_hcom_identity_markers() {
+        let allowlist = selected_environment_allowlist();
+
+        assert!(allowlist.contains("HCOM_NAME"));
+        assert!(allowlist.contains("HCOM_PROCESS_ID"));
+        assert!(allowlist.contains("HCOM_LAUNCHED"));
     }
 
     #[test]
