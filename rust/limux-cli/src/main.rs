@@ -21,6 +21,7 @@ mod doctor;
 
 const CLI_STATE_LOCK_TIMEOUT: Duration = Duration::from_secs(2);
 const CLI_STATE_LOCK_RETRY: Duration = Duration::from_millis(25);
+const AGENT_HOOK_NOTIFY_BUDGET: Duration = Duration::from_millis(500);
 const AGENT_TEAM_BOOTSTRAP_LAUNCH_SETTLE: Duration = Duration::from_millis(1000);
 const AGENT_TEAM_BOOTSTRAP_RETRY_ATTEMPTS: usize = 50;
 const AGENT_TEAM_BOOTSTRAP_RETRY_INTERVAL: Duration = Duration::from_millis(100);
@@ -1155,29 +1156,36 @@ async fn run_agent_hook(
         params.insert("body".to_string(), Value::String(body));
     }
 
-    let notify_result = call_in_workspace_scope(
-        client,
-        workspace.clone(),
-        "notification.create",
-        Value::Object(params),
-    )
-    .await;
-    match notify_result {
-        Ok(_) => write_agent_hook_debug(
+    let workspace_for_debug = workspace.clone();
+    let notify_outcome = send_agent_hook_notification_with_budget(client, workspace, params).await;
+    match notify_outcome {
+        AgentHookNotifyOutcome::Delivered => write_agent_hook_debug(
             agent,
             &event,
             "notify_ok",
-            &agent_hook_notify_debug_details(&client.socket, workspace.as_deref(), None),
+            &agent_hook_notify_debug_details(&client.socket, workspace_for_debug.as_deref(), None),
         ),
-        Err(error) => {
-            let error = format!("{error:#}");
+        AgentHookNotifyOutcome::Error(error) => {
             write_agent_hook_debug(
                 agent,
                 &event,
                 "notify_error",
                 &agent_hook_notify_debug_details(
                     &client.socket,
-                    workspace.as_deref(),
+                    workspace_for_debug.as_deref(),
+                    Some(&error),
+                ),
+            );
+        }
+        AgentHookNotifyOutcome::Timeout => {
+            let error = format!("timed out after {}ms", AGENT_HOOK_NOTIFY_BUDGET.as_millis());
+            write_agent_hook_debug(
+                agent,
+                &event,
+                "notify_timeout",
+                &agent_hook_notify_debug_details(
+                    &client.socket,
+                    workspace_for_debug.as_deref(),
                     Some(&error),
                 ),
             );
@@ -1185,6 +1193,31 @@ async fn run_agent_hook(
     }
 
     Ok(agent_hook_output(&event, &payload))
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum AgentHookNotifyOutcome {
+    Delivered,
+    Error(String),
+    Timeout,
+}
+
+async fn send_agent_hook_notification_with_budget(
+    client: &mut Client,
+    workspace: Option<String>,
+    params: Map<String, Value>,
+) -> AgentHookNotifyOutcome {
+    let notification = call_in_workspace_scope(
+        client,
+        workspace,
+        "notification.create",
+        Value::Object(params),
+    );
+    match tokio::time::timeout(AGENT_HOOK_NOTIFY_BUDGET, notification).await {
+        Ok(Ok(_)) => AgentHookNotifyOutcome::Delivered,
+        Ok(Err(error)) => AgentHookNotifyOutcome::Error(format!("{error:#}")),
+        Err(_) => AgentHookNotifyOutcome::Timeout,
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1814,7 +1847,7 @@ fn install_json_hooks(
             "hooks": [{
                 "type": "command",
                 "command": hook_command(agent, limux_event)?,
-                "statusMessage": format!("Limux {} session restore", agent.label()),
+                "statusMessage": hook_status_message(agent_event),
                 "timeout": hook_timeout(agent)
             }]
         });
@@ -1829,9 +1862,21 @@ fn install_json_hooks(
     write_json_object(path, &root)
 }
 
+fn hook_status_message(agent_event: &str) -> &'static str {
+    match canonical_agent_hook_display_event(agent_event) {
+        AgentHookDisplayEvent::Notification => "limux notify",
+        AgentHookDisplayEvent::Stop => "limux stop hook",
+        AgentHookDisplayEvent::SessionStart => "limux session start",
+        AgentHookDisplayEvent::SessionEnd => "limux session end",
+        AgentHookDisplayEvent::ToolUse => "limux tool hook",
+        AgentHookDisplayEvent::UserPromptSubmit => "limux prompt hook",
+        AgentHookDisplayEvent::Other => "limux hook",
+    }
+}
+
 fn hook_timeout(agent: agent_hooks::AgentKind) -> u64 {
     match agent {
-        agent_hooks::AgentKind::Claude => 5,
+        agent_hooks::AgentKind::Claude => 2,
         agent_hooks::AgentKind::Codex | agent_hooks::AgentKind::Gemini => 5000,
         agent_hooks::AgentKind::OpenCode => 0,
         agent_hooks::AgentKind::Hermes => 5000,
@@ -6775,11 +6820,70 @@ mod cli_arg_tests {
             serde_json::from_slice(&fs::read(&path).expect("read settings")).expect("json");
         let entry = &root["hooks"]["SessionStart"][0];
         assert_eq!(entry["matcher"], "*");
-        assert_eq!(entry["hooks"][0]["timeout"], 5);
+        assert_eq!(entry["hooks"][0]["timeout"], 2);
+        assert_eq!(entry["hooks"][0]["statusMessage"], "limux session start");
         assert!(entry["hooks"][0]["command"]
             .as_str()
             .expect("command")
             .contains("hooks claude session-start"));
+    }
+
+    #[test]
+    fn claude_hook_install_writes_event_specific_status_messages() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("settings.json");
+
+        install_json_hooks(
+            &path,
+            agent_hooks::AgentKind::Claude,
+            &[
+                ("Notification", "stop", None),
+                ("Stop", "stop", None),
+                ("SessionEnd", "session-end", None),
+            ],
+        )
+        .expect("install hooks");
+
+        let root: Value =
+            serde_json::from_slice(&fs::read(&path).expect("read settings")).expect("json");
+        assert_eq!(
+            root["hooks"]["Notification"][0]["hooks"][0]["statusMessage"],
+            "limux notify"
+        );
+        assert_eq!(
+            root["hooks"]["Stop"][0]["hooks"][0]["statusMessage"],
+            "limux stop hook"
+        );
+        assert_eq!(
+            root["hooks"]["SessionEnd"][0]["hooks"][0]["statusMessage"],
+            "limux session end"
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_hook_notification_budget_returns_fast_when_socket_hangs() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let socket = dir.path().join("limux.sock");
+        let listener = tokio::net::UnixListener::bind(&socket).expect("bind listener");
+        let server = tokio::spawn(async move {
+            let (_stream, _) = listener.accept().await.expect("accept client");
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        });
+
+        let mut client = Client::new(socket);
+        let mut params = Map::new();
+        params.insert("title".to_string(), Value::String("hook".to_string()));
+        let started = Instant::now();
+
+        let outcome = send_agent_hook_notification_with_budget(&mut client, None, params).await;
+
+        assert_eq!(outcome, AgentHookNotifyOutcome::Timeout);
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "hook notification waited too long: {:?}",
+            started.elapsed()
+        );
+        server.abort();
     }
 
     #[test]
