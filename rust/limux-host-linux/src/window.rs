@@ -628,6 +628,7 @@ pub(crate) struct ResolvedPaneCreateTarget {
     pub(crate) workspace_id: String,
     pub(crate) pane_id: u32,
     pub(crate) pane_widget: gtk::Widget,
+    pub(crate) source_surface_cwd: Option<String>,
     pub(crate) placement: PaneCreateSplitPlacement,
 }
 
@@ -709,6 +710,13 @@ fn pane_create_target_error(error: PaneCreateTargetError) -> BridgeError {
     }
 }
 
+fn pane_create_source_cwd_override(
+    source_surface_id: Option<&str>,
+    source_surface_cwd: Option<String>,
+) -> Option<Option<String>> {
+    source_surface_id.map(|_| source_surface_cwd)
+}
+
 #[allow(dead_code)]
 pub(crate) fn resolve_pane_create_target(
     state: &State,
@@ -735,6 +743,13 @@ pub(crate) fn resolve_pane_create_target(
         .map(|summary| summary.pane_id)
         .collect::<Vec<_>>();
     let surface_summaries = pane::surface_summaries_for_root(&workspace_root);
+    let source_surface_cwd = surface_id.and_then(|surface_id| {
+        let requested = normalize_surface_handle(surface_id);
+        surface_summaries
+            .iter()
+            .find(|surface| surface.surface_id == requested)
+            .and_then(|surface| surface.cwd.clone())
+    });
     let surface_to_pane = surface_summaries
         .iter()
         .map(|surface| (surface.surface_id.as_str(), surface.pane_id))
@@ -758,6 +773,7 @@ pub(crate) fn resolve_pane_create_target(
         workspace_id,
         pane_id,
         pane_widget,
+        source_surface_cwd,
         placement: pane_create_split_placement(direction),
     })
 }
@@ -4862,6 +4878,10 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                     skip_default_tab: false,
                     new_pane_first: resolved.placement.new_pane_first,
                     persist: true,
+                    source_cwd_override: pane_create_source_cwd_override(
+                        request.source_surface_id.as_deref(),
+                        resolved.source_surface_cwd.clone(),
+                    ),
                 },
             );
             let Some(new_pane) = new_pane else {
@@ -5418,6 +5438,7 @@ pub(crate) fn create_pane_for_workspace(
                     skip_default_tab: false,
                     new_pane_first: false,
                     persist: true,
+                    source_cwd_override: None,
                 },
             );
         }),
@@ -5888,6 +5909,10 @@ struct SplitPaneOptions {
     skip_default_tab: bool,
     new_pane_first: bool,
     persist: bool,
+    /// `None` computes from the active tab of `pane_widget`. `Some(cwd)` is
+    /// used for explicit `pane.create(surface_id=...)` calls, where even a
+    /// missing cwd must not fall back to another tab in the same pane.
+    source_cwd_override: Option<Option<String>>,
 }
 
 fn split_pane(
@@ -5919,7 +5944,10 @@ fn split_pane(
     // PRD-H US-2: the new pane starts where the source pane currently is.
     // Live shell-reported cwd (term_cwd) beats the workspace cwd; per-tab
     // explicit cwds inside `initial_state` still win deeper in pane creation.
-    let source_cwd = pane::active_tab_working_directory(pane_widget);
+    let source_cwd = match &options.source_cwd_override {
+        Some(cwd) => cwd.clone(),
+        None => pane::active_tab_working_directory(pane_widget),
+    };
     let home = dirs::home_dir().map(|path| path.to_string_lossy().to_string());
     let wd = crate::cwd_inheritance::resolve_new_pane_cwd(
         None,
@@ -6006,6 +6034,7 @@ fn handle_split_with_tab(
             skip_default_tab: true,
             new_pane_first,
             persist: false,
+            source_cwd_override: None,
         },
     );
     let Some(new_pane) = new_pane else { return };
@@ -6220,6 +6249,7 @@ fn dispatch_browser_command(state: &State, command: ShortcutCommand) -> bool {
                     skip_default_tab: false,
                     new_pane_first: false,
                     persist: true,
+                    source_cwd_override: None,
                 },
             )
             .is_some()
@@ -6240,6 +6270,7 @@ fn split_focused_pane(state: &State, orientation: gtk::Orientation) {
                 skip_default_tab: false,
                 new_pane_first: false,
                 persist: true,
+                source_cwd_override: None,
             },
         );
     }
@@ -6827,8 +6858,8 @@ mod tests {
         directional_neighbor_score, favorites_prefix_len, font_size_after_delta,
         ghostty_prefers_dark, gtk_system_prefers_dark_from_raw, new_instance_command,
         next_active_workspace_index, pane_action_target_pane_id, pane_attention_target,
-        pane_create_split_placement, queue_session_save_request, resolve_pane_create_source_id,
-        resolved_system_prefers_dark, sanitize_background_opacity,
+        pane_create_source_cwd_override, pane_create_split_placement, queue_session_save_request,
+        resolve_pane_create_source_id, resolved_system_prefers_dark, sanitize_background_opacity,
         shortcut_allowed_while_browser_find_active, shortcut_blocked_by_editable,
         shortcut_command_from_key_event, shortcut_dispatch_propagation,
         should_auto_open_sidebar_for_notification, should_emit_desktop_notification,
@@ -7154,6 +7185,22 @@ mod tests {
         assert_eq!(
             resolve_pane_create_source_id(None, None, None, true, &[], &[]),
             Err(PaneCreateTargetError::NoPanes)
+        );
+    }
+
+    #[test]
+    fn pane_create_surface_cwd_override_distinguishes_missing_cwd_from_no_surface() {
+        assert_eq!(
+            pane_create_source_cwd_override(Some("surface:10:bg"), Some("/bg".to_string())),
+            Some(Some("/bg".to_string()))
+        );
+        assert_eq!(
+            pane_create_source_cwd_override(Some("surface:10:bg"), None),
+            Some(None)
+        );
+        assert_eq!(
+            pane_create_source_cwd_override(None, Some("/active".to_string())),
+            None
         );
     }
 
