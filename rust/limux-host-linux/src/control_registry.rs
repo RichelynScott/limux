@@ -6,6 +6,10 @@ pub(crate) enum RouteClass {
     Deferred,
 }
 
+// PRD-E names a future `restricted` class for Cursor co-design. The shipped
+// Cursor surface is still enforced by limux_protocol::restricted_method_allowlist,
+// so cursor routes stay BridgeNative here until the Cursor lane consumes this
+// registry as its source of truth.
 pub(crate) const WAVE1_MUTATION_KILL_SWITCH_ENV: &str = "LIMUX_DISABLE_WAVE1_MUTATIONS";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -112,6 +116,14 @@ const ROUTES: &[RouteEntry] = &[
         class: RouteClass::CoreRead,
     },
     RouteEntry {
+        method: "surface.current",
+        class: RouteClass::CoreRead,
+    },
+    RouteEntry {
+        method: "notification.list",
+        class: RouteClass::CoreRead,
+    },
+    RouteEntry {
         method: "pane.focus",
         class: RouteClass::Wave1Mutation,
     },
@@ -153,6 +165,10 @@ const ROUTES: &[RouteEntry] = &[
     },
     RouteEntry {
         method: "notification.clear",
+        class: RouteClass::Wave1Mutation,
+    },
+    RouteEntry {
+        method: "tab.action",
         class: RouteClass::Wave1Mutation,
     },
     RouteEntry {
@@ -249,6 +265,10 @@ mod tests {
     fn window_reads_are_fallthrough_methods() {
         assert_eq!(route_class("window.list"), Some(RouteClass::CoreRead));
         assert_eq!(route_class("window.current"), Some(RouteClass::CoreRead));
+        assert_eq!(route_class("surface.current"), Some(RouteClass::CoreRead));
+        assert_eq!(route_class("notification.list"), Some(RouteClass::CoreRead));
+        assert!(capability_methods().contains(&"surface.current"));
+        assert!(capability_methods().contains(&"notification.list"));
     }
 
     #[test]
@@ -274,6 +294,7 @@ mod tests {
             "workspace.previous",
             "workspace.last",
             "notification.clear",
+            "tab.action",
         ] {
             assert_eq!(
                 route_class(method),
