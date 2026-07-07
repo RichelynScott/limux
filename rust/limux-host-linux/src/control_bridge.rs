@@ -11,6 +11,7 @@ use std::time::Duration;
 use gtk::glib;
 use gtk4 as gtk;
 
+use crate::control_registry::{RouteClass, WAVE1_MUTATION_KILL_SWITCH_ENV};
 use crate::layout_state::PaneFlagColor;
 use limux_control::auth::{self, SocketControlMode};
 use limux_control::request_io::{self, read_request_frame};
@@ -20,33 +21,6 @@ use limux_protocol::{
     validate_terminal_text_payload, V2Request, V2Response,
 };
 use serde_json::{json, Map, Value};
-
-const METHODS: &[&str] = &[
-    "system.ping",
-    "system.identify",
-    "system.capabilities",
-    "window.list",
-    "window.current",
-    "window.present",
-    "workspace.current",
-    "workspace.list",
-    "workspace.create",
-    "workspace.select",
-    "workspace.rename",
-    "workspace.close",
-    "pane.list",
-    "pane.surfaces",
-    "pane.create",
-    "pane.action",
-    "surface.list",
-    "surface.health",
-    "surface.read_text",
-    "surface.send_text",
-    "surface.send_key",
-    "notification.create",
-    "cursor.pane_create_empty",
-    "cursor.workspace_open_folder",
-];
 
 const PARSE_ERROR_CODE: i64 = -32700;
 const INVALID_PARAMS_CODE: i64 = -32602;
@@ -173,6 +147,10 @@ pub enum ControlCommand {
         target: WorkspaceTarget,
         reply: mpsc::Sender<BridgeResult>,
     },
+    CurrentSurface {
+        target: WorkspaceTarget,
+        reply: mpsc::Sender<BridgeResult>,
+    },
     SurfaceHealth {
         target: WorkspaceTarget,
         surface_hint: Option<String>,
@@ -224,6 +202,10 @@ pub enum ControlCommand {
         body: String,
         reply: mpsc::Sender<BridgeResult>,
     },
+    ListNotifications {
+        unread_only: bool,
+        reply: mpsc::Sender<BridgeResult>,
+    },
     FallthroughRead {
         method: String,
         params: Value,
@@ -243,6 +225,7 @@ impl ControlCommand {
             | Self::CreatePane { reply, .. }
             | Self::PaneAction { reply, .. }
             | Self::ListSurfaces { reply, .. }
+            | Self::CurrentSurface { reply, .. }
             | Self::SurfaceHealth { reply, .. }
             | Self::ReadSurfaceText { reply, .. }
             | Self::CreateWorkspace { reply, .. }
@@ -252,6 +235,7 @@ impl ControlCommand {
             | Self::SendText { reply, .. }
             | Self::SendKey { reply, .. }
             | Self::CreateNotification { reply, .. }
+            | Self::ListNotifications { reply, .. }
             | Self::FallthroughRead { reply, .. } => {
                 let _ = reply.send(result);
             }
@@ -483,6 +467,19 @@ fn optional_index(params: &Map<String, Value>, key: &str) -> Result<Option<usize
     )))
 }
 
+fn optional_bool(params: &Map<String, Value>, key: &str) -> Result<Option<bool>, BridgeError> {
+    let Some(value) = params.get(key) else {
+        return Ok(None);
+    };
+    match value {
+        Value::Null => Ok(None),
+        Value::Bool(value) => Ok(Some(*value)),
+        _ => Err(BridgeError::invalid_params(format!(
+            "{key} must be a boolean"
+        ))),
+    }
+}
+
 fn looks_like_workspace_handle(raw: &str) -> bool {
     let raw = raw.trim();
     if raw.starts_with("workspace:") {
@@ -708,7 +705,11 @@ fn handle_method(
                     }),
                 );
             }
-            return V2Response::success(id, json!({ "commands": METHODS, "methods": METHODS }));
+            let methods = crate::control_registry::capability_methods();
+            return V2Response::success(
+                id,
+                json!({ "commands": methods.clone(), "methods": methods }),
+            );
         }
         "system.identify" => {
             let (reply, rx) = mpsc::channel();
@@ -786,6 +787,14 @@ fn handle_method(
             };
             let (reply, rx) = mpsc::channel();
             (ControlCommand::ListSurfaces { target, reply }, rx)
+        }
+        "surface.current" => {
+            let target = match parse_optional_workspace_target(params, true) {
+                Ok(target) => target,
+                Err(error) => return error_response(id, error),
+            };
+            let (reply, rx) = mpsc::channel();
+            (ControlCommand::CurrentSurface { target, reply }, rx)
         }
         "surface.health" | "surface-health" => {
             let target = match parse_optional_workspace_target(params, true) {
@@ -975,8 +984,17 @@ fn handle_method(
                 rx,
             )
         }
-        _ => {
-            if crate::control_registry::is_read_only_fallthrough(method) {
+        "notification.list" => {
+            let unread_only = match optional_bool(params, "unread_only") {
+                Ok(value) => value.unwrap_or(false),
+                Err(error) => return error_response(id, error),
+            };
+            let (reply, rx) = mpsc::channel();
+            (ControlCommand::ListNotifications { unread_only, reply }, rx)
+        }
+        _ => match crate::control_registry::route_class(method) {
+            Some(RouteClass::CoreRead) => {
+                debug_assert!(crate::control_registry::is_read_only_fallthrough(method));
                 let (reply, rx) = mpsc::channel();
                 return dispatch_queued(
                     id,
@@ -989,11 +1007,34 @@ fn handle_method(
                     dispatch,
                 );
             }
-            return error_response(
-                id,
-                BridgeError::new(UNKNOWN_METHOD_CODE, format!("unknown method: {method}")),
-            );
-        }
+            Some(RouteClass::Wave1Mutation) => {
+                let message = if crate::control_registry::wave1_mutations_disabled() {
+                    format!(
+                        "Wave-1 mutation route disabled by {WAVE1_MUTATION_KILL_SWITCH_ENV}: {method}"
+                    )
+                } else {
+                    format!(
+                        "Wave-1 mutation route classified but not wired to live GTK state yet: {method}"
+                    )
+                };
+                return error_response(id, BridgeError::new(UNKNOWN_METHOD_CODE, message));
+            }
+            Some(RouteClass::Deferred) => {
+                return error_response(
+                    id,
+                    BridgeError::new(
+                        UNKNOWN_METHOD_CODE,
+                        format!("PRD-E method deferred in Wave 1: {method}"),
+                    ),
+                );
+            }
+            Some(RouteClass::BridgeNative) | None => {
+                return error_response(
+                    id,
+                    BridgeError::new(UNKNOWN_METHOD_CODE, format!("unknown method: {method}")),
+                );
+            }
+        },
     };
 
     let (command, reply_rx) = queued;
@@ -1518,6 +1559,71 @@ mod tests {
     }
 
     #[test]
+    fn surface_current_routes_to_live_bridge_surface_payload() {
+        let response = dispatch_request(
+            r#"{"id":1,"method":"surface.current","params":{"workspace_id":"workspace:dev"}}"#,
+            &|command| match command {
+                ControlCommand::CurrentSurface { target, reply } => {
+                    assert_eq!(target, WorkspaceTarget::Handle("workspace:dev".to_string()));
+                    let _ = reply.send(Ok(json!({
+                        "surface_id": "9:tab",
+                        "surface_ref": "surface:9:tab",
+                        "pane_id": "9",
+                        "pane_ref": "pane:9",
+                        "surface": {
+                            "id": "9:tab",
+                            "pane_id": "9",
+                            "title": "terminal",
+                            "text": "",
+                            "panel_type": "terminal",
+                            "developer_tools_visible": false,
+                            "pinned": false,
+                            "unread": false,
+                            "flash_count": 0,
+                            "refresh_count": 0
+                        }
+                    })));
+                }
+                other => panic!("surface.current must use live GTK ids: {other:?}"),
+            },
+        );
+
+        assert_eq!(response.error, None);
+        let result = response.result.expect("result");
+        assert_eq!(result["surface_id"], "9:tab");
+        assert_eq!(result["surface_ref"], "surface:9:tab");
+        assert_eq!(result["surface"]["id"], "9:tab");
+    }
+
+    #[test]
+    fn notification_list_routes_to_live_bridge_notifications() {
+        let response = dispatch_request(
+            r#"{"id":1,"method":"notification.list","params":{"unread_only":true}}"#,
+            &|command| match command {
+                ControlCommand::ListNotifications { unread_only, reply } => {
+                    assert!(unread_only);
+                    let _ = reply.send(Ok(json!({
+                        "notifications": [
+                            {
+                                "workspace_id": "dev",
+                                "workspace_ref": "workspace:dev",
+                                "unread": true
+                            }
+                        ]
+                    })));
+                }
+                other => {
+                    panic!("notification.list must use live GTK notification state: {other:?}")
+                }
+            },
+        );
+
+        assert_eq!(response.error, None);
+        let result = response.result.expect("result");
+        assert_eq!(result["notifications"][0]["workspace_id"], "dev");
+    }
+
+    #[test]
     fn window_list_routes_to_read_only_core_fallthrough() {
         let response = dispatch_request(
             r#"{"id":1,"method":"window.list","params":{}}"#,
@@ -1624,6 +1730,58 @@ mod tests {
         let methods = result["methods"].as_array().expect("methods array");
         assert!(methods.iter().any(|method| method == "window.list"));
         assert!(methods.iter().any(|method| method == "window.current"));
+    }
+
+    #[test]
+    fn unrestricted_capabilities_do_not_advertise_unwired_wave1_or_deferred_routes() {
+        let response = dispatch_request(
+            r#"{"id":1,"method":"system.capabilities","params":{}}"#,
+            &|command| panic!("system.capabilities should not dispatch: {command:?}"),
+        );
+
+        assert_eq!(response.error, None);
+        let result = response.result.expect("capabilities result");
+        let methods = result["methods"].as_array().expect("methods array");
+        for method in ["pane.focus", "surface.split", "notification.clear"] {
+            assert!(
+                !methods.iter().any(|entry| entry == method),
+                "{method} must stay out of capabilities until wired to live GTK state"
+            );
+        }
+        for method in ["pane.swap", "surface.move", "window.create"] {
+            assert!(
+                !methods.iter().any(|entry| entry == method),
+                "{method} must stay out of capabilities while explicitly deferred"
+            );
+        }
+    }
+
+    #[test]
+    fn wave1_mutation_route_returns_explicit_unwired_error() {
+        let response = dispatch_request(
+            r#"{"id":1,"method":"pane.focus","params":{"pane_id":7}}"#,
+            &|command| panic!("unwired Wave-1 route should not dispatch: {command:?}"),
+        );
+
+        assert_eq!(response.result, None);
+        let error = response.error.expect("error");
+        assert_eq!(error.code, UNKNOWN_METHOD_CODE);
+        assert!(error.message.contains("Wave-1 mutation"));
+        assert!(error.message.contains("live GTK"));
+    }
+
+    #[test]
+    fn deferred_route_returns_explicit_prd_e_error() {
+        let response = dispatch_request(
+            r#"{"id":1,"method":"surface.move","params":{}}"#,
+            &|command| panic!("deferred route should not dispatch: {command:?}"),
+        );
+
+        assert_eq!(response.result, None);
+        let error = response.error.expect("error");
+        assert_eq!(error.code, UNKNOWN_METHOD_CODE);
+        assert!(error.message.contains("deferred"));
+        assert!(error.message.contains("surface.move"));
     }
 
     #[test]

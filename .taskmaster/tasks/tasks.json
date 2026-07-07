@@ -438,7 +438,8 @@
             "details": "Operator audit 2026-07-07: manually closed panes 119/120 left no queryable trail, so peers could not distinguish a dead surface from an idle shell. Add a bounded lifecycle event log for pane/workspace create, close, focus, restore, and human/manual close classification where detectable. Expose it through an events/doctor-style inquiry surface and/or system capability without creating notification spam. Events should include timestamp, workspace id/ref, pane id/ref when known, surface/tab id when known, reason/source best-effort, and retention/size bounds. Verify closed panes are visible to diagnostics and do not mutate unread/attention state.",
             "status": "pending",
             "dependencies": [],
-            "parentTaskId": 5
+            "parentTaskId": 5,
+            "parentId": "5"
           }
         ],
         "updatedAt": "2026-07-07T07:45:08.864Z"
@@ -476,7 +477,8 @@
             "details": "Operator audit 2026-07-07: LIMUX_AGENTS.md still listed surfaces for panes 119/120 after manual closure; protocol-following peers could send agent-msg envelopes to nonexistent panes or to a returned zsh prompt, creating shell-execution hazard. Add agent-team regeneration/self-heal behavior: verify live workspace/pane/surface refs before peer routing, mark missing surfaces stale, provide a safe regenerate command/path, and avoid injecting envelopes into a pane that is no longer an agent session. Consider integrating lifecycle events from subtask 5.1 and hcom identity where launch-mode hcom is used. Acceptance: closing a peer pane updates or invalidates the peers table before the next send/bootstrap path; stale destinations fail closed with a clear diagnostic.",
             "status": "pending",
             "dependencies": [],
-            "parentTaskId": 7
+            "parentTaskId": 7,
+            "parentId": "7"
           },
           {
             "id": 2,
@@ -485,7 +487,8 @@
             "details": "Root cause observed 2026-07-07: invoking ./target/debug/limux-cli agent-team --help from a peer/orchestrator path proceeded through run_agent_team and could resolve the currently focused workspace, leading to unintended panes in the operator's Zen-Master workspace. Fixed by returning help before any parsing/validation/host calls and by rendering help text in the agent-team dispatcher path. Regression: cargo test -p limux-cli agent_team_help_is_side_effect_free -- --nocapture. Smoke: ./target/debug/limux-cli --socket /tmp/limux-agent-team-help-no-such.sock agent-team --help exits 0 and prints help.",
             "status": "done",
             "dependencies": [],
-            "parentTaskId": 7
+            "parentTaskId": 7,
+            "parentId": "7"
           }
         ],
         "updatedAt": "2026-07-07T08:44:38.881Z"
@@ -494,7 +497,7 @@
         "id": 8,
         "title": "Implement Session Restore Correctness Pack: round-trip tests, cwd inheritance, recently-closed & focus history",
         "description": "Implement the full PRD-H scope across three areas: (1) Verify split geometry/identity round-trip fidelity via full-layout save→restore tests and a kill/restart Xvfb harness; fix corrupt-file clobbering. (2) Add cwd inheritance on split via a shared resolution helper (term_cwd → workspace cwd → $HOME) across GUI, bridge, and core split paths. (3) Add recently-closed ring buffer (workspace/tab), focus-history back/forward navigation, CLI verbs, default keybinds, GUI submenu, and persistence in session.json with additive serde fields.",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [
           "5"
         ],
@@ -507,42 +510,46 @@
             "title": "P1 restore slice A: exited-agent restore safety and stale socket cleanup",
             "description": "Do not resurrect exited/manual-closed agent panes during restore; use cleanup-hook-driven persisted state to restore exited tabs as a plain shell at cwd or omit them per documented default. Fold cheap stale socket cleanup on startup into this slice.",
             "details": "Acceptance: persisted session restore can distinguish active hcom-managed panes from exited/manual-closed panes; exited panes never relaunch agents; default behavior is documented and tested; startup removes stale Limux socket state when safe; focused restore tests pass.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
-            "parentTaskId": 8
+            "parentTaskId": 8,
+            "updatedAt": "2026-07-07T21:32:30.048Z",
+            "parentId": "8"
           },
           {
             "id": 2,
             "title": "P1 restore slice B: hcom-managed agent resume path",
             "description": "Restore hcom-managed agents through hcom r <name> when a live/stopped hcom identity exists; use native provider resume only as documented fallback when hcom identity recovery is unavailable.",
             "details": "Acceptance: restore code records enough agent metadata to choose hcom r for hcom-managed panes; fallback path is explicit and logged; restored panes bind to the intended workspace/pane instead of the human's active pane; tests cover hcom-managed and fallback decisions without requiring live hcom.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
-            "parentTaskId": 8
+            "parentTaskId": 8,
+            "parentId": "8",
+            "updatedAt": "2026-07-07T21:32:41.129Z"
           },
           {
             "id": 3,
             "title": "P1 restore slice C: staggered restore batching",
             "description": "Restore panes in small batches instead of launching all panes/sessions at once; default batch size is 2-3 panes and avoids hook/GUI storms after restart.",
             "details": "Acceptance: restore scheduling limits concurrent pane/session starts to a documented batch size; readiness/progress is bounded and logged; user-visible restore remains deterministic; tests cover queue ordering and batch-size behavior; preview smoke demonstrates no restore storm.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
-            "parentTaskId": 8
+            "parentTaskId": 8,
+            "parentId": "8",
+            "updatedAt": "2026-07-07T21:32:49.529Z"
           }
         ],
-        "updatedAt": "2026-07-07T08:44:43.951Z"
+        "updatedAt": "2026-07-07T21:32:49.529Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-07T09:48:36.838Z",
+      "lastModified": "2026-07-07T21:32:49.530Z",
       "taskCount": 8,
-      "completedCount": 2,
+      "completedCount": 3,
       "tags": [
         "cmux-parity-20260707"
-      ],
-      "created": "2026-07-07T11:43:56.710Z",
-      "description": "Tasks for cmux-parity-20260707 context"
+      ]
     }
   }
 }
