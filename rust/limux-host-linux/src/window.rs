@@ -1264,23 +1264,18 @@ fn apply_loaded_session(state: &State, mut loaded: LoadedSession) {
 }
 
 fn restore_active_workspace(state: &State, index: usize) {
-    let maybe_row = {
+    let maybe_index = {
         let s = state.borrow();
         if s.workspaces.is_empty() {
             None
         } else {
             let clamped = index.min(s.workspaces.len() - 1);
-            Some((
-                clamped,
-                s.workspaces[clamped].sidebar_row.clone(),
-                s.sidebar_list.clone(),
-            ))
+            Some(clamped)
         }
     };
 
-    if let Some((index, row, sidebar_list)) = maybe_row {
+    if let Some(index) = maybe_index {
         switch_workspace(state, index);
-        sidebar_list.select_row(Some(&row));
     }
 }
 
@@ -3255,24 +3250,17 @@ fn activate_desktop_notification_target(
     target: &DesktopNotificationTarget,
     activation_token: Option<&str>,
 ) {
-    let (workspace_idx, row, sidebar_list, window, workspace_changed) = {
+    let (workspace_idx, window, workspace_changed) = {
         let s = state.borrow();
-        let Some((idx, workspace)) = s
+        let Some(idx) = s
             .workspaces
             .iter()
-            .enumerate()
-            .find(|(_, workspace)| workspace.id == target.workspace_id)
+            .position(|workspace| workspace.id == target.workspace_id)
         else {
             return;
         };
 
-        (
-            idx,
-            workspace.sidebar_row.clone(),
-            s.sidebar_list.clone(),
-            s.window.clone(),
-            idx != s.active_idx,
-        )
+        (idx, s.window.clone(), idx != s.active_idx)
     };
 
     if let Some(token) = activation_token.filter(|token| !token.is_empty()) {
@@ -3280,7 +3268,6 @@ fn activate_desktop_notification_target(
     }
     window.present();
     switch_workspace(state, workspace_idx);
-    sidebar_list.select_row(Some(&row));
 
     let state_for_focus = state.clone();
     let target_for_focus = target.clone();
@@ -3399,16 +3386,13 @@ fn open_keybind_editor_tab(state: &State, pane_widget: &gtk::Widget) {
 }
 
 fn activate_workspace_shortcut(state: &State, idx: usize) {
-    let row_and_list = {
+    let target_exists = {
         let s = state.borrow();
-        s.workspaces
-            .get(idx)
-            .map(|ws| (idx, ws.sidebar_row.clone(), s.sidebar_list.clone()))
+        s.workspaces.get(idx).is_some()
     };
 
-    if let Some((idx, row, list)) = row_and_list {
+    if target_exists {
         switch_workspace(state, idx);
-        list.select_row(Some(&row));
     }
 }
 
@@ -4379,25 +4363,15 @@ fn install_workspace_row_interactions(
                         if drop_handled.get() {
                             return;
                         }
-                        let (target_idx, sidebar_row, sidebar_list) = {
+                        let target_idx = {
                             let app_state = state.borrow();
-                            let idx = app_state
+                            app_state
                                 .workspaces
                                 .iter()
-                                .position(|workspace| workspace.id == target_workspace_id);
-                            let sidebar_row = idx.and_then(|idx| {
-                                app_state
-                                    .workspaces
-                                    .get(idx)
-                                    .map(|workspace| workspace.sidebar_row.clone())
-                            });
-                            (idx, sidebar_row, app_state.sidebar_list.clone())
+                                .position(|workspace| workspace.id == target_workspace_id)
                         };
                         if let Some(target_idx) = target_idx {
                             switch_workspace(&state, target_idx);
-                        }
-                        if let Some(sidebar_row) = sidebar_row {
-                            sidebar_list.select_row(Some(&sidebar_row));
                         }
                     },
                 );
@@ -4925,14 +4899,12 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 return;
             };
 
-            let (workspace_id, workspace_root, sidebar_row, sidebar_list, was_active) = {
+            let (workspace_id, workspace_root, was_active) = {
                 let app_state = state.borrow();
                 let workspace = &app_state.workspaces[index];
                 (
                     workspace.id.clone(),
                     workspace.root.clone(),
-                    workspace.sidebar_row.clone(),
-                    app_state.sidebar_list.clone(),
                     index == app_state.active_idx,
                 )
             };
@@ -4944,7 +4916,6 @@ fn handle_control_command(state: &State, command: ControlCommand) {
 
             if !was_active {
                 switch_workspace(state, index);
-                sidebar_list.select_row(Some(&sidebar_row));
             }
 
             let response = pane_focus_response_payload(&workspace_id, pane_id);
@@ -5208,13 +5179,7 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 return;
             };
 
-            let row = {
-                let app_state = state.borrow();
-                app_state.workspaces[index].sidebar_row.clone()
-            };
-            let sidebar_list = state.borrow().sidebar_list.clone();
             switch_workspace(state, index);
-            sidebar_list.select_row(Some(&row));
 
             let result = {
                 let app_state = state.borrow();
@@ -5816,59 +5781,74 @@ fn close_workspace_by_id_internal(
 }
 
 fn switch_workspace(state: &State, idx: usize) {
-    let (stack, stack_name, unread_handles, focus_root) = {
+    let (workspace_change, sidebar_row, sidebar_list, sidebar_already_selected) = {
         let mut s = state.borrow_mut();
-        if idx >= s.workspaces.len() || idx == s.active_idx {
+        if idx >= s.workspaces.len() {
             return;
         }
-        s.active_idx = idx;
-        let stack = s.stack.clone();
-        let stack_name = format!("ws-{}", s.workspaces[idx].id);
-        let focus_root = s.workspaces[idx].root.clone();
-
-        let unread_handles = if s.workspaces[idx].unread {
-            let ws = &mut s.workspaces[idx];
-            ws.unread = false;
-            Some((
-                ws.notify_dot.clone(),
-                ws.notify_label.clone(),
-                ws.sidebar_row.clone(),
-            ))
+        let sidebar_row = s.workspaces[idx].sidebar_row.clone();
+        let sidebar_list = s.sidebar_list.clone();
+        let sidebar_already_selected = sidebar_list
+            .selected_row()
+            .as_ref()
+            .is_some_and(|selected| selected == &sidebar_row);
+        if idx == s.active_idx {
+            (None, sidebar_row, sidebar_list, sidebar_already_selected)
         } else {
-            None
-        };
+            s.active_idx = idx;
+            let stack = s.stack.clone();
+            let stack_name = format!("ws-{}", s.workspaces[idx].id);
+            let focus_root = s.workspaces[idx].root.clone();
 
-        (stack, stack_name, unread_handles, focus_root)
+            let unread_handles = if s.workspaces[idx].unread {
+                let ws = &mut s.workspaces[idx];
+                ws.unread = false;
+                Some((
+                    ws.notify_dot.clone(),
+                    ws.notify_label.clone(),
+                    ws.sidebar_row.clone(),
+                ))
+            } else {
+                None
+            };
+
+            (
+                Some((stack, stack_name, unread_handles, focus_root)),
+                sidebar_row,
+                sidebar_list,
+                sidebar_already_selected,
+            )
+        }
     };
 
-    stack.set_visible_child_name(&stack_name);
-    glib::idle_add_local_once(move || {
-        focus_workspace_entrypoint(&focus_root);
-    });
+    if let Some((stack, stack_name, unread_handles, focus_root)) = workspace_change {
+        stack.set_visible_child_name(&stack_name);
+        glib::idle_add_local_once(move || {
+            focus_workspace_entrypoint(&focus_root);
+        });
 
-    if let Some((notify_dot, notify_label, sidebar_row)) = unread_handles {
-        clear_workspace_unread_widgets(&notify_dot, &notify_label, &sidebar_row);
+        if let Some((notify_dot, notify_label, sidebar_row)) = unread_handles {
+            clear_workspace_unread_widgets(&notify_dot, &notify_label, &sidebar_row);
+        }
+
+        request_session_save(state);
     }
 
-    request_session_save(state);
+    if !sidebar_already_selected {
+        sidebar_list.select_row(Some(&sidebar_row));
+    }
 }
 
 fn cycle_workspace(state: &State, direction: i32) {
-    let (new_idx, row, sidebar_list) = {
+    let new_idx = {
         let s = state.borrow();
         let len = s.workspaces.len();
         if len <= 1 {
             return;
         }
-        let new_idx = ((s.active_idx as i32 + direction).rem_euclid(len as i32)) as usize;
-        (
-            new_idx,
-            s.workspaces[new_idx].sidebar_row.clone(),
-            s.sidebar_list.clone(),
-        )
+        ((s.active_idx as i32 + direction).rem_euclid(len as i32)) as usize
     };
     switch_workspace(state, new_idx);
-    sidebar_list.select_row(Some(&row));
 }
 
 fn focus_workspace_entrypoint(root: &gtk::Widget) {
