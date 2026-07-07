@@ -68,6 +68,7 @@ struct LauncherInfo {
     name: String,
     link_path: PathBuf,
     target_path: PathBuf,
+    target_error: Option<String>,
     install_root: Option<PathBuf>,
     channel: Option<String>,
     install_info: Option<InstallInfo>,
@@ -212,7 +213,9 @@ fn discover_launchers(prefix: &Path) -> Vec<LauncherInfo> {
         } else {
             path.parent().unwrap_or(&bin_dir).join(raw_target)
         };
-        let wrapper_text = fs::read_to_string(&target_path).unwrap_or_default();
+        let wrapper_result = fs::read_to_string(&target_path);
+        let target_error = wrapper_result.as_ref().err().map(|error| error.to_string());
+        let wrapper_text = wrapper_result.unwrap_or_default();
         let install_root = parse_wrapper_install_root(&wrapper_text)
             .map(PathBuf::from)
             .or_else(|| infer_install_root(prefix, &target_path));
@@ -225,6 +228,7 @@ fn discover_launchers(prefix: &Path) -> Vec<LauncherInfo> {
             name: name.to_string(),
             link_path: path,
             target_path,
+            target_error,
             install_root,
             channel,
             install_info,
@@ -311,11 +315,15 @@ fn check_launchers(prefix: &Path, launchers: &[LauncherInfo]) -> Check {
         .iter()
         .filter(|launcher| launcher.install_info_error.is_some())
         .count();
+    let broken_targets = launchers
+        .iter()
+        .filter(|launcher| launcher.target_error.is_some())
+        .count();
     let missing_roots = launchers
         .iter()
         .filter(|launcher| launcher.install_root.is_none())
         .count();
-    let status = if malformed > 0 || missing_roots > 0 {
+    let status = if malformed > 0 || broken_targets > 0 || missing_roots > 0 {
         CheckStatus::Warn
     } else {
         CheckStatus::Ok
@@ -337,6 +345,7 @@ fn launchers_json(launchers: &[LauncherInfo]) -> Value {
                     "name": launcher.name.clone(),
                     "link_path": launcher.link_path.to_string_lossy().to_string(),
                     "target_path": launcher.target_path.to_string_lossy().to_string(),
+                    "target_error": launcher.target_error.clone(),
                     "install_root": launcher
                         .install_root
                         .as_ref()
@@ -555,7 +564,7 @@ fn candidate_socket_paths(active_socket: &Path) -> Vec<PathBuf> {
     }
     if let Some(uid) = proc_uid(std::process::id()) {
         let runtime_dir = Path::new("/run/user").join(uid.to_string()).join("limux");
-        collect_socket_paths(&runtime_dir, &mut paths);
+        collect_socket_paths_recursive(&runtime_dir, &mut paths, 3);
     }
     collect_socket_paths(Path::new("/tmp"), &mut paths);
     paths.sort();
@@ -564,6 +573,10 @@ fn candidate_socket_paths(active_socket: &Path) -> Vec<PathBuf> {
 }
 
 fn collect_socket_paths(dir: &Path, paths: &mut Vec<PathBuf>) {
+    collect_socket_paths_recursive(dir, paths, 0);
+}
+
+fn collect_socket_paths_recursive(dir: &Path, paths: &mut Vec<PathBuf>, max_depth: usize) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
@@ -573,7 +586,14 @@ fn collect_socket_paths(dir: &Path, paths: &mut Vec<PathBuf>) {
             continue;
         };
         if name.starts_with("limux") && name.ends_with(".sock") {
-            paths.push(path);
+            paths.push(path.clone());
+        }
+        let is_dir = entry
+            .file_type()
+            .map(|file_type| file_type.is_dir())
+            .unwrap_or(false);
+        if max_depth > 0 && is_dir {
+            collect_socket_paths_recursive(&path, paths, max_depth - 1);
         }
     }
 }
@@ -795,5 +815,48 @@ exec "${INSTALL_ROOT}/libexec/limux-cli" "$@"
             parse_wrapper_channel(wrapper).as_deref(),
             Some("preview:test")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reports_broken_launcher_target() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let prefix = tmp.path();
+        let bin_dir = prefix.join("bin");
+        let install_root = prefix.join("limux-reviewed/test-install");
+        let target = install_root.join("bin/limux");
+        fs::create_dir_all(&bin_dir).expect("bin dir");
+        fs::create_dir_all(target.parent().unwrap()).expect("install bin dir");
+        std::os::unix::fs::symlink(&target, bin_dir.join("limux")).expect("launcher symlink");
+
+        let launchers = discover_launchers(prefix);
+
+        assert_eq!(launchers.len(), 1);
+        assert_eq!(launchers[0].install_root.as_ref(), Some(&install_root));
+        assert!(
+            launchers[0].target_error.is_some(),
+            "broken wrapper target should be reported"
+        );
+        let payload = launchers_json(&launchers);
+        assert!(
+            payload[0]
+                .get("target_error")
+                .and_then(Value::as_str)
+                .is_some(),
+            "launcher JSON should include target_error"
+        );
+    }
+
+    #[test]
+    fn collects_nested_channel_socket_paths() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let socket = tmp.path().join("preview/default/limux.sock");
+        fs::create_dir_all(socket.parent().unwrap()).expect("socket parent");
+        fs::write(&socket, b"not a real socket").expect("socket placeholder");
+        let mut paths = Vec::new();
+
+        collect_socket_paths_recursive(tmp.path(), &mut paths, 3);
+
+        assert_eq!(paths, vec![socket]);
     }
 }
