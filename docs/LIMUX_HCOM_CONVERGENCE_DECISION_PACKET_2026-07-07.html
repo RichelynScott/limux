@@ -1,0 +1,414 @@
+<!-- LIMUX_HCOM_CONVERGENCE_DECISION_PACKET_2026-07-07.html
+     Created by: Claude Code (mori · mori_FABLE_HCOM_MGR · session 3ae7bd48)
+     Date: 2026-07-07 · Purpose: operator sign-off on the Limux↔hcom convergence decisions
+     (DP-0..DP-7), post adversarial review by nato_1 (delivered) and lifo (pending slot). -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Limux ↔ hcom Convergence — Decision Packet</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0c0f12; --panel: #14191f; --panel-2: #192129;
+      --line: #2b3540; --line-strong: #43505d;
+      --text: #edf2f6; --muted: #a8b4bf; --faint: #74818d;
+      --accent: #4fb7a8; --warn: #d7a441; --danger: #de746b; --ok: #82bf72; --code: #090c0f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      background:
+        linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(255,255,255,.018) 1px, transparent 1px),
+        var(--bg);
+      background-size: 44px 44px, 44px 44px, auto;
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      line-height: 1.5;
+    }
+    .layout { display: grid; grid-template-columns: 240px minmax(0,1fr); gap: 20px; width: min(1360px, calc(100% - 28px)); margin: 0 auto; padding: 24px 0 48px; }
+    aside.roadmap { position: sticky; top: 16px; align-self: start; border: 1px solid var(--line); background: rgba(20,25,31,.86); padding: 16px; }
+    .step { display: grid; grid-template-columns: 18px 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+    .step:last-child { border-bottom: 0; }
+    .dot { width: 10px; height: 10px; margin-top: 6px; background: var(--faint); }
+    .step.current .dot { background: var(--accent); box-shadow: 0 0 0 4px rgba(79,183,168,.14); }
+    .step.done .dot { background: var(--ok); }
+    .step.gated .dot { background: var(--warn); }
+    .step strong { display: block; font-size: 12px; }
+    .step span { display: block; color: var(--muted); font-size: 11px; }
+    header { display: grid; grid-template-columns: minmax(0,1fr) minmax(260px,360px); gap: 18px; align-items: end; padding: 18px 0 24px; border-bottom: 1px solid var(--line-strong); }
+    h1, h2, h3 { margin: 0; line-height: 1.12; }
+    h1 { font-size: clamp(28px, 4.4vw, 50px); }
+    h2 { font-size: 22px; margin-bottom: 14px; }
+    h3 { font-size: 14px; color: var(--warn); margin-bottom: 8px; text-transform: uppercase; }
+    p { margin: 0 0 12px; color: var(--muted); }
+    .meta, section, .copybox { border: 1px solid var(--line); background: rgba(20,25,31,.86); }
+    .meta { padding: 14px; display: grid; gap: 8px; }
+    .meta div { display: flex; justify-content: space-between; gap: 14px; color: var(--muted); font-size: 12px; }
+    .meta strong { color: var(--text); text-align: right; }
+    section { margin-top: 18px; padding: 20px; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
+    .fact, .decision { border: 1px solid var(--line); background: var(--panel-2); padding: 14px; }
+    .fact .label { color: var(--faint); font-size: 11px; text-transform: uppercase; }
+    .fact .value { margin-top: 8px; overflow-wrap: anywhere; font-size: 13px; }
+    .decision { margin-bottom: 12px; }
+    .decision p { font-size: 13px; }
+    .directive { border: 1px solid var(--danger); background: rgba(222,116,107,.08); padding: 16px 18px; margin-top: 18px; }
+    .directive h2 { color: var(--danger); }
+    .directive blockquote { margin: 0 0 10px; padding-left: 12px; border-left: 3px solid var(--danger); color: var(--text); font-size: 14px; }
+    .seq { border: 1px solid var(--line); background: var(--panel-2); padding: 14px 18px; margin-top: 12px; }
+    .seq ol { margin: 6px 0 0; padding-left: 20px; color: var(--muted); font-size: 13px; }
+    .seq li { margin-bottom: 4px; }
+    .reviewer { font-size: 12px; color: var(--accent); }
+    .reviewer.pending { color: var(--warn); }
+    label.option { display: grid; grid-template-columns: 22px minmax(0,1fr); gap: 10px; padding: 10px; margin-top: 8px; background: rgba(9,12,15,.45); border: 1px solid transparent; cursor: pointer; }
+    label.option:hover { border-color: var(--line-strong); }
+    input[type="radio"], input[type="checkbox"] { accent-color: var(--accent); margin-top: 3px; }
+    .option-title { display: block; color: var(--text); font-weight: 700; font-size: 13px; }
+    .option-detail { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .rec { color: var(--accent); font-size: 11px; text-transform: uppercase; margin-left: 6px; }
+    .anti { color: var(--danger); font-size: 11px; text-transform: uppercase; margin-left: 6px; }
+    .decision-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(320px,420px); gap: 18px; align-items: start; }
+    .copybox { position: sticky; top: 16px; padding: 16px; }
+    textarea, input[type="text"], select { width: 100%; border: 1px solid var(--line); background: var(--code); color: var(--text); padding: 12px; font: inherit; }
+    textarea { min-height: 100px; resize: vertical; }
+    input[type="text"], select { min-height: 44px; }
+    #payload { min-height: 420px; }
+    .field { margin-top: 12px; }
+    .field label { display: block; margin-bottom: 6px; color: var(--text); font-weight: 800; font-size: 12px; }
+    .field small { display: block; margin-top: 5px; color: var(--faint); }
+    .section-header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+    .source-list { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px 18px; padding-left: 18px; margin: 0; }
+    .source-list li { color: var(--muted); overflow-wrap: anywhere; font-size: 12px; }
+    .source-list a { color: var(--text); }
+    button { width: 100%; margin-top: 10px; border: 1px solid var(--line-strong); background: var(--accent); color: #04100e; font: inherit; font-weight: 800; padding: 12px; cursor: pointer; }
+    button.secondary { background: transparent; color: var(--text); }
+    code { background: var(--code); border: 1px solid #20262d; padding: 2px 5px; overflow-wrap: anywhere; }
+    @media (max-width: 960px) { .layout, header, .decision-layout, .grid, .source-list { grid-template-columns: 1fr; } aside.roadmap, .copybox { position: static; } }
+  </style>
+</head>
+<body>
+  <main class="layout">
+    <aside class="roadmap" aria-label="Roadmap">
+      <div class="step done"><i class="dot"></i><div><strong>Deep audit</strong><span>mori · 3-subagent sweep, file:line verified</span></div></div>
+      <div class="step done"><i class="dot"></i><div><strong>Review: nato_1</strong><span>Verdicts delivered 23:15Z</span></div></div>
+      <div class="step gated"><i class="dot"></i><div><strong>Review: lifo</strong><span>DEFERRED — active PR #41 merge gate (his call); addendum if pre-execution</span></div></div>
+      <div class="step current"><i class="dot"></i><div><strong>Operator decisions</strong><span>This packet — DP-0..DP-7</span></div></div>
+      <div class="step gated"><i class="dot"></i><div><strong>Execution</strong><span>limux lane (lifo/nato) + hcom lane (dino)</span></div></div>
+      <div class="step"><i class="dot"></i><div><strong>Closeout</strong><span>Copy response → mori routes</span></div></div>
+    </aside>
+
+    <div>
+      <header>
+        <div>
+          <p>Decision packet</p>
+          <h1>Limux ↔ hcom Convergence</h1>
+        </div>
+        <div class="meta">
+          <div><span>Date</span><strong>2026-07-07</strong></div>
+          <div><span>Time</span><strong>7:47 PM EST (final)</strong></div>
+          <div><span>Author</span><strong>mori (mori_FABLE_HCOM_MGR)</strong></div>
+          <div><span>Model</span><strong>Claude Fable 5</strong></div>
+          <div><span>Scope</span><strong>~/MCPs/limux + ~/MCPs/hcom</strong></div>
+          <div><span>Reviewers</span><strong>nato_1 ✅ · lifo deferred (PR #41) · dino ACK</strong></div>
+        </div>
+      </header>
+
+      <div class="directive">
+        <h2>Operator directive — the frame, not a decision</h2>
+        <blockquote>"from the beginning i continued to say I wanted HCOM inside/intertwined into limux, not for hcom to become '[an] opt-in exception inside Limux, not the default — and Limux has quietly built a small parallel coordination stack (messaging protocol, session/resume ledger, review ledger) that overlaps hcom's core domain' --- that was exactly what FROM THE ONSET I was concerned about and did not want, and yet, here we are."</blockquote>
+        <p>Every card below decides <strong>HOW and in what order</strong> Limux converges to hcom-by-default — not whether. Options that conflict with the directive are marked and included only for completeness.</p>
+      </div>
+
+      <section>
+        <h2>Summary</h2>
+        <div class="grid">
+          <div class="fact"><div class="label">Done</div><div class="value">Deep audit (CLI surface ~40 cmds, code overlap, design docs). Adversarial round: nato_1 verdicts in; lifo ACKed, pending. Restore lane LANDED today on limux main: #36 no-resurrect-exited, #37 restore-via-<code>hcom r</code> + HCOM_NAME launch capture, #38 staggered restore.</div></div>
+          <div class="fact"><div class="label">Verified</div><div class="value">On limux <code>origin/main</code> @ <code>078bc0c</code>: XML protocol generated unconditionally (main.rs 4433-4562, zero launch-mode refs); <code>direct</code> default (main.rs:2375); <code>build_hcom_resume_command</code> live (layout_state.rs:952,1006); HCOM_NAME capture (agent_hooks.rs:457). Independently re-verified by nato_1.</div></div>
+          <div class="fact"><div class="label">Gated</div><div class="value">All execution waits on this sign-off. DP-3's remaining leg is hcom-side (dino — back online, ACKed the FYI). lifo's verdicts: DEFERRED by lifo (active PR #41 merge gate); they fold in as an addendum if they arrive pre-execution, and DP-2/DP-3/DP-6 execution routes through his lane at build time regardless.</div></div>
+        </div>
+        <div class="seq">
+          <strong>Ratified execution sequence (nato_1 §7.3 — ordering is load-bearing):</strong>
+          <ol>
+            <li>DP-0 ratify boundary policy (paper, same day)</li>
+            <li>DP-2 protocol generation made launch-mode-aware + protocol-version header <em>(MUST land before or with step 3)</em></li>
+            <li>DP-1 default flip to hcom (detection: binary + <code>~/.hcom</code> initialized)</li>
+            <li>DP-5 roadmap stamp + DP-6 PRD-G boundary patch (nato_1's files, same day)</li>
+            <li>DP-7 tripwire PR (<code>scripts/check.sh</code> boundary-lint)</li>
+            <li>DP-3(b) adoption leg → hcom-side PRD routed to dino (independent lane)</li>
+          </ol>
+        </div>
+      </section>
+
+      <section>
+        <h2>Decisions</h2>
+        <div class="decision-layout">
+          <div>
+            <article class="decision">
+              <h3>DP-0 — Ratify the boundary policy</h3>
+              <p><strong>Context:</strong> "hcom is the default coordination layer inside Limux wherever hcom is present; Limux-native coordination is a fallback for hcom-absent environments only." Makes the operator directive the written, citable policy every later card and PR points at.</p>
+              <p class="reviewer">nato_1: (a) — carve-outs are the drift vector re-entering. <span class="reviewer pending">lifo: DEFERRED — active PR #41 merge gate (his call, hcom #327611); folds in as addendum if received before execution.</span></p>
+              <label class="option"><input type="radio" name="dp0" value="DP-0(a) Ratify as stated" checked><span><span class="option-title">(a) Ratify as stated <span class="rec">recommended</span></span><span class="option-detail">hcom-absent fallback is the only carve-out.</span></span></label>
+              <label class="option"><input type="radio" name="dp0" value="DP-0(b) Ratify with named carve-outs"><span><span class="option-title">(b) Ratify with named carve-outs</span><span class="option-detail">List exceptions now — risks re-opening the drift channel.</span></span></label>
+              <label class="option"><input type="radio" name="dp0" value="DP-0(c) Reject — standalone-first"><span><span class="option-title">(c) Reject <span class="anti">conflicts with directive</span></span><span class="option-detail">Keep Limux standalone-first.</span></span></label>
+            </article>
+
+            <article class="decision">
+              <h3>DP-1 — Launch-mode default (agent-team + review spawn)</h3>
+              <p><strong>Context:</strong> Today <code>direct</code> is the default (main.rs:2375) — unmanaged agents unless someone types <code>--launch-mode hcom</code>. <strong>Hard sequencing constraint (nato_1): DP-2 lands BEFORE or WITH this flip</strong> — otherwise hcom-mode teams get seeded with contradictory XML instructions. Blast radius: fleet teams silently gain hcom names + live delivery (desired); restore coherence already holds (#37); generated-file tests need fixtures; rollback trivial.</p>
+              <p class="reviewer">nato_1: (a) with 2 amendments (folded in below). <span class="reviewer pending">lifo: DEFERRED — active PR #41 merge gate (his call, hcom #327611); folds in as addendum if received before execution.</span></p>
+              <label class="option"><input type="radio" name="dp1" value="DP-1(a) Auto-default hcom when binary + ~/.hcom initialized; direct stays as override; mode-resolution echo line; DP-2 sequenced first" checked><span><span class="option-title">(a) Auto-default hcom, amended <span class="rec">recommended</span></span><span class="option-detail">Detect binary on PATH AND <code>~/.hcom/hcom.db</code> exists (installed-but-never-used stays direct). Echo resolved mode at spawn. <code>--launch-mode direct</code> remains.</span></span></label>
+              <label class="option"><input type="radio" name="dp1" value="DP-1(b) Hard-default hcom always; error if missing"><span><span class="option-title">(b) Hard-default, error if missing</span><span class="option-detail">Strictest — but hostile to every non-fleet/public user (limux is a public repo).</span></span></label>
+              <label class="option"><input type="radio" name="dp1" value="DP-1(c) Config-file knob, fleet-set to hcom"><span><span class="option-title">(c) Config knob</span><span class="option-detail">Reproduces "someone remembers a flag" at fleet level — the failure you called out.</span></span></label>
+              <label class="option"><input type="radio" name="dp1" value="DP-1(d) Status quo direct-default"><span><span class="option-title">(d) Status quo <span class="anti">conflicts with directive</span></span><span class="option-detail">Keep direct as default.</span></span></label>
+            </article>
+
+            <article class="decision">
+              <h3>DP-2 — Generated LIMUX_AGENTS.md messaging protocol</h3>
+              <p><strong>Context:</strong> The generated protocol prescribes a parallel XML <code>&lt;agent-msg&gt;</code> bus over pane stdin — unconditionally, even for hcom-managed teams (verified: zero launch-mode conditionals, main.rs 4433-4562). <strong>Migration gap (nato_1):</strong> the file is generated once and overwrite-gated — existing workspaces keep stale XML instructions unless versioned. Any option here includes: <code>protocol-version:</code> header + warn on stale-version file at team spawn.</p>
+              <p class="reviewer">nato_1: (a) + sequencing + migration line (his lane-adjacent flags). <span class="reviewer pending">lifo: DEFERRED (PR #41 gate, #327611) — feasibility is his lane; DP-2 execution routes through him at build time, so his input lands there regardless.</span></p>
+              <label class="option"><input type="radio" name="dp2" value="DP-2(a) Launch-mode-aware generation: hcom mode prescribes hcom send/reply, peer table keyed by hcom names; XML documented only in direct mode; protocol-version header + stale-file warning" checked><span><span class="option-title">(a) Launch-mode-aware generation <span class="rec">recommended</span></span><span class="option-detail">hcom mode → <code>hcom send</code>/<code>hcom reply</code> instructions; direct mode keeps XML-over-stdin as the hcom-absent fallback.</span></span></label>
+              <label class="option"><input type="radio" name="dp2" value="DP-2(b) Retire XML protocol entirely; limux send stays a raw typed-input primitive"><span><span class="option-title">(b) Retire XML protocol entirely</span><span class="option-detail">Direct-mode teams get "no bus — use hcom mode." Cleanest, but kills the hcom-absent story.</span></span></label>
+              <label class="option"><input type="radio" name="dp2" value="DP-2(c) Keep unconditional XML protocol"><span><span class="option-title">(c) Status quo <span class="anti">conflicts with directive</span></span><span class="option-detail">Parallel bus stays prescribed everywhere.</span></span></label>
+            </article>
+
+            <article class="decision">
+              <h3>DP-3 — Restore/session store: ratify what landed + the adoption leg</h3>
+              <p><strong>Context (re-scoped — audit was stale here):</strong> The restore duplication is largely FIXED on main as of today: #36 exited agents stay exited; #37 hcom-managed agents restore via <code>hcom r &lt;name&gt; --run-here --go</code> with HCOM_NAME captured at launch; #38 staggering. Native resume survives only as the fallback for non-hcom-managed agents — exactly DP-0(a)'s shape. <strong>The only remaining decision:</strong> whether native-launched agents should be <em>adopted into hcom</em> on restore (hcom-side lift — dino's lane, needs an hcom PRD).</p>
+              <p class="reviewer">nato_1: ratify-landed; remaining scope = adoption leg only. <span class="reviewer pending">lifo: DEFERRED (PR #41 gate, #327611) — he built the slices; nato_1 independently verified them merged + correct on main.</span></p>
+              <label class="option"><input type="radio" name="dp3" value="DP-3(a) Ratify landed restore behavior + commission hcom-side adoption PRD (dino) for native-launched agents" checked><span><span class="option-title">(a) Ratify landed + commission adoption PRD <span class="rec">recommended</span></span><span class="option-detail">Deepest intertwining: native-launched agents get offered hcom adoption at restore. PRD first (dino), not immediate build.</span></span></label>
+              <label class="option"><input type="radio" name="dp3" value="DP-3(b) Ratify landed only; native agents stay native until relaunched in hcom mode"><span><span class="option-title">(b) Ratify landed only</span><span class="option-detail">Defer adoption indefinitely; DP-1's default flip shrinks the native population anyway.</span></span></label>
+              <label class="option"><input type="radio" name="dp3" value="DP-3(c) Reopen restore design"><span><span class="option-title">(c) Reopen restore design</span><span class="option-detail">Contradicts three reviewed, merged PRs — only if you disagree with what landed.</span></span></label>
+            </article>
+
+            <article class="decision">
+              <h3>DP-4 — Review ledger / roster files</h3>
+              <p><strong>Context:</strong> <code>review prepare/spawn</code> programmatically append LIMUX_REVIEW_LEDGER.md entries (main.rs 3977-4406). File-first is fleet doctrine and survives hcom outages; the gap is traceability to the bus.</p>
+              <p class="reviewer">nato_1: (a) — resist making hcom threads primary (outage would block reviews). <span class="reviewer pending">lifo: DEFERRED — active PR #41 merge gate (his call, hcom #327611); folds in as addendum if received before execution.</span></p>
+              <label class="option"><input type="radio" name="dp4" value="DP-4(a) Keep file-first ledger; record hcom thread/event IDs per entry when in hcom mode" checked><span><span class="option-title">(a) File-first + hcom IDs <span class="rec">recommended</span></span><span class="option-detail">Ledger stays canonical; entries link to hcom events for audit.</span></span></label>
+              <label class="option"><input type="radio" name="dp4" value="DP-4(b) hcom threads become primary; ledger becomes generated view"><span><span class="option-title">(b) Threads primary</span><span class="option-detail">hcom outage would block review flow — nato_1 argues against.</span></span></label>
+              <label class="option"><input type="radio" name="dp4" value="DP-4(c) Status quo"><span><span class="option-title">(c) Status quo</span><span class="option-detail">No linkage to the bus.</span></span></label>
+            </article>
+
+            <article class="decision">
+              <h3>DP-5 — Roadmap W3.1 guardrail (resume/fork/hibernation)</h3>
+              <p><strong>Context:</strong> W3.1 is the one PLANNED lane that would rebuild hcom-owned resume/fork natively. nato_1 (roadmap owner) sharpened the stamp: <em>Limux owns the UX surface; hcom owns the engine; resume/fork MUST delegate to <code>hcom r</code>/<code>hcom f</code> for hcom-managed sessions; hibernation has NO hcom primitive today → requires an hcom-side PRD (dino) before any limux-native implementation.</em> Precedent: #37 already implements this split for restore.</p>
+              <p class="reviewer">nato_1: (a) sharpened — he applies the stamp to his file on ratification. <span class="reviewer pending">lifo: DEFERRED — active PR #41 merge gate (his call, hcom #327611); folds in as addendum if received before execution.</span></p>
+              <label class="option"><input type="radio" name="dp5" value="DP-5(a) Stamp roadmap with the sharpened UX-vs-engine boundary wording" checked><span><span class="option-title">(a) Stamp now, sharpened <span class="rec">recommended</span></span><span class="option-detail">W3.1 execution PRDs must cite the stamp in Non-Goals.</span></span></label>
+              <label class="option"><input type="radio" name="dp5" value="DP-5(b) Drop W3.1 from the roadmap"><span><span class="option-title">(b) Drop the lane</span><span class="option-detail">Forfeits legitimate GUI resume/fork UX parity — nato_1 argues against.</span></span></label>
+              <label class="option"><input type="radio" name="dp5" value="DP-5(c) Leave unscoped"><span><span class="option-title">(c) Leave unscoped <span class="anti">the drift vector</span></span><span class="option-detail">How D1-D3 happened.</span></span></label>
+            </article>
+
+            <article class="decision">
+              <h3>DP-6 — PRD-G agent-status sidebar</h3>
+              <p><strong>Context:</strong> Sidebar state is pane-scoped GUI signal (which pane is thinking/needs-input) — topology hcom shouldn't own. The join key shipped TODAY (#37): hook records capture HCOM_NAME, so sidebar rows can join limux pane state ⋈ <code>hcom list --json</code> (name, live-delivery, unread) read-only, degrading cleanly when hcom is absent. <strong>Timing:</strong> PRD-G is next in lifo's build queue — deciding after it's built = paying twice.</p>
+              <p class="reviewer">nato_1: (a) with the concrete join contract — he patches PRD-G (~10 lines) on ratification. <span class="reviewer pending">lifo: DEFERRED (PR #41 gate, #327611) — he builds PRD-G; the boundary patch lands in the PRD before his build starts.</span></p>
+              <label class="option"><input type="radio" name="dp6" value="DP-6(a) GUI-scoped ephemeral sidebar + read-only hcom enrichment via session_id-to-HCOM_NAME join; boundary note in PRD-G before build" checked><span><span class="option-title">(a) Join contract, patched before build <span class="rec">recommended</span></span><span class="option-detail">No second registry; hcom fields enrich, never own, pane state.</span></span></label>
+              <label class="option"><input type="radio" name="dp6" value="DP-6(b) Rebuild PRD-G on hcom status as primary source"><span><span class="option-title">(b) hcom-primary</span><span class="option-detail">Wrong layer — hcom is session-scoped, sidebar needs pane-scoped signals.</span></span></label>
+              <label class="option"><input type="radio" name="dp6" value="DP-6(c) Status quo silent"><span><span class="option-title">(c) Status quo</span><span class="option-detail">Ship with no boundary note — gray zone persists.</span></span></label>
+            </article>
+
+            <article class="decision">
+              <h3>DP-7 — Drift prevention (the "and yet, here we are" card)</h3>
+              <p><strong>Context:</strong> A convention-only review gate fails exactly like today's PR #40 bug class (invariant held at N sites, forgotten at N+1). nato_1: compose (a) the review gate + a <strong>mechanical tripwire</strong> — <code>scripts/check.sh</code> fails when a diff touches named boundary surfaces (<code>agent_hooks.rs</code>, restore/resume fns, <code>build_agents_md</code>, roster/ledger writers, <code>hcom|HCOM_|resume|session_id</code> in limux-cli) without a <code>Boundary-Review: hcom</code> trailer — + (b)-lite quarterly sweep (this audit is the template). Owner: HCOM_MGR (dino, verified live per roster procedure).</p>
+              <p class="reviewer">nato_1: (a)+tripwire+(b)-lite composed. <span class="reviewer pending">lifo: DEFERRED — active PR #41 merge gate (his call, hcom #327611); folds in as addendum if received before execution.</span></p>
+              <label class="option"><input type="radio" name="dp7" value="DP-7(a) Boundary review gate + mechanical check.sh tripwire + quarterly sweep, owner HCOM_MGR" checked><span><span class="option-title">(a) Gate + tripwire + sweep <span class="rec">recommended</span></span><span class="option-detail">Prevention (mechanical) + detection (sweep) compose.</span></span></label>
+              <label class="option"><input type="radio" name="dp7" value="DP-7(b) Convention-only review gate"><span><span class="option-title">(b) Convention-only gate</span><span class="option-detail">Same failure mode as the PR #40 bug class.</span></span></label>
+              <label class="option"><input type="radio" name="dp7" value="DP-7(c) No drift prevention"><span><span class="option-title">(c) None <span class="anti">how we got here</span></span><span class="option-detail">Rely on ad-hoc audits.</span></span></label>
+            </article>
+
+            <article class="decision">
+              <h3>Execution Mode</h3>
+              <p><strong>Recommendation:</strong> lane owners execute their own files — lifo (DP-1/DP-2 code, DP-6 build), nato_1 (DP-5 stamp, DP-6 PRD patch, DP-7 tripwire), dino (DP-3 adoption PRD, DP-7 ownership); mori relays your picks, tracks, and verifies. That is the ownership-correct path.</p>
+              <label class="option"><input type="radio" name="execMode" value="Lane owners execute (lifo/nato_1/dino), mori routes + verifies" checked><span><span class="option-title">Lane owners execute <span class="rec">recommended</span></span><span class="option-detail">mori sends picks to each owner via hcom + INBOX, watchdogs completion.</span></span></label>
+              <label class="option"><input type="radio" name="execMode" value="Current session (mori) implements directly where permitted"><span><span class="option-title">Current session implements</span><span class="option-detail">Crosses lane ownership on limux files — not recommended.</span></span></label>
+              <label class="option"><input type="radio" name="execMode" value="Document only / defer execution"><span><span class="option-title">Document only</span><span class="option-detail">Ratify on paper, execute later.</span></span></label>
+            </article>
+
+            <article class="decision">
+              <h3>Skills To Use (execution phase)</h3>
+              <label class="option"><input type="checkbox" name="skills" value="$prd" checked><span><span class="option-title">$prd</span><span class="option-detail">DP-3 adoption leg + any hibernation PRD (hcom-side).</span></span></label>
+              <label class="option"><input type="checkbox" name="skills" value="$adversarial-review"><span><span class="option-title">$adversarial-review</span><span class="option-detail">Cross-family pass on the DP-2/DP-1 PR before merge.</span></span></label>
+              <label class="option"><input type="checkbox" name="skills" value="$hcom" checked><span><span class="option-title">$hcom</span><span class="option-detail">Routing + thread coordination during execution.</span></span></label>
+              <label class="option"><input type="checkbox" name="skills" value="$limux-use-guide"><span><span class="option-title">$limux-use-guide</span><span class="option-detail">Canonical Limux command reference for doc updates.</span></span></label>
+              <label class="option"><input type="checkbox" name="skills" value="$taskmaster-reviewed"><span><span class="option-title">$taskmaster-reviewed</span><span class="option-detail">Durable task store for the multi-PR execution wave.</span></span></label>
+              <div class="field">
+                <label for="customSkills">Additional skills</label>
+                <textarea id="customSkills" placeholder="Any other skill to load during execution."></textarea>
+                <small>The checklist is a starting point, not a limit.</small>
+              </div>
+              <label class="option"><input type="checkbox" name="skillRanker" value="yes"><span><span class="option-title">Spin up skill-ranking subagent</span><span class="option-detail">Native subagent scores skill applicability before execution.</span></span></label>
+            </article>
+
+            <article class="decision">
+              <h3>TaskMaster Draft</h3>
+              <p><strong>Recommendation:</strong> one durable tracking task for the execution wave; create via reviewed wrapper only after sign-off.</p>
+              <div class="field">
+                <label for="taskTitle">Proposed task title</label>
+                <input id="taskTitle" type="text" value="Execute Limux-hcom convergence decisions DP-0..DP-7 (sequenced wave)">
+              </div>
+              <div class="field">
+                <label for="taskPriority">Priority</label>
+                <select id="taskPriority">
+                  <option>P1 - High</option>
+                  <option>P0 - Urgent</option>
+                  <option>P2 - Normal</option>
+                  <option>P3 - Low</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="taskAcceptance">Acceptance criteria</label>
+                <textarea id="taskAcceptance">- DP-2 protocol-generation PR merged BEFORE/WITH DP-1 default-flip PR (sequencing verified in PR description)
+- hcom-mode team spawn seeds LIMUX_AGENTS.md prescribing hcom send/reply (no XML instructions)
+- agent-team resolves hcom default when binary + ~/.hcom present; echo line prints resolved mode
+- Roadmap W3.1 stamp + PRD-G boundary patch committed (nato_1 files)
+- scripts/check.sh boundary-lint fails un-trailered boundary diffs (test: touch agent_hooks.rs without trailer)
+- DP-3 adoption-leg PRD filed to dino (HCOM_MGR_INBOX) if DP-3(a)</textarea>
+              </div>
+              <label class="option"><input type="checkbox" name="taskmaster" value="Create after wrapper approval"><span><span class="option-title">Create TaskMaster task later</span><span class="option-detail">Convert this draft only via the reviewed wrapper.</span></span></label>
+            </article>
+
+            <div class="field">
+              <label for="notes"><strong>Additional notes</strong></label>
+              <textarea id="notes" placeholder="Constraints, overrides, or extra instructions for the execution wave."></textarea>
+            </div>
+          </div>
+
+          <aside class="copybox">
+            <h2>Copy Back</h2>
+            <p>Selections generate a paste-ready response for mori to route.</p>
+            <textarea id="payload" readonly></textarea>
+            <button id="copyButton" type="button">Copy Decision Response</button>
+            <button class="secondary" id="resetButton" type="button">Reset to recommendations</button>
+            <p id="copyState" aria-live="polite"></p>
+          </aside>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-header">
+          <div>
+            <h2>Sources / Evidence</h2>
+            <p>Everything this packet depends on, for provenance without rummaging through chat.</p>
+          </div>
+        </div>
+        <ul class="source-list">
+          <li><a href="../lifo_INBOX/REQUEST_FROM_mori_2026-07-07_limux-hcom-convergence-adversarial-review.md">Audit + draft cards — review request (lifo_INBOX; identical copy in nato_INBOX)</a></li>
+          <li><a href="../REVIEW_FROM_nato_1_2026-07-07_limux-hcom-convergence.md">nato_1 adversarial verdicts (2026-07-07 23:15Z)</a></li>
+          <li>lifo adversarial verdicts — DEFERRED by lifo (active PR #41 merge gate; ACK hcom #326301, deferral #327611). Folds as addendum if received pre-execution.</li>
+          <li><a href="file:///home/riche/MCPs/hcom/HCOM_MGR_INBOX/REVIEW_FROM_dino_20260707_limux_hcom_boundary.md">dino boundary review (2026-07-07) — the agreed ownership baseline</a></li>
+          <li>limux origin/main @ 078bc0c: #36 2f90b2d (no-resurrect) · #37 9f3f880 (hcom r restore + HCOM_NAME capture) · #38 02065cc (staggering) · #39 078bc0c (route registry)</li>
+          <li>Key code: limux-cli/src/main.rs:2375 (direct default), :2293-2298 (hcom launch string), :4433-4562 (unconditional XML protocol), :3977-4406 (ledger writers); agent_hooks.rs:457 (HCOM_NAME capture); layout_state.rs:952,1006 (hcom r restore)</li>
+          <li>Boundary docs merged: hcom main ac8be7c (command-reference + bundled skill) · Limux PR #30 · hub PRs #77/#78</li>
+          <li>hcom events: #326301 (lifo ACK) · #326305 (nato_1 ACK) · #326330 (nato_1 delivery) · #326991 (dino ACK) · #327611 (lifo deferral) · dino INFO drop: hcom repo HCOM_MGR_INBOX/INFO_FROM_mori_2026-07-07</li>
+        </ul>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    function checkedValues(name) {
+      const nodes = Array.from(document.querySelectorAll(`input[name="${name}"]:checked`));
+      return nodes.length ? nodes.map((node) => `- ${node.value}`).join("\n") : "- No selection.";
+    }
+    function radioValue(name) {
+      const node = document.querySelector(`input[name="${name}"]:checked`);
+      return node ? node.value : "No selection.";
+    }
+    function buildPayload() {
+      const notes = document.getElementById("notes").value.trim() || "No additional notes.";
+      const customSkills = document.getElementById("customSkills").value.trim() || "No additional skills.";
+      const taskTitle = document.getElementById("taskTitle").value.trim() || "No TaskMaster task title.";
+      const taskPriority = document.getElementById("taskPriority").value;
+      const taskAcceptance = document.getElementById("taskAcceptance").value.trim() || "No acceptance criteria.";
+      const lines = [
+        "Limux-hcom convergence decision response (route via mori):",
+        ""
+      ];
+      const cards = [
+        ["DP-0 boundary policy", "dp0"],
+        ["DP-1 launch default", "dp1"],
+        ["DP-2 protocol generation", "dp2"],
+        ["DP-3 restore + adoption leg", "dp3"],
+        ["DP-4 review ledger", "dp4"],
+        ["DP-5 W3.1 guardrail", "dp5"],
+        ["DP-6 PRD-G sidebar", "dp6"],
+        ["DP-7 drift prevention", "dp7"]
+      ];
+      for (const [label, name] of cards) {
+        lines.push(label + ":", radioValue(name), "");
+      }
+      lines.push(
+        "Execution mode:", radioValue("execMode"), "",
+        "Requested skills:", checkedValues("skills"), "",
+        "Additional skills:", customSkills, "",
+        "Skill-ranking subagent:", checkedValues("skillRanker"), "",
+        "TaskMaster draft:",
+        `- Title: ${taskTitle}`,
+        `- Priority: ${taskPriority}`,
+        "- Acceptance criteria:",
+        taskAcceptance,
+        "- TaskMaster creation:",
+        checkedValues("taskmaster"),
+        "",
+        "Notes:",
+        notes
+      );
+      return lines.join("\n");
+    }
+    function updatePayload() {
+      document.getElementById("payload").value = buildPayload();
+      document.getElementById("copyState").textContent = "";
+    }
+    async function copyPayload() {
+      document.getElementById("payload").value = buildPayload();
+      const payload = document.getElementById("payload").value;
+      try {
+        await navigator.clipboard.writeText(payload);
+        document.getElementById("copyState").textContent = "Copied.";
+      } catch {
+        const box = document.getElementById("payload");
+        box.focus();
+        box.select();
+        document.execCommand("copy");
+        document.getElementById("copyState").textContent = "Copied with fallback.";
+      }
+    }
+    function resetPacket() {
+      const defaults = {
+        dp0: "DP-0(a) Ratify as stated",
+        dp1: "DP-1(a) Auto-default hcom when binary + ~/.hcom initialized; direct stays as override; mode-resolution echo line; DP-2 sequenced first",
+        dp2: "DP-2(a) Launch-mode-aware generation: hcom mode prescribes hcom send/reply, peer table keyed by hcom names; XML documented only in direct mode; protocol-version header + stale-file warning",
+        dp3: "DP-3(a) Ratify landed restore behavior + commission hcom-side adoption PRD (dino) for native-launched agents",
+        dp4: "DP-4(a) Keep file-first ledger; record hcom thread/event IDs per entry when in hcom mode",
+        dp5: "DP-5(a) Stamp roadmap with the sharpened UX-vs-engine boundary wording",
+        dp6: "DP-6(a) GUI-scoped ephemeral sidebar + read-only hcom enrichment via session_id-to-HCOM_NAME join; boundary note in PRD-G before build",
+        dp7: "DP-7(a) Boundary review gate + mechanical check.sh tripwire + quarterly sweep, owner HCOM_MGR",
+        execMode: "Lane owners execute (lifo/nato_1/dino), mori routes + verifies"
+      };
+      document.querySelectorAll("input[type=checkbox]").forEach((node) => { node.checked = false; });
+      document.querySelectorAll('input[name="skills"][value="$prd"], input[name="skills"][value="$hcom"]').forEach((node) => { node.checked = true; });
+      for (const [name, value] of Object.entries(defaults)) {
+        const node = document.querySelector(`input[name="${name}"][value="${CSS.escape(value)}"]`) ||
+                     Array.from(document.querySelectorAll(`input[name="${name}"]`)).find((n) => n.value === value);
+        if (node) node.checked = true;
+      }
+      document.getElementById("customSkills").value = "";
+      document.getElementById("taskTitle").value = "Execute Limux-hcom convergence decisions DP-0..DP-7 (sequenced wave)";
+      document.getElementById("taskPriority").selectedIndex = 0;
+      document.getElementById("taskAcceptance").value = document.getElementById("taskAcceptance").defaultValue;
+      document.getElementById("notes").value = "";
+      updatePayload();
+    }
+    document.querySelectorAll("input, textarea, select").forEach((node) => {
+      node.addEventListener("input", updatePayload);
+      node.addEventListener("change", updatePayload);
+    });
+    document.getElementById("copyButton").addEventListener("click", copyPayload);
+    document.getElementById("resetButton").addEventListener("click", resetPacket);
+    updatePayload();
+  </script>
+</body>
+</html>
