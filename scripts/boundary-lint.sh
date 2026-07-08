@@ -54,9 +54,9 @@ done
 content_diff="$( { git diff "$base"...HEAD -- "$content_gated_pathspec" 2>/dev/null;
                    git diff --cached -- "$content_gated_pathspec" 2>/dev/null;
                    git diff -- "$content_gated_pathspec" 2>/dev/null; } || true )"
-content_hits="$(grep -E "^[-+][^-+]" <<<"$content_diff" 2>/dev/null \
+content_hits="$({ grep -E "^[-+][^-+]" <<<"$content_diff" 2>/dev/null \
   | grep -Ev "^[-+]{3}" \
-  | { grep -E "$content_tokens" || true; })"
+  | grep -E "$content_tokens"; } || true)"
 if [[ -n "$content_hits" ]]; then
   hits+=("$content_gated_pathspec/** (content-gated: diff touches ${content_tokens})")
 fi
