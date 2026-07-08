@@ -424,15 +424,10 @@ fn with_workspace_temporarily_mapped(
         let stack = app_state.stack.clone();
         let target_workspace = app_state.workspaces.get(workspace_index)?;
         let target_stack_name = format!("ws-{}", target_workspace.id);
-        let restore_stack_name = stack
-            .visible_child_name()
-            .map(|name| name.to_string())
-            .or_else(|| {
-                app_state
-                    .workspaces
-                    .get(app_state.active_idx)
-                    .map(|workspace| format!("ws-{}", workspace.id))
-            })?;
+        let restore_stack_name = app_state
+            .workspaces
+            .get(app_state.active_idx)
+            .map(|workspace| format!("ws-{}", workspace.id))?;
 
         (stack, target_stack_name, restore_stack_name)
     };
