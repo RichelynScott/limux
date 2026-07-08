@@ -15,6 +15,51 @@
 **Purpose:** Resume-safe state for nato's HIGH-LEVEL PLANNING lane: cmux-parity
 roadmap + Wave-0/1 PRDs, produced for lifo + subagents to execute.
 
+## Status Update 2026-07-08 ~01:25 EDT (COMPACTION-READY — option-b endgame: one slice from PARK)
+
+**Operator picked (b): merge #44 + rename-textbox fix, then PARK the lane** (token
+pressure from other projects; limux everyday-use essentials are complete).
+
+**IMMEDIATE NEXT ACTION (post-compaction successor):** lifo is executing the FINAL
+slice (tab-rename textbox focus fix — rename entry inside a `set_can_target(false)`
+container — + regression test + CHANGELOG entries for #42/#43/#44, fresh branch off
+`origin/main` 522d9bc). Flow: he pings at PR head → NO full wave needed (small
+UI-fix class; my own read + bot round suffices) → my review → bot → **I merge → then
+write the PARK handoff entry + go quiet.** Deferred queue after park: workspace
+group, tab.action/notification.clear, PRD-G #7, PRD-C 10-min operator checklist,
+PRD-F browser decision.
+
+- **PR #44 MERGED (squash `522d9bc`)** — surface.split/focus/close wired. Bot round:
+  **single P3** (focus session-save gap, folded 22c69b4) vs #41's 10-round baseline.
+  **Pre-wave experiment run-1 validated**: 6-lens **MiniMax-M3** wave (M2.7-highspeed
+  id is DEAD at provider — use `--provider minimax -m MiniMax-M3` + MINIMAX_API_KEY
+  from the approved interim .env) + Fable adjudication → 10 accepted themes (1 CRIT:
+  split create-vs-move core-parity divergence — adjudicator catch; 3 verified HIGHs),
+  4 refuted FPs, ~91% pre-catch, round delta 10→1. Full record + scoring appendix:
+  `~/Proj/MODEL_TESTING_LAB/INBOX/RESULT_FROM_nato_1_2026-07-08_prebot-wave-run1-surface-group.md`
+  (toku registered as SRC-006-012). Adjudicated review:
+  `/home/riche/MCPs/limux/REVIEW_FROM_nato_1_2026-07-08_surface-group-prewave.md`.
+- **lifo_cl_mgr: DO NOT respawn for limux work** — task reassigned to lifo; a
+  supersede notice is queued on its hcom name (delivers on any future resume).
+- **DOGFOOD BUGS found tonight (limux backlog — file as issues when lane resumes):**
+  (1) `limux new-pane --command` replies `-32603 timeout` though the pane creates
+  (reply-latency; breaks scripted `{id}` capture); (2) `hcom r <name>` launched via
+  new-pane loses the resume target → interactive codex PICKER + no hcom
+  registration (route to dino w/ evidence: events #340563 + pane-146 obs);
+  (3) **`limux send-key --pane pane:146` delivered to `surface:125` (focused pane,
+  NOT the addressed one)** — CRITICAL for agent-driving safety; (4) `read-screen
+  --surface <id from list-panels>` → not_found while `--pane` works (addressing
+  inconsistency). Stray idle codex-picker pane 146 left for operator to close.
+- **GLOBAL-CONFIG FOLLOW-UPS (operator asked):** (a) hcom needs a first-class
+  `limux` terminal backend (managed open/close preset; custom-preset interim is
+  BLOCKED by bug 1's missing {id} capture) → dino/hcom lane; (b) fleet skills
+  (hermes-delegation/hcom/limux-use-guide) should default agent spawns into limux
+  panes on this host → kazu via hub dual-inbox; (c) bugs 1-4 are the real adoption
+  blockers — fix in limux lane first.
+- **Disk lane (closed):** ~48GB reclaimed in-VM (dino 45 hcom targets, me 2.8
+  limux); SCRIM 17G routed via zere; op's next shutdown + Optimize-VHD converts to
+  C: space; Claude Desktop VM bundle 9.4GB (stale June 16) = operator decision.
+
 ## Status Update 2026-07-08 ~00:05 EDT (POST-RESTART — install verified, reviewer loop resumed)
 
 **Restart sequence SUCCEEDED (operator-executed):** Docker VHDX compaction done —
