@@ -46,6 +46,8 @@ type OpenUrlCallback = dyn Fn(&str, bool);
 type VoidCallback = dyn Fn();
 type WidgetCallback = dyn Fn(&gtk::Widget);
 type IdentityCallback = dyn Fn() -> TerminalIdentity;
+type PaneWidthLockStateCallback = dyn Fn() -> Option<i32>;
+type PaneWidthLockAllowedCallback = dyn Fn() -> bool;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TerminalIdentity {
@@ -1345,6 +1347,9 @@ pub struct TerminalCallbacks {
     pub on_split_right: Box<VoidCallback>,
     pub on_split_down: Box<VoidCallback>,
     pub on_open_keybinds: Box<WidgetCallback>,
+    pub on_toggle_width_lock: Box<VoidCallback>,
+    pub pane_width_lock: Box<PaneWidthLockStateCallback>,
+    pub pane_width_lock_allowed: Box<PaneWidthLockAllowedCallback>,
     pub identity: Box<IdentityCallback>,
 }
 
@@ -2151,18 +2156,26 @@ fn show_terminal_context_menu(
         .map(|s| unsafe { ghostty_surface_has_selection(s) })
         .unwrap_or(false);
 
-    let items: Vec<(&str, bool)> = vec![
-        ("Copy", has_selection),
-        ("Paste", true),
-        ("---", false),
-        ("IDs", true),
-        ("---", false),
-        ("Browser", true),
-        ("Split Right", true),
-        ("Split Down", true),
-        ("Keybinds", true),
-        ("---", false),
-        ("Clear", true),
+    let locked_width = (callbacks.borrow().pane_width_lock)();
+    let width_lock_enabled =
+        locked_width.is_some() || (callbacks.borrow().pane_width_lock_allowed)();
+    let width_lock_label = locked_width
+        .map(|width| format!("Unlock Width ({width}px)"))
+        .unwrap_or_else(|| "Lock Width".to_string());
+
+    let items: Vec<(String, bool)> = vec![
+        ("Copy".to_string(), has_selection),
+        ("Paste".to_string(), true),
+        ("---".to_string(), false),
+        ("IDs".to_string(), true),
+        ("---".to_string(), false),
+        ("Browser".to_string(), true),
+        ("Split Right".to_string(), true),
+        ("Split Down".to_string(), true),
+        (width_lock_label, width_lock_enabled),
+        ("Keybinds".to_string(), true),
+        ("---".to_string(), false),
+        ("Clear".to_string(), true),
     ];
 
     let identity = (callbacks.borrow().identity)();
@@ -2189,7 +2202,7 @@ fn show_terminal_context_menu(
     ids_popover.set_child(Some(&ids_box));
 
     for (label, enabled) in &items {
-        if *label == "---" {
+        if label == "---" {
             let sep = gtk::Separator::new(gtk::Orientation::Horizontal);
             sep.set_margin_top(4);
             sep.set_margin_bottom(4);
@@ -2197,14 +2210,14 @@ fn show_terminal_context_menu(
             continue;
         }
 
-        let btn = gtk::Button::with_label(if *label == "IDs" { "IDs >" } else { label });
+        let btn = gtk::Button::with_label(if label == "IDs" { "IDs >" } else { label });
         btn.add_css_class("flat");
         btn.set_sensitive(*enabled);
         btn.set_halign(gtk::Align::Fill);
         if let Some(lbl) = btn.child().and_then(|c| c.downcast::<gtk::Label>().ok()) {
             lbl.set_xalign(0.0);
         }
-        if *label == "IDs" {
+        if label == "IDs" {
             ids_popover.set_parent(&btn);
             let ids_popover_for_motion = ids_popover.clone();
             let motion = gtk::EventControllerMotion::new();
@@ -2254,6 +2267,12 @@ fn show_terminal_context_menu(
                     "Split Down" => {
                         let callbacks = cb.borrow();
                         (callbacks.on_split_down)();
+                    }
+                    label
+                        if label.starts_with("Lock Width") || label.starts_with("Unlock Width") =>
+                    {
+                        let callbacks = cb.borrow();
+                        (callbacks.on_toggle_width_lock)();
                     }
                     "Keybinds" => {
                         let anchor: gtk::Widget = gl_area.clone().upcast();

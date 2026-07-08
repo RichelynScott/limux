@@ -197,6 +197,14 @@ impl SplitTreeContainer {
         self.tree.borrow().is_leaf()
     }
 
+    pub(crate) fn is_zoomed_pane(&self, target: &gtk::Widget) -> bool {
+        self.zoomed_pane
+            .borrow()
+            .as_ref()
+            .map(|pane| pane == target)
+            .unwrap_or(false)
+    }
+
     pub(crate) fn toggle_zoom(self: &Rc<Self>, target: &gtk::Widget) -> bool {
         if self.zoomed_pane.borrow().is_some() {
             self.restore_zoom();
@@ -291,6 +299,14 @@ impl SplitTreeContainer {
             self.trigger_rebuild();
         }
         removed
+    }
+
+    pub(crate) fn rebuild_for_pane_metadata(self: &Rc<Self>, target: &gtk::Widget) {
+        if !self.tree.borrow().contains_pane(target) {
+            return;
+        }
+        self.save_focus();
+        self.trigger_rebuild();
     }
 
     /// Tear down the old widget tree and schedule a rebuild on the next idle
@@ -438,6 +454,375 @@ fn detach_pane_from_old_parent(pane_widget: &gtk::Widget) {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WidthLockSide {
+    Start,
+    End,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct WidthLockConstraints {
+    start_required_width: Option<i32>,
+    end_required_width: Option<i32>,
+    start_min_width: i32,
+    end_min_width: i32,
+}
+
+impl WidthLockConstraints {
+    fn has_required_width(self) -> bool {
+        self.start_required_width.is_some() || self.end_required_width.is_some()
+    }
+}
+
+fn locked_width_position_for_horizontal_split(
+    side: WidthLockSide,
+    locked_width: i32,
+    total_width: i32,
+    min_child_width: i32,
+) -> Option<i32> {
+    if locked_width <= 0 || total_width < min_child_width.saturating_mul(2) {
+        return None;
+    }
+
+    let max_child_width = total_width.saturating_sub(min_child_width);
+    let locked_width = locked_width.clamp(min_child_width, max_child_width);
+    Some(match side {
+        WidthLockSide::Start => locked_width,
+        WidthLockSide::End => total_width - locked_width,
+    })
+}
+
+fn paned_child_area_extent(
+    start_extent: i32,
+    end_extent: i32,
+    total_extent: i32,
+    min_child_extent: i32,
+) -> i32 {
+    let child_extent = start_extent.saturating_add(end_extent);
+    if start_extent > 0
+        && end_extent > 0
+        && child_extent <= total_extent
+        && child_extent >= min_child_extent.saturating_mul(2)
+    {
+        child_extent
+    } else {
+        total_extent
+    }
+}
+
+fn horizontal_paned_child_area_width(paned: &gtk::Paned) -> i32 {
+    let allocation_width = paned.allocation().width();
+    let start_width = paned
+        .start_child()
+        .map(|child| child.allocation().width())
+        .unwrap_or_default();
+    let end_width = paned
+        .end_child()
+        .map(|child| child.allocation().width())
+        .unwrap_or_default();
+    paned_child_area_extent(
+        start_width,
+        end_width,
+        allocation_width,
+        pane::MIN_PANE_WIDTH,
+    )
+}
+
+fn minimum_width_for_subtree(node: &SplitNode) -> i32 {
+    match node {
+        SplitNode::Leaf { .. } => pane::MIN_PANE_WIDTH,
+        SplitNode::Split {
+            orientation,
+            left,
+            right,
+            ..
+        } => match *orientation {
+            gtk::Orientation::Horizontal => {
+                minimum_width_for_subtree(left).saturating_add(minimum_width_for_subtree(right))
+            }
+            gtk::Orientation::Vertical => {
+                minimum_width_for_subtree(left).max(minimum_width_for_subtree(right))
+            }
+            _ => minimum_width_for_subtree(left).max(minimum_width_for_subtree(right)),
+        },
+    }
+}
+
+fn horizontal_extent_width_lock_panes(node: &SplitNode) -> Vec<gtk::Widget> {
+    match node {
+        SplitNode::Leaf { pane_widget } => vec![pane_widget.clone()],
+        SplitNode::Split {
+            orientation,
+            left,
+            right,
+            ..
+        } => {
+            if *orientation == gtk::Orientation::Horizontal {
+                Vec::new()
+            } else {
+                let mut panes = horizontal_extent_width_lock_panes(left);
+                panes.extend(horizontal_extent_width_lock_panes(right));
+                panes
+            }
+        }
+    }
+}
+
+fn locked_width_required_for_subtree(node: &SplitNode) -> Option<i32> {
+    match node {
+        SplitNode::Leaf { pane_widget } => {
+            pane::pane_locked_width(pane_widget).map(|width| width.max(pane::MIN_PANE_WIDTH))
+        }
+        SplitNode::Split {
+            orientation,
+            left,
+            right,
+            ..
+        } => {
+            let left_required = locked_width_required_for_subtree(left);
+            let right_required = locked_width_required_for_subtree(right);
+
+            match *orientation {
+                gtk::Orientation::Horizontal => {
+                    if left_required.is_none() && right_required.is_none() {
+                        None
+                    } else {
+                        Some(
+                            left_required.unwrap_or_else(|| minimum_width_for_subtree(left))
+                                + right_required
+                                    .unwrap_or_else(|| minimum_width_for_subtree(right)),
+                        )
+                    }
+                }
+                gtk::Orientation::Vertical => {
+                    if left_required.is_none() && right_required.is_none() {
+                        None
+                    } else {
+                        Some(
+                            left_required
+                                .unwrap_or_else(|| minimum_width_for_subtree(left))
+                                .max(
+                                    right_required
+                                        .unwrap_or_else(|| minimum_width_for_subtree(right)),
+                                ),
+                        )
+                    }
+                }
+                _ => {
+                    if left_required.is_none() && right_required.is_none() {
+                        None
+                    } else {
+                        Some(
+                            left_required
+                                .unwrap_or_else(|| minimum_width_for_subtree(left))
+                                .max(
+                                    right_required
+                                        .unwrap_or_else(|| minimum_width_for_subtree(right)),
+                                ),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn first_locked_width(panes: &[gtk::Widget]) -> Option<i32> {
+    panes.iter().find_map(pane::pane_locked_width)
+}
+
+fn locked_width_position_from_panes(
+    start_lock_panes: &[gtk::Widget],
+    end_lock_panes: &[gtk::Widget],
+    total_width: i32,
+    min_child_width: i32,
+) -> Option<i32> {
+    first_locked_width(start_lock_panes)
+        .and_then(|width| {
+            locked_width_position_for_horizontal_split(
+                WidthLockSide::Start,
+                width,
+                total_width,
+                min_child_width,
+            )
+        })
+        .or_else(|| {
+            first_locked_width(end_lock_panes).and_then(|width| {
+                locked_width_position_for_horizontal_split(
+                    WidthLockSide::End,
+                    width,
+                    total_width,
+                    min_child_width,
+                )
+            })
+        })
+}
+
+fn constrained_locked_width_position(
+    current_position: i32,
+    exact_position: Option<i32>,
+    constraints: WidthLockConstraints,
+    total_width: i32,
+    min_child_width: i32,
+) -> Option<i32> {
+    if total_width < min_child_width.saturating_mul(2) {
+        return None;
+    }
+
+    let max_child_width = total_width.saturating_sub(min_child_width);
+    let min_position = constraints
+        .start_required_width
+        .unwrap_or(constraints.start_min_width)
+        .clamp(min_child_width, max_child_width);
+    let max_position = total_width
+        .saturating_sub(
+            constraints
+                .end_required_width
+                .unwrap_or(constraints.end_min_width),
+        )
+        .clamp(min_child_width, max_child_width);
+    let desired_position = exact_position.unwrap_or(current_position);
+
+    if min_position <= max_position {
+        Some(desired_position.clamp(min_position, max_position))
+    } else {
+        Some(desired_position.clamp(max_position, min_position))
+    }
+}
+
+fn apply_locked_width_position_from_panes(
+    paned: &gtk::Paned,
+    start_lock_panes: &[gtk::Widget],
+    end_lock_panes: &[gtk::Widget],
+    constraints: WidthLockConstraints,
+    applying: &Rc<Cell<bool>>,
+) -> bool {
+    let has_active_lock = first_locked_width(start_lock_panes).is_some()
+        || first_locked_width(end_lock_panes).is_some()
+        || constraints.has_required_width();
+    if !has_active_lock {
+        return false;
+    }
+
+    let child_area_width = horizontal_paned_child_area_width(paned);
+    let exact_position = locked_width_position_from_panes(
+        start_lock_panes,
+        end_lock_panes,
+        child_area_width,
+        pane::MIN_PANE_WIDTH,
+    );
+    let Some(position) = constrained_locked_width_position(
+        paned.position(),
+        exact_position,
+        constraints,
+        child_area_width,
+        pane::MIN_PANE_WIDTH,
+    ) else {
+        return true;
+    };
+
+    if paned.position() != position {
+        applying.set(true);
+        paned.set_position(position);
+        applying.set(false);
+    }
+    true
+}
+
+fn attach_locked_width_enforcement(
+    paned: &gtk::Paned,
+    orientation: gtk::Orientation,
+    start_lock_panes: Vec<gtk::Widget>,
+    end_lock_panes: Vec<gtk::Widget>,
+    constraints: WidthLockConstraints,
+    applying: Rc<Cell<bool>>,
+) {
+    if orientation != gtk::Orientation::Horizontal {
+        return;
+    }
+    if start_lock_panes.is_empty() && end_lock_panes.is_empty() && !constraints.has_required_width()
+    {
+        return;
+    }
+
+    {
+        let paned = paned.clone();
+        let start_lock_panes = start_lock_panes.clone();
+        let end_lock_panes = end_lock_panes.clone();
+        let applying = applying.clone();
+        glib::idle_add_local_once(move || {
+            apply_locked_width_position_from_panes(
+                &paned,
+                &start_lock_panes,
+                &end_lock_panes,
+                constraints,
+                &applying,
+            );
+        });
+    }
+
+    {
+        let start_lock_panes = start_lock_panes.clone();
+        let end_lock_panes = end_lock_panes.clone();
+        let applying = applying.clone();
+        paned.connect_map(move |paned| {
+            apply_locked_width_position_from_panes(
+                paned,
+                &start_lock_panes,
+                &end_lock_panes,
+                constraints,
+                &applying,
+            );
+        });
+    }
+
+    glib::timeout_add_local_once(std::time::Duration::from_millis(16), {
+        let paned = paned.clone();
+        let start_lock_panes = start_lock_panes.clone();
+        let end_lock_panes = end_lock_panes.clone();
+        let applying = applying.clone();
+        move || {
+            apply_locked_width_position_from_panes(
+                &paned,
+                &start_lock_panes,
+                &end_lock_panes,
+                constraints,
+                &applying,
+            );
+        }
+    });
+
+    glib::timeout_add_local_once(std::time::Duration::from_millis(80), {
+        let paned = paned.clone();
+        move || {
+            apply_locked_width_position_from_panes(
+                &paned,
+                &start_lock_panes,
+                &end_lock_panes,
+                constraints,
+                &applying,
+            );
+        }
+    });
+}
+
+fn snapshot_current_split_ratio(paned: &gtk::Paned, shared_ratio: &Rc<RefCell<f64>>) {
+    let allocation = paned.allocation();
+    let orientation = paned.orientation();
+    let size = if orientation == gtk::Orientation::Horizontal {
+        allocation.width()
+    } else {
+        allocation.height()
+    };
+    let new_ratio = layout_state::snapshot_split_ratio_with_min(
+        paned.position(),
+        size,
+        Some(*shared_ratio.borrow()),
+        minimum_split_extent_for_orientation(orientation),
+    );
+    *shared_ratio.borrow_mut() = layout_state::clamp_split_ratio(new_ratio);
+}
+
 /// Build a GTK widget tree from the SplitNode data model.
 fn build_widget_tree(node: &SplitNode, state: &State) -> gtk::Widget {
     match node {
@@ -468,27 +853,39 @@ fn build_widget_tree(node: &SplitNode, state: &State) -> gtk::Widget {
             update_split_ratio_state(&paned, ratio_val);
             attach_split_position_persistence(state, &paned, applying.clone());
 
+            let start_lock_panes = horizontal_extent_width_lock_panes(left);
+            let end_lock_panes = horizontal_extent_width_lock_panes(right);
+            let start_required_width = locked_width_required_for_subtree(left);
+            let end_required_width = locked_width_required_for_subtree(right);
+            let width_lock_constraints = WidthLockConstraints {
+                start_required_width,
+                end_required_width,
+                start_min_width: minimum_width_for_subtree(left),
+                end_min_width: minimum_width_for_subtree(right),
+            };
+
             // Wire resize drags back to the shared ratio cell in the data model.
             let shared_ratio = ratio.clone();
             let applying_for_notify = applying.clone();
+            let start_lock_panes_for_notify = start_lock_panes.clone();
+            let end_lock_panes_for_notify = end_lock_panes.clone();
             paned.connect_position_notify(move |paned| {
                 if applying_for_notify.get() {
                     return;
                 }
-                let allocation = paned.allocation();
-                let orientation = paned.orientation();
-                let size = if orientation == gtk::Orientation::Horizontal {
-                    allocation.width()
-                } else {
-                    allocation.height()
-                };
-                let new_ratio = layout_state::snapshot_split_ratio_with_min(
-                    paned.position(),
-                    size,
-                    Some(*shared_ratio.borrow()),
-                    minimum_split_extent_for_orientation(orientation),
-                );
-                *shared_ratio.borrow_mut() = layout_state::clamp_split_ratio(new_ratio);
+                if paned.orientation() == gtk::Orientation::Horizontal
+                    && apply_locked_width_position_from_panes(
+                        paned,
+                        &start_lock_panes_for_notify,
+                        &end_lock_panes_for_notify,
+                        width_lock_constraints,
+                        &applying_for_notify,
+                    )
+                {
+                    snapshot_current_split_ratio(paned, &shared_ratio);
+                    return;
+                }
+                snapshot_current_split_ratio(paned, &shared_ratio);
             });
 
             let left_widget = build_widget_tree(left, state);
@@ -496,7 +893,15 @@ fn build_widget_tree(node: &SplitNode, state: &State) -> gtk::Widget {
             paned.set_start_child(Some(&left_widget));
             paned.set_end_child(Some(&right_widget));
 
-            apply_split_ratio_after_layout(&paned, *orientation, ratio.clone(), applying);
+            apply_split_ratio_after_layout(&paned, *orientation, ratio.clone(), applying.clone());
+            attach_locked_width_enforcement(
+                &paned,
+                *orientation,
+                start_lock_panes,
+                end_lock_panes,
+                width_lock_constraints,
+                applying,
+            );
 
             paned.upcast()
         }
@@ -602,6 +1007,167 @@ pub(crate) fn build_split_node_from_layout(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn width_lock_constraints(
+        start_required_width: Option<i32>,
+        end_required_width: Option<i32>,
+        start_min_width: i32,
+        end_min_width: i32,
+    ) -> WidthLockConstraints {
+        WidthLockConstraints {
+            start_required_width,
+            end_required_width,
+            start_min_width,
+            end_min_width,
+        }
+    }
+
+    #[test]
+    fn locked_width_position_preserves_start_child_width() {
+        assert_eq!(
+            locked_width_position_for_horizontal_split(WidthLockSide::Start, 420, 1_200, 260),
+            Some(420)
+        );
+    }
+
+    #[test]
+    fn locked_width_position_preserves_end_child_width() {
+        assert_eq!(
+            locked_width_position_for_horizontal_split(WidthLockSide::End, 380, 1_200, 260),
+            Some(820)
+        );
+    }
+
+    #[test]
+    fn locked_width_position_respects_minimum_child_widths() {
+        assert_eq!(
+            locked_width_position_for_horizontal_split(WidthLockSide::Start, 100, 1_200, 260),
+            Some(260)
+        );
+        assert_eq!(
+            locked_width_position_for_horizontal_split(WidthLockSide::End, 100, 1_200, 260),
+            Some(940)
+        );
+        assert_eq!(
+            locked_width_position_for_horizontal_split(WidthLockSide::Start, 600, 400, 260),
+            None
+        );
+    }
+
+    #[test]
+    fn paned_child_area_extent_excludes_handle_when_children_are_allocated() {
+        assert_eq!(paned_child_area_extent(420, 372, 800, 260), 792);
+    }
+
+    #[test]
+    fn paned_child_area_extent_falls_back_before_layout() {
+        assert_eq!(paned_child_area_extent(0, 0, 800, 260), 800);
+        assert_eq!(paned_child_area_extent(240, 240, 800, 260), 800);
+    }
+
+    #[test]
+    fn constrained_locked_width_position_preserves_direct_exact_lock() {
+        assert_eq!(
+            constrained_locked_width_position(
+                800,
+                Some(420),
+                width_lock_constraints(Some(420), None, 260, 260),
+                1_200,
+                260
+            ),
+            Some(420)
+        );
+    }
+
+    #[test]
+    fn constrained_locked_width_position_preserves_nested_start_requirement() {
+        assert_eq!(
+            constrained_locked_width_position(
+                500,
+                None,
+                width_lock_constraints(Some(680), None, 260, 260),
+                1_200,
+                260
+            ),
+            Some(680)
+        );
+        assert_eq!(
+            constrained_locked_width_position(
+                760,
+                None,
+                width_lock_constraints(Some(680), None, 260, 260),
+                1_200,
+                260
+            ),
+            Some(760)
+        );
+    }
+
+    #[test]
+    fn constrained_locked_width_position_preserves_nested_end_requirement() {
+        assert_eq!(
+            constrained_locked_width_position(
+                900,
+                None,
+                width_lock_constraints(None, Some(520), 260, 260),
+                1_200,
+                260
+            ),
+            Some(680)
+        );
+        assert_eq!(
+            constrained_locked_width_position(
+                600,
+                None,
+                width_lock_constraints(None, Some(520), 260, 260),
+                1_200,
+                260
+            ),
+            Some(600)
+        );
+    }
+
+    #[test]
+    fn constrained_locked_width_position_uses_child_area_for_end_locks() {
+        assert_eq!(
+            locked_width_position_for_horizontal_split(WidthLockSide::End, 380, 1_192, 260),
+            Some(812)
+        );
+        assert_eq!(
+            constrained_locked_width_position(
+                900,
+                None,
+                width_lock_constraints(None, Some(520), 260, 260),
+                1_192,
+                260
+            ),
+            Some(672)
+        );
+    }
+
+    #[test]
+    fn constrained_locked_width_position_reserves_structural_sibling_minimums() {
+        assert_eq!(
+            constrained_locked_width_position(
+                760,
+                None,
+                width_lock_constraints(Some(680), None, 680, 520),
+                1_200,
+                260
+            ),
+            Some(680)
+        );
+        assert_eq!(
+            constrained_locked_width_position(
+                500,
+                None,
+                width_lock_constraints(None, Some(680), 520, 680),
+                1_200,
+                260
+            ),
+            Some(520)
+        );
+    }
 
     #[test]
     fn split_extent_requires_room_for_both_children() {
