@@ -470,6 +470,42 @@ fn locked_width_position_for_horizontal_split(
     })
 }
 
+fn paned_child_area_extent(
+    start_extent: i32,
+    end_extent: i32,
+    total_extent: i32,
+    min_child_extent: i32,
+) -> i32 {
+    let child_extent = start_extent.saturating_add(end_extent);
+    if start_extent > 0
+        && end_extent > 0
+        && child_extent <= total_extent
+        && child_extent >= min_child_extent.saturating_mul(2)
+    {
+        child_extent
+    } else {
+        total_extent
+    }
+}
+
+fn horizontal_paned_child_area_width(paned: &gtk::Paned) -> i32 {
+    let allocation_width = paned.allocation().width();
+    let start_width = paned
+        .start_child()
+        .map(|child| child.allocation().width())
+        .unwrap_or_default();
+    let end_width = paned
+        .end_child()
+        .map(|child| child.allocation().width())
+        .unwrap_or_default();
+    paned_child_area_extent(
+        start_width,
+        end_width,
+        allocation_width,
+        pane::MIN_PANE_WIDTH,
+    )
+}
+
 fn horizontal_extent_width_lock_panes(node: &SplitNode) -> Vec<gtk::Widget> {
     match node {
         SplitNode::Leaf { pane_widget } => vec![pane_widget.clone()],
@@ -597,11 +633,11 @@ fn apply_locked_width_position_from_panes(
         return false;
     }
 
-    let allocation = paned.allocation();
+    let child_area_width = horizontal_paned_child_area_width(paned);
     let exact_position = locked_width_position_from_panes(
         start_lock_panes,
         end_lock_panes,
-        allocation.width(),
+        child_area_width,
         pane::MIN_PANE_WIDTH,
     );
     let Some(position) = constrained_locked_width_position(
@@ -609,7 +645,7 @@ fn apply_locked_width_position_from_panes(
         exact_position,
         start_required_width,
         end_required_width,
-        allocation.width(),
+        child_area_width,
         pane::MIN_PANE_WIDTH,
     ) else {
         return true;
@@ -939,6 +975,17 @@ mod tests {
     }
 
     #[test]
+    fn paned_child_area_extent_excludes_handle_when_children_are_allocated() {
+        assert_eq!(paned_child_area_extent(420, 372, 800, 260), 792);
+    }
+
+    #[test]
+    fn paned_child_area_extent_falls_back_before_layout() {
+        assert_eq!(paned_child_area_extent(0, 0, 800, 260), 800);
+        assert_eq!(paned_child_area_extent(240, 240, 800, 260), 800);
+    }
+
+    #[test]
     fn constrained_locked_width_position_preserves_direct_exact_lock() {
         assert_eq!(
             constrained_locked_width_position(800, Some(420), Some(420), None, 1_200, 260),
@@ -967,6 +1014,18 @@ mod tests {
         assert_eq!(
             constrained_locked_width_position(600, None, None, Some(520), 1_200, 260),
             Some(600)
+        );
+    }
+
+    #[test]
+    fn constrained_locked_width_position_uses_child_area_for_end_locks() {
+        assert_eq!(
+            locked_width_position_for_horizontal_split(WidthLockSide::End, 380, 1_192, 260),
+            Some(812)
+        );
+        assert_eq!(
+            constrained_locked_width_position(900, None, None, Some(520), 1_192, 260),
+            Some(672)
         );
     }
 
