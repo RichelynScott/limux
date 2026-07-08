@@ -48,12 +48,16 @@ done
 
 # Content gate: scan added/removed diff lines under limux-cli for tokens,
 # excluding the path-gated files already reported.
+# NOTE: no `grep -q` inside pipelines here — under pipefail, an early -q match
+# SIGPIPEs the upstream command and the pipeline falsely reports failure
+# (bot-caught on #42). Capture fully, then test.
 content_diff="$( { git diff "$base"...HEAD -- "$content_gated_pathspec" 2>/dev/null;
                    git diff --cached -- "$content_gated_pathspec" 2>/dev/null;
                    git diff -- "$content_gated_pathspec" 2>/dev/null; } || true )"
-if grep -E "^[-+][^-+]" <<<"$content_diff" 2>/dev/null \
+content_hits="$(grep -E "^[-+][^-+]" <<<"$content_diff" 2>/dev/null \
   | grep -Ev "^[-+]{3}" \
-  | grep -Eq "$content_tokens"; then
+  | { grep -E "$content_tokens" || true; })"
+if [[ -n "$content_hits" ]]; then
   hits+=("$content_gated_pathspec/** (content-gated: diff touches ${content_tokens})")
 fi
 
@@ -62,7 +66,9 @@ if [[ "${#hits[@]}" -eq 0 ]]; then
 fi
 
 # Gated surfaces changed — require the boundary-review trailer on the branch.
-if git log "$base"..HEAD --format=%B 2>/dev/null | grep -q '^Boundary-Review: hcom'; then
+# Same pipefail/SIGPIPE hazard as above: capture the log fully, then grep it.
+branch_log="$(git log "$base"..HEAD --format=%B 2>/dev/null || true)"
+if grep -q '^Boundary-Review: hcom' <<<"$branch_log"; then
   printf 'boundary-lint: gated surfaces changed; Boundary-Review: hcom trailer present\n' >&2
   exit 0
 fi
