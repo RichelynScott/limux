@@ -111,6 +111,16 @@ not re-plan it.
 - **W3.1 Agent session lifecycle: resume / fork / hibernation** — resume
   agent sessions after restart, fork conversations, hibernate idle agent panes
   (RAM matters on WSL2). cmux #4198/#6803/v0.64.11.
+  - **W3.1 boundary (operator-ratified 2026-07-07, convergence DP-5):** Limux
+    owns the resume/fork/hibernation **UX**; hcom owns the **engine**. Session
+    resume/fork MUST delegate to `hcom r` / `hcom f` for hcom-managed sessions
+    (detection per the shipped launch-env capture, PR #37); the native path
+    exists ONLY for hcom-absent environments and non-hcom-managed agents.
+    Hibernation-class features (suspend/park/wake) have NO hcom primitive
+    today: they require an hcom-side PRD (route to HCOM_MGR) BEFORE any
+    limux-native implementation is considered. W3.1 execution PRDs cite this
+    stamp in their Non-Goals. Decision record:
+    `docs/LIMUX_HCOM_CONVERGENCE_DECISION_PACKET_2026-07-07.html`.
 - **W3.2 SSH remote workspaces + detachable PTY daemon** — cmuxd-style
   reconnect-surviving remote sessions (cmux v0.64.11/#7250/#7463).
 - **W3.3 Notification panel + unread-jump + per-category gating** — beyond
