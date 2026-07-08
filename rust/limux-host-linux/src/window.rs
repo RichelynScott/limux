@@ -5399,7 +5399,10 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                     skip_default_tab: true,
                     new_pane_first: placement.new_pane_first,
                     persist: false,
-                    source_cwd_override: None,
+                    source_cwd_override: pane_create_source_cwd_override(
+                        request.source_surface_id.as_deref(),
+                        resolved.surface.cwd.clone(),
+                    ),
                 },
             );
             let Some(new_pane) = new_pane else {
