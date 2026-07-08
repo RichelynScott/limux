@@ -213,7 +213,7 @@ const ROUTES: &[RouteEntry] = &[
     },
 ];
 
-const WIRED_WAVE1_MUTATIONS: &[&str] = &["pane.focus"];
+const WIRED_WAVE1_MUTATIONS: &[&str] = &["pane.focus", "pane.resize", "resize-pane"];
 
 impl RouteClass {
     fn is_capability_advertised(self) -> bool {
@@ -328,10 +328,13 @@ mod tests {
                 "{method} should be in the Wave-1 mutation set"
             );
         }
-        assert!(advertised.contains(&"pane.focus"));
+        for method in ["pane.focus", "pane.resize", "resize-pane"] {
+            assert!(
+                advertised.contains(&method),
+                "{method} should be advertised after the live GTK route is wired"
+            );
+        }
         for method in [
-            "pane.resize",
-            "resize-pane",
             "surface.split",
             "surface.focus",
             "surface.close",
@@ -353,7 +356,12 @@ mod tests {
     fn wired_wave1_capabilities_are_hidden_when_kill_switch_is_enabled() {
         let methods = capability_methods_for_wave1_disabled(true);
 
-        assert!(!methods.contains(&"pane.focus"));
+        for method in WIRED_WAVE1_MUTATIONS {
+            assert!(
+                !methods.contains(method),
+                "{method} should be hidden when Wave-1 mutations are disabled"
+            );
+        }
         assert!(methods.contains(&"workspace.list"));
         assert!(methods.contains(&"surface.current"));
     }

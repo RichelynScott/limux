@@ -19,7 +19,7 @@ use limux_protocol::validate_terminal_text_payload;
 use crate::app_config;
 use crate::control_bridge::{
     BridgeError, ControlCommand, PaneActionKind, PaneCreateDirection as BridgePaneCreateDirection,
-    PaneCreateType, WorkspaceTarget,
+    PaneCreateType, PaneResizeDirection as BridgePaneResizeDirection, WorkspaceTarget,
 };
 use crate::keybind_editor;
 use crate::layout_state::{
@@ -332,6 +332,278 @@ fn pane_action_target_pane_id(
             "pane.action requires a valid pane_id or an active focused pane",
         )
     })
+}
+
+struct PaneResizeGeometry {
+    split_position: i32,
+    split_ratio: f64,
+}
+
+struct PaneResizeOutcome {
+    workspace_id: String,
+    pane_id: u32,
+    direction: BridgePaneResizeDirection,
+    amount: f64,
+    pane_widget: gtk::Widget,
+    geometry: PaneResizeGeometry,
+}
+
+fn pane_resize_response_payload(outcome: PaneResizeOutcome) -> serde_json::Value {
+    let allocation = outcome.pane_widget.allocation();
+    serde_json::json!({
+        "ok": true,
+        "workspace_id": outcome.workspace_id.as_str(),
+        "workspace_ref": workspace_ref(&outcome.workspace_id),
+        "pane_id": outcome.pane_id.to_string(),
+        "pane_ref": pane_ref(outcome.pane_id),
+        "direction": pane_resize_direction_name(outcome.direction),
+        "amount": outcome.amount,
+        "frame": {
+            "width": allocation.width(),
+            "height": allocation.height(),
+        },
+        "split": {
+            "position": outcome.geometry.split_position,
+            "ratio": outcome.geometry.split_ratio,
+        },
+    })
+}
+
+struct PaneResizeTarget {
+    workspace_index: usize,
+    workspace_id: String,
+    pane_id: u32,
+    direction: BridgePaneResizeDirection,
+    amount: f64,
+    pane_widget: gtk::Widget,
+}
+
+struct TemporaryWorkspaceMapping {
+    stack: gtk::Stack,
+    target_stack_name: String,
+    restore_stack_name: String,
+}
+
+fn active_workspace_stack_name(state: &State) -> Option<String> {
+    let app_state = state.borrow();
+    app_state
+        .workspaces
+        .get(app_state.active_idx)
+        .map(|workspace| format!("ws-{}", workspace.id))
+}
+
+fn should_restore_workspace_mapping(
+    visible_stack_name: Option<&str>,
+    active_stack_name: Option<&str>,
+    target_stack_name: &str,
+) -> bool {
+    visible_stack_name == Some(target_stack_name) && active_stack_name != Some(target_stack_name)
+}
+
+fn should_skip_workspace_mapping(
+    visible_stack_name: Option<&str>,
+    target_stack_name: &str,
+    restore_stack_name: &str,
+) -> bool {
+    target_stack_name == restore_stack_name && visible_stack_name == Some(target_stack_name)
+}
+
+fn restore_workspace_mapping(state: &State, mapping: Option<TemporaryWorkspaceMapping>) {
+    if let Some(mapping) = mapping {
+        let target_stack_name = mapping.target_stack_name.as_str();
+        if should_restore_workspace_mapping(
+            mapping.stack.visible_child_name().as_deref(),
+            active_workspace_stack_name(state).as_deref(),
+            target_stack_name,
+        ) {
+            mapping
+                .stack
+                .set_visible_child_name(&mapping.restore_stack_name);
+        }
+    }
+}
+
+fn with_workspace_temporarily_mapped(
+    state: &State,
+    workspace_index: usize,
+) -> Option<TemporaryWorkspaceMapping> {
+    let (stack, visible_stack_name, target_stack_name, restore_stack_name) = {
+        let app_state = state.borrow();
+        let stack = app_state.stack.clone();
+        let visible_stack_name = stack.visible_child_name().map(|name| name.to_string());
+        let target_workspace = app_state.workspaces.get(workspace_index)?;
+        let target_stack_name = format!("ws-{}", target_workspace.id);
+        let restore_stack_name = app_state
+            .workspaces
+            .get(app_state.active_idx)
+            .map(|workspace| format!("ws-{}", workspace.id))?;
+
+        (
+            stack,
+            visible_stack_name,
+            target_stack_name,
+            restore_stack_name,
+        )
+    };
+
+    if should_skip_workspace_mapping(
+        visible_stack_name.as_deref(),
+        &target_stack_name,
+        &restore_stack_name,
+    ) {
+        return None;
+    }
+
+    stack.set_visible_child_name(&target_stack_name);
+    Some(TemporaryWorkspaceMapping {
+        stack,
+        target_stack_name,
+        restore_stack_name,
+    })
+}
+
+fn resolve_pane_resize_target(
+    state: &State,
+    request: &crate::control_bridge::PaneResizeRequest,
+) -> Result<PaneResizeTarget, BridgeError> {
+    let pane_id = parse_pane_handle(&request.pane_id)
+        .ok_or_else(|| BridgeError::invalid_params("pane.resize requires a valid pane_id"))?;
+
+    let (workspace_index, workspace_id, workspace_root) = {
+        let app_state = state.borrow();
+        let Some(index) = workspace_index_for_target(&app_state, &request.target) else {
+            return Err(BridgeError::not_found("workspace not found"));
+        };
+        let workspace = &app_state.workspaces[index];
+        (index, workspace.id.clone(), workspace.root.clone())
+    };
+
+    let pane_widget = pane::pane_widget_for_root(&workspace_root, pane_id)
+        .ok_or_else(|| BridgeError::not_found("pane not found"))?;
+
+    Ok(PaneResizeTarget {
+        workspace_index,
+        workspace_id,
+        pane_id,
+        direction: request.direction,
+        amount: request.amount,
+        pane_widget,
+    })
+}
+
+fn apply_pane_resize_target(
+    state: &State,
+    target: PaneResizeTarget,
+) -> Result<PaneResizeOutcome, BridgeError> {
+    let (axis, target_delta) = resize_axis_and_delta(target.direction, target.amount);
+    let geometry = resize_pane_widget(&target.pane_widget, axis, target_delta)?;
+    request_session_save(state);
+
+    Ok(PaneResizeOutcome {
+        workspace_id: target.workspace_id,
+        pane_id: target.pane_id,
+        direction: target.direction,
+        amount: target.amount,
+        pane_widget: target.pane_widget,
+        geometry,
+    })
+}
+
+fn send_pane_resize_response_after_settle(
+    state: State,
+    target: PaneResizeTarget,
+    mapping: Option<TemporaryWorkspaceMapping>,
+    reply: std::sync::mpsc::Sender<Result<serde_json::Value, BridgeError>>,
+) {
+    glib::idle_add_local_once(move || match apply_pane_resize_target(&state, target) {
+        Ok(outcome) => {
+            let state = state.clone();
+            glib::idle_add_local_once(move || {
+                let payload = pane_resize_response_payload(outcome);
+                restore_workspace_mapping(&state, mapping);
+                let _ = reply.send(Ok(payload));
+            });
+        }
+        Err(error) => {
+            restore_workspace_mapping(&state, mapping);
+            let _ = reply.send(Err(error));
+        }
+    });
+}
+
+fn resize_pane_widget(
+    pane_widget: &gtk::Widget,
+    axis: ResizeAxis,
+    target_delta: f64,
+) -> Result<PaneResizeGeometry, BridgeError> {
+    let Some((paned, target_is_start_child)) = resize_paned_for_pane(pane_widget, axis) else {
+        return Err(BridgeError::conflict("pane has no split on requested axis"));
+    };
+
+    let orientation = axis.orientation();
+    let allocation = paned.allocation();
+    let total_size = split_extent_from_allocation(&allocation, orientation);
+    let minimum = minimum_split_extent_for_orientation(orientation);
+    let current_position = paned.position();
+    let Some(new_position) = resized_split_position(
+        current_position,
+        total_size,
+        target_is_start_child,
+        target_delta,
+        minimum,
+    ) else {
+        return Err(BridgeError::conflict("not enough room to resize pane"));
+    };
+
+    paned.set_position(new_position);
+    let ratio = layout_state::snapshot_split_ratio_with_min(
+        new_position,
+        total_size,
+        split_ratio_state(&paned).map(|ratio| *ratio.borrow()),
+        minimum,
+    );
+    update_split_ratio_state(&paned, ratio);
+
+    Ok(PaneResizeGeometry {
+        split_position: new_position,
+        split_ratio: ratio,
+    })
+}
+
+fn resize_paned_for_pane(
+    pane_widget: &gtk::Widget,
+    axis: ResizeAxis,
+) -> Option<(gtk::Paned, bool)> {
+    let orientation = axis.orientation();
+    let mut current = pane_widget.clone();
+    while let Some(parent) = current.parent() {
+        if let Some(paned) = parent.downcast_ref::<gtk::Paned>() {
+            if paned.orientation() == orientation {
+                let is_start = paned
+                    .start_child()
+                    .as_ref()
+                    .is_some_and(|child| child == &current);
+                let is_end = paned
+                    .end_child()
+                    .as_ref()
+                    .is_some_and(|child| child == &current);
+                if is_start || is_end {
+                    return Some((paned.clone(), is_start));
+                }
+            }
+        }
+        current = parent;
+    }
+    None
+}
+
+fn pane_resize_direction_name(direction: BridgePaneResizeDirection) -> &'static str {
+    match direction {
+        BridgePaneResizeDirection::Left => "left",
+        BridgePaneResizeDirection::Right => "right",
+        BridgePaneResizeDirection::Up => "up",
+        BridgePaneResizeDirection::Down => "down",
+    }
 }
 
 fn workspace_index_for_target(state: &AppState, target: &WorkspaceTarget) -> Option<usize> {
@@ -1535,6 +1807,52 @@ pub(crate) fn minimum_split_extent_for_orientation(orientation: gtk::Orientation
     } else {
         pane::MIN_PANE_HEIGHT
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ResizeAxis {
+    Horizontal,
+    Vertical,
+}
+
+impl ResizeAxis {
+    fn orientation(self) -> gtk::Orientation {
+        match self {
+            Self::Horizontal => gtk::Orientation::Horizontal,
+            Self::Vertical => gtk::Orientation::Vertical,
+        }
+    }
+}
+
+fn resize_axis_and_delta(direction: BridgePaneResizeDirection, amount: f64) -> (ResizeAxis, f64) {
+    match direction {
+        BridgePaneResizeDirection::Left => (ResizeAxis::Horizontal, -amount),
+        BridgePaneResizeDirection::Right => (ResizeAxis::Horizontal, amount),
+        BridgePaneResizeDirection::Up => (ResizeAxis::Vertical, -amount),
+        BridgePaneResizeDirection::Down => (ResizeAxis::Vertical, amount),
+    }
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+fn resized_split_position(
+    current_position: i32,
+    total_size: i32,
+    target_is_start_child: bool,
+    target_delta: f64,
+    minimum_child_size: i32,
+) -> Option<i32> {
+    if total_size <= minimum_child_size.saturating_mul(2) {
+        return None;
+    }
+    let signed_position_delta = if target_is_start_child {
+        target_delta
+    } else {
+        -target_delta
+    };
+    let min_position = minimum_child_size;
+    let max_position = total_size - minimum_child_size;
+    let position = (f64::from(current_position) + signed_position_delta).round() as i32;
+    Some(position.clamp(min_position, max_position))
 }
 
 // ---------------------------------------------------------------------------
@@ -4929,6 +5247,18 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 });
             });
         }
+        ControlCommand::ResizePane { request, reply } => {
+            let target = match resolve_pane_resize_target(state, &request) {
+                Ok(target) => target,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
+            };
+
+            let mapping = with_workspace_temporarily_mapped(state, target.workspace_index);
+            send_pane_resize_response_after_settle(state.clone(), target, mapping, reply);
+        }
         ControlCommand::CreatePane { request, reply } => {
             if !matches!(request.pane_type, PaneCreateType::Terminal) {
                 let _ = reply.send(Err(BridgeError::invalid_params(
@@ -7013,15 +7343,16 @@ mod tests {
         ghostty_prefers_dark, gtk_system_prefers_dark_from_raw, new_instance_command,
         next_active_workspace_index, pane_action_target_pane_id, pane_attention_target,
         pane_create_source_cwd_override, pane_create_split_placement, queue_session_save_request,
-        resolve_pane_create_source_id, resolved_system_prefers_dark, sanitize_background_opacity,
+        resize_axis_and_delta, resized_split_position, resolve_pane_create_source_id,
+        resolved_system_prefers_dark, sanitize_background_opacity,
         shortcut_allowed_while_browser_find_active, shortcut_blocked_by_editable,
         shortcut_command_from_key_event, shortcut_dispatch_propagation,
         should_auto_open_sidebar_for_notification, should_emit_desktop_notification,
-        sidebar_width_class, snapshot_current_pane_id, snapshot_sidebar_width,
-        surface_send_text_response, surface_summary_payload, tab_drag_workspace_seed,
-        use_opaque_window_background, validate_typed_terminal_text,
-        validate_workspace_folder_input_with_dirs, window_chrome_policy,
-        workspace_drop_layout_path, workspace_folder_path_from_input,
+        should_restore_workspace_mapping, should_skip_workspace_mapping, sidebar_width_class,
+        snapshot_current_pane_id, snapshot_sidebar_width, surface_send_text_response,
+        surface_summary_payload, tab_drag_workspace_seed, use_opaque_window_background,
+        validate_typed_terminal_text, validate_workspace_folder_input_with_dirs,
+        window_chrome_policy, workspace_drop_layout_path, workspace_folder_path_from_input,
         workspace_notification_message, DesktopNotificationTarget, Direction,
         EditableCaptureContext, NeighborScore, PaneBounds, PaneCreateDirection,
         PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest,
@@ -7198,6 +7529,97 @@ mod tests {
             err,
             super::BridgeError::invalid_params("pane.action requires a valid pane_id")
         );
+    }
+
+    #[test]
+    fn resized_split_position_grows_start_child_and_shrinks_end_child() {
+        assert_eq!(
+            resized_split_position(500, 1000, true, 80.0, 260),
+            Some(580)
+        );
+        assert_eq!(
+            resized_split_position(500, 1000, false, 80.0, 260),
+            Some(420)
+        );
+        assert_eq!(
+            resized_split_position(500, 1000, true, -80.0, 260),
+            Some(420)
+        );
+        assert_eq!(
+            resized_split_position(500, 1000, false, -80.0, 260),
+            Some(580)
+        );
+    }
+
+    #[test]
+    fn resized_split_position_clamps_to_minimum_child_size() {
+        assert_eq!(
+            resized_split_position(500, 1000, true, 10_000.0, 260),
+            Some(740)
+        );
+        assert_eq!(
+            resized_split_position(500, 1000, true, -10_000.0, 260),
+            Some(260)
+        );
+        assert_eq!(resized_split_position(250, 500, true, 10.0, 260), None);
+    }
+
+    #[test]
+    fn resize_axis_and_delta_maps_core_direction_semantics() {
+        assert_eq!(
+            resize_axis_and_delta(super::BridgePaneResizeDirection::Right, 5.0),
+            (super::ResizeAxis::Horizontal, 5.0)
+        );
+        assert_eq!(
+            resize_axis_and_delta(super::BridgePaneResizeDirection::Left, 5.0),
+            (super::ResizeAxis::Horizontal, -5.0)
+        );
+        assert_eq!(
+            resize_axis_and_delta(super::BridgePaneResizeDirection::Down, 5.0),
+            (super::ResizeAxis::Vertical, 5.0)
+        );
+        assert_eq!(
+            resize_axis_and_delta(super::BridgePaneResizeDirection::Up, 5.0),
+            (super::ResizeAxis::Vertical, -5.0)
+        );
+    }
+
+    #[test]
+    fn temporary_workspace_mapping_restore_respects_user_selection() {
+        assert!(should_restore_workspace_mapping(
+            Some("ws-target"),
+            Some("ws-original"),
+            "ws-target"
+        ));
+        assert!(!should_restore_workspace_mapping(
+            Some("ws-other"),
+            Some("ws-original"),
+            "ws-target"
+        ));
+        assert!(!should_restore_workspace_mapping(
+            Some("ws-target"),
+            Some("ws-target"),
+            "ws-target"
+        ));
+    }
+
+    #[test]
+    fn temporary_workspace_mapping_skip_requires_visible_active_target() {
+        assert!(should_skip_workspace_mapping(
+            Some("ws-active"),
+            "ws-active",
+            "ws-active"
+        ));
+        assert!(!should_skip_workspace_mapping(
+            Some("ws-transient"),
+            "ws-active",
+            "ws-active"
+        ));
+        assert!(!should_skip_workspace_mapping(
+            Some("ws-target"),
+            "ws-target",
+            "ws-active"
+        ));
     }
 
     #[test]
