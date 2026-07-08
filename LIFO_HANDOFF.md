@@ -2,6 +2,52 @@
 
 Author/runtime/date: lifo / Codex gpt-5.5 (xhigh) / 2026-06-29 09:15 EDT.
 
+## 2026-07-08 Restart Checkpoint - TaskMaster Update
+
+Runtime restart was requested because TaskMaster tooling/state was updated and
+active sessions need to restart onto the corrected environment.
+
+Durable state before restart:
+
+- TaskMaster reconciliation branch:
+  `lifo/taskmaster-product-hygiene-close-20260708`.
+- Commit: `9665241 chore(taskmaster): close product hygiene lane`.
+- PR: <https://github.com/RichelynScott/limux/pull/46>.
+- PR state when checkpointed: open, merge state clean, no status checks posted.
+- Verification run:
+  `task-master-reviewed list --tag product-hygiene`,
+  `task-master-reviewed tags list --show-metadata`, and `git diff --check`.
+
+What changed in PR #46:
+
+- `product-hygiene` TaskMaster tag now reports `3/3` done after PR #43 and
+  PR #45 landed.
+- Active TaskMaster tag remains `cmux-parity-20260707`.
+
+Important local checkout caveat:
+
+- Primary checkout `/home/riche/MCPs/limux` is still on stale/gone branch
+  `lifo/hermes-workspace-highlight-resize-20260627` at `16a638d` with unrelated
+  dirty/untracked local state.
+- Clean TaskMaster reconciliation work lives in
+  `/tmp/limux-taskmaster-reconcile-20260708`.
+- After restart, do not trust `task-master-reviewed list` from the stale
+  primary checkout until it is reconciled onto current `origin/main`.
+
+Hcom restart notice:
+
+- Sent checkpoint request on thread `runtime-restart-taskmaster-20260708` to
+  live sessions `gile`, `moka_aux`, `mori`, `rumi`, `sage`, `mula`, `kazu`,
+  `niru`, `mimi`, and `boho`.
+- Acks observed from `mimi`, `niru`, `gile`, and `mula` before this note.
+
+Immediate next action after restart:
+
+1. Check PR #46 for bot/owner comments.
+2. If clean, merge PR #46.
+3. Reconcile the primary Limux checkout from `origin/main` before resuming
+   normal Limux work or trusting local TaskMaster output there.
+
 ## Immediate Next Action
 
 The current user-local Limux symlink now points at the reviewed branch build

@@ -568,8 +568,9 @@
         "testStrategy": "Run `cargo test -p limux-core render_version_line`, `cargo test -p limux-cli version`, `cargo test -p limux-host-linux version`. Run `cargo check -p limux-cli` and `cargo check -p limux-host-linux` to ensure no build errors.",
         "priority": "high",
         "dependencies": [],
-        "status": "pending",
-        "subtasks": []
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-07-08T19:31:59.667Z"
       },
       {
         "id": 2,
@@ -579,10 +580,11 @@
         "testStrategy": "Verify `CHANGELOG.md` exists and contains the `0.2.0` section with PRs #33-#41. Verify README documentation matches the new `0.2.0` version and `--version` output format. Run `git diff --check` for whitespace errors.",
         "priority": "medium",
         "dependencies": [
-          1
+          "1"
         ],
-        "status": "pending",
-        "subtasks": []
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-07-08T19:31:59.672Z"
       },
       {
         "id": 3,
@@ -592,14 +594,22 @@
         "testStrategy": "Verify documentation (e.g., a markdown file or PRD update) contains the diagnosis of the `set_can_target(false)` issue. Confirm no code changes are made to `pane.rs` or `window.rs` by checking `git diff`.",
         "priority": "low",
         "dependencies": [],
-        "status": "pending",
-        "subtasks": []
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-07-08T19:31:59.676Z"
       }
     ],
     "metadata": {
-      "created": "2026-07-08T00:42:52.933Z",
-      "updated": "2026-07-08T00:46:27.741Z",
-      "description": "Tasks for product-hygiene context"
+      "version": "1.0.0",
+      "lastModified": "2026-07-08T19:31:59.676Z",
+      "taskCount": 3,
+      "completedCount": 3,
+      "tags": [
+        "product-hygiene"
+      ],
+      "created": "2026-07-08T19:33:06.903Z",
+      "description": "Tasks for product-hygiene context",
+      "updated": "2026-07-08T19:33:06.903Z"
     }
   }
 }
