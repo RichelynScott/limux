@@ -360,7 +360,10 @@
       "completedCount": 10,
       "tags": [
         "master"
-      ]
+      ],
+      "created": "2026-07-08T00:42:52.931Z",
+      "description": "Tasks for master context",
+      "updated": "2026-07-08T00:42:52.931Z"
     }
   },
   "cmux-parity-20260707": {
@@ -549,7 +552,54 @@
       "completedCount": 3,
       "tags": [
         "cmux-parity-20260707"
-      ]
+      ],
+      "created": "2026-07-08T00:42:52.932Z",
+      "description": "Tasks for cmux-parity-20260707 context",
+      "updated": "2026-07-08T00:42:52.932Z"
+    }
+  },
+  "product-hygiene": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Bump workspace version and update version rendering",
+        "description": "Update the workspace crate version to 0.2.0 and implement the shared `BuildInfo` render contract for CLI and host to output semver, git SHA, build profile, install id, and channel.",
+        "details": "1. Update the workspace `Cargo.toml` version to `0.2.0`.\n2. Ensure `BuildInfo` is the shared source for CLI, host, doctor, and identify build metadata.\n3. Implement the version rendering contract as `<binary> 0.2.0 (<sha>, <profile>) install-id=<id> channel=<channel>`.\n4. Update CLI and Host `--version` flags to use this shared render contract.\n5. Ensure existing `install-info.json` compatibility is maintained (optional).\n6. Add unit tests for version rendering.",
+        "testStrategy": "Run `cargo test -p limux-core render_version_line`, `cargo test -p limux-cli version`, `cargo test -p limux-host-linux version`. Run `cargo check -p limux-cli` and `cargo check -p limux-host-linux` to ensure no build errors.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 2,
+        "title": "Add CHANGELOG.md and update README",
+        "description": "Create a changelog backfilling merged PRs #33 through #41 for version 0.2.0, and update README install examples and version diagnostics.",
+        "details": "1. Create `CHANGELOG.md` at the root of the workspace.\n2. Add an entry for `0.2.0` listing the merged PRs #33 through #41.\n3. Update README install examples to reflect version `0.2.0`.\n4. Update README version diagnostics to match the new version output.",
+        "testStrategy": "Verify `CHANGELOG.md` exists and contains the `0.2.0` section with PRs #33-#41. Verify README documentation matches the new `0.2.0` version and `--version` output format. Run `git diff --check` for whitespace errors.",
+        "priority": "medium",
+        "dependencies": [
+          1
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 3,
+        "title": "Document tab rename focus diagnosis",
+        "description": "Record the diagnosis for the tab rename focus issue without applying code mutations, as the fix is blocked until the surface-group lane merges.",
+        "details": "1. Document the diagnosis that the rename entry is inserted into a `set_can_target(false)` tab title container, causing typing to fall through.\n2. Note that the temporary fix approach would be to make the rename-entry parent targetable and restore original targetability after commit/cancel.\n3. Explicitly state that code mutation waits for the surface-group PR to merge and a follow-up branch will be planned from post-surface-group `main`.\n4. Do not edit `pane.rs` or `window.rs` in this branch.",
+        "testStrategy": "Verify documentation (e.g., a markdown file or PRD update) contains the diagnosis of the `set_can_target(false)` issue. Confirm no code changes are made to `pane.rs` or `window.rs` by checking `git diff`.",
+        "priority": "low",
+        "dependencies": [],
+        "status": "pending",
+        "subtasks": []
+      }
+    ],
+    "metadata": {
+      "created": "2026-07-08T00:42:52.933Z",
+      "updated": "2026-07-08T00:46:27.741Z",
+      "description": "Tasks for product-hygiene context"
     }
   }
 }

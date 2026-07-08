@@ -351,7 +351,10 @@ fn gtk_runtime_at_least(major: u32, minor: u32, micro: u32) -> bool {
 fn main() {
     // Handle --version flag
     if std::env::args().any(|a| a == "--version" || a == "-v") {
-        println!("Limux {VERSION}");
+        println!(
+            "{}",
+            limux_control::render_version_line("limux-host", VERSION, &build_info())
+        );
         return;
     }
 
