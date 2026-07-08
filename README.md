@@ -28,13 +28,13 @@ Download the latest release from [GitHub Releases](https://github.com/am-will/li
 
 **Debian/Ubuntu (.deb)** — recommended:
 ```bash
-sudo dpkg -i ./limux_0.1.19_amd64.deb
+sudo dpkg -i ./limux_0.2.0_amd64.deb
 ```
 
 **AppImage** — portable across Ubuntu 24.04-era desktops and newer, no install needed:
 ```bash
-chmod +x Limux-0.1.19-x86_64.AppImage
-./Limux-0.1.19-x86_64.AppImage
+chmod +x Limux-0.2.0-x86_64.AppImage
+./Limux-0.2.0-x86_64.AppImage
 ```
 
 Release AppImages are built and checked on the Ubuntu 24.04 `GLIBC_2.39`
@@ -88,6 +88,12 @@ limux doctor --log-triage --lines 200
 `--version` reports the CLI version and build identity. User-local installs also
 read `install-info.json` beside the executable, so version output can include
 the install id and channel.
+
+Example:
+
+```text
+limux-cli 0.2.0 (abcdef123456, release) install-id=stable-abcdef123456 channel=stable
+```
 
 `target-info` / `socket-info` prints the resolved socket and channel without
 connecting to a running host. Use it when checking whether a shell is targeting

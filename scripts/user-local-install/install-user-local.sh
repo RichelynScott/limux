@@ -249,6 +249,10 @@ source_sha="$(git -C "$repo_root" rev-parse --verify HEAD 2>/dev/null || true)"
 if [[ -z "$source_sha" ]]; then
     source_sha="unknown"
 fi
+cargo_version="$(grep '^version' "$repo_root/Cargo.toml" | head -1 | sed 's/.*"\(.*\)"/\1/')"
+if [[ -z "$cargo_version" ]]; then
+    cargo_version="unknown"
+fi
 install_root="${prefix}/limux-reviewed/${install_subdir}"
 archive_dir="${prefix}/limux-reviewed/archive/${timestamp}"
 bin_link_dir="${prefix}/bin"
@@ -602,6 +606,7 @@ manifest="$(
 Mode: ${mode}
 Timestamp UTC: ${timestamp}
 Repo: ${repo_root}
+Version: ${cargo_version}
 Install ID: ${install_id}
 Runtime channel: ${runtime_channel}
 Runtime kind: ${channel_kind}
@@ -647,8 +652,10 @@ write_file "${install_root}/MANIFEST.md" "${manifest}"$'\n'
 install_info="$(
     cat <<EOF_INSTALL_INFO
 {
+  "version": "$(json_escape "$cargo_version")",
   "install_id": "$(json_escape "$install_id")",
   "channel": "$(json_escape "$runtime_channel")",
+  "profile": "$(json_escape "$profile")",
   "source_sha": "$(json_escape "$source_sha")",
   "created_utc": "$(json_escape "$timestamp")"
 }

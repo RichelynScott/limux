@@ -217,15 +217,51 @@ impl BuildInfo {
             ..Self::default()
         };
         if let Some(info) = install_info_near_current_exe() {
+            if build.sha == "unknown" {
+                if let Some(source_sha) = info
+                    .source_sha
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    build.sha = source_sha.to_string();
+                }
+            }
             build.install_id = info.install_id;
             build.channel = info.channel;
+        }
+        if build.channel.is_none() {
+            build.channel = runtime_channel_label_from_env();
         }
         build
     }
 
     pub fn short_sha(&self) -> &str {
-        self.sha.as_str()
+        let sha = self.sha.as_str();
+        if sha.len() > 12 && sha.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            &sha[..12]
+        } else {
+            sha
+        }
     }
+
+    pub fn display_sha(&self) -> String {
+        let mut sha = self.short_sha().to_string();
+        if self.dirty == Some(true) {
+            sha.push_str("-dirty");
+        }
+        sha
+    }
+}
+
+pub fn render_version_line(binary_label: &str, version: &str, build: &BuildInfo) -> String {
+    let install_id = build.install_id.as_deref().unwrap_or("none");
+    let channel = build.channel.as_deref().unwrap_or("none");
+    format!(
+        "{binary_label} {version} ({}, {}) install-id={install_id} channel={channel}",
+        build.display_sha(),
+        build.profile
+    )
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -7005,6 +7041,38 @@ mod tests {
         let info = find_install_info_near_exe(libexec.join("limux-cli")).expect("install info");
         assert_eq!(info.install_id.as_deref(), Some("test"));
         assert_eq!(info.channel.as_deref(), Some("stable"));
+    }
+
+    #[test]
+    fn render_version_line_includes_human_and_machine_identity() {
+        let build = BuildInfo {
+            sha: "abcdef1234567890".to_string(),
+            dirty: Some(false),
+            profile: "release".to_string(),
+            install_id: Some("stable-abc".to_string()),
+            channel: Some("stable".to_string()),
+        };
+
+        assert_eq!(
+            render_version_line("limux-cli", "0.2.0", &build),
+            "limux-cli 0.2.0 (abcdef123456, release) install-id=stable-abc channel=stable"
+        );
+    }
+
+    #[test]
+    fn render_version_line_marks_dirty_builds() {
+        let build = BuildInfo {
+            sha: "abcdef123456".to_string(),
+            dirty: Some(true),
+            profile: "debug".to_string(),
+            install_id: None,
+            channel: None,
+        };
+
+        assert_eq!(
+            render_version_line("limux-host", "0.2.0", &build),
+            "limux-host 0.2.0 (abcdef123456-dirty, debug) install-id=none channel=none"
+        );
     }
 
     #[tokio::test]

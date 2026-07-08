@@ -283,19 +283,7 @@ fn current_cli_build_info() -> limux_control::BuildInfo {
 
 fn render_cli_version() -> String {
     let build = current_cli_build_info();
-    let mut text = format!(
-        "limux-cli {} ({}, {})",
-        env!("CARGO_PKG_VERSION"),
-        build.short_sha(),
-        build.profile
-    );
-    if let Some(install_id) = build.install_id {
-        text.push_str(&format!(" install-id={install_id}"));
-    }
-    if let Some(channel) = build.channel {
-        text.push_str(&format!(" channel={channel}"));
-    }
-    text
+    limux_control::render_version_line("limux-cli", env!("CARGO_PKG_VERSION"), &build)
 }
 
 fn should_launch_host(opts: &GlobalOptions) -> bool {

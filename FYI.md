@@ -2,6 +2,25 @@
 
 Append-only journal for significant Limux session decisions and implementation notes.
 
+## 2026-07-08 - Product Hygiene Version Layer
+### What:
+Started the `0.2.0` human-facing Limux version layer and changelog surface on
+branch `lifo/product-hygiene-version-changelog-20260707`.
+
+### Why:
+The operator hit stale `0.1.19` version output twice after substantial merged
+work, so `--version` now needs both semver progression and build provenance.
+
+### How:
+Added shared version rendering as `<binary> <semver> (<sha>, <profile>)
+install-id=<id> channel=<channel>`, backfilled `CHANGELOG.md` for merged PRs
+#33-#41, and recorded the tab rename focus issue as diagnosis-only until the
+surface-group lane merges.
+
+### Impact:
+Install-readiness now has a human-readable release marker without dropping the
+git-SHA machine identity. PR #42 remains excluded until it merges.
+
 ## 2026-06-10 - SCS Wave A Patch Follow-Up
 ### What:
 Recorded Halo's read-only follow-up on the patched SCS Wave A Ubuntu ISO intake draft, including new draft hash `4cacc2c5481e2564dcf1b037d4273e4a788a8638ba3c1e681a32adca3b4f6bcb` and hcom `#29255`.
