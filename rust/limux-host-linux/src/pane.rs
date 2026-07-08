@@ -1139,6 +1139,8 @@ struct TerminalTabOptions<'a> {
     pinned: bool,
     cwd: Option<&'a str>,
     agent: Option<RestorableAgentState>,
+    activate: bool,
+    focus: bool,
 }
 
 const HCOM_TERMINAL_IDENTITY_ENV: &[&str] = &[
@@ -1217,6 +1219,8 @@ fn restore_tabs_from_state(
                     pinned: saved_tab.pinned,
                     cwd: cwd.as_deref().or(working_directory),
                     agent: agent.clone(),
+                    activate: true,
+                    focus: true,
                 }),
             ),
             TabContentState::Browser { uri } => add_browser_tab_inner(
@@ -1544,13 +1548,19 @@ fn add_terminal_tab_inner(
         }
     }
 
-    activate_tab(
-        &internals.tab_strip,
-        &internals.content_stack,
-        &internals.tab_state,
-        &tab_id,
-    );
-    term.handle.focus_surface();
+    let activate = options.as_ref().map(|value| value.activate).unwrap_or(true);
+    let focus = options.as_ref().map(|value| value.focus).unwrap_or(true);
+    if activate {
+        activate_tab(
+            &internals.tab_strip,
+            &internals.content_stack,
+            &internals.tab_state,
+            &tab_id,
+        );
+    }
+    if focus {
+        term.handle.focus_surface();
+    }
     if options.is_none() {
         (internals.callbacks.on_state_changed)();
     }
@@ -1716,6 +1726,28 @@ pub fn add_terminal_tab_to_pane(pane_widget: &gtk::Widget) {
         let dir = internals.working_directory.borrow().clone();
         add_terminal_tab_inner(&internals, dir.as_deref(), None);
     }
+}
+
+pub fn add_control_terminal_tab_to_pane(
+    pane_widget: &gtk::Widget,
+    title: Option<&str>,
+) -> Option<SurfaceSummary> {
+    let internals = find_pane_internals(pane_widget)?;
+    let dir = internals.working_directory.borrow().clone();
+    add_terminal_tab_inner(
+        &internals,
+        dir.as_deref(),
+        Some(TerminalTabOptions {
+            id: None,
+            custom_name: title,
+            pinned: false,
+            cwd: None,
+            agent: None,
+            activate: false,
+            focus: false,
+        }),
+    );
+    active_surface_summary(pane_widget)
 }
 
 #[allow(dead_code)]
@@ -2039,6 +2071,56 @@ pub fn active_surface_summary(pane_widget: &gtk::Widget) -> Option<SurfaceSummar
         cwd,
         uri,
     })
+}
+
+pub fn close_tab_in_pane(pane_widget: &gtk::Widget, tab_id: &str) -> Option<SurfaceSummary> {
+    let internals = find_pane_internals(pane_widget)?;
+    let pane_id = internals.pane_id;
+    let pane_flag_color = *internals.flag_color.borrow();
+    let summary = {
+        let tab_state = internals.tab_state.borrow();
+        let entry = tab_state.tabs.iter().find(|entry| entry.id == tab_id)?;
+        let selected = tab_state
+            .active_tab
+            .as_deref()
+            .map(|current| current == entry.id)
+            .unwrap_or_else(|| {
+                tab_state
+                    .tabs
+                    .first()
+                    .is_some_and(|first| first.id == entry.id)
+            });
+        let (kind, cwd, uri) = match &entry.kind {
+            TabKind::Terminal { state } => {
+                ("terminal".to_string(), state.cwd.borrow().clone(), None)
+            }
+            TabKind::Browser { state } => ("browser".to_string(), None, state.uri.borrow().clone()),
+            TabKind::Keybinds => ("keybinds".to_string(), None, None),
+        };
+        SurfaceSummary {
+            pane_id,
+            surface_id: composite_surface_id(pane_id, &entry.id),
+            pane_flag_color,
+            title: entry.title_label.label().to_string(),
+            kind,
+            selected,
+            cwd,
+            uri,
+        }
+    };
+
+    remove_tab(
+        &internals.tab_strip,
+        &internals.content_stack,
+        &internals.tab_state,
+        tab_id,
+        &internals.callbacks,
+        &internals.pane_outer,
+        // The reason is consulted only when this removal empties the pane;
+        // multi-tab closes never call the pane-empty callback.
+        PaneEmptyReason::ClosedLastTab,
+    );
+    Some(summary)
 }
 
 pub fn terminal_handle_for_root(
@@ -3747,7 +3829,7 @@ mod tests {
         next_active_after_tab_removal, normalize_browser_entry_input,
         normalize_reorder_insert_index, pane_action_tooltip, restored_agent_start_delay_ms,
         stagger_restored_agent_command, surface_hint_matches, ContentDropZone, TabDragPayload,
-        BROWSER_SEARCH_ENTRY_CSS_CLASS, BROWSER_SEARCH_ENTRY_CSS_CLASSES,
+        TerminalTabOptions, BROWSER_SEARCH_ENTRY_CSS_CLASS, BROWSER_SEARCH_ENTRY_CSS_CLASSES,
         BROWSER_URL_ENTRY_CSS_CLASS, BROWSER_URL_ENTRY_CSS_CLASSES, HCOM_TERMINAL_IDENTITY_ENV,
         HOST_ENTRY_CSS_CLASS, PANE_ATTENTION_ACTIVE_CSS_CLASS, PANE_ATTENTION_OVERLAY_CSS_CLASS,
         PANE_CSS, TAB_RENAME_ENTRY_CSS_CLASS, TAB_RENAME_ENTRY_CSS_CLASSES,
@@ -3757,6 +3839,23 @@ mod tests {
         env_value_contains_token, is_kde_wayland_session_from_env, BROWSER_WEB_VIEW_CSS_CLASS,
     };
     use crate::shortcut_config::{default_shortcuts, resolve_shortcuts_from_str, ShortcutId};
+
+    #[test]
+    fn control_terminal_tab_options_preserve_focus_invariant() {
+        let options = TerminalTabOptions {
+            id: None,
+            custom_name: Some("split"),
+            pinned: false,
+            cwd: None,
+            agent: None,
+            activate: false,
+            focus: false,
+        };
+
+        assert!(!options.activate);
+        assert!(!options.focus);
+        assert_eq!(options.custom_name, Some("split"));
+    }
 
     #[test]
     fn pane_action_tooltip_reflects_remaps_and_unbinds() {

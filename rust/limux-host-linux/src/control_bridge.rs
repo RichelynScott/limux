@@ -125,6 +125,26 @@ pub struct PaneResizeRequest {
     pub amount: f64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SurfaceSplitRequest {
+    pub target: WorkspaceTarget,
+    pub source_surface_id: Option<String>,
+    pub direction: PaneCreateDirection,
+    pub title: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SurfaceFocusRequest {
+    pub target: WorkspaceTarget,
+    pub surface_id: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SurfaceCloseRequest {
+    pub target: WorkspaceTarget,
+    pub surface_id: Option<String>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PaneResizeDirection {
     Left,
@@ -171,6 +191,18 @@ pub enum ControlCommand {
     },
     ResizePane {
         request: PaneResizeRequest,
+        reply: mpsc::Sender<BridgeResult>,
+    },
+    SplitSurface {
+        request: SurfaceSplitRequest,
+        reply: mpsc::Sender<BridgeResult>,
+    },
+    FocusSurface {
+        request: SurfaceFocusRequest,
+        reply: mpsc::Sender<BridgeResult>,
+    },
+    CloseSurface {
+        request: SurfaceCloseRequest,
         reply: mpsc::Sender<BridgeResult>,
     },
     ListSurfaces {
@@ -256,6 +288,9 @@ impl ControlCommand {
             | Self::PaneAction { reply, .. }
             | Self::FocusPane { reply, .. }
             | Self::ResizePane { reply, .. }
+            | Self::SplitSurface { reply, .. }
+            | Self::FocusSurface { reply, .. }
+            | Self::CloseSurface { reply, .. }
             | Self::ListSurfaces { reply, .. }
             | Self::CurrentSurface { reply, .. }
             | Self::SurfaceHealth { reply, .. }
@@ -485,6 +520,50 @@ fn optional_ref_handle(
     })
 }
 
+fn optional_surface_ref_handle(
+    params: &Map<String, Value>,
+    keys: &[&str],
+    method: &str,
+) -> Result<Option<String>, BridgeError> {
+    for key in keys {
+        let Some(value) = params.get(*key) else {
+            continue;
+        };
+        match value {
+            Value::Null => return Ok(None),
+            Value::String(raw) => {
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    return Err(BridgeError::invalid_params(format!(
+                        "{method} {key} must not be empty"
+                    )));
+                }
+                let handle = trimmed.strip_prefix("surface:").unwrap_or(trimmed).trim();
+                if handle.is_empty() {
+                    return Err(BridgeError::invalid_params(format!(
+                        "{method} {key} must not be empty"
+                    )));
+                }
+                return Ok(Some(handle.to_string()));
+            }
+            Value::Number(number) => {
+                let id = number.as_u64().ok_or_else(|| {
+                    BridgeError::invalid_params(format!(
+                        "{method} {key} must be a non-negative integer or surface ref"
+                    ))
+                })?;
+                return Ok(Some(id.to_string()));
+            }
+            _ => {
+                return Err(BridgeError::invalid_params(format!(
+                    "{method} {key} must be a non-negative integer or surface ref"
+                )));
+            }
+        }
+    }
+    Ok(None)
+}
+
 fn optional_index(params: &Map<String, Value>, key: &str) -> Result<Option<usize>, BridgeError> {
     let Some(value) = params.get(key) else {
         return Ok(None);
@@ -705,6 +784,63 @@ fn parse_pane_resize_request(
     })
 }
 
+fn parse_surface_split_request(
+    params: &Map<String, Value>,
+) -> Result<SurfaceSplitRequest, BridgeError> {
+    let direction = match optional_string(params, &["direction"])
+        .unwrap_or_else(|| "right".to_string())
+        .as_str()
+    {
+        "left" => PaneCreateDirection::Left,
+        "right" => PaneCreateDirection::Right,
+        "up" => PaneCreateDirection::Up,
+        "down" => PaneCreateDirection::Down,
+        _ => {
+            return Err(BridgeError::invalid_params(
+                "surface.split direction must be one of left|right|up|down",
+            ));
+        }
+    };
+
+    Ok(SurfaceSplitRequest {
+        target: parse_optional_workspace_target_without_id(params, true)?,
+        source_surface_id: optional_surface_ref_handle(
+            params,
+            &["surface_id", "surface", "id"],
+            "surface.split",
+        )?,
+        direction,
+        title: optional_string(params, &["title"]),
+    })
+}
+
+fn parse_surface_focus_request(
+    params: &Map<String, Value>,
+) -> Result<SurfaceFocusRequest, BridgeError> {
+    let surface_id =
+        optional_surface_ref_handle(params, &["surface_id", "surface", "id"], "surface.focus")?
+            .ok_or_else(|| {
+                BridgeError::invalid_params("surface.focus requires surface_id/surface/id")
+            })?;
+    Ok(SurfaceFocusRequest {
+        target: parse_optional_workspace_target_without_id(params, true)?,
+        surface_id,
+    })
+}
+
+fn parse_surface_close_request(
+    params: &Map<String, Value>,
+) -> Result<SurfaceCloseRequest, BridgeError> {
+    Ok(SurfaceCloseRequest {
+        target: parse_optional_workspace_target_without_id(params, true)?,
+        surface_id: optional_surface_ref_handle(
+            params,
+            &["surface_id", "surface", "id"],
+            "surface.close",
+        )?,
+    })
+}
+
 fn parse_pane_action_request(
     params: &Map<String, Value>,
 ) -> Result<PaneActionRequest, BridgeError> {
@@ -917,6 +1053,63 @@ fn handle_method(
             };
             let (reply, rx) = mpsc::channel();
             (ControlCommand::ResizePane { request, reply }, rx)
+        }
+        "surface.split" => {
+            if crate::control_registry::wave1_mutations_disabled() {
+                return error_response(
+                    id,
+                    BridgeError::new(
+                        UNKNOWN_METHOD_CODE,
+                        format!(
+                            "Wave-1 mutation route disabled by {WAVE1_MUTATION_KILL_SWITCH_ENV}: {method}"
+                        ),
+                    ),
+                );
+            }
+            let request = match parse_surface_split_request(params) {
+                Ok(request) => request,
+                Err(error) => return error_response(id, error),
+            };
+            let (reply, rx) = mpsc::channel();
+            (ControlCommand::SplitSurface { request, reply }, rx)
+        }
+        "surface.focus" => {
+            if crate::control_registry::wave1_mutations_disabled() {
+                return error_response(
+                    id,
+                    BridgeError::new(
+                        UNKNOWN_METHOD_CODE,
+                        format!(
+                            "Wave-1 mutation route disabled by {WAVE1_MUTATION_KILL_SWITCH_ENV}: {method}"
+                        ),
+                    ),
+                );
+            }
+            let request = match parse_surface_focus_request(params) {
+                Ok(request) => request,
+                Err(error) => return error_response(id, error),
+            };
+            let (reply, rx) = mpsc::channel();
+            (ControlCommand::FocusSurface { request, reply }, rx)
+        }
+        "surface.close" => {
+            if crate::control_registry::wave1_mutations_disabled() {
+                return error_response(
+                    id,
+                    BridgeError::new(
+                        UNKNOWN_METHOD_CODE,
+                        format!(
+                            "Wave-1 mutation route disabled by {WAVE1_MUTATION_KILL_SWITCH_ENV}: {method}"
+                        ),
+                    ),
+                );
+            }
+            let request = match parse_surface_close_request(params) {
+                Ok(request) => request,
+                Err(error) => return error_response(id, error),
+            };
+            let (reply, rx) = mpsc::channel();
+            (ControlCommand::CloseSurface { request, reply }, rx)
         }
         "cursor.pane_create_empty" => {
             let request = match parse_cursor_pane_create_empty_request(params) {
@@ -1442,6 +1635,17 @@ mod tests {
                 _lock: lock,
             }
         }
+
+        fn set(key: &'static str, value: &str) -> Self {
+            let lock = WAVE1_ENV_TEST_LOCK.lock().expect("env test lock poisoned");
+            let previous = std::env::var_os(key);
+            std::env::set_var(key, value);
+            Self {
+                key,
+                previous,
+                _lock: lock,
+            }
+        }
     }
 
     impl Drop for EnvVarGuard {
@@ -1613,6 +1817,8 @@ mod tests {
 
     #[test]
     fn pane_focus_route_queues_focus_pane_command() {
+        let _env_guard =
+            EnvVarGuard::clear(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV);
         let response = dispatch_request(
             r#"{"id":1,"method":"pane.focus","params":{"workspace_id":"workspace:dev","pane_id":"pane:7"}}"#,
             &|command| match command {
@@ -1652,6 +1858,8 @@ mod tests {
 
     #[test]
     fn pane_resize_route_queues_resize_pane_command() {
+        let _env_guard =
+            EnvVarGuard::clear(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV);
         let response = dispatch_request(
             r#"{"id":1,"method":"pane.resize","params":{"workspace_id":"workspace:dev","pane_id":"pane:7","direction":"left","amount":24}}"#,
             &|command| match command {
@@ -1684,6 +1892,8 @@ mod tests {
 
     #[test]
     fn resize_pane_alias_uses_same_parser_and_treats_id_as_pane_id() {
+        let _env_guard =
+            EnvVarGuard::clear(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV);
         let response = dispatch_request(
             r#"{"id":1,"method":"resize-pane","params":{"id":"pane:9","direction":"down"}}"#,
             &|command| match command {
@@ -1707,6 +1917,173 @@ mod tests {
 
         assert_eq!(response.error, None);
         assert_eq!(response.result.expect("result")["pane_id"], "9");
+    }
+
+    #[test]
+    fn surface_split_route_queues_split_surface_command() {
+        let _env_guard =
+            EnvVarGuard::clear(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV);
+        let response = dispatch_request(
+            r#"{"id":1,"method":"surface.split","params":{"workspace_id":"workspace:dev","surface_id":"surface:4:tab","direction":"up","title":"Review"}}"#,
+            &|command| match command {
+                ControlCommand::SplitSurface { request, reply } => {
+                    assert_eq!(
+                        request.target,
+                        WorkspaceTarget::Handle("workspace:dev".to_string())
+                    );
+                    assert_eq!(request.source_surface_id, Some("4:tab".to_string()));
+                    assert_eq!(request.direction, PaneCreateDirection::Up);
+                    assert_eq!(request.title, Some("Review".to_string()));
+                    let _ = reply.send(Ok(json!({
+                        "surface_id": "9:tab",
+                        "surface_ref": "surface:9:tab",
+                        "pane_id": "9",
+                        "pane_ref": "pane:9"
+                    })));
+                }
+                other => panic!("unexpected command: {other:?}"),
+            },
+        );
+
+        assert_eq!(response.error, None);
+        let result = response
+            .result
+            .expect("surface.split should return a result");
+        assert_eq!(result["surface_ref"], "surface:9:tab");
+    }
+
+    #[test]
+    fn surface_mutation_routes_reject_empty_surface_handles_before_dispatch() {
+        let _env_guard =
+            EnvVarGuard::clear(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV);
+        for (method, params) in [
+            ("surface.split", json!({ "surface_id": "surface:" })),
+            ("surface.focus", json!({ "surface": "   " })),
+            ("surface.close", json!({ "id": "surface:   " })),
+        ] {
+            let request = json!({
+                "id": 1,
+                "method": method,
+                "params": params
+            })
+            .to_string();
+            let response = dispatch_request(&request, &|command| {
+                panic!("{method} with empty surface handle should not dispatch: {command:?}")
+            });
+
+            assert_eq!(response.result, None, "{method} should fail");
+            let error = response.error.expect("error");
+            assert_eq!(error.code, INVALID_PARAMS_CODE, "{method} code");
+            assert!(error.message.contains(method), "{method} message");
+            assert!(
+                error.message.contains("must not be empty"),
+                "{method} should reject empty handles"
+            );
+        }
+    }
+
+    #[test]
+    fn surface_focus_treats_id_as_surface_id_not_workspace_id() {
+        let params = json!({ "id": "surface:7:tab" });
+        let request = parse_surface_focus_request(params.as_object().expect("object params"))
+            .expect("surface.focus should parse id as surface id");
+
+        assert_eq!(request.target, WorkspaceTarget::Active);
+        assert_eq!(request.surface_id, "7:tab");
+    }
+
+    #[test]
+    fn surface_focus_route_queues_focus_surface_command() {
+        let _env_guard =
+            EnvVarGuard::clear(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV);
+        let response = dispatch_request(
+            r#"{"id":1,"method":"surface.focus","params":{"name":"agents","surface_id":"surface:7:tab"}}"#,
+            &|command| match command {
+                ControlCommand::FocusSurface { request, reply } => {
+                    assert_eq!(request.target, WorkspaceTarget::Name("agents".to_string()));
+                    assert_eq!(request.surface_id, "7:tab");
+                    let _ = reply.send(Ok(json!({
+                        "ok": true,
+                        "surface_id": "7:tab",
+                        "surface_ref": "surface:7:tab"
+                    })));
+                }
+                other => panic!("unexpected command: {other:?}"),
+            },
+        );
+
+        assert_eq!(response.error, None);
+        let result = response
+            .result
+            .expect("surface.focus should return a result");
+        assert_eq!(result["surface_ref"], "surface:7:tab");
+    }
+
+    #[test]
+    fn surface_close_route_queues_close_surface_command() {
+        let _env_guard =
+            EnvVarGuard::clear(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV);
+        let response = dispatch_request(
+            r#"{"id":1,"method":"surface.close","params":{"index":2,"surface_id":"surface:7:tab"}}"#,
+            &|command| match command {
+                ControlCommand::CloseSurface { request, reply } => {
+                    assert_eq!(request.target, WorkspaceTarget::Index(2));
+                    assert_eq!(request.surface_id, Some("7:tab".to_string()));
+                    let _ = reply.send(Ok(json!({
+                        "ok": true,
+                        "surface_id": "7:tab",
+                        "surface_ref": "surface:7:tab"
+                    })));
+                }
+                other => panic!("unexpected command: {other:?}"),
+            },
+        );
+
+        assert_eq!(response.error, None);
+        let result = response
+            .result
+            .expect("surface.close should return a result");
+        assert_eq!(result["surface_ref"], "surface:7:tab");
+    }
+
+    #[test]
+    fn wired_wave1_mutation_routes_are_hidden_and_blocked_by_kill_switch() {
+        let _env_guard =
+            EnvVarGuard::set(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV, "1");
+
+        let capabilities = dispatch_request(
+            r#"{"id":1,"method":"system.capabilities","params":{}}"#,
+            &|command| panic!("system.capabilities should not dispatch: {command:?}"),
+        );
+        let methods = capabilities.result.expect("capabilities result")["methods"]
+            .as_array()
+            .expect("methods array")
+            .clone();
+        for method in [
+            "pane.focus",
+            "pane.resize",
+            "resize-pane",
+            "surface.split",
+            "surface.focus",
+            "surface.close",
+        ] {
+            assert!(
+                !methods.iter().any(|entry| entry == method),
+                "{method} should be hidden when Wave-1 mutations are disabled"
+            );
+        }
+
+        let response = dispatch_request(
+            r#"{"id":1,"method":"surface.close","params":{"surface_id":"surface:7:tab"}}"#,
+            &|command| panic!("disabled surface.close should not dispatch: {command:?}"),
+        );
+
+        assert_eq!(response.result, None);
+        let error = response.error.expect("disabled route should return error");
+        assert_eq!(error.code, UNKNOWN_METHOD_CODE);
+        assert!(error
+            .message
+            .contains(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV));
     }
 
     #[test]
@@ -2018,13 +2395,20 @@ mod tests {
         assert_eq!(response.error, None);
         let result = response.result.expect("capabilities result");
         let methods = result["methods"].as_array().expect("methods array");
-        for method in ["pane.focus", "pane.resize", "resize-pane"] {
+        for method in [
+            "pane.focus",
+            "pane.resize",
+            "resize-pane",
+            "surface.split",
+            "surface.focus",
+            "surface.close",
+        ] {
             assert!(
                 methods.iter().any(|entry| entry == method),
                 "{method} should be advertised after the live GTK route is wired"
             );
         }
-        for method in ["surface.split", "notification.clear"] {
+        for method in ["notification.clear"] {
             assert!(
                 !methods.iter().any(|entry| entry == method),
                 "{method} must stay out of capabilities until wired to live GTK state"
@@ -2040,8 +2424,10 @@ mod tests {
 
     #[test]
     fn wave1_mutation_route_returns_explicit_unwired_error() {
+        let _env_guard =
+            EnvVarGuard::clear(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV);
         let response = dispatch_request(
-            r#"{"id":1,"method":"surface.split","params":{"surface_id":"surface:7","direction":"right"}}"#,
+            r#"{"id":1,"method":"notification.clear","params":{"id":"notification:7"}}"#,
             &|command| panic!("unwired Wave-1 route should not dispatch: {command:?}"),
         );
 
@@ -2050,6 +2436,7 @@ mod tests {
         assert_eq!(error.code, UNKNOWN_METHOD_CODE);
         assert!(error.message.contains("Wave-1 mutation"));
         assert!(error.message.contains("live GTK"));
+        assert!(error.message.contains("notification.clear"));
     }
 
     #[test]
