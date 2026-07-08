@@ -452,6 +452,20 @@ enum WidthLockSide {
     End,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct WidthLockConstraints {
+    start_required_width: Option<i32>,
+    end_required_width: Option<i32>,
+    start_min_width: i32,
+    end_min_width: i32,
+}
+
+impl WidthLockConstraints {
+    fn has_required_width(self) -> bool {
+        self.start_required_width.is_some() || self.end_required_width.is_some()
+    }
+}
+
 fn locked_width_position_for_horizontal_split(
     side: WidthLockSide,
     locked_width: i32,
@@ -506,6 +520,26 @@ fn horizontal_paned_child_area_width(paned: &gtk::Paned) -> i32 {
     )
 }
 
+fn minimum_width_for_subtree(node: &SplitNode) -> i32 {
+    match node {
+        SplitNode::Leaf { .. } => pane::MIN_PANE_WIDTH,
+        SplitNode::Split {
+            orientation,
+            left,
+            right,
+            ..
+        } => match *orientation {
+            gtk::Orientation::Horizontal => {
+                minimum_width_for_subtree(left).saturating_add(minimum_width_for_subtree(right))
+            }
+            gtk::Orientation::Vertical => {
+                minimum_width_for_subtree(left).max(minimum_width_for_subtree(right))
+            }
+            _ => minimum_width_for_subtree(left).max(minimum_width_for_subtree(right)),
+        },
+    }
+}
+
 fn horizontal_extent_width_lock_panes(node: &SplitNode) -> Vec<gtk::Widget> {
     match node {
         SplitNode::Leaf { pane_widget } => vec![pane_widget.clone()],
@@ -546,13 +580,40 @@ fn locked_width_required_for_subtree(node: &SplitNode) -> Option<i32> {
                         None
                     } else {
                         Some(
-                            left_required.unwrap_or(pane::MIN_PANE_WIDTH)
-                                + right_required.unwrap_or(pane::MIN_PANE_WIDTH),
+                            left_required.unwrap_or_else(|| minimum_width_for_subtree(left))
+                                + right_required
+                                    .unwrap_or_else(|| minimum_width_for_subtree(right)),
                         )
                     }
                 }
-                gtk::Orientation::Vertical => left_required.max(right_required),
-                _ => left_required.max(right_required),
+                gtk::Orientation::Vertical => {
+                    if left_required.is_none() && right_required.is_none() {
+                        None
+                    } else {
+                        Some(
+                            left_required
+                                .unwrap_or_else(|| minimum_width_for_subtree(left))
+                                .max(
+                                    right_required
+                                        .unwrap_or_else(|| minimum_width_for_subtree(right)),
+                                ),
+                        )
+                    }
+                }
+                _ => {
+                    if left_required.is_none() && right_required.is_none() {
+                        None
+                    } else {
+                        Some(
+                            left_required
+                                .unwrap_or_else(|| minimum_width_for_subtree(left))
+                                .max(
+                                    right_required
+                                        .unwrap_or_else(|| minimum_width_for_subtree(right)),
+                                ),
+                        )
+                    }
+                }
             }
         }
     }
@@ -592,8 +653,7 @@ fn locked_width_position_from_panes(
 fn constrained_locked_width_position(
     current_position: i32,
     exact_position: Option<i32>,
-    start_required_width: Option<i32>,
-    end_required_width: Option<i32>,
+    constraints: WidthLockConstraints,
     total_width: i32,
     min_child_width: i32,
 ) -> Option<i32> {
@@ -602,11 +662,16 @@ fn constrained_locked_width_position(
     }
 
     let max_child_width = total_width.saturating_sub(min_child_width);
-    let min_position = start_required_width
-        .unwrap_or(min_child_width)
+    let min_position = constraints
+        .start_required_width
+        .unwrap_or(constraints.start_min_width)
         .clamp(min_child_width, max_child_width);
     let max_position = total_width
-        .saturating_sub(end_required_width.unwrap_or(min_child_width))
+        .saturating_sub(
+            constraints
+                .end_required_width
+                .unwrap_or(constraints.end_min_width),
+        )
         .clamp(min_child_width, max_child_width);
     let desired_position = exact_position.unwrap_or(current_position);
 
@@ -621,14 +686,12 @@ fn apply_locked_width_position_from_panes(
     paned: &gtk::Paned,
     start_lock_panes: &[gtk::Widget],
     end_lock_panes: &[gtk::Widget],
-    start_required_width: Option<i32>,
-    end_required_width: Option<i32>,
+    constraints: WidthLockConstraints,
     applying: &Rc<Cell<bool>>,
 ) -> bool {
     let has_active_lock = first_locked_width(start_lock_panes).is_some()
         || first_locked_width(end_lock_panes).is_some()
-        || start_required_width.is_some()
-        || end_required_width.is_some();
+        || constraints.has_required_width();
     if !has_active_lock {
         return false;
     }
@@ -643,8 +706,7 @@ fn apply_locked_width_position_from_panes(
     let Some(position) = constrained_locked_width_position(
         paned.position(),
         exact_position,
-        start_required_width,
-        end_required_width,
+        constraints,
         child_area_width,
         pane::MIN_PANE_WIDTH,
     ) else {
@@ -664,17 +726,13 @@ fn attach_locked_width_enforcement(
     orientation: gtk::Orientation,
     start_lock_panes: Vec<gtk::Widget>,
     end_lock_panes: Vec<gtk::Widget>,
-    start_required_width: Option<i32>,
-    end_required_width: Option<i32>,
+    constraints: WidthLockConstraints,
     applying: Rc<Cell<bool>>,
 ) {
     if orientation != gtk::Orientation::Horizontal {
         return;
     }
-    if start_lock_panes.is_empty()
-        && end_lock_panes.is_empty()
-        && start_required_width.is_none()
-        && end_required_width.is_none()
+    if start_lock_panes.is_empty() && end_lock_panes.is_empty() && !constraints.has_required_width()
     {
         return;
     }
@@ -689,8 +747,7 @@ fn attach_locked_width_enforcement(
                 &paned,
                 &start_lock_panes,
                 &end_lock_panes,
-                start_required_width,
-                end_required_width,
+                constraints,
                 &applying,
             );
         });
@@ -705,8 +762,7 @@ fn attach_locked_width_enforcement(
                 paned,
                 &start_lock_panes,
                 &end_lock_panes,
-                start_required_width,
-                end_required_width,
+                constraints,
                 &applying,
             );
         });
@@ -722,8 +778,7 @@ fn attach_locked_width_enforcement(
                 &paned,
                 &start_lock_panes,
                 &end_lock_panes,
-                start_required_width,
-                end_required_width,
+                constraints,
                 &applying,
             );
         }
@@ -736,8 +791,7 @@ fn attach_locked_width_enforcement(
                 &paned,
                 &start_lock_panes,
                 &end_lock_panes,
-                start_required_width,
-                end_required_width,
+                constraints,
                 &applying,
             );
         }
@@ -795,6 +849,12 @@ fn build_widget_tree(node: &SplitNode, state: &State) -> gtk::Widget {
             let end_lock_panes = horizontal_extent_width_lock_panes(right);
             let start_required_width = locked_width_required_for_subtree(left);
             let end_required_width = locked_width_required_for_subtree(right);
+            let width_lock_constraints = WidthLockConstraints {
+                start_required_width,
+                end_required_width,
+                start_min_width: minimum_width_for_subtree(left),
+                end_min_width: minimum_width_for_subtree(right),
+            };
 
             // Wire resize drags back to the shared ratio cell in the data model.
             let shared_ratio = ratio.clone();
@@ -810,8 +870,7 @@ fn build_widget_tree(node: &SplitNode, state: &State) -> gtk::Widget {
                         paned,
                         &start_lock_panes_for_notify,
                         &end_lock_panes_for_notify,
-                        start_required_width,
-                        end_required_width,
+                        width_lock_constraints,
                         &applying_for_notify,
                     )
                 {
@@ -832,8 +891,7 @@ fn build_widget_tree(node: &SplitNode, state: &State) -> gtk::Widget {
                 *orientation,
                 start_lock_panes,
                 end_lock_panes,
-                start_required_width,
-                end_required_width,
+                width_lock_constraints,
                 applying,
             );
 
@@ -942,6 +1000,20 @@ pub(crate) fn build_split_node_from_layout(
 mod tests {
     use super::*;
 
+    fn width_lock_constraints(
+        start_required_width: Option<i32>,
+        end_required_width: Option<i32>,
+        start_min_width: i32,
+        end_min_width: i32,
+    ) -> WidthLockConstraints {
+        WidthLockConstraints {
+            start_required_width,
+            end_required_width,
+            start_min_width,
+            end_min_width,
+        }
+    }
+
     #[test]
     fn locked_width_position_preserves_start_child_width() {
         assert_eq!(
@@ -988,7 +1060,13 @@ mod tests {
     #[test]
     fn constrained_locked_width_position_preserves_direct_exact_lock() {
         assert_eq!(
-            constrained_locked_width_position(800, Some(420), Some(420), None, 1_200, 260),
+            constrained_locked_width_position(
+                800,
+                Some(420),
+                width_lock_constraints(Some(420), None, 260, 260),
+                1_200,
+                260
+            ),
             Some(420)
         );
     }
@@ -996,11 +1074,23 @@ mod tests {
     #[test]
     fn constrained_locked_width_position_preserves_nested_start_requirement() {
         assert_eq!(
-            constrained_locked_width_position(500, None, Some(680), None, 1_200, 260),
+            constrained_locked_width_position(
+                500,
+                None,
+                width_lock_constraints(Some(680), None, 260, 260),
+                1_200,
+                260
+            ),
             Some(680)
         );
         assert_eq!(
-            constrained_locked_width_position(760, None, Some(680), None, 1_200, 260),
+            constrained_locked_width_position(
+                760,
+                None,
+                width_lock_constraints(Some(680), None, 260, 260),
+                1_200,
+                260
+            ),
             Some(760)
         );
     }
@@ -1008,11 +1098,23 @@ mod tests {
     #[test]
     fn constrained_locked_width_position_preserves_nested_end_requirement() {
         assert_eq!(
-            constrained_locked_width_position(900, None, None, Some(520), 1_200, 260),
+            constrained_locked_width_position(
+                900,
+                None,
+                width_lock_constraints(None, Some(520), 260, 260),
+                1_200,
+                260
+            ),
             Some(680)
         );
         assert_eq!(
-            constrained_locked_width_position(600, None, None, Some(520), 1_200, 260),
+            constrained_locked_width_position(
+                600,
+                None,
+                width_lock_constraints(None, Some(520), 260, 260),
+                1_200,
+                260
+            ),
             Some(600)
         );
     }
@@ -1024,8 +1126,38 @@ mod tests {
             Some(812)
         );
         assert_eq!(
-            constrained_locked_width_position(900, None, None, Some(520), 1_192, 260),
+            constrained_locked_width_position(
+                900,
+                None,
+                width_lock_constraints(None, Some(520), 260, 260),
+                1_192,
+                260
+            ),
             Some(672)
+        );
+    }
+
+    #[test]
+    fn constrained_locked_width_position_reserves_structural_sibling_minimums() {
+        assert_eq!(
+            constrained_locked_width_position(
+                760,
+                None,
+                width_lock_constraints(Some(680), None, 680, 520),
+                1_200,
+                260
+            ),
+            Some(680)
+        );
+        assert_eq!(
+            constrained_locked_width_position(
+                500,
+                None,
+                width_lock_constraints(None, Some(680), 520, 680),
+                1_200,
+                260
+            ),
+            Some(520)
         );
     }
 
