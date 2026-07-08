@@ -15,6 +15,34 @@
 **Purpose:** Resume-safe state for nato's HIGH-LEVEL PLANNING lane: cmux-parity
 roadmap + Wave-0/1 PRDs, produced for lifo + subagents to execute.
 
+## Status Update 2026-07-07 ~22:10 EDT (COMPACTION-READY — nalo bridge delegation)
+
+**IMMEDIATE NEXT ACTION (post-compaction successor):** read this entry + check
+`gh pr list --state open` + `hcom events --last 20 --agent nalo --agent lifo
+--agent lifo_cl_mgr --name nato_1`. Resume the reviewer/owner loop.
+
+- **PR #43 (0.2.0 version/changelog) MERGED `665a5c4`** — manual gate (bot credit
+  outage), verified live: `limux-cli 0.2.0 (c5e86c4e55e4, debug)`. lifo_cl_mgr
+  reconciled; rename-textbox lane gated on surface-group merge (diagnosis:
+  rename entry inside a `set_can_target(false)` container).
+- **PR #42 at e88f9d0**: bot's 2 P2s (pipefail+grep -q SIGPIPE false results)
+  fixed in 7c4fb54+e88f9d0 (second commit fixed MY fix's empty-diff set -e kill
+  — acceptance suite caught it). All 3 gate paths verified. Awaiting final bot
+  round or outage clause → **nalo (hermes session, operator-delegated) merges +
+  relays go-for-restart**.
+- **Operator restart runbook = `WORKTREES/install-newest-main-v3.sh`**
+  (SHA-agnostic fresh worktree, zig-free borrow, jobs=4, 0.2.0 smoke).
+  Preconditions: C: freed (operator + mula's Docker-compaction lane; Docker WSL
+  = 209GB), then `wsl --shutdown` (activates staged .wslconfig 32GB+32swap).
+  earlyoom still pending operator sudo.
+- **nalo delegation scope (bridge while I compact):** watch/merge #42 on gate;
+  go-for-restart relay w/ runbook; coordination relay lifo/lifo_cl_mgr; NO code
+  review authority — surface-group PR review stays MINE post-compaction (with
+  the MiniMax pre-wave per the MODEL_TESTING_LAB proposal, mandatory skill
+  pre-reads at fire time).
+- **FYI.md note:** main-checkout FYI is lifo's (dirty, his lane) — my journal
+  lives HERE; PR-carried docs (#42/#43) carry their own FYI entries.
+
 ## Status Update 2026-07-07 ~21:45 EDT (post-crash-#2: convergence ratified, install-readiness queue)
 
 - **WSL crash #2 (~20:45 EDT) ROOT CAUSE: C: drive full** (5GB free/930GB) — sparse
