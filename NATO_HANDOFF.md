@@ -15,6 +15,28 @@
 **Purpose:** Resume-safe state for nato's HIGH-LEVEL PLANNING lane: cmux-parity
 roadmap + Wave-0/1 PRDs, produced for lifo + subagents to execute.
 
+## Status Update 2026-07-08 ~00:05 EDT (POST-RESTART — install verified, reviewer loop resumed)
+
+**Restart sequence SUCCEEDED (operator-executed):** Docker VHDX compaction done —
+C: recovered **89.3GB free** (was ~6GB). `wsl --shutdown` applied the staged
+.wslconfig (32GB+32 swap). Operator ran `install-newest-main-v3.sh`; verified
+live: `limux-cli 0.2.0 (eb3554bfacc8, release)` = current origin/main. nalo's
+bridge delegation fully discharged (#42 merged as eb3554b); nalo + lifo_cl_mgr
+stopped at shutdown, NOT resumed (lifo_cl_mgr's rename-textbox lane is gated on
+surface-group merge anyway — operator resumes when needed).
+
+**IMMEDIATE NEXT ACTION:** review lifo's surface-group PR when he pings
+(protocol: he pings ME → MiniMax 6-lens pre-wave per
+`~/Proj/MODEL_TESTING_LAB/INBOX/PROPOSAL_FROM_nato_1_2026-07-07_prebot-minimax-lens-wave.md`
+with mandatory full pre-reads of hermes-delegation + minimax-subagent-optimization
+at fire time → adjudicate → he folds → THEN @codex bot). His branch
+`lifo/prd-e-wave1-surface-group-20260707` is based on current main, 2 commits
+ahead (5b77287 4-line mapping-restore guard + handoff checkpoint), pushed,
+clean — wave wiring still in progress; pinged him 00:05 EDT for status + asked
+whether 5b77287 should ship separately. Remaining queue after surface group:
+workspace group, tab.action/notification.clear, PRD-G #7. Operator gates
+unchanged: PRD-C 10-min live checklist on the new build; PRD-F browser decision.
+
 ## Status Update 2026-07-07 ~22:10 EDT (COMPACTION-READY — nalo bridge delegation)
 
 **POLICY FLIP (2026-07-07 operator emergency directive):** worktrees RETIRED as
