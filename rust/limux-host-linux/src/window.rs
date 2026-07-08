@@ -384,10 +384,30 @@ struct TemporaryWorkspaceMapping {
     restore_stack_name: String,
 }
 
-fn restore_workspace_mapping(mapping: Option<TemporaryWorkspaceMapping>) {
+fn active_workspace_stack_name(state: &State) -> Option<String> {
+    let app_state = state.borrow();
+    app_state
+        .workspaces
+        .get(app_state.active_idx)
+        .map(|workspace| format!("ws-{}", workspace.id))
+}
+
+fn should_restore_workspace_mapping(
+    visible_stack_name: Option<&str>,
+    active_stack_name: Option<&str>,
+    target_stack_name: &str,
+) -> bool {
+    visible_stack_name == Some(target_stack_name) && active_stack_name != Some(target_stack_name)
+}
+
+fn restore_workspace_mapping(state: &State, mapping: Option<TemporaryWorkspaceMapping>) {
     if let Some(mapping) = mapping {
-        if mapping.stack.visible_child_name().as_deref() == Some(mapping.target_stack_name.as_str())
-        {
+        let target_stack_name = mapping.target_stack_name.as_str();
+        if should_restore_workspace_mapping(
+            mapping.stack.visible_child_name().as_deref(),
+            active_workspace_stack_name(state).as_deref(),
+            target_stack_name,
+        ) {
             mapping
                 .stack
                 .set_visible_child_name(&mapping.restore_stack_name);
@@ -484,14 +504,15 @@ fn send_pane_resize_response_after_settle(
 ) {
     glib::idle_add_local_once(move || match apply_pane_resize_target(&state, target) {
         Ok(outcome) => {
+            let state = state.clone();
             glib::idle_add_local_once(move || {
                 let payload = pane_resize_response_payload(outcome);
-                restore_workspace_mapping(mapping);
+                restore_workspace_mapping(&state, mapping);
                 let _ = reply.send(Ok(payload));
             });
         }
         Err(error) => {
-            restore_workspace_mapping(mapping);
+            restore_workspace_mapping(&state, mapping);
             let _ = reply.send(Err(error));
         }
     });
@@ -7314,9 +7335,9 @@ mod tests {
         shortcut_allowed_while_browser_find_active, shortcut_blocked_by_editable,
         shortcut_command_from_key_event, shortcut_dispatch_propagation,
         should_auto_open_sidebar_for_notification, should_emit_desktop_notification,
-        sidebar_width_class, snapshot_current_pane_id, snapshot_sidebar_width,
-        surface_send_text_response, surface_summary_payload, tab_drag_workspace_seed,
-        use_opaque_window_background, validate_typed_terminal_text,
+        should_restore_workspace_mapping, sidebar_width_class, snapshot_current_pane_id,
+        snapshot_sidebar_width, surface_send_text_response, surface_summary_payload,
+        tab_drag_workspace_seed, use_opaque_window_background, validate_typed_terminal_text,
         validate_workspace_folder_input_with_dirs, window_chrome_policy,
         workspace_drop_layout_path, workspace_folder_path_from_input,
         workspace_notification_message, DesktopNotificationTarget, Direction,
@@ -7548,6 +7569,25 @@ mod tests {
             resize_axis_and_delta(super::BridgePaneResizeDirection::Up, 5.0),
             (super::ResizeAxis::Vertical, -5.0)
         );
+    }
+
+    #[test]
+    fn temporary_workspace_mapping_restore_respects_user_selection() {
+        assert!(should_restore_workspace_mapping(
+            Some("ws-target"),
+            Some("ws-original"),
+            "ws-target"
+        ));
+        assert!(!should_restore_workspace_mapping(
+            Some("ws-other"),
+            Some("ws-original"),
+            "ws-target"
+        ));
+        assert!(!should_restore_workspace_mapping(
+            Some("ws-target"),
+            Some("ws-target"),
+            "ws-target"
+        ));
     }
 
     #[test]
