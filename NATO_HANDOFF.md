@@ -17,6 +17,11 @@ roadmap + Wave-0/1 PRDs, produced for lifo + subagents to execute.
 
 ## Status Update 2026-07-07 ~22:10 EDT (COMPACTION-READY — nalo bridge delegation)
 
+**POLICY FLIP (2026-07-07 operator emergency directive):** worktrees RETIRED as
+default (`git-worktree-hygiene.md` rewritten) — branch-in-place + GitHub now;
+ephemeral /tmp worktrees only when truly parallel. My/lifo's existing worktrees
+grandfathered via keep-list (kazu ack #336669); NEW lanes branch-in-place.
+
 **IMMEDIATE NEXT ACTION (post-compaction successor):** read this entry + check
 `gh pr list --state open` + `hcom events --last 20 --agent nalo --agent lifo
 --agent lifo_cl_mgr --name nato_1`. Resume the reviewer/owner loop.
