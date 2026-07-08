@@ -5446,6 +5446,7 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 let _ = reply.send(Err(BridgeError::not_found("surface not found")));
                 return;
             }
+            request_session_save(state);
             let was_active = {
                 let app_state = state.borrow();
                 resolved.workspace_index == app_state.active_idx
