@@ -5415,6 +5415,7 @@ pub(crate) fn create_pane_for_workspace(
     let state_for_pwd = state.clone();
     let state_for_empty = state.clone();
     let state_for_width_lock = state.clone();
+    let state_for_width_lock_allowed = state.clone();
     let ws_id_split = ws_id.to_string();
     let ws_id_close = ws_id.to_string();
     let ws_id_bell = ws_id.to_string();
@@ -5422,6 +5423,7 @@ pub(crate) fn create_pane_for_workspace(
     let ws_id_pwd = ws_id.to_string();
     let ws_id_empty = ws_id.to_string();
     let ws_id_width_lock = ws_id.to_string();
+    let ws_id_width_lock_allowed = ws_id.to_string();
     let state_for_split_with_tab = state.clone();
     let state_for_config = state.clone();
     let state_for_config_changed = state.clone();
@@ -5535,6 +5537,18 @@ pub(crate) fn create_pane_for_workspace(
             if let Some(container) = container {
                 container.rebuild_for_pane_metadata(pane_widget);
             }
+        }),
+        pane_width_lock_allowed: Box::new(move |pane_widget| {
+            let container = {
+                let s = state_for_width_lock_allowed.borrow();
+                s.workspaces
+                    .iter()
+                    .find(|workspace| workspace.id == ws_id_width_lock_allowed)
+                    .map(|workspace| workspace.split_container.clone())
+            };
+            container
+                .map(|container| !container.is_zoomed_pane(pane_widget))
+                .unwrap_or(true)
         }),
         on_split_with_tab: Box::new(
             move |source_pane, target_pane, orientation, tab_id, new_pane_first| {

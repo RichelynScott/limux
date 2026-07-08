@@ -197,6 +197,14 @@ impl SplitTreeContainer {
         self.tree.borrow().is_leaf()
     }
 
+    pub(crate) fn is_zoomed_pane(&self, target: &gtk::Widget) -> bool {
+        self.zoomed_pane
+            .borrow()
+            .as_ref()
+            .map(|pane| pane == target)
+            .unwrap_or(false)
+    }
+
     pub(crate) fn toggle_zoom(self: &Rc<Self>, target: &gtk::Widget) -> bool {
         if self.zoomed_pane.borrow().is_some() {
             self.restore_zoom();

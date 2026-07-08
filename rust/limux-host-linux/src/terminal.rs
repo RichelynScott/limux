@@ -47,6 +47,7 @@ type VoidCallback = dyn Fn();
 type WidgetCallback = dyn Fn(&gtk::Widget);
 type IdentityCallback = dyn Fn() -> TerminalIdentity;
 type PaneWidthLockStateCallback = dyn Fn() -> Option<i32>;
+type PaneWidthLockAllowedCallback = dyn Fn() -> bool;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TerminalIdentity {
@@ -1348,6 +1349,7 @@ pub struct TerminalCallbacks {
     pub on_open_keybinds: Box<WidgetCallback>,
     pub on_toggle_width_lock: Box<VoidCallback>,
     pub pane_width_lock: Box<PaneWidthLockStateCallback>,
+    pub pane_width_lock_allowed: Box<PaneWidthLockAllowedCallback>,
     pub identity: Box<IdentityCallback>,
 }
 
@@ -2155,6 +2157,8 @@ fn show_terminal_context_menu(
         .unwrap_or(false);
 
     let locked_width = (callbacks.borrow().pane_width_lock)();
+    let width_lock_enabled =
+        locked_width.is_some() || (callbacks.borrow().pane_width_lock_allowed)();
     let width_lock_label = locked_width
         .map(|width| format!("Unlock Width ({width}px)"))
         .unwrap_or_else(|| "Lock Width".to_string());
@@ -2168,7 +2172,7 @@ fn show_terminal_context_menu(
         ("Browser".to_string(), true),
         ("Split Right".to_string(), true),
         ("Split Down".to_string(), true),
-        (width_lock_label, true),
+        (width_lock_label, width_lock_enabled),
         ("Keybinds".to_string(), true),
         ("---".to_string(), false),
         ("Clear".to_string(), true),

@@ -325,6 +325,7 @@ type PaneShortcutCaptureCallback =
 type PaneSplitWithTabCallback = dyn Fn(&gtk::Widget, &gtk::Widget, gtk::Orientation, String, bool);
 type PaneConfigCallback = dyn Fn() -> Rc<RefCell<AppConfig>>;
 type PaneConfigChangedCallback = dyn Fn(&AppConfig, &AppConfig);
+type PaneWidgetPredicateCallback = dyn Fn(&gtk::Widget) -> bool;
 /// Returns the workspace id that owns a given pane widget, or `None` if the
 /// pane is not yet attached to a workspace. Used to stamp `LIMUX_WORKSPACE_ID`
 /// onto every terminal spawned inside the pane.
@@ -343,6 +344,7 @@ pub struct PaneCallbacks {
     pub on_empty: Box<PaneEmptyCallback>,
     pub on_state_changed: Box<PaneSignalCallback>,
     pub on_width_lock_changed: Box<PaneWidgetCallback>,
+    pub pane_width_lock_allowed: Box<PaneWidgetPredicateCallback>,
     pub on_split_with_tab: Box<PaneSplitWithTabCallback>,
     pub current_config: Box<PaneConfigCallback>,
     pub on_config_changed: Rc<PaneConfigChangedCallback>,
@@ -1279,6 +1281,7 @@ fn make_terminal_callbacks(
     let callbacks_for_split_down = internals.callbacks.clone();
     let callbacks_for_keybinds = internals.callbacks.clone();
     let callbacks_for_identity = internals.callbacks.clone();
+    let callbacks_for_width_lock_allowed = internals.callbacks.clone();
     let locked_width_for_state = internals.locked_width.clone();
     let tab_strip = internals.tab_strip.clone();
     let content_stack = internals.content_stack.clone();
@@ -1391,6 +1394,13 @@ fn make_terminal_callbacks(
             }
         }),
         pane_width_lock: Box::new(move || locked_width_for_state.get()),
+        pane_width_lock_allowed: Box::new({
+            let pane_outer = internals.pane_outer.clone();
+            move || {
+                let pane_widget: gtk::Widget = pane_outer.clone().upcast();
+                (callbacks_for_width_lock_allowed.pane_width_lock_allowed)(&pane_widget)
+            }
+        }),
         identity: Box::new({
             let pane_outer = internals.pane_outer.clone();
             let surface_id = format!("{}:{}", internals.pane_id, tab_id);
