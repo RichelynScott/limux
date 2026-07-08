@@ -15,7 +15,30 @@
 **Purpose:** Resume-safe state for nato's HIGH-LEVEL PLANNING lane: cmux-parity
 roadmap + Wave-0/1 PRDs, produced for lifo + subagents to execute.
 
-## Status Update 2026-07-08 ~01:25 EDT (COMPACTION-READY — option-b endgame: one slice from PARK)
+## Status Update 2026-07-08 ~01:30 EDT (LANE PARKED — option-b complete)
+
+**THE LANE IS PARKED.** Operator wrap plan (b) fully executed: **PR #44 merged
+`522d9bc`** (surface.split/focus/close, single-P3 bot round) and **PR #45 merged
+`17c7da3`** (tab-rename targetable fix + CHANGELOG #42-#44, bot-clean zero
+findings). main = `17c7da3`, everyday-use complete. lifo doing lane-close hygiene
+(shared-target cargo clean, reconcile). **The installed binary (eb3554b) predates
+#44/#45 — next operator install (rerun `WORKTREES/install-newest-main-v3.sh`) picks
+up surface controls + the rename fix; no urgency.**
+
+**ON RESUME (whenever operator brings limux back):** read this entry + the ~01:25
+entry below (dogfood bugs 1-4 = FIRST backlog items; global-config follow-ups:
+dino has hcom backlog `cd3753f`, kazu/hub route still pending, blocked on bugs).
+Then the deferred queue: workspace group (next PRD-E slice — run the pre-wave
+again per the lab record, MiniMax-M3, add a borrowed-path side-effect-PARITY line
+to lens2's charter), tab.action/notification.clear, PRD-G #7, PRD-C 10-min
+operator checklist (on a post-#45 install), PRD-F browser decision.
+Pre-wave experiment: run-1 scored 91% pre-catch, 10→1 round delta
+(`MODEL_TESTING_LAB/INBOX/RESULT_FROM_nato_1_2026-07-08_prebot-wave-run1-surface-group.md`,
+SRC-006-012). Operator gates: earlyoom sudo install; Claude Desktop VM bundle
+(9.4GB, C:) decision; next shutdown+Optimize-VHD converts tonight's ~48GB in-VM
+reclaim into C: space.
+
+## Status Update 2026-07-08 ~01:25 EDT (superseded by PARK above — option-b endgame: one slice from PARK)
 
 **Operator picked (b): merge #44 + rename-textbox fix, then PARK the lane** (token
 pressure from other projects; limux everyday-use essentials are complete).
