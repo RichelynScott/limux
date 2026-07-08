@@ -22,6 +22,9 @@ All notable Limux changes should be recorded here when a PR merges.
 - #39 `feat(host): classify PRD-E control routes`
 - #40 `feat(host): wire pane focus control route`
 - #41 `feat(host): wire pane resize control route`
+- #42 `docs+scripts: operator-ratified convergence stamps + boundary tripwire`
+- #43 `fix(release): add 0.2.0 version identity`
+- #44 `feat(host): wire surface control mutations`
 
 ### Notes
 
