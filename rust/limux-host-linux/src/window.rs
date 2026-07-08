@@ -378,6 +378,15 @@ struct PaneResizeTarget {
     pane_widget: gtk::Widget,
 }
 
+struct ResolvedSurfaceTarget {
+    workspace_index: usize,
+    workspace_id: String,
+    workspace_name: String,
+    pane_widget: gtk::Widget,
+    tab_id: String,
+    surface: pane::SurfaceSummary,
+}
+
 struct TemporaryWorkspaceMapping {
     stack: gtk::Stack,
     target_stack_name: String,
@@ -488,6 +497,96 @@ fn resolve_pane_resize_target(
         direction: request.direction,
         amount: request.amount,
         pane_widget,
+    })
+}
+
+fn surface_target_response_payload(
+    workspace_id: String,
+    workspace_name: String,
+    surface: pane::SurfaceSummary,
+) -> serde_json::Value {
+    let mut payload = surface_summary_payload(workspace_id, workspace_name, surface);
+    if let serde_json::Value::Object(values) = &mut payload {
+        values.insert("ok".to_string(), serde_json::Value::Bool(true));
+    }
+    payload
+}
+
+fn tab_id_from_surface_id(surface_id: &str) -> Result<String, BridgeError> {
+    let Some((pane_id, tab_id)) = surface_id.split_once(':') else {
+        return Err(BridgeError::internal(
+            "surface summary did not include a composite surface id",
+        ));
+    };
+    if pane_id.parse::<u32>().is_err() || tab_id.is_empty() {
+        return Err(BridgeError::internal(
+            "surface summary did not include a valid composite surface id",
+        ));
+    }
+    Ok(tab_id.to_string())
+}
+
+fn resolve_surface_target(
+    state: &State,
+    target: &WorkspaceTarget,
+    surface_id: Option<&str>,
+) -> Result<ResolvedSurfaceTarget, BridgeError> {
+    let (workspace_index, workspace_id, workspace_name, workspace_root, target_is_active) = {
+        let app_state = state.borrow();
+        let Some(index) = workspace_index_for_target(&app_state, target) else {
+            return Err(BridgeError::not_found("workspace not found"));
+        };
+        let workspace = &app_state.workspaces[index];
+        (
+            index,
+            workspace.id.clone(),
+            workspace.name.clone(),
+            workspace.root.clone(),
+            index == app_state.active_idx,
+        )
+    };
+
+    let surfaces = pane::surface_summaries_for_root(&workspace_root);
+    if surfaces.is_empty() {
+        return Err(BridgeError::not_found("surface not found"));
+    }
+
+    let requested = surface_id
+        .map(normalize_surface_handle)
+        .filter(|value| !value.is_empty());
+    let focused_surface_id = target_is_active
+        .then(|| focused_ids_for_workspace(state, &workspace_id).1)
+        .flatten();
+    let surface = if let Some(requested) = requested {
+        surfaces
+            .iter()
+            .find(|surface| surface.surface_id == requested)
+            .cloned()
+    } else {
+        focused_surface_id
+            .as_deref()
+            .and_then(|focused| {
+                surfaces
+                    .iter()
+                    .find(|surface| surface.surface_id == focused)
+                    .cloned()
+            })
+            .or_else(|| surfaces.iter().find(|surface| surface.selected).cloned())
+            .or_else(|| surfaces.first().cloned())
+    }
+    .ok_or_else(|| BridgeError::not_found("surface not found"))?;
+
+    let pane_widget = pane::pane_widget_for_root(&workspace_root, surface.pane_id)
+        .ok_or_else(|| BridgeError::not_found("pane not found"))?;
+    let tab_id = tab_id_from_surface_id(&surface.surface_id)?;
+
+    Ok(ResolvedSurfaceTarget {
+        workspace_index,
+        workspace_id,
+        workspace_name,
+        pane_widget,
+        tab_id,
+        surface,
     })
 }
 
@@ -5258,6 +5357,139 @@ fn handle_control_command(state: &State, command: ControlCommand) {
 
             let mapping = with_workspace_temporarily_mapped(state, target.workspace_index);
             send_pane_resize_response_after_settle(state.clone(), target, mapping, reply);
+        }
+        ControlCommand::SplitSurface { request, reply } => {
+            let resolved = match resolve_surface_target(
+                state,
+                &request.target,
+                request.source_surface_id.as_deref(),
+            ) {
+                Ok(resolved) => resolved,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
+            };
+
+            let direction = PaneCreateDirection::from(request.direction);
+            let placement = pane_create_split_placement(direction);
+            let mapping = with_workspace_temporarily_mapped(state, resolved.workspace_index);
+            let new_pane = split_pane(
+                state,
+                &resolved.workspace_id,
+                &resolved.pane_widget,
+                placement.orientation,
+                SplitPaneOptions {
+                    initial_state: None,
+                    skip_default_tab: true,
+                    new_pane_first: placement.new_pane_first,
+                    persist: false,
+                    source_cwd_override: None,
+                },
+            );
+            let Some(new_pane) = new_pane else {
+                restore_workspace_mapping(state, mapping);
+                let _ = reply.send(Err(BridgeError::invalid_params(
+                    "not enough room to split surface",
+                )));
+                return;
+            };
+
+            if !pane::move_tab_to_pane(&resolved.pane_widget, &resolved.tab_id, &new_pane) {
+                remove_pane_internal(state, &resolved.workspace_id, &new_pane, false);
+                restore_workspace_mapping(state, mapping);
+                let _ = reply.send(Err(BridgeError::not_found("surface not found")));
+                return;
+            }
+
+            request_session_save(state);
+            let response = match pane::active_surface_summary(&new_pane) {
+                Some(surface) => surface_target_response_payload(
+                    resolved.workspace_id,
+                    resolved.workspace_name,
+                    surface,
+                ),
+                None => {
+                    restore_workspace_mapping(state, mapping);
+                    let _ = reply.send(Err(BridgeError::internal(
+                        "surface.split did not produce a moved surface",
+                    )));
+                    return;
+                }
+            };
+            restore_workspace_mapping(state, mapping);
+            let _ = reply.send(Ok(response));
+        }
+        ControlCommand::FocusSurface { request, reply } => {
+            let resolved =
+                match resolve_surface_target(state, &request.target, Some(&request.surface_id)) {
+                    Ok(resolved) => resolved,
+                    Err(error) => {
+                        let _ = reply.send(Err(error));
+                        return;
+                    }
+                };
+
+            let was_active = {
+                let app_state = state.borrow();
+                resolved.workspace_index == app_state.active_idx
+            };
+            if !was_active {
+                switch_workspace(state, resolved.workspace_index);
+            }
+            if !pane::activate_tab_in_pane(&resolved.pane_widget, &resolved.tab_id) {
+                let _ = reply.send(Err(BridgeError::not_found("surface not found")));
+                return;
+            }
+
+            let surface =
+                pane::active_surface_summary(&resolved.pane_widget).unwrap_or(resolved.surface);
+            let mut response = surface_target_response_payload(
+                resolved.workspace_id,
+                resolved.workspace_name,
+                surface,
+            );
+            if let serde_json::Value::Object(values) = &mut response {
+                values.insert("focused".to_string(), serde_json::Value::Bool(true));
+            }
+            let focus_target = resolved.pane_widget.clone();
+            glib::idle_add_local_once(move || {
+                if !pane::focus_active_tab_in_pane(&focus_target) {
+                    focus_target.grab_focus();
+                }
+                glib::idle_add_local_once(move || {
+                    let _ = reply.send(Ok(response));
+                });
+            });
+        }
+        ControlCommand::CloseSurface { request, reply } => {
+            let resolved =
+                match resolve_surface_target(state, &request.target, request.surface_id.as_deref())
+                {
+                    Ok(resolved) => resolved,
+                    Err(error) => {
+                        let _ = reply.send(Err(error));
+                        return;
+                    }
+                };
+
+            let closed = match pane::close_tab_in_pane(&resolved.pane_widget, &resolved.tab_id) {
+                Some(surface) => surface,
+                None => {
+                    let _ = reply.send(Err(BridgeError::not_found("surface not found")));
+                    return;
+                }
+            };
+            request_session_save(state);
+            let mut response = surface_target_response_payload(
+                resolved.workspace_id,
+                resolved.workspace_name,
+                closed,
+            );
+            if let serde_json::Value::Object(values) = &mut response {
+                values.insert("closed".to_string(), serde_json::Value::Bool(true));
+            }
+            let _ = reply.send(Ok(response));
         }
         ControlCommand::CreatePane { request, reply } => {
             if !matches!(request.pane_type, PaneCreateType::Terminal) {

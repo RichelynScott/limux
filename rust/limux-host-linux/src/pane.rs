@@ -2041,6 +2041,54 @@ pub fn active_surface_summary(pane_widget: &gtk::Widget) -> Option<SurfaceSummar
     })
 }
 
+pub fn close_tab_in_pane(pane_widget: &gtk::Widget, tab_id: &str) -> Option<SurfaceSummary> {
+    let internals = find_pane_internals(pane_widget)?;
+    let pane_id = internals.pane_id;
+    let pane_flag_color = *internals.flag_color.borrow();
+    let summary = {
+        let tab_state = internals.tab_state.borrow();
+        let entry = tab_state.tabs.iter().find(|entry| entry.id == tab_id)?;
+        let selected = tab_state
+            .active_tab
+            .as_deref()
+            .map(|current| current == entry.id)
+            .unwrap_or_else(|| {
+                tab_state
+                    .tabs
+                    .first()
+                    .is_some_and(|first| first.id == entry.id)
+            });
+        let (kind, cwd, uri) = match &entry.kind {
+            TabKind::Terminal { state } => {
+                ("terminal".to_string(), state.cwd.borrow().clone(), None)
+            }
+            TabKind::Browser { state } => ("browser".to_string(), None, state.uri.borrow().clone()),
+            TabKind::Keybinds => ("keybinds".to_string(), None, None),
+        };
+        SurfaceSummary {
+            pane_id,
+            surface_id: composite_surface_id(pane_id, &entry.id),
+            pane_flag_color,
+            title: entry.title_label.label().to_string(),
+            kind,
+            selected,
+            cwd,
+            uri,
+        }
+    };
+
+    remove_tab(
+        &internals.tab_strip,
+        &internals.content_stack,
+        &internals.tab_state,
+        tab_id,
+        &internals.callbacks,
+        &internals.pane_outer,
+        PaneEmptyReason::ClosedLastTab,
+    );
+    Some(summary)
+}
+
 pub fn terminal_handle_for_root(
     root: &gtk::Widget,
     surface_hint: Option<&str>,
