@@ -132,6 +132,31 @@ const BROWSER_WEB_VIEW_CSS_CLASS: &str = "limux-browser-web-view";
 pub(crate) const MIN_PANE_WIDTH: i32 = 260;
 pub(crate) const MIN_PANE_HEIGHT: i32 = 160;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct TabRenameTargetingTransition {
+    before: bool,
+    editing: bool,
+    restored: bool,
+}
+
+fn tab_rename_targeting_transition(before: bool) -> TabRenameTargetingTransition {
+    TabRenameTargetingTransition {
+        before,
+        editing: true,
+        restored: before,
+    }
+}
+
+fn enable_tab_rename_parent_targeting(parent: &gtk::Box) -> bool {
+    let transition = tab_rename_targeting_transition(parent.can_target());
+    parent.set_can_target(transition.editing);
+    transition.before
+}
+
+fn restore_tab_rename_parent_targeting(parent: &gtk::Box, before: bool) {
+    parent.set_can_target(tab_rename_targeting_transition(before).restored);
+}
+
 fn browser_feature_enabled_value(value: &str) -> bool {
     matches!(
         value.trim().to_ascii_lowercase().as_str(),
@@ -2550,6 +2575,7 @@ fn show_rename_dialog(
     let Some(parent) = parent else {
         return;
     };
+    let parent_can_target_before = enable_tab_rename_parent_targeting(&parent);
 
     let entry = gtk::Entry::builder()
         .text(&current_name)
@@ -2595,6 +2621,7 @@ fn show_rename_dialog(
             }
             lbl.set_visible(true);
             parent.remove(entry);
+            restore_tab_rename_parent_targeting(&parent, parent_can_target_before);
             (callbacks.on_state_changed)();
         }
     };
@@ -3828,11 +3855,12 @@ mod tests {
         content_drop_preview_rect, effective_drop_target_dimensions, is_localhost_input,
         next_active_after_tab_removal, normalize_browser_entry_input,
         normalize_reorder_insert_index, pane_action_tooltip, restored_agent_start_delay_ms,
-        stagger_restored_agent_command, surface_hint_matches, ContentDropZone, TabDragPayload,
-        TerminalTabOptions, BROWSER_SEARCH_ENTRY_CSS_CLASS, BROWSER_SEARCH_ENTRY_CSS_CLASSES,
-        BROWSER_URL_ENTRY_CSS_CLASS, BROWSER_URL_ENTRY_CSS_CLASSES, HCOM_TERMINAL_IDENTITY_ENV,
-        HOST_ENTRY_CSS_CLASS, PANE_ATTENTION_ACTIVE_CSS_CLASS, PANE_ATTENTION_OVERLAY_CSS_CLASS,
-        PANE_CSS, TAB_RENAME_ENTRY_CSS_CLASS, TAB_RENAME_ENTRY_CSS_CLASSES,
+        stagger_restored_agent_command, surface_hint_matches, tab_rename_targeting_transition,
+        ContentDropZone, TabDragPayload, TerminalTabOptions, BROWSER_SEARCH_ENTRY_CSS_CLASS,
+        BROWSER_SEARCH_ENTRY_CSS_CLASSES, BROWSER_URL_ENTRY_CSS_CLASS,
+        BROWSER_URL_ENTRY_CSS_CLASSES, HCOM_TERMINAL_IDENTITY_ENV, HOST_ENTRY_CSS_CLASS,
+        PANE_ATTENTION_ACTIVE_CSS_CLASS, PANE_ATTENTION_OVERLAY_CSS_CLASS, PANE_CSS,
+        TAB_RENAME_ENTRY_CSS_CLASS, TAB_RENAME_ENTRY_CSS_CLASSES,
     };
     #[cfg(feature = "webkit")]
     use super::{
@@ -3992,6 +4020,20 @@ mod tests {
             BROWSER_SEARCH_ENTRY_CSS_CLASSES,
             [HOST_ENTRY_CSS_CLASS, BROWSER_SEARCH_ENTRY_CSS_CLASS]
         );
+    }
+
+    #[test]
+    fn tab_rename_targeting_temporarily_enables_parent_container() {
+        let transition = tab_rename_targeting_transition(false);
+
+        assert!(!transition.before);
+        assert!(transition.editing);
+        assert!(!transition.restored);
+
+        let already_targetable = tab_rename_targeting_transition(true);
+        assert!(already_targetable.before);
+        assert!(already_targetable.editing);
+        assert!(already_targetable.restored);
     }
 
     #[cfg(feature = "webkit")]
