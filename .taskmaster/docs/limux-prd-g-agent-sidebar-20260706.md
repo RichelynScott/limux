@@ -169,6 +169,11 @@ documented.
 - No agent auto-naming, no brand icons (cmux #7449 territory — later).
 - No changes to notification/toast behavior or unread semantics.
 - No detachable notification sidebar (TaskMaster #17 research stays parked).
+- **No durable fleet-state registry (convergence DP-6, operator-ratified
+  2026-07-07): sidebar state stays GUI-scoped + ephemeral. hcom remains the
+  owner of durable fleet/session state; the sidebar is a per-workspace VIEW,
+  never a second registry.** Decision record:
+  `docs/LIMUX_HCOM_CONVERGENCE_DECISION_PACKET_2026-07-07.html`.
 
 ## Technical Considerations
 
@@ -183,6 +188,16 @@ documented.
 - Aggregation lives with the state machine, not scattered in UI code.
 - The configurable 30-minute default decay timer must be testable with
   injected clock (no sleeps in tests).
+- **hcom enrichment join contract (convergence DP-6a):** where hcom is present,
+  sidebar rows MAY be enriched read-only from `hcom list --json` — join
+  `limux hook state (pane-scoped: activity/attention)` ⋈ `hcom fields
+  (session-scoped: name, live-delivery, unread, thread membership)` on
+  `session_id ↔ hcom name`, using the launch-env `HCOM_NAME` captured in
+  hook-session records (shipped, PR #37). Enrichment degrades cleanly when
+  hcom is absent (fields simply missing); it never writes hcom state and
+  never persists — the boundary in Non-Goals holds. The pane-scoped signals
+  (which pane is thinking/waiting) remain limux-owned: hcom does not know
+  pane/surface topology and must not need to.
 
 ## Success Metrics
 
