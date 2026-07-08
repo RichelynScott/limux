@@ -130,6 +130,7 @@ pub struct SurfaceSplitRequest {
     pub target: WorkspaceTarget,
     pub source_surface_id: Option<String>,
     pub direction: PaneCreateDirection,
+    pub title: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -519,6 +520,50 @@ fn optional_ref_handle(
     })
 }
 
+fn optional_surface_ref_handle(
+    params: &Map<String, Value>,
+    keys: &[&str],
+    method: &str,
+) -> Result<Option<String>, BridgeError> {
+    for key in keys {
+        let Some(value) = params.get(*key) else {
+            continue;
+        };
+        match value {
+            Value::Null => return Ok(None),
+            Value::String(raw) => {
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    return Err(BridgeError::invalid_params(format!(
+                        "{method} {key} must not be empty"
+                    )));
+                }
+                let handle = trimmed.strip_prefix("surface:").unwrap_or(trimmed).trim();
+                if handle.is_empty() {
+                    return Err(BridgeError::invalid_params(format!(
+                        "{method} {key} must not be empty"
+                    )));
+                }
+                return Ok(Some(handle.to_string()));
+            }
+            Value::Number(number) => {
+                let id = number.as_u64().ok_or_else(|| {
+                    BridgeError::invalid_params(format!(
+                        "{method} {key} must be a non-negative integer or surface ref"
+                    ))
+                })?;
+                return Ok(Some(id.to_string()));
+            }
+            _ => {
+                return Err(BridgeError::invalid_params(format!(
+                    "{method} {key} must be a non-negative integer or surface ref"
+                )));
+            }
+        }
+    }
+    Ok(None)
+}
+
 fn optional_index(params: &Map<String, Value>, key: &str) -> Result<Option<usize>, BridgeError> {
     let Some(value) = params.get(key) else {
         return Ok(None);
@@ -759,20 +804,24 @@ fn parse_surface_split_request(
 
     Ok(SurfaceSplitRequest {
         target: parse_optional_workspace_target_without_id(params, true)?,
-        source_surface_id: optional_ref_handle(
+        source_surface_id: optional_surface_ref_handle(
             params,
             &["surface_id", "surface", "id"],
-            "surface:",
+            "surface.split",
         )?,
         direction,
+        title: optional_string(params, &["title"]),
     })
 }
 
 fn parse_surface_focus_request(
     params: &Map<String, Value>,
 ) -> Result<SurfaceFocusRequest, BridgeError> {
-    let surface_id = optional_ref_handle(params, &["surface_id", "surface", "id"], "surface:")?
-        .ok_or_else(|| BridgeError::invalid_params("surface.focus requires surface_id/id"))?;
+    let surface_id =
+        optional_surface_ref_handle(params, &["surface_id", "surface", "id"], "surface.focus")?
+            .ok_or_else(|| {
+                BridgeError::invalid_params("surface.focus requires surface_id/surface/id")
+            })?;
     Ok(SurfaceFocusRequest {
         target: parse_optional_workspace_target_without_id(params, true)?,
         surface_id,
@@ -784,7 +833,11 @@ fn parse_surface_close_request(
 ) -> Result<SurfaceCloseRequest, BridgeError> {
     Ok(SurfaceCloseRequest {
         target: parse_optional_workspace_target_without_id(params, true)?,
-        surface_id: optional_ref_handle(params, &["surface_id", "surface", "id"], "surface:")?,
+        surface_id: optional_surface_ref_handle(
+            params,
+            &["surface_id", "surface", "id"],
+            "surface.close",
+        )?,
     })
 }
 
@@ -1871,7 +1924,7 @@ mod tests {
         let _env_guard =
             EnvVarGuard::clear(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV);
         let response = dispatch_request(
-            r#"{"id":1,"method":"surface.split","params":{"workspace_id":"workspace:dev","surface_id":"surface:4:tab","direction":"up"}}"#,
+            r#"{"id":1,"method":"surface.split","params":{"workspace_id":"workspace:dev","surface_id":"surface:4:tab","direction":"up","title":"Review"}}"#,
             &|command| match command {
                 ControlCommand::SplitSurface { request, reply } => {
                     assert_eq!(
@@ -1880,6 +1933,7 @@ mod tests {
                     );
                     assert_eq!(request.source_surface_id, Some("4:tab".to_string()));
                     assert_eq!(request.direction, PaneCreateDirection::Up);
+                    assert_eq!(request.title, Some("Review".to_string()));
                     let _ = reply.send(Ok(json!({
                         "surface_id": "9:tab",
                         "surface_ref": "surface:9:tab",
@@ -1896,6 +1950,36 @@ mod tests {
             .result
             .expect("surface.split should return a result");
         assert_eq!(result["surface_ref"], "surface:9:tab");
+    }
+
+    #[test]
+    fn surface_mutation_routes_reject_empty_surface_handles_before_dispatch() {
+        let _env_guard =
+            EnvVarGuard::clear(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV);
+        for (method, params) in [
+            ("surface.split", json!({ "surface_id": "surface:" })),
+            ("surface.focus", json!({ "surface": "   " })),
+            ("surface.close", json!({ "id": "surface:   " })),
+        ] {
+            let request = json!({
+                "id": 1,
+                "method": method,
+                "params": params
+            })
+            .to_string();
+            let response = dispatch_request(&request, &|command| {
+                panic!("{method} with empty surface handle should not dispatch: {command:?}")
+            });
+
+            assert_eq!(response.result, None, "{method} should fail");
+            let error = response.error.expect("error");
+            assert_eq!(error.code, INVALID_PARAMS_CODE, "{method} code");
+            assert!(error.message.contains(method), "{method} message");
+            assert!(
+                error.message.contains("must not be empty"),
+                "{method} should reject empty handles"
+            );
+        }
     }
 
     #[test]

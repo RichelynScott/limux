@@ -630,6 +630,21 @@ fn send_pane_resize_response_after_settle(
     });
 }
 
+fn send_surface_response_after_settle(
+    state: State,
+    mapping: Option<TemporaryWorkspaceMapping>,
+    reply: std::sync::mpsc::Sender<Result<serde_json::Value, BridgeError>>,
+    response: serde_json::Value,
+) {
+    glib::idle_add_local_once(move || {
+        let state = state.clone();
+        glib::idle_add_local_once(move || {
+            restore_workspace_mapping(&state, mapping);
+            let _ = reply.send(Ok(response));
+        });
+    });
+}
+
 fn resize_pane_widget(
     pane_widget: &gtk::Widget,
     axis: ResizeAxis,
@@ -5395,30 +5410,24 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 return;
             };
 
-            if !pane::move_tab_to_pane(&resolved.pane_widget, &resolved.tab_id, &new_pane) {
+            let Some(surface) =
+                pane::add_control_terminal_tab_to_pane(&new_pane, request.title.as_deref())
+            else {
                 remove_pane_internal(state, &resolved.workspace_id, &new_pane, false);
                 restore_workspace_mapping(state, mapping);
-                let _ = reply.send(Err(BridgeError::not_found("surface not found")));
+                let _ = reply.send(Err(BridgeError::internal(
+                    "surface.split did not produce a terminal surface",
+                )));
                 return;
-            }
+            };
 
             request_session_save(state);
-            let response = match pane::active_surface_summary(&new_pane) {
-                Some(surface) => surface_target_response_payload(
-                    resolved.workspace_id,
-                    resolved.workspace_name,
-                    surface,
-                ),
-                None => {
-                    restore_workspace_mapping(state, mapping);
-                    let _ = reply.send(Err(BridgeError::internal(
-                        "surface.split did not produce a moved surface",
-                    )));
-                    return;
-                }
-            };
-            restore_workspace_mapping(state, mapping);
-            let _ = reply.send(Ok(response));
+            let response = surface_target_response_payload(
+                resolved.workspace_id,
+                resolved.workspace_name,
+                surface,
+            );
+            send_surface_response_after_settle(state.clone(), mapping, reply, response);
         }
         ControlCommand::FocusSurface { request, reply } => {
             let resolved =
@@ -5430,16 +5439,16 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                     }
                 };
 
+            if !pane::activate_tab_in_pane(&resolved.pane_widget, &resolved.tab_id) {
+                let _ = reply.send(Err(BridgeError::not_found("surface not found")));
+                return;
+            }
             let was_active = {
                 let app_state = state.borrow();
                 resolved.workspace_index == app_state.active_idx
             };
             if !was_active {
                 switch_workspace(state, resolved.workspace_index);
-            }
-            if !pane::activate_tab_in_pane(&resolved.pane_widget, &resolved.tab_id) {
-                let _ = reply.send(Err(BridgeError::not_found("surface not found")));
-                return;
             }
 
             let surface =
@@ -5481,15 +5490,27 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 }
             };
             request_session_save(state);
+            let workspace_id = resolved.workspace_id.clone();
             let mut response = surface_target_response_payload(
                 resolved.workspace_id,
                 resolved.workspace_name,
                 closed,
             );
+            let workspace_closed = {
+                let app_state = state.borrow();
+                !app_state
+                    .workspaces
+                    .iter()
+                    .any(|workspace| workspace.id == workspace_id)
+            };
             if let serde_json::Value::Object(values) = &mut response {
                 values.insert("closed".to_string(), serde_json::Value::Bool(true));
+                values.insert(
+                    "workspace_closed".to_string(),
+                    serde_json::Value::Bool(workspace_closed),
+                );
             }
-            let _ = reply.send(Ok(response));
+            send_surface_response_after_settle(state.clone(), None, reply, response);
         }
         ControlCommand::CreatePane { request, reply } => {
             if !matches!(request.pane_type, PaneCreateType::Terminal) {
@@ -7582,9 +7603,10 @@ mod tests {
         should_auto_open_sidebar_for_notification, should_emit_desktop_notification,
         should_restore_workspace_mapping, should_skip_workspace_mapping, sidebar_width_class,
         snapshot_current_pane_id, snapshot_sidebar_width, surface_send_text_response,
-        surface_summary_payload, tab_drag_workspace_seed, use_opaque_window_background,
-        validate_typed_terminal_text, validate_workspace_folder_input_with_dirs,
-        window_chrome_policy, workspace_drop_layout_path, workspace_folder_path_from_input,
+        surface_summary_payload, surface_target_response_payload, tab_drag_workspace_seed,
+        use_opaque_window_background, validate_typed_terminal_text,
+        validate_workspace_folder_input_with_dirs, window_chrome_policy,
+        workspace_drop_layout_path, workspace_folder_path_from_input,
         workspace_notification_message, DesktopNotificationTarget, Direction,
         EditableCaptureContext, NeighborScore, PaneBounds, PaneCreateDirection,
         PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest,
@@ -7699,6 +7721,38 @@ mod tests {
         assert_eq!(payload["surface"]["unread"], false);
         assert_eq!(payload["surface"]["flash_count"], 0);
         assert_eq!(payload["surface"]["refresh_count"], 0);
+    }
+
+    #[test]
+    fn surface_target_response_payload_marks_success_without_losing_core_shape() {
+        let mut payload = surface_target_response_payload(
+            "workspace-a".to_string(),
+            "Workspace A".to_string(),
+            crate::pane::SurfaceSummary {
+                pane_id: 7,
+                surface_id: "7:tab-a".to_string(),
+                pane_flag_color: None,
+                title: "Agent".to_string(),
+                kind: "terminal".to_string(),
+                selected: true,
+                cwd: None,
+                uri: None,
+            },
+        );
+
+        if let serde_json::Value::Object(values) = &mut payload {
+            values.insert(
+                "workspace_closed".to_string(),
+                serde_json::Value::Bool(true),
+            );
+        }
+
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["workspace_closed"], true);
+        assert_eq!(payload["surface_id"], "7:tab-a");
+        assert_eq!(payload["surface_ref"], "surface:7:tab-a");
+        assert_eq!(payload["surface"]["id"], "7:tab-a");
+        assert_eq!(payload["surface"]["pane_id"], "7");
     }
 
     #[test]
