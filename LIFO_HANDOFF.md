@@ -1,6 +1,98 @@
 # Limux Lifo Handoff
 
-Author/runtime/date: lifo / Codex gpt-5.5 (xhigh) / 2026-06-29 09:15 EDT.
+Author/runtime/date: lifo / Codex gpt-5.5 (xhigh) / 2026-07-07 21:45 EDT.
+
+## 2026-07-07 Post-Restart Resume Spec - Current
+
+This section supersedes the older June state below for the active Lifo lane.
+
+### Immediate Next Action
+
+Continue the PRD-E Wave-1 surface mutation group from:
+
+- Worktree:
+  `/home/riche/MCPs/limux/WORKTREES/prd-e-wave1-surface-group-20260707`
+- Branch:
+  `lifo/prd-e-wave1-surface-group-20260707`
+- Base:
+  `origin/main` at merge commit `a3b3d19`
+  (`Merge pull request #41 from RichelynScott/lifo/prd-e-wave1-pane-resize-20260707`)
+- First durable post-crash commit:
+  `5b77287 fix(host): guard temporary workspace restore`
+
+Next coding target: implement `surface.split`, `surface.focus`, and
+`surface.close` in the GTK bridge, carrying forward the settled PRD-E
+wired-route template:
+
+- no advertised capability until the route is actually wired;
+- respect the `LIMUX_DISABLE_WAVE1_MUTATIONS` kill switch;
+- view-neutral success for spatial mutations such as split/close;
+- switch-and-stay only for semantically view-affecting focus methods;
+- ping `nato_1` for the operator-directed MiniMax pre-wave after pushing the
+  PR head and before requesting `@codex review`.
+
+### Post-Restart Binding State
+
+After the second WSL crash on 2026-07-07, `lifo` was rebound and verified with:
+
+- hcom name: `lifo`
+- hcom/native session id:
+  `019ee13a-f948-7080-a37d-20dfad526aa1`
+- `hcom list lifo --json --name lifo` showed
+  `process_bound=true`, `term_available=true`,
+  `live_delivery_available=true`, `hook_delivery_available=true`, and
+  `resume_available=true`.
+
+Dino clarified the hcom recovery boundary: `hcom start --as lifo` inside a
+native-resumed Codex session restores identity/session/transcript/hook-safe
+state only. It cannot attach that already-running process to a real hcom
+PTY/control endpoint. Full PTY/control/live wake requires checkpointing, then
+running `hcom r lifo` from the owning terminal/pane outside the live session.
+Do not run `hcom r lifo` from inside the active Codex session unless the goal is
+to replace it.
+
+### Crash / Storage / Build Context
+
+Two WSL crashes occurred on 2026-07-07. Current fleet understanding:
+
+- Crash #1 pressure: `.wslconfig` allowed WSL to take 48 GB of the 64 GB host,
+  starving Windows until the VM was killed. The config was adjusted but only
+  takes effect after the next `wsl --shutdown`.
+- Crash #2 pressure: C: drive became nearly full, sparse VHD growth failed, and
+  the WSL root filesystem hit EIO/death.
+- Storage FYI after restart: C: had roughly 7 GiB free; Mula asked for cleanup
+  approval before mutating generated build outputs/worktrees.
+
+Build discipline is now active for this lane:
+
+- do not start new heavy Limux cargo/zig builds until storage/build clearance
+  is explicit;
+- announce heavy Limux builds over hcom before starting;
+- set `CARGO_BUILD_JOBS=4` for build shells;
+- borrow matching prebuilt Ghostty artifacts instead of triggering fresh full
+  worktree builds when possible;
+- cargo-clean spent worktrees at lane close.
+
+Verification since restart:
+
+- `cargo fmt --check` passed.
+- `git diff --check` passed.
+- No cargo test or full build was run after the crash because storage/build
+  discipline is currently a coordination gate.
+
+### Install / Peer Lane Split
+
+The ASAP Limux install does not wait for this surface-group branch.
+
+- Install-readiness queue: PR #42 plus `lifo_cl_mgr`'s version/changelog PR.
+- This Codex lane remains surface group work for the next install cycle.
+- `lifo_cl_mgr` may work version/changelog in parallel; rename-textbox focus
+  work is sequenced behind this surface-group branch because it touches the
+  same `window.rs` / `pane.rs` surfaces.
+
+No in-flight subagents are owned by this session after restart. The only
+pre-crash code state was the temporary workspace restore guard; it is now
+committed as `5b77287`.
 
 ## Immediate Next Action
 

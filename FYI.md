@@ -1973,3 +1973,31 @@ non-interactive use.
 ### Related:
 `docs/future-improvements/limux-lifecycle-events-and-agent-team-staleness-20260707.md` |
 TaskMaster `7.2`
+
+## 2026-07-07 - Post-Restart Surface Group Checkpoint
+### What:
+Checkpointed the Lifo PRD-E surface-group lane after the second WSL crash of
+the day, verified hcom rebinding for `lifo`, and committed the pre-crash
+temporary workspace restore guard as `5b77287`.
+
+### Why:
+The operator had to manually restart sessions after WSL failures caused by
+host memory pressure and then storage pressure from a nearly full C: drive. The
+surface-group lane needed a durable resume point before any compaction or
+another crash.
+
+### How:
+Verified `lifo` with `process_bound=true`, `term_available=true`, and live
+delivery available, updated `LIFO_HANDOFF.md` with the current resume spec, and
+recorded the active build discipline: no new heavy Limux builds without hcom
+announcement and storage clearance, `CARGO_BUILD_JOBS=4`, and reuse matching
+Ghostty artifacts where possible.
+
+### Impact:
+The ASAP install queue remains PR #42 plus the version/changelog PR. Lifo's
+surface `split/focus/close` work continues for the next install cycle with the
+MiniMax pre-wave before Codex review.
+
+### Related:
+`LIFO_HANDOFF.md` |
+`5b77287`
