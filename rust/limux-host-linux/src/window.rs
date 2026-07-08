@@ -411,6 +411,10 @@ fn should_skip_workspace_mapping(
 fn restore_workspace_mapping(state: &State, mapping: Option<TemporaryWorkspaceMapping>) {
     if let Some(mapping) = mapping {
         let target_stack_name = mapping.target_stack_name.as_str();
+        if mapping.stack.visible_child_name().as_deref() != Some(target_stack_name) {
+            return;
+        }
+
         if should_restore_workspace_mapping(
             mapping.stack.visible_child_name().as_deref(),
             active_workspace_stack_name(state).as_deref(),
