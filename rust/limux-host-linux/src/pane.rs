@@ -130,7 +130,6 @@ const BROWSER_SEARCH_ENTRY_CSS_CLASSES: [&str; 2] =
 #[cfg(feature = "webkit")]
 const BROWSER_WEB_VIEW_CSS_CLASS: &str = "limux-browser-web-view";
 pub(crate) const MIN_PANE_WIDTH: i32 = 260;
-pub(crate) const MIN_READABLE_PANE_WIDTH: i32 = 520;
 pub(crate) const MIN_PANE_HEIGHT: i32 = 160;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -263,7 +262,7 @@ pub fn toggle_pane_width_lock(pane_widget: &gtk::Widget) -> Option<Option<i32>> 
         None
     } else {
         let width = internals.pane_outer.allocation().width();
-        (width > 0).then_some(width.max(MIN_READABLE_PANE_WIDTH))
+        (width > 0).then_some(width)
     };
 
     internals.locked_width.set(next_width);
