@@ -1917,7 +1917,7 @@ fn split_extent_from_allocation(
 
 pub(crate) fn minimum_split_extent_for_orientation(orientation: gtk::Orientation) -> i32 {
     if orientation == gtk::Orientation::Horizontal {
-        pane::MIN_PANE_WIDTH
+        pane::MIN_READABLE_PANE_WIDTH
     } else {
         pane::MIN_PANE_HEIGHT
     }

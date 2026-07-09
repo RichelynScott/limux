@@ -2160,8 +2160,8 @@ fn show_terminal_context_menu(
     let width_lock_enabled =
         locked_width.is_some() || (callbacks.borrow().pane_width_lock_allowed)();
     let width_lock_label = locked_width
-        .map(|width| format!("Unlock Width ({width}px)"))
-        .unwrap_or_else(|| "Lock Width".to_string());
+        .map(|width| format!("Unfreeze Width ({width}px)"))
+        .unwrap_or_else(|| "Freeze Width".to_string());
 
     let items: Vec<(String, bool)> = vec![
         ("Copy".to_string(), has_selection),
@@ -2269,7 +2269,8 @@ fn show_terminal_context_menu(
                         (callbacks.on_split_down)();
                     }
                     label
-                        if label.starts_with("Lock Width") || label.starts_with("Unlock Width") =>
+                        if label.starts_with("Freeze Width")
+                            || label.starts_with("Unfreeze Width") =>
                     {
                         let callbacks = cb.borrow();
                         (callbacks.on_toggle_width_lock)();

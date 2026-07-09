@@ -524,13 +524,13 @@ fn horizontal_paned_child_area_width(paned: &gtk::Paned) -> i32 {
         start_width,
         end_width,
         allocation_width,
-        pane::MIN_PANE_WIDTH,
+        pane::MIN_READABLE_PANE_WIDTH,
     )
 }
 
 fn minimum_width_for_subtree(node: &SplitNode) -> i32 {
     match node {
-        SplitNode::Leaf { .. } => pane::MIN_PANE_WIDTH,
+        SplitNode::Leaf { .. } => pane::MIN_READABLE_PANE_WIDTH,
         SplitNode::Split {
             orientation,
             left,
@@ -570,9 +570,8 @@ fn horizontal_extent_width_lock_panes(node: &SplitNode) -> Vec<gtk::Widget> {
 
 fn locked_width_required_for_subtree(node: &SplitNode) -> Option<i32> {
     match node {
-        SplitNode::Leaf { pane_widget } => {
-            pane::pane_locked_width(pane_widget).map(|width| width.max(pane::MIN_PANE_WIDTH))
-        }
+        SplitNode::Leaf { pane_widget } => pane::pane_locked_width(pane_widget)
+            .map(|width| width.max(pane::MIN_READABLE_PANE_WIDTH)),
         SplitNode::Split {
             orientation,
             left,
@@ -709,14 +708,14 @@ fn apply_locked_width_position_from_panes(
         start_lock_panes,
         end_lock_panes,
         child_area_width,
-        pane::MIN_PANE_WIDTH,
+        pane::MIN_READABLE_PANE_WIDTH,
     );
     let Some(position) = constrained_locked_width_position(
         paned.position(),
         exact_position,
         constraints,
         child_area_width,
-        pane::MIN_PANE_WIDTH,
+        pane::MIN_READABLE_PANE_WIDTH,
     ) else {
         return true;
     };
@@ -920,7 +919,7 @@ fn pane_has_room_to_split(target: &gtk::Widget, orientation: gtk::Orientation) -
 
 fn minimum_split_extent(orientation: gtk::Orientation) -> i32 {
     if orientation == gtk::Orientation::Horizontal {
-        pane::MIN_PANE_WIDTH
+        pane::MIN_READABLE_PANE_WIDTH
     } else {
         pane::MIN_PANE_HEIGHT
     }
@@ -1172,11 +1171,11 @@ mod tests {
     #[test]
     fn split_extent_requires_room_for_both_children() {
         assert!(!split_extent_has_room(
-            pane::MIN_PANE_WIDTH * 2 - 1,
+            pane::MIN_READABLE_PANE_WIDTH * 2 - 1,
             gtk::Orientation::Horizontal
         ));
         assert!(split_extent_has_room(
-            pane::MIN_PANE_WIDTH * 2,
+            pane::MIN_READABLE_PANE_WIDTH * 2,
             gtk::Orientation::Horizontal
         ));
         assert!(!split_extent_has_room(

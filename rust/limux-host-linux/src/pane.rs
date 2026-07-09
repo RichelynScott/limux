@@ -130,6 +130,7 @@ const BROWSER_SEARCH_ENTRY_CSS_CLASSES: [&str; 2] =
 #[cfg(feature = "webkit")]
 const BROWSER_WEB_VIEW_CSS_CLASS: &str = "limux-browser-web-view";
 pub(crate) const MIN_PANE_WIDTH: i32 = 260;
+pub(crate) const MIN_READABLE_PANE_WIDTH: i32 = 520;
 pub(crate) const MIN_PANE_HEIGHT: i32 = 160;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -262,7 +263,7 @@ pub fn toggle_pane_width_lock(pane_widget: &gtk::Widget) -> Option<Option<i32>> 
         None
     } else {
         let width = internals.pane_outer.allocation().width();
-        (width > 0).then_some(width)
+        (width > 0).then_some(width.max(MIN_READABLE_PANE_WIDTH))
     };
 
     internals.locked_width.set(next_width);
@@ -2509,6 +2510,25 @@ fn show_tab_context_menu(tab_btn: &gtk::Box, tab_id: &str, context: &TabContextM
         });
     }
 
+    let pane_widget_for_width_lock: gtk::Widget = context.pane_outer.clone().upcast();
+    let locked_width = pane_locked_width(&pane_widget_for_width_lock);
+    let width_lock_allowed = locked_width.is_some()
+        || (context.callbacks.pane_width_lock_allowed)(&pane_widget_for_width_lock);
+    let width_lock_label = locked_width
+        .map(|width| format!("Unfreeze Width ({width}px)"))
+        .unwrap_or_else(|| "Freeze Width".to_string());
+    let width_lock_btn = gtk::Button::with_label(&width_lock_label);
+    width_lock_btn.add_css_class("flat");
+    width_lock_btn.set_sensitive(width_lock_allowed);
+    {
+        let pane_widget = pane_widget_for_width_lock.clone();
+        let menu_ref = menu.clone();
+        width_lock_btn.connect_clicked(move |_| {
+            menu_ref.popdown();
+            let _ = toggle_pane_width_lock(&pane_widget);
+        });
+    }
+
     // Close
     let close_btn = gtk::Button::with_label("Close");
     close_btn.add_css_class("flat");
@@ -2588,6 +2608,7 @@ fn show_tab_context_menu(tab_btn: &gtk::Box, tab_id: &str, context: &TabContextM
 
     menu_box.append(&rename_btn);
     menu_box.append(&pin_btn);
+    menu_box.append(&width_lock_btn);
     menu_box.append(&flag_label);
     menu_box.append(&flag_grid);
     menu_box.append(&close_btn);
