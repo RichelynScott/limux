@@ -1835,7 +1835,7 @@ fn install_json_hooks(
             "hooks": [{
                 "type": "command",
                 "command": hook_command(agent, limux_event)?,
-                "statusMessage": hook_status_message(agent_event),
+                "statusMessage": hook_status_message(agent, agent_event),
                 "timeout": hook_timeout(agent)
             }]
         });
@@ -1850,15 +1850,24 @@ fn install_json_hooks(
     write_json_object(path, &root)
 }
 
-fn hook_status_message(agent_event: &str) -> &'static str {
+fn hook_status_message(agent: agent_hooks::AgentKind, agent_event: &str) -> String {
+    let agent_label = agent.label();
     match canonical_agent_hook_display_event(agent_event) {
-        AgentHookDisplayEvent::Notification => "limux notify",
-        AgentHookDisplayEvent::Stop => "limux stop hook",
-        AgentHookDisplayEvent::SessionStart => "limux session start",
-        AgentHookDisplayEvent::SessionEnd => "limux session end",
-        AgentHookDisplayEvent::ToolUse => "limux tool hook",
-        AgentHookDisplayEvent::UserPromptSubmit => "limux prompt hook",
-        AgentHookDisplayEvent::Other => "limux hook",
+        AgentHookDisplayEvent::Notification => {
+            format!("Limux {agent_label}: forward attention notification")
+        }
+        AgentHookDisplayEvent::Stop => format!("Limux {agent_label}: mark response complete"),
+        AgentHookDisplayEvent::SessionStart => {
+            format!("Limux {agent_label}: track session start for restore")
+        }
+        AgentHookDisplayEvent::SessionEnd => {
+            format!("Limux {agent_label}: record session end for restore cleanup")
+        }
+        AgentHookDisplayEvent::ToolUse => format!("Limux {agent_label}: capture tool activity"),
+        AgentHookDisplayEvent::UserPromptSubmit => {
+            format!("Limux {agent_label}: capture submitted user prompt")
+        }
+        AgentHookDisplayEvent::Other => format!("Limux {agent_label}: process lifecycle event"),
     }
 }
 
@@ -6809,7 +6818,10 @@ mod cli_arg_tests {
         let entry = &root["hooks"]["SessionStart"][0];
         assert_eq!(entry["matcher"], "*");
         assert_eq!(entry["hooks"][0]["timeout"], 2);
-        assert_eq!(entry["hooks"][0]["statusMessage"], "limux session start");
+        assert_eq!(
+            entry["hooks"][0]["statusMessage"],
+            "Limux Claude: track session start for restore"
+        );
         assert!(entry["hooks"][0]["command"]
             .as_str()
             .expect("command")
@@ -6836,15 +6848,15 @@ mod cli_arg_tests {
             serde_json::from_slice(&fs::read(&path).expect("read settings")).expect("json");
         assert_eq!(
             root["hooks"]["Notification"][0]["hooks"][0]["statusMessage"],
-            "limux notify"
+            "Limux Claude: forward attention notification"
         );
         assert_eq!(
             root["hooks"]["Stop"][0]["hooks"][0]["statusMessage"],
-            "limux stop hook"
+            "Limux Claude: mark response complete"
         );
         assert_eq!(
             root["hooks"]["SessionEnd"][0]["hooks"][0]["statusMessage"],
-            "limux session end"
+            "Limux Claude: record session end for restore cleanup"
         );
     }
 
