@@ -4,6 +4,10 @@ Run all hcom commands with the current session's explicit `--name`.
 
 ## Snapshot
 
+The helper accepts `--workspace <workspace-ref>` for explicit topology probes;
+otherwise it uses the caller workspace reported by `limux identify`. Every
+probe has a bounded timeout and remains represented in the JSON on failure.
+
 ```bash
 git status --short --branch
 git diff --name-status
