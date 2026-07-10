@@ -393,7 +393,7 @@ impl SplitTreeContainer {
 
 const MAX_CHILD_DRAIN_ATTEMPTS: usize = 64;
 
-fn drain_children_with_progress<T: PartialEq>(
+pub(crate) fn drain_children_with_progress<T: PartialEq>(
     mut first_child: impl FnMut() -> Option<T>,
     mut remove: impl FnMut(&T),
 ) -> bool {

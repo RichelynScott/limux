@@ -4146,8 +4146,12 @@ fn clamp_workspace_insert_index_for_pinning(
 }
 
 fn sync_sidebar_row_order(state: &mut AppState) {
-    while let Some(child) = state.sidebar_list.first_child() {
-        state.sidebar_list.remove(&child);
+    if !split_tree::drain_children_with_progress(
+        || state.sidebar_list.first_child(),
+        |child| state.sidebar_list.remove(child),
+    ) {
+        eprintln!("limux: sidebar reorder aborted because GTK child removal made no progress");
+        return;
     }
     for workspace in &state.workspaces {
         state.sidebar_list.append(&workspace.sidebar_row);

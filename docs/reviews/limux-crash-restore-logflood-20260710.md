@@ -22,13 +22,16 @@ Live build: `main-068872a1-reviewed` at `068872a1e162`
 
 ## Root-Cause Lead
 
-`SplitTreeContainer::trigger_rebuild` in
-`rust/limux-host-linux/src/split_tree.rs` clears the GTK bin with an unbounded
-`while let Some(child) = self.bin.first_child()` loop. If GTK rejects removal
-of a stale/invalid child during restored-tree teardown, `first_child()` can
-return the same child forever. That no-progress shape directly matches the
-sub-second `gtk_widget_get_parent` flood and GUI freeze. This remains a
-high-confidence hypothesis until a focused regression reproduces it.
+Two GTK reorder paths used the same unbounded `first_child/remove` shape:
+
+- `SplitTreeContainer::trigger_rebuild` in
+  `rust/limux-host-linux/src/split_tree.rs`;
+- `sync_sidebar_row_order` in `rust/limux-host-linux/src/window.rs`.
+
+If GTK rejects removal of a stale/invalid child, `first_child()` can return the
+same child forever. That no-progress shape directly matches the sub-second
+`gtk_widget_get_parent` flood and GUI freeze. The log does not identify which
+caller entered the loop, so both paths require the same bounded guard.
 
 ## Restart Smoke
 
@@ -76,12 +79,13 @@ state. The P0 implementation therefore uses this short-lived exception:
 
 ## Implemented P0 Guard
 
-`SplitTreeContainer::trigger_rebuild` now drains children through a bounded
-progress guard. It aborts after the first unchanged child or after 64 removal
-attempts, emits one diagnostic, and does not schedule a rebuild after teardown
-failure. This converts the observed unbounded loop into a fail-closed bounded
-failure while preserving the existing one-tick Ghostty/GLArea rebuild path when
-normal removal succeeds.
+`SplitTreeContainer::trigger_rebuild` and `sync_sidebar_row_order` now drain
+children through one bounded progress guard. It aborts after the first
+unchanged child or after 64 removal attempts and emits one caller-specific
+diagnostic. Split-tree teardown does not schedule a rebuild after failure, and
+sidebar reorder does not append rows after failure. This converts both observed
+unbounded-loop candidates into fail-closed bounded failures while preserving
+the existing one-tick Ghostty/GLArea rebuild path when normal removal succeeds.
 
 Regression tests cover:
 
@@ -105,6 +109,6 @@ Regression tests cover:
   because it contains delete commands prohibited by current policy; a temporary
   archive-only copy passed `bash -n` and the no-delete static scan before use.
   Smoke artifacts are archived at
-  `/tmp/limux-smoke-archives-20260710/limux-smoke-WA6VhR-1783688407`.
+  `/tmp/limux-smoke-archives-20260710/limux-smoke-Eg27JQ-1783688891`.
 - No build was installed and the operator's live Limux runtime was not
   replaced or restarted by this implementation lane.
