@@ -64,6 +64,14 @@ real transcript. Retry once with the verified UUID; never cycle through guesses.
    delivery, and terminal control.
 5. Send the assignment through hcom, never by pasting it into the pane.
 
+If pane creation times out, re-read pane topology before retrying: the host may
+have created the pane without returning a response. Do not inject into a
+created surface until health and a read-screen check prove it is input-ready.
+If the target prompt contains human text, leave the hcom request queued rather
+than clearing, submitting, or appending to that input. If a fallback agent
+launcher also fails its ready gate, preserve the launch evidence, route it to
+the owning runtime manager, and stop the replacement loop.
+
 Use `assets/cleanup-brief-template.md` for the bounded assignment.
 
 ### 5. Reconcile Branches And Files

@@ -56,6 +56,11 @@ resume, GitHub branch/PR evidence, TaskMaster, and exact-path ownership.
   worktree cleanup through hcom.
 - The dogfood exposed a delayed endpoint-migration defect now owned by the
   hcom manager lane; that failure is incorporated into the skill safeguards.
+- A later cleanup dispatch proved two additional fail-closed cases: Limux
+  returned a pane-create timeout after creating an unhealthy pane, and hcom
+  correctly queued behind a non-empty `/exit` prompt instead of overwriting
+  operator input. A separate headless Codex fallback also failed its ready
+  gate and was routed to the hcom manager without spawning replacements.
 
 ## Review Gate
 
