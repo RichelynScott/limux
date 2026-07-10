@@ -4147,6 +4147,7 @@ fn clamp_workspace_insert_index_for_pinning(
 
 fn sync_sidebar_row_order(state: &mut AppState) {
     if !split_tree::drain_children_with_progress(
+        state.workspaces.len(),
         || state.sidebar_list.first_child(),
         |child| state.sidebar_list.remove(child),
     ) {
