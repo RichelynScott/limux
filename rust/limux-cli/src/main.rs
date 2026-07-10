@@ -2673,10 +2673,12 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
     if surface_rows.is_empty() {
         bail!("agent-team: target workspace has no surfaces");
     }
-    let orchestrator_surface_exists = surface_rows.iter().any(|row| {
-        get_string(row, &["surface_id", "surface_ref"]).as_deref()
-            == Some(orchestrator_surface.as_str())
-    });
+    let row_matches_orchestrator = |row: &Value| {
+        ["surface_id", "surface_ref"]
+            .iter()
+            .any(|key| row.get(*key).and_then(Value::as_str) == Some(orchestrator_surface.as_str()))
+    };
+    let orchestrator_surface_exists = surface_rows.iter().any(&row_matches_orchestrator);
     if !orchestrator_surface_exists {
         bail!(
             "agent-team: target surface {orchestrator_surface} was not found in workspace {workspace_id}"
@@ -2685,10 +2687,7 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
     let orchestrator_pane = orchestrator_pane_arg.unwrap_or_else(|| {
         surface_rows
             .iter()
-            .find(|row| {
-                get_string(row, &["surface_id", "surface_ref"]).as_deref()
-                    == Some(orchestrator_surface.as_str())
-            })
+            .find(|row| row_matches_orchestrator(row))
             .and_then(|row| get_string(row, &["pane_id", "pane_ref"]))
             .unwrap_or_default()
     });
@@ -7249,8 +7248,10 @@ mod agent_team_tests {
                             request.id.clone(),
                             json!({
                                 "surfaces": [{
-                                    "pane_id": "pane:1",
-                                    "surface_id": "surface:1:orchestrator",
+                                    "pane_id": "1",
+                                    "pane_ref": "pane:1",
+                                    "surface_id": "1:orchestrator",
+                                    "surface_ref": "surface:1:orchestrator",
                                     "focused": true,
                                     "title": "orchestrator"
                                 }]
