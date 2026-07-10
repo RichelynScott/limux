@@ -320,8 +320,15 @@ impl SplitTreeContainer {
 
         // Clear the bin — tears down the old widget tree.
         // unrealize cascades to all GLAreas in the subtree.
-        while let Some(child) = self.bin.first_child() {
-            self.bin.remove(&child);
+        if !drain_children_with_progress(
+            1,
+            || self.bin.first_child(),
+            |child| self.bin.remove(child),
+        ) {
+            eprintln!(
+                "limux: split-tree rebuild aborted because GTK child removal made no progress"
+            );
+            return;
         }
 
         // Rebuild on the next idle tick. The tick separation between
@@ -385,6 +392,23 @@ impl SplitTreeContainer {
             .and_then(|w| gtk::prelude::GtkWindowExt::focus(&w));
         *self.last_focused.borrow_mut() = focus;
     }
+}
+
+pub(crate) fn drain_children_with_progress<T: PartialEq>(
+    max_children: usize,
+    mut first_child: impl FnMut() -> Option<T>,
+    mut remove: impl FnMut(&T),
+) -> bool {
+    for _ in 0..max_children {
+        let Some(child) = first_child() else {
+            return true;
+        };
+        remove(&child);
+        if first_child().as_ref() == Some(&child) {
+            return false;
+        }
+    }
+    first_child().is_none()
 }
 
 impl Drop for SplitTreeContainer {
@@ -1007,6 +1031,77 @@ pub(crate) fn build_split_node_from_layout(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
+
+    #[test]
+    fn child_drain_stops_after_first_no_progress_removal() {
+        let children = RefCell::new(vec![1, 2]);
+        let remove_attempts = RefCell::new(0);
+        let max_children = children.borrow().len();
+
+        let drained = drain_children_with_progress(
+            max_children,
+            || children.borrow().first().copied(),
+            |_| *remove_attempts.borrow_mut() += 1,
+        );
+
+        assert!(!drained);
+        assert_eq!(*remove_attempts.borrow(), 1);
+        assert_eq!(*children.borrow(), vec![1, 2]);
+    }
+
+    #[test]
+    fn child_drain_completes_when_each_removal_advances() {
+        let children = RefCell::new(vec![1, 2, 3]);
+        let max_children = children.borrow().len();
+
+        let drained = drain_children_with_progress(
+            max_children,
+            || children.borrow().first().copied(),
+            |_| {
+                children.borrow_mut().remove(0);
+            },
+        );
+
+        assert!(drained);
+        assert!(children.borrow().is_empty());
+    }
+
+    #[test]
+    fn child_drain_stops_at_attempt_limit_when_children_cycle() {
+        let children = RefCell::new(vec![1, 2]);
+        let remove_attempts = RefCell::new(0);
+        let max_children = children.borrow().len();
+
+        let drained = drain_children_with_progress(
+            max_children,
+            || children.borrow().first().copied(),
+            |_| {
+                *remove_attempts.borrow_mut() += 1;
+                children.borrow_mut().rotate_left(1);
+            },
+        );
+
+        assert!(!drained);
+        assert_eq!(*remove_attempts.borrow(), max_children);
+    }
+
+    #[test]
+    fn child_drain_allows_more_than_sixty_four_distinct_children() {
+        let children = RefCell::new((0..65).collect::<Vec<_>>());
+        let max_children = children.borrow().len();
+
+        let drained = drain_children_with_progress(
+            max_children,
+            || children.borrow().first().copied(),
+            |_| {
+                children.borrow_mut().remove(0);
+            },
+        );
+
+        assert!(drained);
+        assert!(children.borrow().is_empty());
+    }
 
     fn width_lock_constraints(
         start_required_width: Option<i32>,
