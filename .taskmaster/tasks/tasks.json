@@ -364,19 +364,40 @@
           }
         ],
         "updatedAt": "2026-07-07T14:01:56.925Z"
+      },
+      {
+        "id": 21,
+        "title": "Fix restored split-tree teardown infinite loop and log flood",
+        "description": "P0 Limux crash/restart defect where restored GTK child teardown spun and flooded the host log.",
+        "details": "Merged in PR #49 as efbca2a after caller-sized progress bounds, four focused regressions, 524 workspace tests, and two archive-only Xvfb smokes.",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-07-10T14:25:33.975Z"
+      },
+      {
+        "id": 22,
+        "title": "Reconcile Limux checkout and stage reconcile-via-limux skill",
+        "description": "Make the primary Limux checkout and registered worktrees clean without losing peer or local work, then stage a reusable reconcile-via-limux skill and route it through both global-config manager inboxes.",
+        "details": "Build exact owner map; resume only required owners through hcom in explicit Limux surfaces; preserve or land unique work on fresh main-based PRs; remove only merged clean worktrees under operator authorization; verify remote main, TaskMaster, worktrees, PRs, and runtime promotion readiness.",
+        "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-07-10T14:25:35.894Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-07T14:01:56.925Z",
-      "taskCount": 20,
-      "completedCount": 10,
+      "lastModified": "2026-07-10T14:25:35.907Z",
+      "taskCount": 22,
+      "completedCount": 11,
       "tags": [
         "master"
-      ],
-      "created": "2026-07-08T00:42:52.931Z",
-      "description": "Tasks for master context",
-      "updated": "2026-07-08T00:42:52.931Z"
+      ]
     }
   },
   "cmux-parity-20260707": {
