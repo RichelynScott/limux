@@ -185,6 +185,8 @@ export XDG_STATE_HOME="$DEMO_DIR/state"
 export XDG_RUNTIME_DIR="$DEMO_DIR/runtime"
 mkdir -p "$XDG_DATA_HOME/limux" "$XDG_STATE_HOME" "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
+SEED_WORKSPACE_ID="00000000-0000-4000-8000-000000000001"
+SEED_SURFACE_ID="1:terminal-0"
 cat > "$XDG_DATA_HOME/limux/session.json" <<SMOKE_SESSION
 {
   "version": 1,
@@ -193,7 +195,7 @@ cat > "$XDG_DATA_HOME/limux/session.json" <<SMOKE_SESSION
   "sidebar": { "visible": true, "width": 220 },
   "workspaces": [
     {
-      "id": "00000000-0000-4000-8000-000000000001",
+      "id": "$SEED_WORKSPACE_ID",
       "name": "limux",
       "favorite": false,
       "cwd": "$DEMO_DIR",
@@ -249,8 +251,7 @@ cleanup() {
     tail -n 40 "$LOG_DIR/host.stderr" 2>/dev/null || true
     echo "artifacts retained at: $DEMO_DIR"
   else
-    # Clean slate on success.
-    rm -rf "$DEMO_DIR"
+    echo "artifacts retained at: $DEMO_DIR"
   fi
 }
 trap cleanup EXIT INT TERM
@@ -273,10 +274,17 @@ done
 # --- 5. Stage 2: live agent-team bootstrap with fake agents ---------------
 echo
 echo "== stage 2: agent-team two-phase bootstrap with fake agents =="
-rm -f "$FAKE_AGENT_PROOF_DIR"/*.bootstrap
+PROOF_ARCHIVE_DIR="$DEMO_DIR/archive/bootstrap-proofs"
+mkdir -p "$PROOF_ARCHIVE_DIR"
+for proof in "$FAKE_AGENT_PROOF_DIR"/*.bootstrap; do
+  [[ -e "$proof" ]] || break
+  mv "$proof" "$PROOF_ARCHIVE_DIR/"
+done
 printf 'manual review ledger sentinel\n' > "$DEMO_DIR/LIMUX_REVIEW_LEDGER.md"
 "$LIMUX_CLI" --id-format both agent-team \
   --agents codex,claude \
+  --workspace "$SEED_WORKSPACE_ID" \
+  --surface "$SEED_SURFACE_ID" \
   --cwd "$DEMO_DIR" \
   --force-protocol-overwrite \
   2>&1 | tee "$LOG_DIR/stage2.txt"
