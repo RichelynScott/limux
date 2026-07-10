@@ -830,6 +830,10 @@ mod tests {
     #[test]
     fn resource_env_ignores_shell_integration_without_terminfo() {
         with_ghostty_env(|| {
+            let _resources = EnvVarGuard::set("GHOSTTY_RESOURCES_DIR", None::<&str>);
+            let _terminfo = EnvVarGuard::set("TERMINFO", None::<&str>);
+            let _shell_integration =
+                EnvVarGuard::set("GHOSTTY_SHELL_INTEGRATION_XDG_DIR", None::<&str>);
             let root = temp_path("env-shell-only");
             let exe_dir = root.join("target/release");
             let resources_dir = root.join("ghostty/src");
