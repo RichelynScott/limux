@@ -383,7 +383,7 @@
         "description": "Make the primary Limux checkout and registered worktrees clean without losing peer or local work, then stage a reusable reconcile-via-limux skill and route it through both global-config manager inboxes.",
         "details": "Build exact owner map; resume only required owners through hcom in explicit Limux surfaces; preserve or land unique work on fresh main-based PRs; remove only merged clean worktrees under operator authorization; verify remote main, TaskMaster, worktrees, PRs, and runtime promotion readiness.",
         "testStrategy": "",
-        "status": "done",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "high",
         "subtasks": [
@@ -399,14 +399,14 @@
             "parentId": "22"
           }
         ],
-        "updatedAt": "2026-07-10T18:48:32.082Z"
+        "updatedAt": "2026-07-10T19:31:28.379Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-10T18:48:32.084Z",
+      "lastModified": "2026-07-10T19:31:28.379Z",
       "taskCount": 22,
-      "completedCount": 12,
+      "completedCount": 11,
       "tags": [
         "master"
       ]
@@ -635,9 +635,21 @@
         "testStrategy": "Run `cargo test -p limux-core render_version_line`, `cargo test -p limux-cli version`, `cargo test -p limux-host-linux version`. Run `cargo check -p limux-cli` and `cargo check -p limux-host-linux` to ensure no build errors.",
         "priority": "high",
         "dependencies": [],
-        "status": "done",
-        "subtasks": [],
-        "updatedAt": "2026-07-08T19:31:59.667Z"
+        "status": "in-progress",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Cut 0.2.1 merge-wave release",
+            "description": "Bump workspace and lockfile versions to 0.2.1, record merged PRs #45-#55 in CHANGELOG.md, update release-facing README examples, and verify the exact preview candidate before promotion.",
+            "details": "",
+            "status": "in-progress",
+            "dependencies": [],
+            "parentTaskId": 1,
+            "updatedAt": "2026-07-10T19:29:02.760Z",
+            "parentId": "1"
+          }
+        ],
+        "updatedAt": "2026-07-10T19:29:02.760Z"
       },
       {
         "id": 2,
@@ -668,15 +680,12 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-08T19:31:59.676Z",
+      "lastModified": "2026-07-10T19:29:02.760Z",
       "taskCount": 3,
-      "completedCount": 3,
+      "completedCount": 2,
       "tags": [
         "product-hygiene"
-      ],
-      "created": "2026-07-08T19:33:06.903Z",
-      "description": "Tasks for product-hygiene context",
-      "updated": "2026-07-08T19:33:06.903Z"
+      ]
     }
   }
 }
