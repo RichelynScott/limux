@@ -29,6 +29,34 @@ class RunTests(unittest.TestCase):
         self.assertIn("FileNotFoundError", result["stderr"])
         self.assertIn("hcom", result["stderr"])
 
+    def test_worktree_statuses_include_each_porcelain_path(self) -> None:
+        listing = {
+            "exit_code": 0,
+            "stdout": (
+                "worktree /tmp/project\nHEAD abc\nbranch refs/heads/main\n\n"
+                "worktree /tmp/project linked\nHEAD def\ndetached\n"
+            ),
+        }
+        success = {
+            "command": ["git", "status", "--short", "--branch"],
+            "exit_code": 0,
+            "stdout": "## main\n",
+            "stderr": "",
+        }
+
+        with mock.patch.object(MODULE, "run", return_value=success) as run_mock:
+            result = MODULE.collect_worktree_statuses(listing)
+
+        self.assertEqual(result["exit_code"], 0)
+        self.assertEqual(
+            [record["path"] for record in result["worktrees"]],
+            ["/tmp/project", "/tmp/project linked"],
+        )
+        self.assertEqual(
+            [call.args[1] for call in run_mock.call_args_list],
+            [Path("/tmp/project"), Path("/tmp/project linked")],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
