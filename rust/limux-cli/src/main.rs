@@ -257,7 +257,7 @@ fn parse_global_args() -> Result<GlobalOptions> {
 
 fn print_help() {
     println!(
-        "limux CLI\n\nUsage: limux [--socket <path>] [--channel stable|preview[:id]] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  --version\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  doctor [--json] [--log-triage [--lines <n>]]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  pane-action --action set_flag_color --color <orange|red|purple|pink|green|yellow|teal|cyan> [--workspace <id|ref>] [--pane <id|ref>]\n  pane-action --action clear_flag_color [--workspace <id|ref>] [--pane <id|ref>]\n  target-info (alias: socket-info) prints the resolved socket/channel without connecting\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--launch-mode direct|hcom] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the active workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, or hcom with --run-here when requested, writes\n      LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md plus\n      LIMUX_REVIEW_LEDGER.md when missing so peers can coordinate via durable\n      files and `limux send --surface <peer-surface-id> <envelope>`.\n  review prepare --artifact <path-or-ref> --reviewer <agent|manual> --lens <name> --summary <text> [--cwd <path>] [--ledger-path <path>] [--reviews-dir <path>] [--review-id <id>] [--dry-run]\n      Creates a durable review request file, appends a pending review-ledger\n      entry, and prints the reviewer prompt without launching a reviewer pane.\n"
+        "limux CLI\n\nUsage: limux [--socket <path>] [--channel stable|preview[:id]] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  --version\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  doctor [--json] [--log-triage [--lines <n>]]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  pane-action --action set_flag_color --color <orange|red|purple|pink|green|yellow|teal|cyan> [--workspace <id|ref>] [--pane <id|ref>]\n  pane-action --action clear_flag_color [--workspace <id|ref>] [--pane <id|ref>]\n  target-info (alias: socket-info) prints the resolved socket/channel without connecting\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--launch-mode direct|hcom] [--workspace <id|ref>] [--surface <id|ref>] [--pane <id|ref>] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the explicitly targeted workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, or hcom with --run-here when requested, writes\n      (live runs require explicit target flags or LIMUX_WORKSPACE_ID/LIMUX_SURFACE_ID),\n      LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md plus\n      LIMUX_REVIEW_LEDGER.md when missing so peers can coordinate via durable\n      files and `limux send --surface <peer-surface-id> <envelope>`.\n  review prepare --artifact <path-or-ref> --reviewer <agent|manual> --lens <name> --summary <text> [--cwd <path>] [--ledger-path <path>] [--reviews-dir <path>] [--review-id <id>] [--dry-run]\n      Creates a durable review request file, appends a pending review-ledger\n      entry, and prints the reviewer prompt without launching a reviewer pane.\n"
     );
     println!(
         "  agent-team extra flags: --no-bootstrap skips the post-launch bootstrap prompt while still launching panes; --dry-run skips host contact but still materializes the protocol and seeds missing roster/ledger files."
@@ -2060,13 +2060,23 @@ fn build_agent_team_bootstrap_prompt(
     protocol_path: &Path,
     roster_path: &Path,
     ledger_path: &Path,
+    launch_mode: AgentLaunchMode,
 ) -> Result<String> {
+    let transport_guidance = match launch_mode {
+        AgentLaunchMode::Direct => {
+            "use limux send --surface for peer messages and limux notify for human input; do not send unsolicited terminal messages into a pane where a human may be actively typing"
+        }
+        AgentLaunchMode::Hcom => {
+            "use hcom for peer/orchestrator messages when peer hcom names are available; otherwise record readiness in the durable ledger; do not use limux send for readiness or unsolicited orchestrator check-ins; use limux notify for human input"
+        }
+    };
     let prompt = format!(
-        "You are {agent} in a Limux agent-team pane. Read the generated runtime protocol file at {protocol_path}, the durable ownership/team roster at {roster_path}, and the durable review ledger at {ledger_path}, then read the authoritative instruction sources listed in the protocol file; use the protocol file for current surface IDs; do not treat LIMUX_AGENTS.md as copied AGENTS.md content; use limux send --surface for peer messages and limux notify for human input; record durable review decisions in the ledger; reply to the orchestrator when ready.",
+        "You are {agent} in a Limux agent-team pane. Read the generated runtime protocol file at {protocol_path}, the durable ownership/team roster at {roster_path}, and the durable review ledger at {ledger_path}, then read the authoritative instruction sources listed in the protocol file; use the protocol file for current surface IDs; do not treat LIMUX_AGENTS.md as copied AGENTS.md content; {transport_guidance}; record durable review decisions in the ledger.",
         agent = bootstrap_prompt_value(agent),
         protocol_path = bootstrap_prompt_value(&protocol_path.to_string_lossy()),
         roster_path = bootstrap_prompt_value(&roster_path.to_string_lossy()),
         ledger_path = bootstrap_prompt_value(&ledger_path.to_string_lossy()),
+        transport_guidance = transport_guidance,
     );
     validate_agent_team_bootstrap_prompt(&prompt)?;
     Ok(prompt)
@@ -2345,7 +2355,7 @@ async fn run_new_workspace(client: &mut Client, args: &[String]) -> Result<Value
 // the same envelope targeted back.
 
 fn agent_team_help_text() -> &'static str {
-    "Usage: limux agent-team [--agents codex,claude[,opencode,gemini,hermes]] [--launch-mode direct|hcom] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n\nSplits the active Limux workspace into one pane per agent, writes LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md plus LIMUX_REVIEW_LEDGER.md when missing.\n\nSafety:\n  --help is informational only and never contacts the running host.\n  --dry-run previews files without contacting the running host."
+    "Usage: limux agent-team [--agents codex,claude[,opencode,gemini,hermes]] [--launch-mode direct|hcom] [--workspace <id|ref>] [--surface <id|ref>] [--pane <id|ref>] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n\nSplits an explicitly targeted Limux workspace/surface into one pane per agent, writes LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md plus LIMUX_REVIEW_LEDGER.md when missing.\n\nSafety:\n  --help is informational only and never contacts the running host.\n  --dry-run previews files without contacting the running host.\n  live runs require --workspace/--surface or LIMUX_WORKSPACE_ID/LIMUX_SURFACE_ID; the focused workspace is never used as an implicit target."
 }
 
 /// Built-in agent launcher commands. Chosen to match the CLIs the user
@@ -2623,57 +2633,62 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
         }));
     }
 
-    // 1. Resolve the orchestrator's workspace + pane. Prefer LIMUX_* env (set
-    //    in every limux-spawned terminal) and fall back to the host's active
-    //    focus so callers from a regular shell still work.
-    let orchestrator_workspace = env::var("LIMUX_WORKSPACE_ID")
-        .ok()
-        .filter(|s| !s.is_empty());
-    let orchestrator_surface_env = env::var("LIMUX_SURFACE_ID").ok().filter(|s| !s.is_empty());
-    let orchestrator_pane_env = env::var("LIMUX_PANE_ID").ok().filter(|s| !s.is_empty());
+    // 1. Resolve the orchestrator's workspace + pane. Prefer explicit flags,
+    //    then LIMUX_* env from a limux-spawned terminal. Do not fall back to the
+    //    focused workspace: background agents and hcom peers can run while the
+    //    operator works in an unrelated workspace.
+    let orchestrator_workspace = parse_opt(args, "--workspace").or_else(|| {
+        env::var("LIMUX_WORKSPACE_ID")
+            .ok()
+            .filter(|s| !s.is_empty())
+    });
+    let orchestrator_surface = parse_opt(args, "--surface")
+        .or_else(|| env::var("LIMUX_SURFACE_ID").ok().filter(|s| !s.is_empty()));
+    let orchestrator_pane_arg = parse_opt(args, "--pane")
+        .or_else(|| env::var("LIMUX_PANE_ID").ok().filter(|s| !s.is_empty()));
 
-    let workspace_id = match orchestrator_workspace.clone() {
-        Some(id) => id,
-        None => resolve_current_workspace(client)
-            .await
-            .context("agent-team: could not resolve active workspace; run from inside a limux pane or pass --workspace")?,
-    };
+    let workspace_id = orchestrator_workspace.ok_or_else(|| {
+        anyhow!(
+            "agent-team: live runs require --workspace or LIMUX_WORKSPACE_ID; refusing to use the currently focused workspace"
+        )
+    })?;
+    let orchestrator_surface = orchestrator_surface.ok_or_else(|| {
+        anyhow!(
+            "agent-team: live runs require --surface or LIMUX_SURFACE_ID; refusing to choose the focused surface"
+        )
+    })?;
 
-    // 2. Discover the orchestrator pane's surface_id. If env didn't tell us,
-    //    use the focused/first surface in the workspace.
     let surfaces = client
         .call(
             "surface.list",
             json!({ "workspace_id": workspace_id.clone() }),
         )
         .await
-        .context("surface.list failed for active workspace")?;
+        .context("surface.list failed for target workspace")?;
     let surface_rows = surfaces
         .get("surfaces")
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
     if surface_rows.is_empty() {
-        bail!("agent-team: active workspace has no surfaces");
+        bail!("agent-team: target workspace has no surfaces");
     }
-    let orchestrator_surface = orchestrator_surface_env.clone().unwrap_or_else(|| {
+    let row_matches_orchestrator = |row: &Value| {
+        ["surface_id", "surface_ref"]
+            .iter()
+            .any(|key| row.get(*key).and_then(Value::as_str) == Some(orchestrator_surface.as_str()))
+    };
+    let orchestrator_surface_exists = surface_rows.iter().any(&row_matches_orchestrator);
+    if !orchestrator_surface_exists {
+        bail!(
+            "agent-team: target surface {orchestrator_surface} was not found in workspace {workspace_id}"
+        );
+    }
+    let orchestrator_pane = orchestrator_pane_arg.unwrap_or_else(|| {
         surface_rows
             .iter()
-            .find(|row| row.get("focused").and_then(Value::as_bool) == Some(true))
-            .and_then(|row| get_string(row, &["surface_id"]))
-            .or_else(|| get_string(&surface_rows[0], &["surface_id"]))
-            .unwrap_or_default()
-    });
-    if orchestrator_surface.is_empty() {
-        bail!("agent-team: could not determine orchestrator surface");
-    }
-    let orchestrator_pane = orchestrator_pane_env.unwrap_or_else(|| {
-        surface_rows
-            .iter()
-            .find(|row| {
-                get_string(row, &["surface_id"]).as_deref() == Some(orchestrator_surface.as_str())
-            })
-            .and_then(|row| get_string(row, &["pane_id"]))
+            .find(|row| row_matches_orchestrator(row))
+            .and_then(|row| get_string(row, &["pane_id", "pane_ref"]))
             .unwrap_or_default()
     });
 
@@ -2776,6 +2791,7 @@ async fn run_agent_team(client: &mut Client, args: &[String]) -> Result<Value> {
                 &agents_md_path,
                 &roster_path,
                 &ledger_path,
+                launch_mode,
             )?;
             match send_agent_team_bootstrap_prompt(client, &workspace_id, surface_id, name, &prompt)
                 .await
@@ -7094,6 +7110,10 @@ mod agent_team_tests {
             "codex,claude".to_string(),
             "--cwd".to_string(),
             cwd.to_string_lossy().to_string(),
+            "--workspace".to_string(),
+            "workspace:team".to_string(),
+            "--surface".to_string(),
+            "surface:1:orchestrator".to_string(),
             "--launch-mode".to_string(),
             "hcom".to_string(),
         ];
@@ -7228,8 +7248,10 @@ mod agent_team_tests {
                             request.id.clone(),
                             json!({
                                 "surfaces": [{
-                                    "pane_id": "pane:1",
-                                    "surface_id": "surface:1:orchestrator",
+                                    "pane_id": "1",
+                                    "pane_ref": "pane:1",
+                                    "surface_id": "1:orchestrator",
+                                    "surface_ref": "surface:1:orchestrator",
                                     "focused": true,
                                     "title": "orchestrator"
                                 }]
@@ -7328,6 +7350,10 @@ mod agent_team_tests {
             "codex,claude".to_string(),
             "--cwd".to_string(),
             cwd.to_string_lossy().to_string(),
+            "--workspace".to_string(),
+            "workspace:team".to_string(),
+            "--surface".to_string(),
+            "surface:1:orchestrator".to_string(),
         ];
 
         let payload = run_agent_team(&mut client, &args)
@@ -7411,9 +7437,14 @@ mod agent_team_tests {
         let roster_path = PathBuf::from("/tmp/limux\nteam/LIMUX_TEAM_ROSTER.md");
         let ledger_path = PathBuf::from("/tmp/limux\nteam/LIMUX_REVIEW_LEDGER.md");
 
-        let prompt =
-            build_agent_team_bootstrap_prompt("codex", &protocol_path, &roster_path, &ledger_path)
-                .expect("prompt should be valid");
+        let prompt = build_agent_team_bootstrap_prompt(
+            "codex",
+            &protocol_path,
+            &roster_path,
+            &ledger_path,
+            AgentLaunchMode::Direct,
+        )
+        .expect("prompt should be valid");
 
         validate_agent_team_bootstrap_prompt(&prompt).expect("prompt policy should pass");
         assert!(prompt.contains("LIMUX_AGENTS.md"));
@@ -7433,6 +7464,22 @@ mod agent_team_tests {
         assert!(prompt.contains("\\u{200b}"));
     }
 
+    #[test]
+    fn agent_team_hcom_bootstrap_uses_hcom_without_unsolicited_limux_send() {
+        let prompt = build_agent_team_bootstrap_prompt(
+            "claude",
+            Path::new("/tmp/LIMUX_AGENTS.md"),
+            Path::new("/tmp/LIMUX_TEAM_ROSTER.md"),
+            Path::new("/tmp/LIMUX_REVIEW_LEDGER.md"),
+            AgentLaunchMode::Hcom,
+        )
+        .expect("hcom prompt should be valid");
+
+        assert!(prompt.contains("use hcom for peer/orchestrator messages"));
+        assert!(prompt.contains("do not use limux send for readiness"));
+        assert!(!prompt.contains("use limux send --surface for peer messages"));
+    }
+
     #[tokio::test]
     async fn agent_team_no_bootstrap_launches_panes_without_prompt_send() {
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -7446,6 +7493,10 @@ mod agent_team_tests {
             "codex,claude".to_string(),
             "--cwd".to_string(),
             cwd.to_string_lossy().to_string(),
+            "--workspace".to_string(),
+            "workspace:team".to_string(),
+            "--surface".to_string(),
+            "surface:1:orchestrator".to_string(),
             "--no-bootstrap".to_string(),
         ];
 
@@ -7486,6 +7537,10 @@ mod agent_team_tests {
             "codex,claude".to_string(),
             "--cwd".to_string(),
             cwd.to_string_lossy().to_string(),
+            "--workspace".to_string(),
+            "workspace:team".to_string(),
+            "--surface".to_string(),
+            "surface:1:orchestrator".to_string(),
             "--no-launch".to_string(),
         ];
 
@@ -7537,6 +7592,10 @@ mod agent_team_tests {
             "codex,claude".to_string(),
             "--cwd".to_string(),
             cwd.to_string_lossy().to_string(),
+            "--workspace".to_string(),
+            "workspace:team".to_string(),
+            "--surface".to_string(),
+            "surface:1:orchestrator".to_string(),
         ];
 
         let err = run_agent_team(&mut client, &args)
