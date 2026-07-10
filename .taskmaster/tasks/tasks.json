@@ -577,19 +577,40 @@
           }
         ],
         "updatedAt": "2026-07-07T21:32:49.529Z"
+      },
+      {
+        "id": 9,
+        "title": "Expose exact scoped surface close CLI",
+        "description": "Add a CLI command that closes exactly one explicitly targeted terminal surface through the existing live surface.close bridge.",
+        "details": "Require explicit --workspace and --surface targets, never focused-surface fallback; wire text/JSON help and response; cover request serialization, missing-target failure before socket contact, and bridge behavior. Preserve the UI-close workaround for installed builds until promotion.",
+        "testStrategy": "",
+        "status": "review",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-07-10T16:43:59.250Z"
+      },
+      {
+        "id": 10,
+        "title": "Make new-pane help side-effect free",
+        "description": "Ensure limux new-pane --help returns usage without contacting the host or creating a pane.",
+        "details": "Handle --help before argument validation or pane.create dispatch; render help in text/JSON modes; add a missing-socket regression proving no control request or mutation occurs.",
+        "testStrategy": "",
+        "status": "review",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-07-10T16:44:01.203Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-07T21:32:49.530Z",
-      "taskCount": 8,
+      "lastModified": "2026-07-10T16:44:01.204Z",
+      "taskCount": 10,
       "completedCount": 3,
       "tags": [
         "cmux-parity-20260707"
-      ],
-      "created": "2026-07-08T00:42:52.932Z",
-      "description": "Tasks for cmux-parity-20260707 context",
-      "updated": "2026-07-08T00:42:52.932Z"
+      ]
     }
   },
   "product-hygiene": {
