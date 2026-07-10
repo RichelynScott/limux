@@ -5,7 +5,9 @@ Author/runtime/date: lifo / Codex gpt-5.5 (xhigh) / 2026-06-29 09:15 EDT.
 ## 2026-07-10 Primary Checkout Reconciliation
 
 Current remote `main` is `efbca2a` after PR #49 merged the restored GTK
-child-teardown log-flood fix. TaskMaster `master` task 21 is done.
+child-teardown log-flood fix. Draft PR #50 carries the newer TaskMaster
+`master` state where task 21 is done and task 22 tracks this reconciliation;
+the TaskMaster store in this documentation-only PR still stops at task 20.
 
 The previous primary checkout remained parked on the merged June 27 branch
 with mixed historical state. Unique local evidence was preserved outside the
