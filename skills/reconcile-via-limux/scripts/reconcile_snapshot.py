@@ -11,14 +11,22 @@ from typing import Any
 
 
 def run(command: list[str], cwd: Path) -> dict[str, Any]:
-    result = subprocess.run(
-        command,
-        cwd=cwd,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
+    try:
+        result = subprocess.run(
+            command,
+            cwd=cwd,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+    except OSError as error:
+        return {
+            "command": command,
+            "exit_code": 127,
+            "stdout": "",
+            "stderr": f"{type(error).__name__}: {error}",
+        }
     return {
         "command": command,
         "exit_code": result.returncode,
