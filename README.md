@@ -321,6 +321,12 @@ Keep the bus boundary clear:
   hcom-launched workers can use those values to call back into the correct
   Limux pane.
 
+If hcom degrades while an interactive agent remains visible, preserve that
+exact Limux surface and follow the bounded same-surface recovery ladder in
+[`docs/limux-hcom-workflow.md`](docs/limux-hcom-workflow.md#recover-a-visible-agent-when-hcom-degrades).
+Successful message delivery alone does not prove that the native session or
+transcript is bound for later resume.
+
 `--dry-run` does not contact a running Limux host, but it still materializes the
 generated protocol and seeds missing roster/ledger files so agents can inspect
 the exact outputs. Use temporary `--protocol-path`, `--roster-path`, and

@@ -1,6 +1,6 @@
 # Limux + hcom Workflow Guide
 
-Last reviewed: 2026-06-05
+Last reviewed: 2026-07-10
 Repo state reviewed: `main` with Phase 5D2 `review spawn` on top of Phase 5D1
 `review prepare` and Phase 5C durable `agent-team` roster/review-ledger seeding
 
@@ -198,6 +198,64 @@ uvx hcom send @target \
 
 Keep hcom messages short. Put long findings, review reports, plans, and
 handoffs in files first.
+
+## Recover A Visible Agent When hcom Degrades
+
+If an interactive agent is still visible in a Limux surface but its hcom
+identity or delivery state is degraded, preserve that exact surface. Do not
+open an arbitrary replacement terminal or repeatedly launch new agents while
+the original process is still running.
+
+1. Run bounded, read-only checks from the visible pane or an owning manager:
+
+   ```bash
+   hcom status --json --name <agent-name>
+   hcom list <agent-name> --json --name <manager-name>
+   hcom diagnose <agent-name> --json --last 8 --name <manager-name>
+   ```
+
+2. From the degraded agent's existing surface, attempt one in-place identity
+   reclaim:
+
+   ```bash
+   hcom start --as <agent-name>
+   ```
+
+   This is a bounded reclaim attempt, not permission to create another pane.
+   It can reclaim identity and available native session metadata, but it cannot
+   retroactively attach hcom PTY/control to an already native-started process.
+   If it opens another terminal, reports `launch_failed`, or leaves the agent
+   without a session/transcript binding, stop rather than repeating it.
+
+3. Checkpoint any load-bearing work, then enter `/exit` in only the degraded
+   agent. Keep the Limux pane open and wait for its shell prompt to return.
+
+4. Resume the named agent in that same shell and surface:
+
+   ```bash
+   hcom r <agent-name> --run-here
+   ```
+
+   If hcom reports `No session ID found`, do not reset hcom and do not guess a
+   different identity. Recover the last known non-empty native session ID from
+   hcom lifecycle evidence or the owning runtime, then resume that ID through
+   hcom's adoption path.
+
+5. Verify both delivery and provenance. Require a real request/reply round trip
+   through hcom, then inspect `hcom list` and `hcom diagnose` again.
+
+Treat the result as fully recovered only when the expected named identity has
+live delivery and a non-empty native session/transcript binding. If messages
+work but `session_id` or transcript binding remains empty, the pane is only
+partially recovered: it may be usable for bounded communication, but it is not
+proven resumable and must be reported to the hcom and agent-runtime owners.
+Warnings such as `limited_control_no_session_or_transcript` and
+`no_transcript_binding` are partial-binding evidence, not a clean recovery.
+
+Never repair binding failures with blanket auto-approval. An unexpected
+approval prompt during deterministic watcher startup is a failure condition;
+stop and notify the owner instead of broadening authority or running unrelated
+diagnostics.
 
 ## Subagent And Review Pattern
 

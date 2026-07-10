@@ -386,13 +386,25 @@
         "status": "in-progress",
         "dependencies": [],
         "priority": "high",
-        "subtasks": [],
-        "updatedAt": "2026-07-10T14:25:35.894Z"
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Document same-surface hcom recovery mechanics",
+            "description": "Review the public-safe Limux-visible hcom recovery ladder, document bounded reclaim/resume/verification steps in canonical Limux docs, and keep null Hermes session/transcript binding owner-routed to hcom/Hermes.",
+            "details": "",
+            "status": "review",
+            "dependencies": [],
+            "parentTaskId": 22,
+            "updatedAt": "2026-07-10T18:29:26.777Z",
+            "parentId": "22"
+          }
+        ],
+        "updatedAt": "2026-07-10T18:29:26.777Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-10T14:25:35.907Z",
+      "lastModified": "2026-07-10T18:29:26.778Z",
       "taskCount": 22,
       "completedCount": 11,
       "tags": [
