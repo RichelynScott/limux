@@ -1,7 +1,7 @@
 # Limux Crash/Restore Log Flood Incident - 2026-07-10
 
 Owner: lifo
-TaskMaster: master tag, task 21, high priority, review
+TaskMaster: master tag, task 21, high priority, done
 Live build: `main-068872a1-reviewed` at `068872a1e162`
 
 ## Observed Incident
