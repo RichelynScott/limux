@@ -92,6 +92,15 @@ class RunTests(unittest.TestCase):
             ["list-panes", "list-panels", "surface-health"],
         )
 
+    def test_snapshot_commands_include_remote_pr_and_taskmaster_evidence(self) -> None:
+        commands = MODULE.snapshot_commands("lifo")
+
+        self.assertIn("git_origin_main", commands)
+        self.assertEqual(commands["github_open_prs"][:3], ["gh", "pr", "list"])
+        self.assertEqual(commands["taskmaster_list"], ["task-master-reviewed", "list"])
+        self.assertEqual(commands["taskmaster_next"], ["task-master-reviewed", "next"])
+        self.assertEqual(commands["hcom_roster"][-1], "lifo")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -12,6 +12,11 @@ probe has a bounded timeout and remains represented in the JSON on failure.
 git status --short --branch
 git diff --name-status
 git worktree list --porcelain
+git rev-parse HEAD
+git rev-parse --verify origin/main
+gh pr list --state open --json number,title,headRefName,author,url,updatedAt --limit 50
+task-master-reviewed list
+task-master-reviewed next
 hcom list -v --json --name <self>
 hcom list mgrs --json --name <self>
 hcom mgr show <project> --json --name <self>

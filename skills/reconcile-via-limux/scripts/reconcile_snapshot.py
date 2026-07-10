@@ -120,6 +120,32 @@ def collect_limux_topology(
     }
 
 
+def snapshot_commands(name: str) -> dict[str, list[str]]:
+    return {
+        "git_status": ["git", "status", "--short", "--branch"],
+        "git_worktrees": ["git", "worktree", "list", "--porcelain"],
+        "git_log": ["git", "log", "--oneline", "--decorate", "-12"],
+        "git_head": ["git", "rev-parse", "HEAD"],
+        "git_origin_main": ["git", "rev-parse", "--verify", "origin/main"],
+        "github_open_prs": [
+            "gh",
+            "pr",
+            "list",
+            "--state",
+            "open",
+            "--json",
+            "number,title,headRefName,author,url,updatedAt",
+            "--limit",
+            "50",
+        ],
+        "taskmaster_list": ["task-master-reviewed", "list"],
+        "taskmaster_next": ["task-master-reviewed", "next"],
+        "hcom_roster": ["hcom", "list", "-v", "--json", "--name", name],
+        "hcom_managers": ["hcom", "list", "mgrs", "--json", "--name", name],
+        "limux_identify": ["limux", "identify", "--json"],
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", type=Path, default=Path.cwd())
@@ -130,14 +156,7 @@ def main() -> int:
     args = parser.parse_args()
     repo = args.repo.resolve()
 
-    commands = {
-        "git_status": ["git", "status", "--short", "--branch"],
-        "git_worktrees": ["git", "worktree", "list", "--porcelain"],
-        "git_log": ["git", "log", "--oneline", "--decorate", "-12"],
-        "hcom_roster": ["hcom", "list", "-v", "--json", "--name", args.name],
-        "hcom_managers": ["hcom", "list", "mgrs", "--json", "--name", args.name],
-        "limux_identify": ["limux", "identify", "--json"],
-    }
+    commands = snapshot_commands(args.name)
     results = {key: run(command, repo) for key, command in commands.items()}
     results["git_worktree_statuses"] = collect_worktree_statuses(results["git_worktrees"])
     results["limux_topology"] = collect_limux_topology(
