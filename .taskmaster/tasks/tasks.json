@@ -563,11 +563,11 @@
         "description": "Add a CLI command that closes exactly one explicitly targeted terminal surface through the existing live surface.close bridge.",
         "details": "Require explicit --workspace and --surface targets, never focused-surface fallback; wire text/JSON help and response; cover request serialization, missing-target failure before socket contact, and bridge behavior. Preserve the UI-close workaround for installed builds until promotion.",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "review",
         "dependencies": [],
         "priority": "high",
         "subtasks": [],
-        "updatedAt": "2026-07-10T16:39:07.033Z"
+        "updatedAt": "2026-07-10T16:43:59.250Z"
       },
       {
         "id": 10,
@@ -575,16 +575,16 @@
         "description": "Ensure limux new-pane --help returns usage without contacting the host or creating a pane.",
         "details": "Handle --help before argument validation or pane.create dispatch; render help in text/JSON modes; add a missing-socket regression proving no control request or mutation occurs.",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "review",
         "dependencies": [],
         "priority": "high",
         "subtasks": [],
-        "updatedAt": "2026-07-10T16:39:08.739Z"
+        "updatedAt": "2026-07-10T16:44:01.203Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-10T16:39:08.740Z",
+      "lastModified": "2026-07-10T16:44:01.204Z",
       "taskCount": 10,
       "completedCount": 3,
       "tags": [
