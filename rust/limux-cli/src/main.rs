@@ -4940,10 +4940,10 @@ fn new_pane_help_text() -> &'static str {
 
 fn build_close_surface_request(args: &[String]) -> Result<(String, Value)> {
     let workspace = parse_opt(args, "--workspace")
-        .filter(|value| !value.trim().is_empty())
+        .filter(|value| !value.trim().is_empty() && !value.starts_with('-'))
         .ok_or_else(|| anyhow!("close-surface requires --workspace <id|ref>"))?;
     let surface = parse_opt(args, "--surface")
-        .filter(|value| !value.trim().is_empty())
+        .filter(|value| !value.trim().is_empty() && !value.starts_with('-'))
         .ok_or_else(|| anyhow!("close-surface requires --surface <id|ref>"))?;
     Ok((workspace, json!({"surface_id": surface})))
 }
@@ -9332,6 +9332,16 @@ mod new_pane_tests {
             build_close_surface_request(&args(&["--workspace", "workspace:team"]))
                 .expect_err("surface must be explicit");
         assert!(missing_surface.to_string().contains("--surface"));
+
+        let option_as_workspace =
+            build_close_surface_request(&args(&["--workspace", "--surface", "surface:7:tab-b"]))
+                .expect_err("workspace value must not be another option");
+        assert!(option_as_workspace.to_string().contains("--workspace"));
+
+        let option_as_surface =
+            build_close_surface_request(&args(&["--surface", "--workspace", "workspace:team"]))
+                .expect_err("surface value must not be another option");
+        assert!(option_as_surface.to_string().contains("--surface"));
 
         let (workspace, params) = build_close_surface_request(&args(&[
             "--workspace",
