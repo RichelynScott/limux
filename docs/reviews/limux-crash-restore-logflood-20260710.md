@@ -1,7 +1,7 @@
 # Limux Crash/Restore Log Flood Incident - 2026-07-10
 
 Owner: lifo
-TaskMaster: master tag, task 21, high priority, in progress
+TaskMaster: master tag, task 21, high priority, review
 Live build: `main-068872a1-reviewed` at `068872a1e162`
 
 ## Observed Incident
@@ -81,34 +81,40 @@ state. The P0 implementation therefore uses this short-lived exception:
 
 `SplitTreeContainer::trigger_rebuild` and `sync_sidebar_row_order` now drain
 children through one bounded progress guard. It aborts after the first
-unchanged child or after 64 removal attempts and emits one caller-specific
-diagnostic. Split-tree teardown does not schedule a rebuild after failure, and
-sidebar reorder does not append rows after failure. This converts both observed
-unbounded-loop candidates into fail-closed bounded failures while preserving
-the existing one-tick Ghostty/GLArea rebuild path when normal removal succeeds.
+unchanged child or after a caller-sized attempt budget and emits one
+caller-specific diagnostic. The split-tree caller supplies its one-direct-child
+invariant; the sidebar supplies the current workspace count, so more than 64
+valid rows remain supported. Split-tree teardown does not schedule a rebuild
+after failure, and sidebar reorder does not append rows after failure. This
+converts both observed unbounded-loop candidates into fail-closed bounded
+failures while preserving the existing one-tick Ghostty/GLArea rebuild path
+when normal removal succeeds.
 
 Regression tests cover:
 
 - a removal callback that makes no progress;
 - normal multi-child draining;
-- alternating children that evade a same-child check but hit the 64-attempt
-  ceiling.
+- alternating children that evade a same-child check but hit the caller-sized
+  attempt budget;
+- 65 distinct children that all make progress and drain successfully.
 
 ## Verification
 
 - RED: focused tests failed because `drain_children_with_progress` did not
   exist.
-- GREEN: 3/3 focused child-drain tests passed.
+- GREEN: 4/4 focused child-drain tests passed.
 - `cargo fmt --check`: passed.
 - workspace clippy: passed with only the pre-existing
   `clippy::single_element_loop` baseline explicitly allowed at
   `control_bridge.rs:2411`.
-- workspace tests: 523 passed, 0 failed (109 CLI, 26 control, 5 socket, 33
-  core, 341 host, 9 protocol; doc tests also passed).
-- safety-adapted Xvfb smoke: all stages passed. The stock harness was not run
+- workspace tests: 524 passed, 0 failed (109 CLI, 26 control, 5 socket, 33
+  core, 342 host, 9 protocol; doc tests also passed).
+- safety-adapted Xvfb smoke: all stages passed twice. The stock harness was not run
   because it contains delete commands prohibited by current policy; a temporary
   archive-only copy passed `bash -n` and the no-delete static scan before use.
-  Smoke artifacts are archived at
+  The initial artifact is
+  `/tmp/limux-smoke-archives-20260710/limux-smoke-WA6VhR-1783688407`; the
+  post-sidebar-guard artifact is
   `/tmp/limux-smoke-archives-20260710/limux-smoke-Eg27JQ-1783688891`.
 - No build was installed and the operator's live Limux runtime was not
   replaced or restarted by this implementation lane.
