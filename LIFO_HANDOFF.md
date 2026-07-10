@@ -2,6 +2,30 @@
 
 Author/runtime/date: lifo / Codex gpt-5.5 (xhigh) / 2026-06-29 09:15 EDT.
 
+## 2026-07-10 Primary Checkout Reconciliation
+
+Current remote `main` is `efbca2a` after PR #49 merged the restored GTK
+child-teardown log-flood fix. TaskMaster `master` task 21 is done.
+
+The previous primary checkout remained parked on the merged June 27 branch
+with mixed historical state. Unique local evidence was preserved outside the
+public repository before reconciliation; public mechanics and current task
+state are staged in draft PR #50.
+
+Current open work:
+
+- Draft PR #50 stages `reconcile-via-limux`, its PRD-lite, and TaskMaster task
+  22. Global installation is held for cross-runtime review and dogfood.
+- One stale lifecycle worktree contains an unlanded explicit-targeting patch
+  for `agent-team`; preserve and port it on a separate current-main branch
+  before removing that worktree.
+- The daily-driver runtime is still build `068872a1`; merged `main` has not yet
+  been installed over active Limux sessions.
+
+Immediate next action: finish worktree removal through the no-loss gate, land
+or park the explicit-targeting patch through its own PR, obtain review on PR
+#50, then schedule a reviewed runtime install/restart window.
+
 ## 2026-07-08 Restart Checkpoint - TaskMaster Update
 
 Runtime restart was requested because TaskMaster tooling/state was updated and

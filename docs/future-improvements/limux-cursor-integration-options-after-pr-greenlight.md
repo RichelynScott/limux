@@ -6,6 +6,17 @@ Status: idea/options only
 Gate: Do not start implementation or TaskMaster tasking until the operator
 explicitly opens a post-merge Cursor/Limux integration lane.
 
+Update 2026-06-30: the operator opened a planning/research lane, not an
+implementation lane. The current draft plan is
+`docs/future-improvements/limux-cursor-ide-integration-plan-20260630.md`; use
+that file for the latest v1/v2 shape and keep this original options note as
+historical context.
+
+Update 2026-06-30 after GLM/MiniMax review: the current v1 plan explicitly
+does not include terminal text/key injection from Cursor. Treat the "Send text"
+idea below as historical only; any future terminal input/attach path belongs in
+a separate v2 PRD with server-side trust-boundary review.
+
 ## Context
 
 The operator likes Limux for running terminal and agent sessions, but misses

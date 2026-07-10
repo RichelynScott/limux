@@ -1992,3 +1992,27 @@ non-interactive use.
 ### Related:
 `docs/future-improvements/limux-lifecycle-events-and-agent-team-staleness-20260707.md` |
 TaskMaster `7.2`
+
+## 2026-07-10 - Primary Checkout And Worktree Reconciliation
+### What:
+Reconciled the stale primary-checkout inventory against current remote `main`,
+preserved unique private/local evidence outside the public repository, and
+staged the reusable `reconcile-via-limux` workflow in draft PR #50.
+
+### Why:
+All named feature branches were already merged, but stale branch position,
+generated TaskMaster stores, private inbox artifacts, and several registered
+worktrees made the primary checkout appear broadly dirty and unsafe for normal
+development.
+
+### How:
+Built an exact owner map, resumed the only required peer owner through hcom in
+an explicit healthy Limux surface, verified its worktree clean and merged, and
+separated current-main-identical files from genuinely unique work. TaskMaster
+task 21 is done and task 22 tracks reconciliation plus skill review.
+
+### Impact:
+Current work now has PR-backed public sources and a no-loss cleanup path. The
+remaining explicit-targeting source patch is isolated for a separate current-
+main port, and runtime installation remains held for an explicit restart
+window.
