@@ -257,7 +257,7 @@ fn parse_global_args() -> Result<GlobalOptions> {
 
 fn print_help() {
     println!(
-        "limux CLI\n\nUsage: limux [--socket <path>] [--channel stable|preview[:id]] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  --version\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  doctor [--json] [--log-triage [--lines <n>]]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  pane-action --action set_flag_color --color <orange|red|purple|pink|green|yellow|teal|cyan> [--workspace <id|ref>] [--pane <id|ref>]\n  pane-action --action clear_flag_color [--workspace <id|ref>] [--pane <id|ref>]\n  target-info (alias: socket-info) prints the resolved socket/channel without connecting\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--launch-mode direct|hcom] [--workspace <id|ref>] [--surface <id|ref>] [--pane <id|ref>] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the explicitly targeted workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, or hcom with --run-here when requested, writes\n      (live runs require explicit target flags or LIMUX_WORKSPACE_ID/LIMUX_SURFACE_ID),\n      LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md plus\n      LIMUX_REVIEW_LEDGER.md when missing so peers can coordinate via durable\n      files and `limux send --surface <peer-surface-id> <envelope>`.\n  review prepare --artifact <path-or-ref> --reviewer <agent|manual> --lens <name> --summary <text> [--cwd <path>] [--ledger-path <path>] [--reviews-dir <path>] [--review-id <id>] [--dry-run]\n      Creates a durable review request file, appends a pending review-ledger\n      entry, and prints the reviewer prompt without launching a reviewer pane.\n"
+        "limux CLI\n\nUsage: limux [--socket <path>] [--channel stable|preview[:id]] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  --version\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  doctor [--json] [--log-triage [--lines <n>]]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  close-surface --workspace <id|ref> --surface <id|ref>\n      Closes exactly one explicit surface; never falls back to current focus.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  pane-action --action set_flag_color --color <orange|red|purple|pink|green|yellow|teal|cyan> [--workspace <id|ref>] [--pane <id|ref>]\n  pane-action --action clear_flag_color [--workspace <id|ref>] [--pane <id|ref>]\n  target-info (alias: socket-info) prints the resolved socket/channel without connecting\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--launch-mode direct|hcom] [--workspace <id|ref>] [--surface <id|ref>] [--pane <id|ref>] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the explicitly targeted workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, or hcom with --run-here when requested, writes\n      (live runs require explicit target flags or LIMUX_WORKSPACE_ID/LIMUX_SURFACE_ID),\n      LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md plus\n      LIMUX_REVIEW_LEDGER.md when missing so peers can coordinate via durable\n      files and `limux send --surface <peer-surface-id> <envelope>`.\n  review prepare --artifact <path-or-ref> --reviewer <agent|manual> --lens <name> --summary <text> [--cwd <path>] [--ledger-path <path>] [--reviews-dir <path>] [--review-id <id>] [--dry-run]\n      Creates a durable review request file, appends a pending review-ledger\n      entry, and prints the reviewer prompt without launching a reviewer pane.\n"
     );
     println!(
         "  agent-team extra flags: --no-bootstrap skips the post-launch bootstrap prompt while still launching panes; --dry-run skips host contact but still materializes the protocol and seeds missing roster/ledger files."
@@ -4881,7 +4881,37 @@ fn new_pane_unexpected_positionals(args: &[String]) -> Vec<String> {
     unexpected
 }
 
+fn has_unconsumed_flag(args: &[String], flag: &str, value_options: &[&str]) -> bool {
+    let mut skip_value = false;
+    for arg in args {
+        if skip_value {
+            skip_value = false;
+            continue;
+        }
+        if value_options.contains(&arg.as_str()) {
+            skip_value = true;
+            continue;
+        }
+        if arg == flag {
+            return true;
+        }
+    }
+    false
+}
+
 async fn run_new_pane(client: &mut Client, args: &[String]) -> Result<Value> {
+    const VALUE_OPTIONS: &[&str] = &[
+        "--workspace",
+        "--surface",
+        "--pane",
+        "--direction",
+        "--type",
+        "--command",
+        "--url",
+    ];
+    if has_unconsumed_flag(args, "--help", VALUE_OPTIONS) {
+        return Ok(json!({"help": new_pane_help_text()}));
+    }
     // `pane.create` contract shared with the core dispatcher and live GTK host:
     // direction/type are validated by the server, and responses keep
     // pane_id/pane_ref/surface_id/surface_ref. Inside a Limux terminal,
@@ -4900,6 +4930,30 @@ async fn run_new_pane(client: &mut Client, args: &[String]) -> Result<Value> {
     }
     let (workspace, params) = build_new_pane_request(args, env_opt);
     call_in_workspace_scope(client, workspace, "pane.create", params).await
+}
+
+fn new_pane_help_text() -> &'static str {
+    "Usage: limux new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n\nCreates one pane. Live GTK self-spawn currently supports terminal panes only. --help is informational and never contacts the host."
+}
+
+fn build_close_surface_request(args: &[String]) -> Result<(String, Value)> {
+    let workspace = parse_opt(args, "--workspace")
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| anyhow!("close-surface requires --workspace <id|ref>"))?;
+    let surface = parse_opt(args, "--surface")
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| anyhow!("close-surface requires --surface <id|ref>"))?;
+    Ok((workspace, json!({"surface_id": surface})))
+}
+
+async fn run_close_surface(client: &mut Client, args: &[String]) -> Result<Value> {
+    if has_unconsumed_flag(args, "--help", &["--workspace", "--surface"]) {
+        return Ok(json!({
+            "help": "Usage: limux close-surface --workspace <id|ref> --surface <id|ref>\n\nCloses exactly one explicitly targeted surface. It never falls back to the focused workspace or surface."
+        }));
+    }
+    let (workspace, params) = build_close_surface_request(args)?;
+    call_in_workspace_scope(client, Some(workspace), "surface.close", params).await
 }
 
 async fn run_read_screen(client: &mut Client, args: &[String]) -> Result<Value> {
@@ -6157,9 +6211,22 @@ async fn execute_command(client: &mut Client, opts: &GlobalOptions) -> Result<Co
             let payload = run_new_pane(client, args).await?;
             if opts.json_output {
                 CommandOutput::Json(payload)
+            } else if let Some(help) = get_string(&payload, &["help"]) {
+                CommandOutput::Text(help)
             } else {
                 let handle = handle_from_payload(&payload, "surface_id", "surface_ref");
                 CommandOutput::Text(format!("OK {}", handle))
+            }
+        }
+        "close-surface" => {
+            let payload = run_close_surface(client, args).await?;
+            if opts.json_output {
+                CommandOutput::Json(payload)
+            } else if let Some(help) = get_string(&payload, &["help"]) {
+                CommandOutput::Text(help)
+            } else {
+                let handle = handle_from_payload(&payload, "surface_id", "surface_ref");
+                CommandOutput::Text(format!("OK closed {}", handle))
             }
         }
         "tab-action" => {
@@ -9222,6 +9289,54 @@ mod new_pane_tests {
             "unexpected error: {msg}"
         );
         assert!(msg.contains("limux send"), "unexpected error: {msg}");
+    }
+
+    #[tokio::test]
+    async fn new_pane_help_returns_without_contacting_host() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut client = Client::new(tmp.path().join("missing.sock"));
+
+        let payload = run_new_pane(&mut client, &args(&["--help"]))
+            .await
+            .expect("new-pane help should not contact host");
+
+        let help = payload["help"].as_str().expect("help text");
+        assert!(help.contains("Usage: limux new-pane"));
+        assert!(help.contains("--workspace"));
+        assert!(help.contains("--surface"));
+        assert!(has_unconsumed_flag(
+            &args(&["--help"]),
+            "--help",
+            &["--command"]
+        ));
+        assert!(!has_unconsumed_flag(
+            &args(&["--command", "--help"]),
+            "--help",
+            &["--command"]
+        ));
+    }
+
+    #[test]
+    fn close_surface_requires_explicit_workspace_and_surface() {
+        let missing_workspace =
+            build_close_surface_request(&args(&["--surface", "surface:7:tab-b"]))
+                .expect_err("workspace must be explicit");
+        assert!(missing_workspace.to_string().contains("--workspace"));
+
+        let missing_surface =
+            build_close_surface_request(&args(&["--workspace", "workspace:team"]))
+                .expect_err("surface must be explicit");
+        assert!(missing_surface.to_string().contains("--surface"));
+
+        let (workspace, params) = build_close_surface_request(&args(&[
+            "--workspace",
+            "workspace:team",
+            "--surface",
+            "surface:7:tab-b",
+        ]))
+        .expect("explicit close target");
+        assert_eq!(workspace, "workspace:team");
+        assert_eq!(params, json!({"surface_id": "surface:7:tab-b"}));
     }
 
     #[test]
