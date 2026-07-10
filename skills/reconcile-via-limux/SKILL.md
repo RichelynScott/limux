@@ -96,3 +96,8 @@ classification and commit SHA, matching Codex and Claude manager-inbox
 requests, a cross-runtime handshake, adversarial review, and real dogfood.
 Each runtime owner installs only its owned mirror. Do not self-install this
 draft globally.
+
+Branch names, singleton versus team-lane grammar, worktree lifetime, shared
+cache requirements, and same-session teardown remain canonical in the active
+`git-worktree-hygiene` and cross-runtime Git-lane design. This skill consumes
+that contract and must not invent a competing naming or ownership scheme.
