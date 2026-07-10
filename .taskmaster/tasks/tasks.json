@@ -642,14 +642,14 @@
             "title": "Cut 0.2.1 merge-wave release",
             "description": "Bump workspace and lockfile versions to 0.2.1, record merged PRs #45-#55 in CHANGELOG.md, update release-facing README examples, and verify the exact preview candidate before promotion.",
             "details": "",
-            "status": "in-progress",
+            "status": "review",
             "dependencies": [],
             "parentTaskId": 1,
-            "updatedAt": "2026-07-10T19:29:02.760Z",
+            "updatedAt": "2026-07-10T20:15:01.550Z",
             "parentId": "1"
           }
         ],
-        "updatedAt": "2026-07-10T19:29:02.760Z"
+        "updatedAt": "2026-07-10T20:15:01.550Z"
       },
       {
         "id": 2,
@@ -680,7 +680,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-10T19:29:02.760Z",
+      "lastModified": "2026-07-10T20:15:01.550Z",
       "taskCount": 3,
       "completedCount": 2,
       "tags": [
