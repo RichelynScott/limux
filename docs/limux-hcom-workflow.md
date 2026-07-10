@@ -206,10 +206,17 @@ identity or delivery state is degraded, preserve that exact surface. Do not
 open an arbitrary replacement terminal or repeatedly launch new agents while
 the original process is still running.
 
-1. Run bounded, read-only checks from the visible pane or an owning manager:
+1. Run bounded, read-only checks. From the degraded agent's visible pane, use
+   that agent as the caller identity:
 
    ```bash
    hcom status --json --name <agent-name>
+   ```
+
+   From an owning manager, keep the manager as the caller identity and name the
+   degraded agent only as the inspection target:
+
+   ```bash
    hcom list <agent-name> --json --name <manager-name>
    hcom diagnose <agent-name> --json --last 8 --name <manager-name>
    ```
@@ -233,7 +240,7 @@ the original process is still running.
 4. Resume the named agent in that same shell and surface:
 
    ```bash
-   hcom r <agent-name> --run-here
+   hcom r <agent-name> --run-here --go
    ```
 
    If hcom reports `No session ID found`, do not reset hcom and do not guess a
