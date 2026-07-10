@@ -4909,7 +4909,9 @@ async fn run_new_pane(client: &mut Client, args: &[String]) -> Result<Value> {
         "--command",
         "--url",
     ];
-    if has_unconsumed_flag(args, "--help", VALUE_OPTIONS) {
+    if has_unconsumed_flag(args, "--help", VALUE_OPTIONS)
+        || has_unconsumed_flag(args, "-h", VALUE_OPTIONS)
+    {
         return Ok(json!({"help": new_pane_help_text()}));
     }
     // `pane.create` contract shared with the core dispatcher and live GTK host:
@@ -4933,7 +4935,7 @@ async fn run_new_pane(client: &mut Client, args: &[String]) -> Result<Value> {
 }
 
 fn new_pane_help_text() -> &'static str {
-    "Usage: limux new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n\nCreates one pane. Live GTK self-spawn currently supports terminal panes only. --help is informational and never contacts the host."
+    "Usage: limux new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n\nCreates one pane. Live GTK self-spawn currently supports terminal panes only. --help and -h are informational and never contact the host."
 }
 
 fn build_close_surface_request(args: &[String]) -> Result<(String, Value)> {
@@ -9260,11 +9262,13 @@ mod new_pane_tests {
 
     #[test]
     fn new_pane_command_accepts_leading_hyphen_value() {
-        let (_workspace, params) =
-            build_new_pane_request(&args(&["--command", "--help"]), test_env);
+        for value in ["--help", "-h"] {
+            let (_workspace, params) =
+                build_new_pane_request(&args(&["--command", value]), test_env);
 
-        assert_eq!(params["command"].as_str(), Some("--help"));
-        assert!(new_pane_unexpected_positionals(&args(&["--command", "--help"])).is_empty());
+            assert_eq!(params["command"].as_str(), Some(value));
+            assert!(new_pane_unexpected_positionals(&args(&["--command", value])).is_empty());
+        }
     }
 
     #[tokio::test]
@@ -9294,16 +9298,17 @@ mod new_pane_tests {
     #[tokio::test]
     async fn new_pane_help_returns_without_contacting_host() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let mut client = Client::new(tmp.path().join("missing.sock"));
+        for help_flag in ["--help", "-h"] {
+            let mut client = Client::new(tmp.path().join("missing.sock"));
+            let payload = run_new_pane(&mut client, &args(&[help_flag]))
+                .await
+                .unwrap_or_else(|err| panic!("new-pane {help_flag} contacted host: {err:#}"));
 
-        let payload = run_new_pane(&mut client, &args(&["--help"]))
-            .await
-            .expect("new-pane help should not contact host");
-
-        let help = payload["help"].as_str().expect("help text");
-        assert!(help.contains("Usage: limux new-pane"));
-        assert!(help.contains("--workspace"));
-        assert!(help.contains("--surface"));
+            let help = payload["help"].as_str().expect("help text");
+            assert!(help.contains("Usage: limux new-pane"));
+            assert!(help.contains("--workspace"));
+            assert!(help.contains("--surface"));
+        }
         assert!(has_unconsumed_flag(
             &args(&["--help"]),
             "--help",
