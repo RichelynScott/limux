@@ -2,6 +2,39 @@
 
 Author/runtime/date: lifo / Codex gpt-5.5 (xhigh) / 2026-06-29 09:15 EDT.
 
+## 2026-07-11 PC Restart Checkpoint
+
+Current authoritative state:
+
+- PR #56 (`chore(release): prepare Limux 0.2.1`) received a clean Codex bot
+  review on exact head `f79485a67afa8e513ae86d98ab578806bce29ea9` and
+  squash-merged to `main` as `57347774852447032406eb9a350d16ac259fc401`.
+- Local `main` was fast-forwarded to that merge and matched `origin/main`
+  cleanly before this checkpoint branch was created.
+- Full source gates passed before merge: `./scripts/check.sh`, Ghostty resource
+  validation, runtime-isolation smoke, and all eight Xvfb integration stages.
+- An isolated preview install of product SHA `bf20af1ffa4b` reported Limux
+  `0.2.1`, ran simultaneously with the legacy daily driver on its own socket,
+  and passed live `doctor --json` with exit code 0.
+- The legacy daily driver remains Limux `0.2.0` build `068872a1e162`. No stable
+  or legacy runtime replacement was performed before the PC restart.
+- TaskMaster `product-hygiene` subtask `1.1` remains `review` until the exact
+  merged-main SHA is preview-installed and verified. Master task `22` is
+  correctly `done`.
+
+Immediate next action after restart:
+
+1. Rebind `lifo` through hcom and verify `main` still equals `origin/main` at
+   `5734777`.
+2. Build and install exact merged `main` into the isolated preview channel.
+3. Run the post-install checklist against that exact SHA. Do not promote or
+   replace the stable/legacy daily driver until the checklist passes and the
+   operator approves the runtime restart window.
+
+Restart hold: all release code is merged and pushed; no load-bearing source
+work is uncommitted. This checkpoint branch exists only to make the resume
+state durable before the announced PC restart.
+
 ## 2026-07-10 Primary Checkout Reconciliation
 
 Current remote `main` is `efbca2a` after PR #49 merged the restored GTK
