@@ -2408,12 +2408,11 @@ mod tests {
                 "{method} should be advertised after the live GTK route is wired"
             );
         }
-        for method in ["notification.clear"] {
-            assert!(
-                !methods.iter().any(|entry| entry == method),
-                "{method} must stay out of capabilities until wired to live GTK state"
-            );
-        }
+        let method = "notification.clear";
+        assert!(
+            !methods.iter().any(|entry| entry == method),
+            "{method} must stay out of capabilities until wired to live GTK state"
+        );
         for method in ["pane.swap", "surface.move", "window.create"] {
             assert!(
                 !methods.iter().any(|entry| entry == method),

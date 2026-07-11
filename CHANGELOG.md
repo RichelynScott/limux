@@ -2,6 +2,32 @@
 
 All notable Limux changes should be recorded here when a PR merges.
 
+## [0.2.1] - 2026-07-10
+
+### Added
+
+- #32 `feat: add pane width lock`
+- #50 `feat(skill): stage reconcile via Limux workflow`
+
+### Changed
+
+- #47 `fix(ui): improve pane width usability`
+- #52 `fix(agent-team): require explicit live targets`
+- #53 `fix(cli): add safe help and scoped surface close`
+
+### Fixed
+
+- #45 `fix(host): keep tab rename entry targetable`
+- #48 `fix(host): remove readable pane width floor`
+- #49 `fix(host): bound restored split-tree teardown`
+
+### Documentation And Task State
+
+- #46 `chore(taskmaster): close product hygiene lane`
+- #51 `docs: reconcile primary checkout status`
+- #54 `chore(tasks): close scoped CLI fixes`
+- #55 `docs(hcom): add same-surface recovery ladder`
+
 ## [0.2.0] - 2026-07-08
 
 ### Added
