@@ -2,6 +2,62 @@
 
 Author/runtime/date: lifo / Codex gpt-5.5 (xhigh) / 2026-06-29 09:15 EDT.
 
+## 2026-07-12 Linux Restart Checkpoint
+
+Current authoritative state before the operator's Linux restart:
+
+- Branch `lifo/restart-checkpoint-20260711` is clean and pushed through
+  `bceacce`.
+- Limux skill capability commits are durable on the remote branch:
+  - `957a561 docs(skills): add existing-pane hcom resume recovery`
+  - `bceacce docs(skills): fail closed on pane identity mismatch`
+- Canonical changed files are `skills/limux-a2a/SKILL.md` and
+  `skills/limux-use-guide/SKILL.md`. The live Codex mirror at
+  `/home/riche/.agents/skills/limux-use-guide/SKILL.md` was also updated and
+  validated.
+- Durable notifications were written to both global-config inboxes as
+  `NOTICE_FROM_lifo_limux-existing-pane-hcom-resume-capability_20260712.md`.
+  Niru and Kazu were stopped/unavailable in hcom, so live notification failed;
+  the inbox files are the delivery record.
+
+Critical live incident:
+
+- The requested TaskMaster surface was
+  `workspace:895f67c3-6fa2-4b3d-93e6-d6d8e57a5b2e`, surface
+  `161:terminal-0`, expected agent `sage`, authoritative Codex session
+  `019f0a87-5721-78d0-b360-f3e96e3827c2`.
+- An initial duplicate Sage attachment in Windows Terminal was detected and
+  exited. Sage was then correctly resumed in the Limux pane and briefly passed
+  UUID, `limux-host` ancestry, full hcom binding, surface-env, and nonce ACK
+  `429837`.
+- The original Limux host later terminated at approximately 16:25 EDT. A first
+  restart attempt used a command-runner-owned `nohup` process and was killed by
+  that runner; do not classify that second termination as a Limux crash.
+- The detached replacement initially omitted the interactive `PATH`, causing
+  restored panes to report `/bin/sh: hcom: not found`. It was replaced by user
+  service `limux-manual-20260712-162856.service` with the correct `PATH`; that
+  service is expected to stop with the Linux restart.
+- After restore, TaskMaster `161:terminal-0` and persisted
+  `$HOME/.local/share/limux/session.json` both mapped to `dino`, UUID
+  `019ea7ce-aec1-71c3-8233-9ab52a47bb68`, not Sage. Hcom reported Dino live
+  with missing transcript binding and Sage inactive. No `/exit` or further
+  injection was performed because that could kill Dino.
+
+Immediate next action after restart:
+
+1. Do not trust or exit the TaskMaster first pane based on its workspace alone.
+2. Before any mutation, capture `limux list-panels`, `read-screen`, the matching
+   `session.json` agent record, `hcom list -v`, and process ancestry.
+3. If the visible/persisted/hcom identities still disagree, preserve evidence
+   and debug the Limux restore/session-association path. Do not hand-edit
+   `session.json` and do not blindly run `hcom r sage`.
+4. Only resume Sage after proving the target surface is not occupied by Dino or
+   another live agent; require one native client, `limux-host` ancestry,
+   authoritative UUID, complete hcom bindings, and a nonce ACK.
+
+Restart hold: no source edits or commits remain unpushed. Live Sage recovery is
+blocked on the corrupted TaskMaster pane/session mapping.
+
 ## 2026-07-11 PC Restart Checkpoint
 
 Current authoritative state:
