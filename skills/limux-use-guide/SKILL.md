@@ -1,6 +1,6 @@
 ---
 name: limux-use-guide
-description: Use when driving Limux workspaces or panes, diagnosing Limux runtime issues, using the Limux CLI/socket/doctor/hooks/agent-team surfaces, or deciding Limux-vs-hcom routing.
+description: Use when driving Limux workspaces or panes, recovering a named hcom agent in its existing pane, diagnosing Limux runtime issues, using the Limux CLI/socket/doctor/hooks/agent-team surfaces, or deciding Limux-vs-hcom routing.
 ---
 
 # Limux Use Guide
@@ -297,3 +297,23 @@ PRD-E mirror API parity is partial as of this staged guide:
 
 When in doubt, verify the production GTK bridge path, not only the standalone
 `limux-control-server` dispatcher.
+
+## Existing-Pane hcom Resume
+
+For an operator request such as "find the TaskMaster pane, `/exit`, then run
+`hcom r sage`", use the exact-surface workflow in `skills/limux-a2a/SKILL.md`:
+
+1. Resolve the workspace and raw surface ID; never inject into the currently
+   focused pane as a fallback.
+2. If the background workspace is unrealized, identify the agent from
+   `$HOME/.local/share/limux/session.json`, then select the workspace through
+   the typed `workspace.select` socket method.
+3. Read the pane, inject `/exit` plus `Return`, wait for the shell prompt, then
+   inject `hcom r <name>` plus `Return` in the same surface.
+4. Verify the authoritative session ID, cwd, process/live/terminal/transcript
+   bindings, a real hcom round trip, one client for the UUID, and process
+   ancestry reaching `limux-host`. Re-read the pane to catch a historical
+   session or a duplicate Windows Terminal attachment.
+5. If the wrong session resumes, exit only that duplicate and follow the
+   evidence-gated recovery in `limux-a2a`; do not blindly retry or routinely
+   reset hcom.
