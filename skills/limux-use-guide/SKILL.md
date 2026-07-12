@@ -304,7 +304,8 @@ For an operator request such as "find the TaskMaster pane, `/exit`, then run
 `hcom r sage`", use the exact-surface workflow in `skills/limux-a2a/SKILL.md`:
 
 1. Resolve the workspace and raw surface ID; never inject into the currently
-   focused pane as a fallback.
+   focused pane as a fallback, and do not restart the Limux host for this
+   single-pane operation.
 2. If the background workspace is unrealized, identify the agent from
    `$HOME/.local/share/limux/session.json`, then select the workspace through
    the typed `workspace.select` socket method.
@@ -317,3 +318,6 @@ For an operator request such as "find the TaskMaster pane, `/exit`, then run
 5. If the wrong session resumes, exit only that duplicate and follow the
    evidence-gated recovery in `limux-a2a`; do not blindly retry or routinely
    reset hcom.
+
+If the visible pane and persisted session registry disagree, stop without
+injecting or editing `session.json`; another live agent may own the pane.

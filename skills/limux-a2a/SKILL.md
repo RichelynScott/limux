@@ -173,7 +173,8 @@ limux notify --workspace "$LIMUX_WORKSPACE_ID" \
 
 Use this when the operator names a workspace and asks to exit the agent in one
 of its existing panes, then run `hcom r <name>` in that exact pane. Never use
-the currently focused pane as a fallback.
+the currently focused pane as a fallback. This is a single-pane operation: do
+not restart the Limux host merely to complete it.
 
 1. Resolve the workspace and its raw surface IDs:
 
@@ -198,6 +199,11 @@ the currently focused pane as a fallback.
    the tab's `agent.kind`, `agent.session_id`, or
    `agent.launch_command.environment.HCOM_INSTANCE_NAME` to identify the named
    agent. Do not infer identity from pane order.
+
+   Fail closed if the visible pane, persisted `agent.session_id`, persisted
+   `HCOM_INSTANCE_NAME`, and hcom identity do not agree. Do not inject `/exit`,
+   rewrite `session.json`, or restart Limux in that state; preserve the evidence
+   and route the restore-state corruption to the Limux/hcom owners.
 
 3. Realize the workspace when the installed CLI has no `workspace.select`
    wrapper. Resolve the channel socket with `limux target-info` or
