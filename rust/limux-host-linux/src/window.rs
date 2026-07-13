@@ -5903,6 +5903,8 @@ fn handle_control_command(state: &State, command: ControlCommand) {
         ControlCommand::ReadSurfaceText {
             target,
             surface_hint,
+            scrollback,
+            lines,
             reply,
         } => {
             let resolved = {
@@ -5942,7 +5944,7 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 return;
             };
 
-            let Some(text) = handle.read_viewport_text() else {
+            let Some(text) = handle.read_text(scrollback, lines) else {
                 let _ = reply.send(Err(crate::control_bridge::BridgeError::internal(
                     "surface.read_text failed",
                 )));
@@ -6158,8 +6160,10 @@ pub(crate) fn create_pane_for_workspace(
     let state_for_split_with_tab = state.clone();
     let state_for_config = state.clone();
     let state_for_config_changed = state.clone();
+    let state_for_workspace_metadata = state.clone();
     let ws_id_split_with_tab = ws_id.to_string();
     let ws_id_for_env = ws_id.to_string();
+    let ws_id_for_metadata = ws_id.to_string();
 
     let callbacks = Rc::new(PaneCallbacks {
         on_split: Box::new(move |pane_widget, orientation| {
@@ -6323,6 +6327,23 @@ pub(crate) fn create_pane_for_workspace(
             },
         ),
         workspace_for_pane: Box::new(move |_pane_widget| Some(ws_id_for_env.clone())),
+        workspace_metadata_for_pane: Box::new(move |_pane_widget| {
+            state_for_workspace_metadata
+                .borrow()
+                .workspaces
+                .iter()
+                .find(|workspace| workspace.id == ws_id_for_metadata)
+                .map(|workspace| {
+                    (
+                        Some(workspace.name.clone()),
+                        workspace
+                            .folder_path
+                            .clone()
+                            .or_else(|| workspace.cwd.borrow().clone()),
+                    )
+                })
+                .unwrap_or((None, None))
+        }),
     });
 
     pane::create_pane(

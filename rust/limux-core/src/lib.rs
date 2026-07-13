@@ -3537,6 +3537,16 @@ fn optional_index_param(
     })
 }
 
+fn limit_text_lines(text: &str, lines: Option<usize>) -> String {
+    let Some(lines) = lines else {
+        return text.to_string();
+    };
+
+    let mut selected = text.lines().rev().take(lines).collect::<Vec<_>>();
+    selected.reverse();
+    selected.join("\n")
+}
+
 fn focused_handles(state: &ControlState) -> Option<(u64, u64, u64, u64)> {
     let workspace_idx = state.current_workspace_idx()?;
     let workspace = state.workspaces.get(workspace_idx)?;
@@ -6165,6 +6175,11 @@ fn handle_command(
             let params = params_object(params)?;
             let workspace_id = optional_u64_param_any(params, &["workspace_id"])?;
             let surface_hint = optional_u64_param_any(params, &["surface_id", "id"])?;
+            let _scrollback = optional_bool_param(params, "scrollback")?.unwrap_or(false);
+            let lines = optional_index_param(params, "lines")?;
+            if lines == Some(0) {
+                return Err(CommandError::invalid_params("lines must be greater than 0"));
+            }
             let (workspace_id, surface_id) =
                 resolve_surface_target(state, workspace_id, surface_hint)?;
             let surface = update_surface_metadata(state, workspace_id, surface_id, |_| {})
@@ -6174,7 +6189,7 @@ fn handle_command(
                 "workspace_ref": workspace_ref(workspace_id),
                 "surface_id": encode_handle_id(surface.id),
                 "surface_ref": surface_ref(surface.id),
-                "text": surface.text
+                "text": limit_text_lines(&surface.text, lines)
             }))
         }
         "surface.send_text" => {
@@ -7182,6 +7197,32 @@ mod tests {
             cleared.result.expect("clear history")["surface"]["text"],
             ""
         );
+    }
+
+    #[tokio::test]
+    async fn dispatcher_applies_surface_read_text_line_limit() {
+        let dispatcher = Dispatcher::new();
+        let new_surface = dispatcher
+            .dispatch(request("surface.create", json!({ "title": "reader" })))
+            .await;
+        let surface_id = new_surface.result.expect("surface create")["surface"]["id"]
+            .as_u64()
+            .expect("surface id");
+
+        dispatcher
+            .dispatch(request(
+                "surface.send_text",
+                json!({ "surface_id": surface_id, "text": "one\ntwo\nthree" }),
+            ))
+            .await;
+
+        let read = dispatcher
+            .dispatch(request(
+                "surface.read_text",
+                json!({ "surface_id": surface_id, "scrollback": true, "lines": 2 }),
+            ))
+            .await;
+        assert_eq!(read.result.expect("read text")["text"], "two\nthree");
     }
 
     #[tokio::test]

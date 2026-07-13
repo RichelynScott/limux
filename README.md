@@ -13,7 +13,8 @@ https://github.com/user-attachments/assets/6f3047c2-e2b6-49f2-b536-570a1570d0f8
 - **Split panes** (horizontal/vertical) with keyboard navigation
 - **Tabbed terminals** within each pane
 - **Built-in browser** (WebKitGTK)
-- **Right-click context menu** with copy, paste, split, clear
+- **Right-click context menu** with copy, paste, split, clear, canonical
+  workspace/Surface-Pane context, and a ready-to-run pane capture command
 - **Drag-and-drop** workspace reordering with favorites/pinning and manual highlights
 - **Animated sidebar** collapse/expand
 - **CLI diagnostics** with `doctor`, `target-info`, runtime identity, and log triage
