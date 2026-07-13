@@ -4958,13 +4958,7 @@ async fn run_close_surface(client: &mut Client, args: &[String]) -> Result<Value
     call_in_workspace_scope(client, Some(workspace), "surface.close", params).await
 }
 
-async fn run_read_screen(client: &mut Client, args: &[String]) -> Result<Value> {
-    if let Some(lines) = parse_opt(args, "--lines") {
-        if lines.parse::<u64>().unwrap_or(0) == 0 {
-            bail!("--lines must be greater than 0");
-        }
-    }
-
+fn build_read_screen_params(args: &[String]) -> Result<Value> {
     let workspace = parse_opt(args, "--workspace");
     let surface = parse_opt(args, "--surface");
     let mut params = Map::new();
@@ -4975,8 +4969,25 @@ async fn run_read_screen(client: &mut Client, args: &[String]) -> Result<Value> 
         params.insert("surface_id".to_string(), Value::String(surface));
     }
 
+    if parse_flag(args, "--scrollback") {
+        params.insert("scrollback".to_string(), Value::Bool(true));
+    }
+
+    if let Some(lines) = parse_opt(args, "--lines") {
+        let lines = lines
+            .parse::<u64>()
+            .ok()
+            .filter(|lines| *lines > 0)
+            .ok_or_else(|| anyhow!("--lines must be greater than 0"))?;
+        params.insert("lines".to_string(), Value::Number(lines.into()));
+    }
+
+    Ok(Value::Object(params))
+}
+
+async fn run_read_screen(client: &mut Client, args: &[String]) -> Result<Value> {
     client
-        .call("surface.read_text", Value::Object(params))
+        .call("surface.read_text", build_read_screen_params(args)?)
         .await
 }
 
@@ -6416,6 +6427,37 @@ mod cli_arg_tests {
             pretty: false,
             command_args,
         }
+    }
+
+    #[test]
+    fn read_screen_serializes_scrollback_and_line_limit() {
+        let params = build_read_screen_params(&args(&[
+            "--workspace",
+            "workspace:team",
+            "--surface",
+            "surface:7:tab-b",
+            "--scrollback",
+            "--lines",
+            "120",
+        ]))
+        .expect("valid read-screen request");
+
+        assert_eq!(
+            params,
+            json!({
+                "workspace_id": "workspace:team",
+                "surface_id": "surface:7:tab-b",
+                "scrollback": true,
+                "lines": 120
+            })
+        );
+    }
+
+    #[test]
+    fn read_screen_rejects_zero_line_limit() {
+        let error = build_read_screen_params(&args(&["--lines", "0"]))
+            .expect_err("zero line limit must fail");
+        assert!(error.to_string().contains("--lines must be greater than 0"));
     }
 
     #[test]

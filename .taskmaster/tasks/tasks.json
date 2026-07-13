@@ -400,12 +400,178 @@
           }
         ],
         "updatedAt": "2026-07-10T23:19:04.075Z"
+      },
+      {
+        "id": 23,
+        "title": "Unify human and agent workspace surface-pane identity",
+        "description": "Make right-click identity information match Limux CLI/agent context, adopt Surface/Pane terminology, and make pane-content inspection straightforward for non-manager sessions.",
+        "details": "Terminal and workspace context menus must expose canonical workspace, surface/pane, pane, and tab refs plus workspace name/directory where available. Copy All must produce a structured context block usable in chat. Keep precise surface-vs-pane semantics while displaying Surface/Pane to humans. Update limux-use-guide and limux-a2a with a discovery-first read-screen/capture-pane workflow, explicit workspace targeting, duplicate-workspace handling, and verification against persisted/hcom identity. Add focused formatter/UI wiring tests and CLI examples.\n<info added on 2026-07-12T22:55:56.128Z>\nNet-new diagnostic from temp1: when inherited LIMUX caller metadata is absent/untrustworthy, system.identify currently returns focused pane as both caller and focused without provenance. Owner verdict: preserve backward-compatible fallback, but expose caller_identity_source (explicit_params, environment, focused_fallback, unavailable), caller_is_fallback/uncertainty, and a text warning; add a strict caller mode as follow-up rather than failing default identify. An hcom-resumed session absent from session.json because surface env is missing is fail-closed behavior at the hook boundary but remains a binding/persistence defect, not healthy expected state.\n</info added on 2026-07-12T22:55:56.128Z>\n<info added on 2026-07-12T23:14:12.689Z>\nPost-recovery mismatch evidence: Sage event 434548 claimed Limux surface 161:terminal-0. Live workspace enumeration showed the old workspace no longer exists; the only TaskMaster workspace is workspace:7b4f512e-472c-458d-9e31-8e279ec53175 and its pane is surface:166:terminal-0 titled sage. Persisted session metadata correctly maps authoritative UUID 019f0a87-5721-78d0-b360-f3e96e3827c2 and HCOM_INSTANCE_NAME=sage to that tab, while hcom session binding is healthy. Therefore hcom identity recovery can succeed while inherited/reported LIMUX surface identity remains stale.\n</info added on 2026-07-12T23:14:12.689Z>\n<info added on 2026-07-12T23:52:51.319Z>\nCross-project evidence intake from global-config reorg: hcom event 436705 records an emergency hold after duplicate Dino process PID 82185, sharing the same session UUID, entered Doni active /tmp worktree. Treat this as direct acceptance evidence for session/Surface-Pane/process visibility and duplicate-client prevention. Dino owns immediate containment; do not duplicate the investigation. Queue for Kuma-led planning and later joint HCOM/Limux owner review.\n</info added on 2026-07-12T23:52:51.319Z>\n<info added on 2026-07-13T03:35:11.461Z>\nOperator-commissioned D4 joint design intake from Kuma: durable brief LIFO_INBOX/TASK_FROM_kuma_2026-07-12_visibility-restart-design-commission.md and evidence bundle CODEX_CLAUDE_CODE/tasks/global-config-reorg-20260712/REORG_D4_VISIBILITY_EVIDENCE_2026-07-12.md. One jointly-owned Dino/Lifo design deliverable must cover actual session/Surface-Pane activity visibility, duplicate-runtime detection/prevention, relay crash status semantics, metadata persistence across recovery, stale fixture-trust classification, and post-containment delivery/PTY behavior. Hub sessions remain evidence/routing only. Proposed artifact: docs/future-improvements/hcom-limux-session-pane-visibility-restart-design-20260712.md with G0 evidence freeze, G1 contract, G2 review, G3 hcom source, G4 Limux preview, G5 global guidance/promotion gates.\n</info added on 2026-07-13T03:35:11.461Z>\n<info added on 2026-07-13T03:36:55.398Z>\n2026-07-12 joint HCOM and Limux visibility/restart design agreement: TaskMaster 23 governs the single canonical joint artifact in Limux; HCOM owns a versioned source-input artifact and pointer, not a competing canonical design. Accepted gates: G0 evidence and invariants; G1 contract design; G2 adversarial review and freeze; G3a HCOM implementation PR; G3b independent HCOM verification; G4 Limux preview implementation plus cross-plane integration; G5 real crash and restart activation smoke; global guidance promotion only after G5. Limux acceptance conditions cover canonical identity parity across UI CLI session and HCOM, Surface/Pane terminology, runtime and process-generation fencing, fail-closed duplicate and disagreement handling, provenance and freshness for activity state, exact restore correlation, copyable operator context and pane-read commands, isolated stable and preview runtimes, and adversarial tests for stale generations duplicate identities focus fallback relay or PTY death and exactly-once resume.\n</info added on 2026-07-13T03:36:55.398Z>\n<info added on 2026-07-13T03:43:21.287Z>\n2026-07-12 Lifo co-owner review of HCOM contract v0.1: REVISE before G2. Seven mandatory corrections were sent to Dino in reply to event 439051: reconcile canonical-source contradiction with event 438747 and this task; map exact GTK Limux identifier types and refs and include socket path while separating core numeric handles; use caller_identity_source values explicit_params environment focused_fallback unavailable; allocate Limux runtime generation only at host launch rather than each agent resume; never mark an unproven prior process stopped; align G4 automated preview integration G5 real crash-restart smoke G6 operator promotion; and keep Task 23 as Limux governing lineage with HCOM G3 pointers and joint G5 and G6 evidence. Verdict after these edits: APPROVE FOR G2 only, not implementation or activation.\n</info added on 2026-07-13T03:43:21.287Z>\n<info added on 2026-07-13T03:51:25.497Z>\n2026-07-12 Phase A closure review of frozen HCOM v0.2 input SHA256 05cbda03a565083c1b9234bd42b743fc2b7f1ff6efd12fe8a1259ae2ce2000e6 and 651 lines: REVISE for two narrow exact-Limux-schema blockers. system.identify focused and caller are structured objects or null rather than focused being a boolean; mapping must preserve object shape. CWD and name mapping must distinguish workspace_name workspace_cwd and surface_cwd or carry explicit provenance because focused surface cwd is not necessarily workspace directory. All other mandatory correction groups are resolved. Expected verdict after these edits and a new frozen hash: APPROVE FOR G2 design only.\n</info added on 2026-07-13T03:51:25.497Z>\n<info added on 2026-07-13T03:54:15.435Z>\n2026-07-12 frozen HCOM v0.3 review: 674 lines SHA256 9af2006d2493b81a73bb8d623ec712c17ff6bab01965732e62e088d94000e29e. Both remaining Limux schema blockers are resolved; no design-content blocker remains. Phase A closure is still blocked on evidence durability: v0.2 stated frozen file is missing, v0.3 is untracked in an ephemeral tmp worktree, and the canonical Limux artifact is not yet incorporated. Dino was asked to commit and push exact v0.3 bytes, make the v0.2 retention statement truthful by restoring bytes or labeling hash/event provenance only, then return commit SHA. On unchanged hash after durability fix, verdict becomes APPROVE FOR G2 without another content review.\n</info added on 2026-07-13T03:54:15.435Z>\n<info added on 2026-07-13T03:59:42.233Z>\n2026-07-12 UNCONDITIONAL APPROVE FOR G2 design-review entry. Durable HCOM source-input pointer: PR https://github.com/RichelynScott/hcom/pull/32 at exact head 1efeb433878eae236f45dbdceb790f3ba017ccd3, path docs/design/HCOM_INPUT_FOR_LIMUX_SESSION_VISIBILITY_RESTART_CONTRACT_V0_3.md, committed SHA256 8f8ed5118fb2173470fc3ae0bc1db693dd721400e114153c027ddc9411ba07bb. PR was open and CLEAN at verification. Synthesis truthfully states v0.2 survives only as hash and event provenance and was superseded in place. No Limux design or durability blocker remains. Approval is for G2 adversarial design review entry only; it does not authorize implementation merge installation or activation. Canonical Limux incorporation remains the separate G1 co-owner step under Task 23.\n</info added on 2026-07-13T03:59:42.233Z>\n<info added on 2026-07-13T04:07:30.500Z>\n2026-07-13 Phase B Claude-family cross-critique by Kuma: APPROVE_WITH_IMPROVEMENTS. Durable review: /home/riche/Proj/CODEX_CLAUDE_CODE/tasks/global-config-reorg-20260712/PHASE_B_CLAUDE_CRITIQUE_FROM_kuma_visibility-restart-v0_3.md. No material evidence or requirement loss; v0.3 solves duplicate truth exact targeting delivery honesty and restart reliability, with turn visibility conditional on runtime hooks. Mandatory for canonical incorporation: M1 default non-JSON hcom send success output states achieved delivery level including zero live instances; M2 inspect and diagnose declare per-runtime positive turn-hook capability yes no or unknown; M3 freshness uses receiving-plane monotonic clock authority with bounded skew and adds skew test case 21. Preserve transport-independent durable outbox ACK and nonce requirements. Non-blocking recommendations: derived-summary legend fixture-stale version source and script guidance to match error code rather than exit class. Design convergence only; no implementation merge install activation or G6 authority.\n</info added on 2026-07-13T04:07:30.500Z>\n<info added on 2026-07-13T04:10:55.985Z>\n2026-07-13 Phase C exact-head no-regression confirmation PASS. HCOM PR 32 is open and CLEAN at cfb8318957109dc1052902175d6cfe7f15a996d0. Committed v0.4 path docs/design/HCOM_INPUT_FOR_LIMUX_SESSION_VISIBILITY_RESTART_CONTRACT_V0_4.md is 705 lines with SHA256 dac08f8fb6d853e1d609c87591ae63576e1ab97c980bed18f3e53e5313753d01. Direct committed v0.3-to-v0.4 diff is a 94 percent rename plus only reviewed additions: honest default send delivery output, turn_hooks capability, receiving-plane monotonic freshness and skew test 21, derived summary legend, fixture version authority, error-code scripting guidance, and resolved section 15 send wording. No regression in exact Limux mapping canonical ownership fenced restart saga closure proof gates TaskMaster mapping or no-implementation no-activation boundary. Phase C consolidation path docs/design/HCOM_LIMUX_VISIBILITY_RESTART_PHASE_C_CONSOLIDATION_20260713.md is ready for operator presentation. No implementation authority granted.\n</info added on 2026-07-13T04:10:55.985Z>\n<info added on 2026-07-13T04:42:22.061Z>\n2026-07-13 operator selected Option A. Canonical Limux contract created at docs/future-improvements/hcom-limux-session-pane-visibility-restart-design-20260712.md, 722 lines, SHA256 9042e2ecfd0074c2073fff5f868e834ff65eb436983df1ccc224d906e9d647a6. It pins HCOM PR 32 exact head cfb8318957109dc1052902175d6cfe7f15a996d0 and source v0.4 SHA256 dac08f8fb6d853e1d609c87591ae63576e1ab97c980bed18f3e53e5313753d01. Direct source-to-canonical diff contains only canonical ownership wording, G1 completion wording, section 15 planning framing, and the Option A boundary. Local checks: 10 invariants, 8 gate rows, M1-M3, skew test 21, Option A, and git diff check all pass. Subtasks created: 23.1 canonical freeze in progress pending Dino co-owner confirmation; 23.2 HCOM G3 planning pointer pending Dino artifacts; 23.3 Limux G4 PRD in progress. Option A authorizes planning only, not implementation merge install activation or G6 promotion.\n</info added on 2026-07-13T04:42:22.061Z>\n<info added on 2026-07-13T05:47:58.290Z>\n2026-07-13 base Task 23 product slice reconciliation: current uncommitted host work adds canonical workspace/Surface-Pane context and copy/read-command UI without implementing future G4 runtime incarnation or HCOM fencing. A discovered read-screen mismatch was fixed TDD-first so --scrollback and --lines now serialize through CLI, reach the live GTK bridge, select Ghostty history, apply a tail-line limit, and match standalone dispatcher behavior while the restricted socket remains viewport-only. Verification: focused RED/GREEN tests; cargo check -p limux-host-linux PASS; 346 host tests PASS; ./scripts/check.sh PASS; Ghostty resources PASS; first Xvfb smoke reached stage 6 but response timed out after the split/proof succeeded, unchanged retry PASS through all stages. Product commit and PR remain pending exact-path staging and review.\n</info added on 2026-07-13T05:47:58.290Z>",
+        "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Freeze canonical HCOM-Limux visibility and restart contract v0.4",
+            "description": "Validate and freeze the single canonical Limux contract produced from HCOM PR 32 Phase C v0.4 after operator Option A.",
+            "details": "Canonical path: docs/future-improvements/hcom-limux-session-pane-visibility-restart-design-20260712.md. Verify source PR 32 exact head cfb8318957109dc1052902175d6cfe7f15a996d0 and source SHA256 dac08f8fb6d853e1d609c87591ae63576e1ab97c980bed18f3e53e5313753d01; confirm M1-M3, prior Limux schema corrections, G0-G6, and no implementation or activation authority. Owner: lifo with dino co-owner confirmation.\n<info added on 2026-07-13T04:49:39.746Z>\n2026-07-13 co-owner confirmation received from Dino in HCOM event 443681: canonical Limux contract line count and SHA256 9042e2ecfd0074c2073fff5f868e834ff65eb436983df1ccc224d906e9d647a6 confirmed. Local source-to-canonical diff and all contract checks passed. G1 canonical freeze acceptance is complete. This completion does not authorize implementation merge install or activation.\n</info added on 2026-07-13T04:49:39.746Z>",
+            "status": "done",
+            "dependencies": [],
+            "parentTaskId": 23,
+            "parentId": "23",
+            "updatedAt": "2026-07-13T04:49:43.429Z"
+          },
+          {
+            "id": 2,
+            "title": "Plan HCOM G3 process-instance and fenced-restart implementation lane",
+            "description": "Track the separately owned HCOM G3a implementation PRD and G3b independent verification pointer without duplicating HCOM source ownership in Limux.",
+            "details": "Owner: dino HCOM_MGR. Source input: HCOM PR 32 v0.4. Planning must cover stable identity, launch UUID and lease capability, process-instance registry, endpoint and lifecycle fencing, metadata persistence, honest send output, turn-hook capability, receiver-clock freshness, migration and rollback, tests, and an independent G3b exact-head review. Record the HCOM tracker and PR pointers here. No implementation merge install or activation is authorized by this subtask.\n<info added on 2026-07-13T04:57:00.113Z>\n2026-07-13 Option A HCOM planning handoff complete. HCOM PR #32: https://github.com/RichelynScott/hcom/pull/32 at exact head 6ed07af91315dfcb1c2a5ad0ff03aaf83a6f40ea with remote parity verified. HCOM G3 PRD: tasks/prd-hcom-limux-session-visibility-restart.md, SHA256 8d3baf8d968c69d0f70e2eaf17486b47d8e80da9353784e493f943bc869b75f5. Co-owner confirmation: docs/design/HCOM_LIMUX_CANONICAL_CONFIRMATION_AND_TASK_LINKS_20260713.md, SHA256 2a6acd962788211970b1f9ab16c8f5f013a19015e6c0dc992ff2c33884a78b7c. HCOM TaskMaster tag hcom-limux-visibility-restart-20260713 contains task 1, Implement HCOM process-instance model and fenced restart saga (G3a), high pending; and task 2, Independent verification of the frozen G3a head (G3b), high pending, dependent on task 1. Dino event 444068 independently confirmed the canonical Limux artifact at 722 lines and SHA256 9042e2ecfd0074c2073fff5f868e834ff65eb436983df1ccc224d906e9d647a6 with no mismatch. This completes the planning-pointer deliverable only. No implementation, merge, install, schema mutation, global promotion, or activation occurred or is authorized.\n</info added on 2026-07-13T04:57:00.113Z>",
+            "status": "done",
+            "dependencies": [],
+            "parentTaskId": 23,
+            "parentId": "23",
+            "updatedAt": "2026-07-13T04:57:10.611Z"
+          },
+          {
+            "id": 3,
+            "title": "Plan Limux G4 isolated-preview identity and restart integration lane",
+            "description": "Create the Limux implementation PRD and task split for preview-only canonical context, runtime incarnation, exact targeting, restore suppression, and HCOM cross-plane integration.",
+            "details": "Owner: lifo LIMUX_MGR. Planning must map the canonical v0.4 contract to current GTK and control-bridge code, preserve stable daily-driver isolation, specify TDD coverage for caller provenance M1-M3 integration duplicate identities stale incarnations relay and PTY death and skew test 21, define preview packaging and rollback, and stop before implementation until G3 contract dependencies and normal PR gates are satisfied. No stable install runtime activation or G6 promotion is authorized.\n<info added on 2026-07-13T04:41:19.358Z>\n2026-07-13 Option A planning artifact created: .taskmaster/docs/limux-prd-i-hcom-visibility-restart-integration-20260713.md, 279 lines, SHA256 b66987e3d6d7629c8c90f6fadc8660ec36f2cd8691e40c235f080a183f85f444. PRD-I defines six user stories, ten functional requirements, TDD gates, exact GTK identity and provenance handling, durable HCOM bind and nonce requirements, fail-closed restore and targeting, honest activity and delivery display, all 21 canonical tests, and preview-only rollout. Implementation remains unauthorized. Subtask stays in-progress pending Dino G3 schema and tracker pointers plus final implementation task expansion.\n</info added on 2026-07-13T04:41:19.358Z>\n<info added on 2026-07-13T05:29:35.892Z>\n2026-07-13 G4 planning expansion complete. Corrected PRD-I SHA256 after whitespace-only cleanup: ef58e5662b9e9d472912adad767ba1100a7ccb646808d21d14208f3a7cd6c1e7; Limux planning commit bf10273fb51e7899817a140bfcf15365a21f2d07 is pushed with remote parity. HCOM dependency is PR #32 exact head 6ed07af91315dfcb1c2a5ad0ff03aaf83a6f40ea, PRD tasks/prd-hcom-limux-session-visibility-restart.md SHA256 8d3baf8d968c69d0f70e2eaf17486b47d8e80da9353784e493f943bc869b75f5, tag hcom-limux-visibility-restart-20260713, G3a task 1 pending and G3b task 2 pending dependent on task 1. Implementation ladder created as pending subtasks 23.4 runtime/provenance, 23.5 canonical context, 23.6 durable HCOM bind, 23.7 exact targeting/restore suppression, 23.8 activity/delivery truth, 23.9 isolated preview plus 21-case matrix, 23.10 independent exact-head review, and 23.11 operator-gated G5 real crash/restart smoke. Completing 23.3 closes planning only; it authorizes no implementation, merge, install, restart, activation, or G6 promotion.\n</info added on 2026-07-13T05:29:35.892Z>",
+            "status": "done",
+            "dependencies": [],
+            "parentTaskId": 23,
+            "updatedAt": "2026-07-13T05:29:52.412Z",
+            "parentId": "23"
+          },
+          {
+            "id": 4,
+            "title": "Implement runtime incarnation and caller provenance (G4.1)",
+            "description": "Add Limux host-lifetime incarnation and source-tagged caller identity under preview-only development.",
+            "details": "TDD first. Preserve structured focused/caller objects; add explicit_params, environment, focused_fallback, unavailable provenance; reject fallback for strict identity and mutation. Do not begin until the reviewed G4 implementation gate and dependency freeze are satisfied.",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 23,
+            "parentId": "23"
+          },
+          {
+            "id": 5,
+            "title": "Implement canonical Surface/Pane context parity (G4.2)",
+            "description": "Align right-click, CLI, and HCOM-visible context with exact GTK selectors, source-specific directories, channel, socket, and runtime incarnation.",
+            "details": "TDD formatter and GTK wiring. Preserve workspace, surface, pane, and tab refs; keep workspace_cwd, surface_cwd, and terminal_workspace_cwd provenance distinct; redact manager-only diagnostics. Preview-only until later gates.",
+            "status": "pending",
+            "dependencies": [
+              "23.4"
+            ],
+            "parentTaskId": 23,
+            "parentId": "23"
+          },
+          {
+            "id": 6,
+            "title": "Integrate durable HCOM bind handshake (G4.3)",
+            "description": "Implement versioned, idempotent, nonce-bound Limux-to-HCOM binding against the frozen G3 contract.",
+            "details": "Depends on the exact HCOM G3a schema and capability semantics. Validate launch UUID, authorized lease/capability reference, runtime incarnation, workspace/surface/pane/tab, socket, and channel. Cover replay, stale lease, duplicate bind, retry, ACK, and compensation without storing secrets.",
+            "status": "pending",
+            "dependencies": [
+              "23.4"
+            ],
+            "parentTaskId": 23,
+            "parentId": "23"
+          },
+          {
+            "id": 7,
+            "title": "Enforce exact targeting and restore suppression (G4.4)",
+            "description": "Fence every cross-plane mutation and restore against the exact current process instance and Limux runtime incarnation.",
+            "details": "TDD duplicate quarantine, restore_suppressed state, selector/action races, stale incarnation, relay and PTY death, and unproved prior-process states. Never authorize by focus, display name, PID, restored environment, or newest-record heuristics.",
+            "status": "pending",
+            "dependencies": [
+              "23.6"
+            ],
+            "parentTaskId": 23,
+            "parentId": "23"
+          },
+          {
+            "id": 8,
+            "title": "Render honest activity and delivery dimensions (G4.5)",
+            "description": "Expose source-tagged process, turn, terminal, delivery, host, workspace, identity, and restore dimensions without synthesizing false activity.",
+            "details": "Use receiver monotonic freshness, bounded clock-skew uncertainty, turn_hooks yes/no/unknown, and explicit delivery levels including zero-live-instance enqueue. Implement the closed operator legend and avoid message or transcript leakage.",
+            "status": "pending",
+            "dependencies": [
+              "23.6",
+              "23.7"
+            ],
+            "parentTaskId": 23,
+            "parentId": "23"
+          },
+          {
+            "id": 9,
+            "title": "Validate isolated preview integration and 21-case matrix (G4.6)",
+            "description": "Integrate the G4 slices only in a named preview channel and execute the canonical automated acceptance matrix without touching the daily driver.",
+            "details": "Require distinct preview install root, socket, state, and incarnation; target-info and doctor proof before live tests; all 21 canonical cases; focused host/CLI tests; scripts/check.sh; Ghostty resource validation; Xvfb smoke; rollback evidence. Stable runtime remains untouched.",
+            "status": "pending",
+            "dependencies": [
+              "23.5",
+              "23.7",
+              "23.8"
+            ],
+            "parentTaskId": 23,
+            "parentId": "23"
+          },
+          {
+            "id": 10,
+            "title": "Independently verify frozen G4 preview head (G4.7)",
+            "description": "Perform an exact-head independent review of the complete preview implementation and canonical acceptance evidence.",
+            "details": "Reviewer must be independent of the implementation lane, bind findings to the frozen commit, verify dependency/version parity with HCOM G3, rerun focused regressions, and block promotion on unresolved identity, fencing, delivery, or rollback findings.",
+            "status": "pending",
+            "dependencies": [
+              "23.9"
+            ],
+            "parentTaskId": 23,
+            "parentId": "23"
+          },
+          {
+            "id": 11,
+            "title": "Run operator-gated real crash/restart activation smoke (G5)",
+            "description": "After G4 exact-head approval, execute the real failure/restart validation and collect promotion evidence without silently changing the stable lane.",
+            "details": "BLOCKED-ON-GATE until explicit operator approval and G4.7 completion. Exercise real host crash, relay death, PTY stop, duplicate process, stale restore, exactly-once resume, rollback, and stable/preview coexistence. G6 global promotion remains a separate decision.",
+            "status": "pending",
+            "dependencies": [
+              "23.10"
+            ],
+            "parentTaskId": 23,
+            "parentId": "23"
+          }
+        ],
+        "updatedAt": "2026-07-13T05:29:52.412Z"
+      },
+      {
+        "id": 24,
+        "title": "Add approved peer-assisted sandbox relaunch recovery",
+        "description": "Document and validate a fail-closed workflow where one authorized session restarts another session in the same Limux pane with an explicitly approved hcom sandbox override.",
+        "details": "The target agent checkpoints and exits; a separate authorized controller verifies the exact workspace/surface-pane is at a shell, then types hcom r <name> --sandbox danger-full-access in that exact pane. Require explicit operator approval for the elevated sandbox, exact session/name/surface checks, no focused-pane fallback, no concurrent duplicate client, nonce verification, and a rollback/report path. Never auto-escalate or present danger-full-access as routine/default. Coordinate wording with hcom/global-config owners before global promotion.\n<info added on 2026-07-12T21:39:20.616Z>\nDino verified installed hcom 0.7.66 accepts hcom r NAME --run-here --go --sandbox danger-full-access and forwards the sandbox to Codex without changing global defaults. Required safeguards: sandbox does not itself disable approvals; verify Codex /status; v0.7.66 may retain per-target launch_args; record and explicitly restore the exact prior sandbox and approval policy after elevated work. hcom origin/main v0.7.71 strips historical policy arguments, but live runtime currently lags.\n</info added on 2026-07-12T21:39:20.616Z>\n<info added on 2026-07-13T05:47:34.251Z>\n2026-07-13 reconciliation claim: project-skill guidance exists in skills/limux-a2a/SKILL.md and skills/limux-use-guide/SKILL.md for an explicitly operator-approved same-Surface/Pane hcom relaunch with danger-full-access. Hamo successfully used the controlled path to obtain writable Limux Git metadata and preserved exact-path ownership boundaries, but the current Hamo runtime still reports danger-full-access and no complete proof yet records restoration of its exact prior sandbox plus approval policy. Task remains in-progress. Required closeout is exact identity/surface/client/nonce/status evidence, failure rollback proof, explicit prior-policy restoration, and owner-reviewed global-config coordination; never make elevation automatic or default.\n</info added on 2026-07-13T05:47:34.251Z>",
+        "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-07-13T05:46:57.125Z"
+      },
+      {
+        "id": 25,
+        "title": "Add byte-safe Limux send input sources and shell-boundary guidance",
+        "description": "Prevent recurring message corruption by documenting shell expansion at first use and adding byte-safe stdin/file sources to limux send.",
+        "details": "Move the existing shell-boundary warning beside CLI help and the first limux send examples. Label double-quoted inline text as shell-safe prose only. Add mutually exclusive positional text, --stdin, and --file PATH input sources; validate UTF-8 and preserve existing terminal-control rejection. Add parser/help tests and bridge/PTY exact-delivery tests using backticks, dollar-paren substitution text, quotes, semicolons, globs, and multiline fixtures. Do not claim Limux can detect command substitution already performed by the shell. Coordinate accepted wording with hcom and global-config owners after a frozen source commit.\n<info added on 2026-07-12T23:07:57.017Z>\nFresh real-world recurrence: hcom event 434032 lost intended option tokens because backticked flag names were command-substituted by zsh inside a double-quoted sender payload before hcom received argv. Niru reported command-not-found errors and no state changes in correction event 434092; Temp1 independently observed the delivered gap in event 434101. Use 434032 as a regression sample. Subsequent formatted messages must use quoted heredoc, file, base64, or other byte-safe transport.\n</info added on 2026-07-12T23:07:57.017Z>",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": []
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-10T23:19:04.075Z",
-      "taskCount": 22,
+      "lastModified": "2026-07-13T05:46:57.126Z",
+      "taskCount": 25,
       "completedCount": 12,
       "tags": [
         "master"
@@ -622,7 +788,9 @@
       "completedCount": 5,
       "tags": [
         "cmux-parity-20260707"
-      ]
+      ],
+      "created": "2026-07-12T21:29:35.029Z",
+      "description": "Tasks for cmux-parity-20260707 context"
     }
   },
   "product-hygiene": {
@@ -685,7 +853,9 @@
       "completedCount": 2,
       "tags": [
         "product-hygiene"
-      ]
+      ],
+      "created": "2026-07-12T21:29:35.029Z",
+      "description": "Tasks for product-hygiene context"
     }
   }
 }

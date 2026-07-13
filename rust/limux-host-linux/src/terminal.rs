@@ -52,6 +52,10 @@ type PaneWidthLockAllowedCallback = dyn Fn() -> bool;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TerminalIdentity {
     pub workspace_id: Option<String>,
+    pub workspace_name: Option<String>,
+    pub workspace_cwd: Option<String>,
+    pub pane_id: u32,
+    pub tab_id: String,
     pub surface_id: String,
 }
 
@@ -292,20 +296,26 @@ impl TerminalHandle {
         }
     }
 
-    pub fn read_viewport_text(&self) -> Option<String> {
+    pub fn read_text(&self, scrollback: bool, lines: Option<usize>) -> Option<String> {
         let Some(surface) = *self.surface_cell.borrow() else {
             return Some(String::new());
         };
 
+        let point_tag = if scrollback {
+            GHOSTTY_POINT_SURFACE
+        } else {
+            GHOSTTY_POINT_VIEWPORT
+        };
+
         let selection = ghostty_selection_s {
             top_left: ghostty_point_s {
-                tag: GHOSTTY_POINT_VIEWPORT,
+                tag: point_tag,
                 coord: GHOSTTY_POINT_COORD_TOP_LEFT,
                 x: 0,
                 y: 0,
             },
             bottom_right: ghostty_point_s {
-                tag: GHOSTTY_POINT_VIEWPORT,
+                tag: point_tag,
                 coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT,
                 x: 0,
                 y: 0,
@@ -322,7 +332,7 @@ impl TerminalHandle {
         let bytes = unsafe { std::slice::from_raw_parts(text.text as *const u8, text.text_len) };
         let output = String::from_utf8_lossy(bytes).into_owned();
         unsafe { ghostty_surface_free_text(surface, &mut text) };
-        Some(output)
+        Some(limit_text_lines(&output, lines))
     }
 
     pub fn show_find(&self) -> bool {
@@ -2138,6 +2148,58 @@ fn copy_text_to_clipboards(text: &str) {
     }
 }
 
+fn limit_text_lines(text: &str, lines: Option<usize>) -> String {
+    let Some(lines) = lines else {
+        return text.to_string();
+    };
+
+    let mut selected = text.lines().rev().take(lines).collect::<Vec<_>>();
+    selected.reverse();
+    selected.join("\n")
+}
+
+fn workspace_identity_context(identity: &TerminalIdentity) -> String {
+    let workspace_id = identity.workspace_id.as_deref().unwrap_or("unknown");
+    let workspace_ref = identity
+        .workspace_id
+        .as_deref()
+        .map(|id| format!("workspace:{id}"))
+        .unwrap_or_else(|| "unknown".to_string());
+    let workspace_name = identity.workspace_name.as_deref().unwrap_or("unknown");
+    let workspace_cwd = identity.workspace_cwd.as_deref().unwrap_or("unknown");
+
+    format!(
+        "Workspace\nName: {workspace_name}\nDirectory: {workspace_cwd}\nID: {workspace_id}\nRef: {workspace_ref}"
+    )
+}
+
+fn surface_pane_identity_context(identity: &TerminalIdentity) -> String {
+    format!(
+        "Surface/Pane (active tab)\nSurface ref: surface:{}\nPane ref: pane:{}\nTab ref: tab:{}",
+        identity.surface_id, identity.pane_id, identity.tab_id
+    )
+}
+
+fn terminal_identity_context(identity: &TerminalIdentity) -> String {
+    format!(
+        "{}\n\n{}",
+        workspace_identity_context(identity),
+        surface_pane_identity_context(identity)
+    )
+}
+
+fn terminal_read_command(identity: &TerminalIdentity) -> String {
+    let surface_ref = format!("surface:{}", identity.surface_id);
+    match identity.workspace_id.as_deref() {
+        Some(workspace_id) => format!(
+            "limux read-screen --workspace 'workspace:{workspace_id}' --surface '{surface_ref}' --scrollback --lines 120"
+        ),
+        None => format!(
+            "limux read-screen --surface '{surface_ref}' --scrollback --lines 120"
+        ),
+    }
+}
+
 fn show_terminal_context_menu(
     gl_area: &gtk::GLArea,
     overlay: &gtk::Overlay,
@@ -2167,7 +2229,7 @@ fn show_terminal_context_menu(
         ("Copy".to_string(), has_selection),
         ("Paste".to_string(), true),
         ("---".to_string(), false),
-        ("IDs".to_string(), true),
+        ("Workspace & Surface/Pane Info".to_string(), true),
         ("---".to_string(), false),
         ("Browser".to_string(), true),
         ("Split Right".to_string(), true),
@@ -2187,12 +2249,21 @@ fn show_terminal_context_menu(
     ids_box.set_margin_bottom(4);
     ids_box.set_margin_start(4);
     ids_box.set_margin_end(4);
-    let copy_workspace_btn = gtk::Button::with_label("Copy Workspace ID");
+    let copy_all_context_btn = gtk::Button::with_label("Copy All Context");
+    copy_all_context_btn.add_css_class("flat");
+    let copy_workspace_btn = gtk::Button::with_label("Copy Workspace Info");
     copy_workspace_btn.add_css_class("flat");
     copy_workspace_btn.set_sensitive(identity.workspace_id.is_some());
-    let copy_surface_btn = gtk::Button::with_label("Copy Surface ID");
+    let copy_surface_btn = gtk::Button::with_label("Copy Surface/Pane Info");
     copy_surface_btn.add_css_class("flat");
-    for btn in [&copy_workspace_btn, &copy_surface_btn] {
+    let copy_read_command_btn = gtk::Button::with_label("Copy Pane Read Command");
+    copy_read_command_btn.add_css_class("flat");
+    for btn in [
+        &copy_all_context_btn,
+        &copy_workspace_btn,
+        &copy_surface_btn,
+        &copy_read_command_btn,
+    ] {
         btn.set_halign(gtk::Align::Fill);
         if let Some(lbl) = btn.child().and_then(|c| c.downcast::<gtk::Label>().ok()) {
             lbl.set_xalign(0.0);
@@ -2210,14 +2281,18 @@ fn show_terminal_context_menu(
             continue;
         }
 
-        let btn = gtk::Button::with_label(if label == "IDs" { "IDs >" } else { label });
+        let btn = gtk::Button::with_label(if label == "Workspace & Surface/Pane Info" {
+            "Workspace & Surface/Pane Info >"
+        } else {
+            label
+        });
         btn.add_css_class("flat");
         btn.set_sensitive(*enabled);
         btn.set_halign(gtk::Align::Fill);
         if let Some(lbl) = btn.child().and_then(|c| c.downcast::<gtk::Label>().ok()) {
             lbl.set_xalign(0.0);
         }
-        if label == "IDs" {
+        if label == "Workspace & Surface/Pane Info" {
             ids_popover.set_parent(&btn);
             let ids_popover_for_motion = ids_popover.clone();
             let motion = gtk::EventControllerMotion::new();
@@ -2249,7 +2324,7 @@ fn show_terminal_context_menu(
             let gl_area = gl_area.clone();
 
             btn.connect_clicked(move |_| {
-                if label == "IDs >" {
+                if label == "Workspace & Surface/Pane Info >" {
                     return;
                 }
                 pop.popdown();
@@ -2295,12 +2370,10 @@ fn show_terminal_context_menu(
         let pop = popover.clone();
         let ids_pop = ids_popover.clone();
         let overlay = overlay.clone();
-        let workspace_id = identity.workspace_id.clone();
-        copy_workspace_btn.connect_clicked(move |_| {
-            if let Some(workspace_id) = workspace_id.as_deref() {
-                copy_text_to_clipboards(workspace_id);
-                show_clipboard_toast(&overlay);
-            }
+        let context = terminal_identity_context(&identity);
+        copy_all_context_btn.connect_clicked(move |_| {
+            copy_text_to_clipboards(&context);
+            show_clipboard_toast(&overlay);
             ids_pop.popdown();
             pop.popdown();
         });
@@ -2310,9 +2383,35 @@ fn show_terminal_context_menu(
         let pop = popover.clone();
         let ids_pop = ids_popover.clone();
         let overlay = overlay.clone();
-        let surface_id = identity.surface_id.clone();
+        let workspace_context = workspace_identity_context(&identity);
+        copy_workspace_btn.connect_clicked(move |_| {
+            copy_text_to_clipboards(&workspace_context);
+            show_clipboard_toast(&overlay);
+            ids_pop.popdown();
+            pop.popdown();
+        });
+    }
+
+    {
+        let pop = popover.clone();
+        let ids_pop = ids_popover.clone();
+        let overlay = overlay.clone();
+        let surface_context = surface_pane_identity_context(&identity);
         copy_surface_btn.connect_clicked(move |_| {
-            copy_text_to_clipboards(&surface_id);
+            copy_text_to_clipboards(&surface_context);
+            show_clipboard_toast(&overlay);
+            ids_pop.popdown();
+            pop.popdown();
+        });
+    }
+
+    {
+        let pop = popover.clone();
+        let ids_pop = ids_popover.clone();
+        let overlay = overlay.clone();
+        let read_command = terminal_read_command(&identity);
+        copy_read_command_btn.connect_clicked(move |_| {
+            copy_text_to_clipboards(&read_command);
             show_clipboard_toast(&overlay);
             ids_pop.popdown();
             pop.popdown();
@@ -2676,6 +2775,51 @@ unsafe fn release_active_mouse_button(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terminal_identity_context_matches_human_and_cli_refs() {
+        let identity = TerminalIdentity {
+            workspace_id: Some("workspace-123".to_string()),
+            workspace_name: Some("TASKMASTER".to_string()),
+            workspace_cwd: Some("/home/riche/MCPs/claude-task-master".to_string()),
+            pane_id: 166,
+            tab_id: "terminal-0".to_string(),
+            surface_id: "166:terminal-0".to_string(),
+        };
+
+        assert_eq!(
+            terminal_identity_context(&identity),
+            "Workspace\nName: TASKMASTER\nDirectory: /home/riche/MCPs/claude-task-master\nID: workspace-123\nRef: workspace:workspace-123\n\nSurface/Pane (active tab)\nSurface ref: surface:166:terminal-0\nPane ref: pane:166\nTab ref: tab:terminal-0"
+        );
+        assert_eq!(
+            terminal_read_command(&identity),
+            "limux read-screen --workspace 'workspace:workspace-123' --surface 'surface:166:terminal-0' --scrollback --lines 120"
+        );
+    }
+
+    #[test]
+    fn terminal_identity_context_handles_unattached_workspace() {
+        let identity = TerminalIdentity {
+            workspace_id: None,
+            workspace_name: None,
+            workspace_cwd: None,
+            pane_id: 7,
+            tab_id: "tab-a".to_string(),
+            surface_id: "7:tab-a".to_string(),
+        };
+
+        assert!(terminal_identity_context(&identity).contains("Ref: unknown"));
+        assert_eq!(
+            terminal_read_command(&identity),
+            "limux read-screen --surface 'surface:7:tab-a' --scrollback --lines 120"
+        );
+    }
+
+    #[test]
+    fn terminal_text_line_limit_keeps_the_tail() {
+        assert_eq!(limit_text_lines("one\ntwo\nthree", Some(2)), "two\nthree");
+        assert_eq!(limit_text_lines("one\ntwo", None), "one\ntwo");
+    }
 
     #[test]
     fn maps_dark_mode_to_ghostty_color_scheme() {

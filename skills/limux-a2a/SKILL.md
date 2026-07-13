@@ -1,6 +1,6 @@
 ---
 name: limux-a2a
-description: Use inside Limux to identify the current pane/surface/workspace, spawn terminal panes or workspaces, launch agent tasks, coordinate same-workspace surfaces, optionally send callbacks, read peer output, and notify the human.
+description: Use inside Limux to identify the current pane/surface/workspace, spawn terminal panes or workspaces, launch agent tasks, coordinate same-workspace surfaces, recover a named hcom agent in its existing pane, optionally send callbacks, read peer output, and notify the human.
 ---
 
 # Limux A2A
@@ -27,6 +27,11 @@ If the fast launch fails with `failed to connect to socket`, retry that exact `n
 
 ## Identity
 
+Use **Surface/Pane** in human-facing instructions. Technically, a pane can host
+multiple tab surfaces; the surface ID identifies the active tab inside the
+pane. Preserve `surface:`, `pane:`, and `tab:` refs in commands and copied
+context so the distinction remains machine-safe.
+
 Each Limux terminal should have:
 
 ```bash
@@ -41,6 +46,16 @@ limux --json identify
 limux --json list-workspaces
 limux --json list-panels --workspace "$LIMUX_WORKSPACE_ID"
 ```
+
+The terminal right-click menu's **Workspace & Surface/Pane Info** submenu can
+copy the same canonical context or a complete `read-screen` command. Prefer
+that copied context when another human/session supplies the target.
+
+Do not trust bare `limux identify` for a background or remotely controlled
+session when its `LIMUX_*` variables are missing or stale: it can report the
+currently focused pane instead. Resolve the workspace explicitly, list its
+surfaces, read the candidate, and compare persisted/hcom identity before
+mutation.
 
 Target exact peers with `--surface <surface-id>`. Add `--workspace <id-or-name>` when the peer is outside the current workspace.
 
@@ -112,13 +127,23 @@ limux --json list-panels --workspace "$workspace"
 
 ## Observe vs Callback
 
-Default: the parent observes child progress with `read-screen`. This is usually faster and cheaper than making every child report back.
+Default: the parent observes child progress with `read-screen`. Limux already
+supports direct pane-content inspection; do not ask the child to manually
+transcribe visible output unless `read-screen` fails.
 
 ```bash
-limux read-screen --surface "$child_surface" --lines 80
-limux read-screen --workspace "<workspace>" --surface "<surface>" --lines 80
-limux --json surface-health --surface "$child_surface"
+limux --json list-workspaces
+limux list-panels --workspace "<workspace-ref>"
+limux read-screen --workspace "<workspace-ref>" \
+  --surface "<surface-ref>" --scrollback --lines 120
+limux capture-pane --workspace "<workspace-ref>" \
+  --surface "<surface-ref>" --scrollback --lines 200
+limux --json surface-health --workspace "<workspace-ref>"
 ```
+
+`capture-pane` is an alias of `read-screen`. Always include both workspace and
+surface when duplicate workspace names exist or when inspecting another
+workspace. `surface-health` is workspace-scoped in the current CLI.
 
 Give children the parent surface as an available route, not a mandatory report-back requirement:
 
@@ -168,6 +193,159 @@ limux notify --workspace "$LIMUX_WORKSPACE_ID" \
   --body "A pane is blocked and needs a decision" \
   "Limux task needs attention"
 ```
+
+## Resume A Named hcom Agent In Its Existing Pane
+
+Use this when the operator names a workspace and asks to exit the agent in one
+of its existing panes, then run `hcom r <name>` in that exact pane. Never use
+the currently focused pane as a fallback. This is a single-pane operation: do
+not restart the Limux host merely to complete it.
+
+1. Resolve the workspace and its raw surface IDs:
+
+   ```bash
+   limux --json list-workspaces
+   limux list-panels --workspace "<workspace-id>"
+   ```
+
+   Some installed versions print `surface:<id>` references. Pass the raw
+   `<pane-id>:<tab-id>` value to `read-screen`, `send`, and `send-key`.
+
+2. Identify the agent surface before injecting anything. Read each candidate:
+
+   ```bash
+   limux read-screen --workspace "<workspace-id>" \
+     --surface "<raw-surface-id>" --scrollback --lines 80
+   ```
+
+   If a background workspace is unrealized and every surface reports zero
+   rows/columns or an empty screen, inspect the persisted session registry at
+   `$HOME/.local/share/limux/session.json`. Match the workspace, then require
+   the tab's `agent.kind`, `agent.session_id`, or
+   `agent.launch_command.environment.HCOM_INSTANCE_NAME` to identify the named
+   agent. Do not infer identity from pane order.
+
+   Fail closed if the visible pane, persisted `agent.session_id`, persisted
+   `HCOM_INSTANCE_NAME`, and hcom identity do not agree. Do not inject `/exit`,
+   rewrite `session.json`, or restart Limux in that state; preserve the evidence
+   and route the restore-state corruption to the Limux/hcom owners.
+
+3. Realize the workspace when the installed CLI has no `workspace.select`
+   wrapper. Resolve the channel socket with `limux target-info` or
+   `$LIMUX_SOCKET`, then send the typed request:
+
+   ```bash
+   printf '%s\n' \
+     '{"id":1201,"method":"workspace.select","params":{"workspace_id":"<workspace-id>"}}' |
+     nc -U -N "${LIMUX_SOCKET:-/run/user/$(id -u)/limux/limux.sock}"
+   ```
+
+   Re-run `surface-health` and `read-screen` after selection. Do not hardcode
+   the legacy socket when operating a stable or preview channel.
+
+4. Exit only the verified surface, wait for its shell prompt, then resume:
+
+   ```bash
+   limux send --workspace "<workspace-id>" --surface "<raw-surface-id>" '/exit'
+   limux send-key --workspace "<workspace-id>" --surface "<raw-surface-id>" Return
+   limux read-screen --workspace "<workspace-id>" --surface "<raw-surface-id>" --lines 40
+
+   limux send --workspace "<workspace-id>" --surface "<raw-surface-id>" 'hcom r <name>'
+   limux send-key --workspace "<workspace-id>" --surface "<raw-surface-id>" Return
+   ```
+
+   Use the key spelling accepted by the installed runtime. `Return` is the
+   compatibility spelling when lowercase `enter` is rejected.
+
+5. Verify identity, not just process startup:
+
+   ```bash
+   hcom list <name> -v --json --name <manager-name>
+   hcom send @<name> --intent request --thread <recovery-thread> \
+     --name <manager-name> -- "Reply with your hcom name and session id."
+   ```
+
+   Require the expected name, authoritative session ID, working directory,
+   `process_bound`, `live_delivery_available`, `term_available`, transcript
+   binding, no unexpected control warnings, and a real reply. Re-read the pane
+   to ensure the expected agent, not another historical session, resumed.
+
+   Also prove there is only one client attached to the authoritative UUID and
+   that its process ancestry reaches `limux-host`. A correct screen and a
+   correct hcom name are insufficient if the same native session is also
+   resumed in Windows Terminal or another host. Treat `WT_SESSION` on the live
+   launch context, an `/init` ancestry that bypasses `limux-host`, or multiple
+   `codex resume <uuid>` clients as a placement failure.
+
+### Wrong-Session Guard
+
+If `hcom r <name>` resumes a different session, inject `/exit` into that exact
+duplicate surface immediately and preserve the mismatch evidence. Do not keep
+retrying by name or UUID: stale stopped-snapshot selection can resolve the same
+wrong session repeatedly.
+
+If the authoritative session is concurrently attached in Limux and another
+terminal, exit the non-Limux attachment through its exact terminal/control
+endpoint first. Then run the literal `/exit` followed by `hcom r <name>` in the
+verified Limux surface so hcom's PTY, process, transcript, and surface bindings
+all originate from the Limux-hosted process.
+
+`hcom forget <name> --go` is a last-resort repair only after all of these are
+true: the duplicate is stopped, the authoritative native transcript UUID is
+known and still exists, the mismatch is proven, and the operator authorized
+the mutation of hcom event history. Then adopt the authoritative UUID in the
+same pane and require it to bind the intended name:
+
+```bash
+hcom r <authoritative-session-uuid> --run-here --go \
+  --hcom-prompt 'Recovery action: immediately run hcom start --as <name>, then report your bound name and session id.'
+```
+
+Re-run the full identity and nonce round-trip verification afterward.
+
+When constructing injected text in a shell command, do not place backticks
+inside a double-quoted shell string; command substitution can execute them.
+Use single-quoted payloads, a safely quoted heredoc, or hcom file/base64 input.
+
+## Approved Peer-Assisted Sandbox Relaunch
+
+Use this only when the operator explicitly approves `danger-full-access` for a
+named target session and the target's current sandbox makes its real task
+impossible, such as a read-only Git metadata directory. It is never a default
+Limux or hcom launch mode.
+
+The target session cannot safely replace itself. A separate authorized
+controller must:
+
+1. Capture the target's hcom name, authoritative session ID, workspace ref,
+   Surface/Pane ref, cwd, and current screen. Require the target to checkpoint
+   and stop new work.
+2. Send `/exit` only to that exact verified surface, press the runtime-compatible
+   return key, and wait until `read-screen` shows the shell prompt.
+3. In the same surface, type the exact approved command:
+
+   ```bash
+   hcom r <name> --run-here --go --sandbox danger-full-access
+   ```
+
+4. Verify one native client, the expected session/name/cwd, `limux-host`
+   ancestry, complete hcom bindings, the expected `LIMUX_*` target, and a nonce
+   ACK. Have the resumed Codex session run `/status` and verify the effective
+   sandbox and approval policy. `--sandbox danger-full-access` changes the
+   filesystem sandbox; it does not by itself disable approval prompts. Confirm
+   the original blocker with a non-mutating check such as `test -w "$(git
+   rev-parse --git-dir)"` before continuing.
+
+Fail closed if the pane is not at a shell, another agent appears, identity is
+ambiguous, a duplicate client exists, or copied context disagrees with live
+state. Do not use focused-pane fallback, do not elevate multiple sessions at
+once. The override is not global, but installed hcom `0.7.66` can retain
+effective per-target launch arguments for later resumes. Record the exact prior
+sandbox and approval policy before relaunch, then explicitly restore both when
+the elevated task ends. If launch or identity verification fails, exit the
+replacement and resume with those exact prior settings or stop for operator
+direction. Newer hcom versions may strip historical policy arguments, but do
+not assume that behavior without checking the installed runtime.
 
 ## Failure Handling
 

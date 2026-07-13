@@ -359,6 +359,7 @@ type PaneWidgetPredicateCallback = dyn Fn(&gtk::Widget) -> bool;
 /// pane is not yet attached to a workspace. Used to stamp `LIMUX_WORKSPACE_ID`
 /// onto every terminal spawned inside the pane.
 type PaneWorkspaceLookupCallback = dyn Fn(&gtk::Widget) -> Option<String>;
+type PaneWorkspaceMetadataLookupCallback = dyn Fn(&gtk::Widget) -> (Option<String>, Option<String>);
 
 pub struct PaneCallbacks {
     pub on_split: Box<PaneSplitCallback>,
@@ -380,6 +381,9 @@ pub struct PaneCallbacks {
     /// Resolve the workspace id for a given pane widget. May be `None` while
     /// the pane is still being constructed; callers treat that as "unknown".
     pub workspace_for_pane: Box<PaneWorkspaceLookupCallback>,
+    /// Resolve the workspace display name and best-known directory for context
+    /// copied from the terminal's right-click menu.
+    pub workspace_metadata_for_pane: Box<PaneWorkspaceMetadataLookupCallback>,
 }
 
 #[derive(Clone)]
@@ -1472,11 +1476,19 @@ fn make_terminal_callbacks(
         }),
         identity: Box::new({
             let pane_outer = internals.pane_outer.clone();
+            let pane_id = internals.pane_id;
+            let tab_id = tab_id.to_string();
             let surface_id = format!("{}:{}", internals.pane_id, tab_id);
             move || {
                 let pane_widget: gtk::Widget = pane_outer.clone().upcast();
+                let (workspace_name, workspace_cwd) =
+                    (callbacks_for_identity.workspace_metadata_for_pane)(&pane_widget);
                 terminal::TerminalIdentity {
                     workspace_id: (callbacks_for_identity.workspace_for_pane)(&pane_widget),
+                    workspace_name,
+                    workspace_cwd,
+                    pane_id,
+                    tab_id: tab_id.clone(),
                     surface_id: surface_id.clone(),
                 }
             }
