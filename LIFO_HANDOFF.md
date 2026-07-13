@@ -2,6 +2,56 @@
 
 Author/runtime/date: lifo / Codex gpt-5.5 (xhigh) / 2026-06-29 09:15 EDT.
 
+## 2026-07-13 Reconciliation And PR State
+
+- Active branch: `lifo/restart-checkpoint-20260711`; Option A planning commit
+  `bf10273fb51e7899817a140bfcf15365a21f2d07` is pushed with remote parity.
+- Canonical visibility/restart contract and PRD-I are durable. TaskMaster
+  `23.1`, `23.2`, and `23.3` are done; pending implementation ladder is
+  `23.4` through `23.11`, with `23.11` explicitly operator-gated.
+- The base Task 23 product slice adds right-click canonical workspace and
+  Surface/Pane context plus a copyable read command. A TDD fix now propagates
+  `read-screen --scrollback --lines` through CLI, GTK bridge, Ghostty history,
+  and the standalone dispatcher. This is not the future G4 runtime-incarnation
+  or HCOM-fencing implementation.
+- Verification is green: focused RED/GREEN tests, `cargo check -p
+  limux-host-linux`, 346 host tests, `./scripts/check.sh`, Ghostty resource
+  validation, and an unchanged-retry full Xvfb smoke. The first Xvfb attempt
+  timed out after stage 6 had already created the split/proof; the retry passed.
+- Task 24 project-skill guidance is in progress, not complete. Hamo's controlled
+  elevated relaunch succeeded, but exact prior sandbox and approval-policy
+  restoration evidence remains required before closeout or global promotion.
+- Hamo owns read-only reconciliation evidence and writable Git execution only;
+  lifo owns TaskMaster, mutation decisions, commit grouping, PR, and review.
+- Immediate next action: exact-stage four logical groups, push, open one Limux
+  PR, then run exact-head bot/peer review. Do not install, restart, merge, or
+  activate the daily driver from this checkpoint.
+
+## 2026-07-12 Post-Restart Verification
+
+- Limux legacy runtime `0.2.0` build `068872a1e162` is responding on the normal
+  socket. `doctor --json` returned exit 2 only because sandboxed process
+  discovery could not see the host PID; socket and resource checks passed.
+- Two TaskMaster workspaces now exist:
+  - `workspace:7b4f512e-472c-458d-9e31-8e279ec53175`, surface
+    `166:terminal-0`, visibly contains Sage.
+  - `workspace:895f67c3-6fa2-4b3d-93e6-d6d8e57a5b2e`, surface
+    `161:terminal-0`, still contains and persists Dino.
+- Sage hcom recovered after a live nonce round trip. Event `430023` confirmed
+  authoritative session `019f0a87-5721-78d0-b360-f3e96e3827c2`; hcom now
+  reports process, live delivery, terminal, hook, and transcript bindings with
+  no control warnings.
+- Sage's own `limux --json identify` incorrectly reported Lifo's focused
+  workspace/surface (`aaacde98...`, `126:91b2...`) instead of Sage's visible
+  `166:terminal-0`. Therefore Sage is usable through hcom but is not correctly
+  bound to its Limux surface identity.
+- Stale collision subscription `sub-4a47486e` was removed. Its alerts replayed
+  Lifo status events from 2026-06-19 and were not evidence of current Sage
+  edits.
+- Do not close, exit, or merge either TaskMaster workspace until ownership and
+  surface association are repaired. In particular, do not treat the old
+  `161:terminal-0` pane as Sage; it is Dino.
+
 ## 2026-07-12 Linux Restart Checkpoint
 
 Current authoritative state before the operator's Linux restart:
