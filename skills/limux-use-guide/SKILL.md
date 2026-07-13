@@ -91,14 +91,27 @@ Useful global flags:
 
 ## Day-To-Day Pane Commands
 
+Use **Surface/Pane** in human-facing text. A pane is the visible split; a
+surface is the active tab within it. Keep canonical `workspace:`, `surface:`,
+`pane:`, and `tab:` refs in commands and copied context.
+
 Observe current context:
 
 ```bash
 limux --json identify
-limux list-panels --workspace "$LIMUX_WORKSPACE_ID"
-limux read-screen --surface "$LIMUX_SURFACE_ID" --lines 80
-limux capture-pane --surface "$LIMUX_SURFACE_ID" --scrollback --lines 200
+limux --json list-workspaces
+limux list-panels --workspace "<workspace-ref>"
+limux read-screen --workspace "<workspace-ref>" \
+  --surface "<surface-ref>" --scrollback --lines 120
+limux capture-pane --workspace "<workspace-ref>" \
+  --surface "<surface-ref>" --scrollback --lines 200
 ```
+
+`capture-pane` aliases `read-screen`. For another or background pane, explicit
+workspace and surface refs are mandatory; bare `identify` can fall back to the
+focused pane when the caller's `LIMUX_*` environment is absent or stale. The
+right-click **Workspace & Surface/Pane Info** submenu copies canonical context
+and a ready-to-run pane read command.
 
 Create panes and workspaces:
 
@@ -321,3 +334,24 @@ For an operator request such as "find the TaskMaster pane, `/exit`, then run
 
 If the visible pane and persisted session registry disagree, stop without
 injecting or editing `session.json`; another live agent may own the pane.
+
+## Approved Sandbox Recovery
+
+With explicit operator approval for the exact target, a separate controller
+may replace a sandbox-blocked session in its same verified Surface/Pane:
+
+1. Record target hcom name/session, workspace, surface, cwd, and screen; have
+   the target checkpoint.
+2. Inject `/exit` only into that surface and wait for its shell prompt.
+3. Enter `hcom r <name> --run-here --go --sandbox danger-full-access` in that
+   same surface.
+4. Verify one client, exact identity and cwd, `limux-host` ancestry, full hcom
+   bindings, correct `LIMUX_*` context, a nonce ACK, and the original blocker.
+   Run Codex `/status`; sandbox selection does not itself disable approvals.
+
+Never auto-escalate, never use focus fallback, and never make
+`danger-full-access` the global/default launch policy. Installed hcom `0.7.66`
+may retain per-target launch policy, so record and explicitly restore the exact
+prior sandbox and approval policy after the elevated task. Abort if any
+identity source disagrees. The exact fail-closed procedure is canonical in
+`skills/limux-a2a/SKILL.md`.
