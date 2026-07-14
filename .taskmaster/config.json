@@ -1,11 +1,10 @@
 {
   "models": {
     "main": {
-      "provider": "ollama",
-      "modelId": "glm-5.2",
+      "provider": "minimax",
+      "modelId": "MiniMax-M3",
       "maxTokens": 120000,
-      "temperature": 0.2,
-      "baseURL": "https://ollama.com/api"
+      "temperature": 0.2
     },
     "research": {
       "provider": "ollama",
@@ -15,10 +14,11 @@
       "baseURL": "https://ollama.com/api"
     },
     "fallback": {
-      "provider": "minimax",
-      "modelId": "MiniMax-M3",
+      "provider": "ollama",
+      "modelId": "glm-5.2",
       "maxTokens": 120000,
-      "temperature": 0.2
+      "temperature": 0.2,
+      "baseURL": "https://ollama.com/api"
     }
   },
   "global": {

@@ -2,6 +2,75 @@
 
 Author/runtime/date: lifo / Codex gpt-5.5 (xhigh) / 2026-06-29 09:15 EDT.
 
+## 2026-07-14 TaskMaster Refinement Wind-Down
+
+### Immediate Next Action
+
+This lane is preservation-only and parked. Do not run any TaskMaster command,
+edit TaskMaster JSON, open a PR, merge, install a runtime, or change task status
+until Sage confirms the numeric-ID source repair is merged, installed through
+the reviewed wrapper path, and focused regression evidence is green.
+
+After that gate clears:
+
+1. Fetch branch `lifo/taskmaster-doc-parity-refinement-20260713` and verify its
+   pushed checkpoint commit and tree before changing files.
+2. Verify `.taskmaster/tasks/tasks.json` still has SHA-256
+   `219de423b704e6d599095372eb9f4b00632cd60582a0b27ac6b61e231446eaf9`.
+3. Read `.taskmaster/docs/TASKMASTER_REFINEMENT_ACTION_PLAN.md`,
+   `.taskmaster/docs/TASKMASTER_REFINEMENT_MAP.md`, and both reports under
+   `.taskmaster/reports/` before resuming refinement task 2.
+4. Re-inventory the live TaskMaster store before any mutation. The malformed
+   string parent IDs `master/15` and `taskmaster-refinement-20260713/5` are
+   repair-required evidence; never hand-edit them.
+5. Keep the delayed-pane command fix on a separate fresh Limux branch from the
+   then-current `origin/main`; do not mix product code into this evidence lane.
+
+### Frozen State
+
+- Branch before checkpoint commit:
+  `lifo/taskmaster-doc-parity-refinement-20260713` at
+  `f1db1d5a6005cfb2b2efe60422725728dccce48a`.
+- Frozen task-store hash:
+  `219de423b704e6d599095372eb9f4b00632cd60582a0b27ac6b61e231446eaf9`.
+- Malformed string parent IDs: `master/15` and
+  `taskmaster-refinement-20260713/5`.
+- Refinement status preserved as evidence: task 1 done, task 2 in progress,
+  tasks 3 through 6 pending. This checkpoint does not semantically accept or
+  correct those statuses.
+- Active product test-strategy gaps remain on `master/16`, `master/17`,
+  `master/20`, `master/23`, `master/24`, and `master/25`.
+- Project-local `skills/taskmaster-refining/SKILL.md` is approved only as a
+  Limux pilot at SHA-256
+  `8eb3c2ede88a7c1021cc97d06b89db4895730b3883748650bd9a1937169f0b56`;
+  no global promotion occurred.
+- Operator packet:
+  `docs/LIMUX_TASKMASTER_REFINEMENT_WIND_DOWN_DECISION_PACKET_2026-07-14.html`.
+
+### Confirmed P1 Deferred Command Defect
+
+On 2026-07-14, hidden SCRIM surface
+`199:57bea2b9-3b01-4e98-b0dd-bb2e7225d13e` realized only when the operator
+returned to the workspace, then executed a stale command and launched
+unauthorized Hermes session `mepo`. HCOM did not have a hidden running launch;
+its wrapper was created only after the Limux surface realized.
+
+The Limux root cause is concrete in installed source `068872a1e162` and current
+source: `send_pane_create_response_after_command` returns `Continue` when a
+terminal handle exists but `send_text` fails, bypassing the retry deadline and
+retaining the command closure indefinitely. Ghostty creates the terminal
+surface only on GLArea realization, while `CreatePane` does not temporarily map
+a hidden target workspace. A client can therefore receive `control command
+timed out` and still have that command execute much later.
+
+Closeout is complete: hcom stop event `501125` removed `mepo`; Hermes and the
+ordinary shell were exited; live SCRIM surface health then listed only panes 27
+and 196. `mepo` performed no repository work. Required product fix: enforce a
+hard deadline/cancellation on every retry path, ensure hidden-workspace command
+panes realize or fail atomically, guarantee timed-out commands cannot execute
+later, and add a hidden-workspace regression plus lifecycle diagnostics. HCOM
+SQLite replay observed after realization is a separate Dino-owned defect.
+
 ## 2026-07-13 Reconciliation And PR State
 
 - Active branch: `lifo/restart-checkpoint-20260711`; Option A planning commit

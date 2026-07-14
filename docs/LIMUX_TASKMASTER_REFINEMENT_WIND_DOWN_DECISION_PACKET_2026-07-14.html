@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Limux TaskMaster Refinement Wind-Down Decision Packet</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0c1014;
+      --panel: #141a20;
+      --panel-2: #1a2229;
+      --line: #303b46;
+      --line-strong: #53616e;
+      --text: #eef3f6;
+      --muted: #aeb9c2;
+      --faint: #7f8b95;
+      --accent: #55c2b3;
+      --blue: #69aaf5;
+      --warn: #e0ae4d;
+      --danger: #e47a70;
+      --ok: #8ac778;
+      --code: #080b0e;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      line-height: 1.5;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 238px minmax(0, 1fr);
+      gap: 20px;
+      width: min(1320px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 24px 0 48px;
+    }
+
+    .roadmap {
+      position: sticky;
+      top: 16px;
+      align-self: start;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: 16px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr);
+      gap: 10px;
+      padding: 11px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    }
+
+    .step:last-child { border-bottom: 0; }
+    .dot { width: 10px; height: 10px; margin-top: 6px; background: var(--faint); }
+    .step.done .dot { background: var(--ok); }
+    .step.current .dot { background: var(--accent); box-shadow: 0 0 0 4px rgba(85, 194, 179, 0.14); }
+    .step.gated .dot { background: var(--warn); }
+    .step.risk .dot { background: var(--danger); }
+    .step strong { display: block; font-size: 12px; }
+    .step span { display: block; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+      gap: 18px;
+      align-items: end;
+      padding: 18px 0 24px;
+      border-bottom: 1px solid var(--line-strong);
+    }
+
+    h1, h2, h3 { margin: 0; line-height: 1.2; letter-spacing: 0; }
+    h1 { font-size: 34px; }
+    h2 { font-size: 21px; margin-bottom: 14px; }
+    h3 { font-size: 14px; color: var(--warn); margin-bottom: 8px; text-transform: uppercase; }
+    p { margin: 0 0 12px; color: var(--muted); }
+    strong { color: var(--text); }
+
+    .meta, section, .copybox {
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .meta { padding: 14px; display: grid; gap: 8px; }
+    .meta div { display: flex; justify-content: space-between; gap: 14px; color: var(--muted); font-size: 12px; }
+    .meta strong { text-align: right; overflow-wrap: anywhere; }
+
+    section { margin-top: 18px; padding: 20px; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .fact, .decision {
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      padding: 14px;
+    }
+    .fact .label { color: var(--faint); font-size: 11px; text-transform: uppercase; }
+    .fact .value { margin-top: 8px; overflow-wrap: anywhere; }
+    .fact.ok { border-top: 3px solid var(--ok); }
+    .fact.gated { border-top: 3px solid var(--warn); }
+    .fact.risk { border-top: 3px solid var(--danger); }
+
+    .decision { margin-bottom: 12px; }
+    .decision p { font-size: 13px; }
+    .decision-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(330px, 430px);
+      gap: 18px;
+      align-items: start;
+    }
+
+    label.option {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr);
+      gap: 10px;
+      padding: 10px;
+      margin-top: 8px;
+      background: rgba(8, 11, 14, 0.48);
+      border: 1px solid transparent;
+      cursor: pointer;
+    }
+
+    label.option:hover { border-color: var(--line-strong); }
+    input[type="radio"], input[type="checkbox"] { accent-color: var(--accent); margin-top: 3px; }
+    .option-title { display: block; color: var(--text); font-weight: 700; font-size: 13px; }
+    .option-detail { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .rec { color: var(--accent); font-size: 11px; text-transform: uppercase; margin-left: 6px; }
+
+    .copybox { position: sticky; top: 16px; padding: 16px; }
+    textarea, input[type="text"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: var(--code);
+      color: var(--text);
+      padding: 12px;
+      font: inherit;
+    }
+    textarea { min-height: 120px; resize: vertical; }
+    #payload { min-height: 430px; }
+    .field { margin-top: 12px; }
+    .field label { display: block; margin-bottom: 6px; color: var(--text); font-weight: 800; font-size: 12px; }
+    .field small { display: block; margin-top: 5px; color: var(--faint); }
+
+    button {
+      width: 100%;
+      margin-top: 10px;
+      border: 1px solid var(--line-strong);
+      background: var(--accent);
+      color: #04100e;
+      font: inherit;
+      font-weight: 800;
+      padding: 12px;
+      cursor: pointer;
+    }
+    button.secondary { background: transparent; color: var(--text); }
+    code { background: var(--code); border: 1px solid #20272d; padding: 2px 5px; overflow-wrap: anywhere; }
+    ul { margin: 0; padding-left: 20px; }
+    li { color: var(--muted); margin: 7px 0; overflow-wrap: anywhere; }
+    a { color: var(--blue); }
+    .evidence { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 18px; }
+
+    @media (max-width: 960px) {
+      .layout, header, .decision-layout, .grid, .evidence { grid-template-columns: 1fr; }
+      .roadmap, .copybox { position: static; }
+      h1 { font-size: 28px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="layout">
+    <aside class="roadmap" aria-label="Wind-down roadmap">
+      <div class="step done"><i class="dot"></i><div><strong>G0 Inventory</strong><span>Document coverage complete</span></div></div>
+      <div class="step done"><i class="dot"></i><div><strong>G1 Evidence</strong><span>Runtime divergences captured</span></div></div>
+      <div class="step gated"><i class="dot"></i><div><strong>G2 Repair</strong><span>TaskMaster source fix required</span></div></div>
+      <div class="step risk"><i class="dot"></i><div><strong>P1 Runtime</strong><span>Deferred pane command confirmed</span></div></div>
+      <div class="step current"><i class="dot"></i><div><strong>G3 Wind-Down</strong><span>Preserve, push, and park</span></div></div>
+    </aside>
+
+    <div>
+      <header>
+        <div>
+          <p>Preservation-only decision packet</p>
+          <h1>Limux TaskMaster Refinement Wind-Down</h1>
+        </div>
+        <div class="meta">
+          <div><span>Date</span><strong>2026-07-14</strong></div>
+          <div><span>Time</span><strong>12:14 PM EST</strong></div>
+          <div><span>Author</span><strong>lifo</strong></div>
+          <div><span>Model</span><strong>gpt-5.6-sol (max)</strong></div>
+          <div><span>Scope</span><strong>/home/riche/MCPs/limux</strong></div>
+          <div><span>Branch</span><strong>lifo/taskmaster-doc-parity-refinement-20260713</strong></div>
+        </div>
+      </header>
+
+      <section>
+        <h2>Current Status</h2>
+        <div class="grid">
+          <div class="fact ok"><div class="label">Completed</div><div class="value">Bidirectional document coverage has zero missing paths. The local refinement skill and two runtime-divergence reports are preserved.</div></div>
+          <div class="fact gated"><div class="label">Frozen Gate</div><div class="value">Task store SHA-256: <code>219de423b704e6d599095372eb9f4b00632cd60582a0b27ac6b61e231446eaf9</code>.</div></div>
+          <div class="fact risk"><div class="label">Repair Required</div><div class="value">Malformed string parent IDs <code>master/15</code> and <code>taskmaster-refinement-20260713/5</code>. No semantic acceptance.</div></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>What Is Explicitly Not Done</h2>
+        <ul>
+          <li>No TaskMaster command, status correction, manual JSON repair, complexity expansion, PR, merge, runtime install, or global skill promotion is authorized by this checkpoint.</li>
+          <li>Active product test-strategy gaps remain on <code>master/16</code>, <code>master/17</code>, <code>master/20</code>, <code>master/23</code>, <code>master/24</code>, and <code>master/25</code>.</li>
+          <li>Refinement task 2 remains in progress; tasks 3 through 6 remain pending. Those statuses are frozen evidence, not a completion claim.</li>
+          <li>The delayed-pane defect is classified but not fixed in this wind-down branch.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>New P1 Runtime Finding</h2>
+        <p>A command-bearing pane created in a hidden workspace can remain unrealized after the client receives <code>control command timed out</code>, then execute much later when the operator visits that workspace.</p>
+        <ul>
+          <li><code>send_pane_create_response_after_command</code> returns <code>Continue</code> when <code>send_text</code> fails, bypassing its attempt deadline and retaining the command closure indefinitely.</li>
+          <li>Ghostty creates the terminal surface only when the GTK GLArea realizes.</li>
+          <li><code>CreatePane</code> does not temporarily map a hidden target workspace, so realization may wait for operator navigation.</li>
+          <li>Surface 199 and unauthorized Hermes session <code>mepo</code> were stopped without repo work; the shell and exact pane were then closed. HCOM replay from SQLite locking is a separate Dino-owned defect.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Decisions</h2>
+        <div class="decision-layout">
+          <div>
+            <article class="decision">
+              <h3>Decision 1 - TaskMaster Re-Entry</h3>
+              <p><strong>Recommendation:</strong> Repair and validate TaskMaster first, then resume from the frozen branch. <strong>Why:</strong> it preserves evidence while avoiding unsupported hand-editing or status drift.</p>
+              <label class="option"><input type="radio" name="taskmasterPath" value="A - Repair TaskMaster runtime first, then resume the frozen branch" checked><span><span class="option-title">A - Repair, validate, resume <span class="rec">recommended</span></span><span class="option-detail">Require repaired numeric-ID update behavior and reviewed wrapper proof before any mutation.</span></span></label>
+              <label class="option"><input type="radio" name="taskmasterPath" value="B - Keep the refinement lane parked indefinitely"><span><span class="option-title">B - Keep parked</span><span class="option-detail">Preserves the checkpoint but leaves TaskMaster/docs refinement incomplete.</span></span></label>
+            </article>
+
+            <article class="decision">
+              <h3>Decision 2 - Deferred Pane Command</h3>
+              <p><strong>Recommendation:</strong> Fix the P1 before any further unattended command-bearing pane creation in hidden workspaces. <strong>Risk:</strong> a timed-out request can currently execute later without current operator intent.</p>
+              <label class="option"><input type="radio" name="panePath" value="A - Fix P1 before hidden-workspace command launches resume" checked><span><span class="option-title">A - Fix before reuse <span class="rec">recommended</span></span><span class="option-detail">Add hard cancellation, hidden-workspace realization handling, diagnostics, and a regression test.</span></span></label>
+              <label class="option"><input type="radio" name="panePath" value="B - Defer fix and prohibit command-bearing hidden-workspace pane launches"><span><span class="option-title">B - Defer with prohibition</span><span class="option-detail">Avoid the unsafe path operationally until implementation capacity returns.</span></span></label>
+            </article>
+
+            <article class="decision">
+              <h3>Execution Mode</h3>
+              <p><strong>Recommendation:</strong> Park now. Resume in the current manager session only after the repair gate; use native subagents for bounded read-only verification.</p>
+              <label class="option"><input type="radio" name="executionMode" value="Defer and document until TaskMaster repair gate clears" checked><span><span class="option-title">Defer and document <span class="rec">recommended now</span></span><span class="option-detail">Preservation commit only; shift active capacity to operator-priority business work.</span></span></label>
+              <label class="option"><input type="radio" name="executionMode" value="Current manager session after repair"><span><span class="option-title">Current manager after repair</span><span class="option-detail">Best for exact TaskMaster mutations and integration decisions.</span></span></label>
+              <label class="option"><input type="radio" name="executionMode" value="Native subagents after repair"><span><span class="option-title">Native subagents after repair</span><span class="option-detail">Use only for isolated inventory, tests, or review; manager verifies all load-bearing claims.</span></span></label>
+            </article>
+
+            <article class="decision">
+              <h3>Skills On Resume</h3>
+              <label class="option"><input type="checkbox" name="skills" value="$taskmaster-reviewed" checked><span><span class="option-title">$taskmaster-reviewed</span><span class="option-detail">Use only after the source repair and wrapper gate pass.</span></span></label>
+              <label class="option"><input type="checkbox" name="skills" value="$systematic-debugging" checked><span><span class="option-title">$systematic-debugging</span><span class="option-detail">Reproduce and fix delayed command execution from evidence.</span></span></label>
+              <label class="option"><input type="checkbox" name="skills" value="$test-driven-development" checked><span><span class="option-title">$test-driven-development</span><span class="option-detail">Write the hidden-workspace timeout/non-execution regression first.</span></span></label>
+              <label class="option"><input type="checkbox" name="skills" value="$limux-use-guide" checked><span><span class="option-title">$limux-use-guide</span><span class="option-detail">Use explicit workspace and surface/pane targeting.</span></span></label>
+              <label class="option"><input type="checkbox" name="skills" value="$methodical-modification-protocol"><span><span class="option-title">$methodical-modification-protocol</span><span class="option-detail">Add when source repair becomes an implementation lane.</span></span></label>
+              <label class="option"><input type="checkbox" name="skillRanker" value="Run a dedicated skill-ranking subagent"><span><span class="option-title">Run skill-ranking subagent</span><span class="option-detail">Optional after the repair gate; not needed for this preservation checkpoint.</span></span></label>
+              <div class="field">
+                <label for="customSkills">Additional skills</label>
+                <textarea id="customSkills" placeholder="$adversarial-review or another explicitly scoped skill"></textarea>
+              </div>
+            </article>
+
+            <article class="decision">
+              <h3>Resume Contract</h3>
+              <label class="option"><input type="checkbox" name="resumeContract" value="Verify frozen store hash before any TaskMaster command" checked><span><span class="option-title">Verify frozen store hash</span><span class="option-detail">Expected SHA-256 begins <code>219de423b704...</code>.</span></span></label>
+              <label class="option"><input type="checkbox" name="resumeContract" value="Require TaskMaster numeric-ID repair and focused regression proof" checked><span><span class="option-title">Require repair proof</span><span class="option-detail">Do not hand-edit the malformed IDs.</span></span></label>
+              <label class="option"><input type="checkbox" name="resumeContract" value="Resume refinement task 2 without changing status first" checked><span><span class="option-title">Resume task 2 as-is</span><span class="option-detail">Re-inventory before any status or dependency mutation.</span></span></label>
+              <label class="option"><input type="checkbox" name="resumeContract" value="Create no TaskMaster tasks while the mutation freeze remains active" checked><span><span class="option-title">Honor mutation freeze</span><span class="option-detail">The delayed-pane defect stays in the handoff until TaskMaster is safe.</span></span></label>
+            </article>
+
+            <div class="field">
+              <label for="notes">Additional notes</label>
+              <textarea id="notes" placeholder="Add timing, priority, or execution constraints."></textarea>
+            </div>
+          </div>
+
+          <aside class="copybox">
+            <h2>Copy Back</h2>
+            <p>Selections generate a paste-ready operator response.</p>
+            <textarea id="payload" readonly></textarea>
+            <button id="copyButton" type="button">Copy Decision Response</button>
+            <button class="secondary" id="resetButton" type="button">Reset Recommended Defaults</button>
+            <p id="copyState" aria-live="polite"></p>
+          </aside>
+        </div>
+      </section>
+
+      <section>
+        <h2>Sources / Evidence</h2>
+        <ul class="evidence">
+          <li><a href="../.taskmaster/docs/TASKMASTER_REFINEMENT_MAP.md">TaskMaster refinement disposition map</a></li>
+          <li><a href="../.taskmaster/docs/TASKMASTER_REFINEMENT_ACTION_PLAN.md">Repair-gated action plan</a></li>
+          <li><a href="../.taskmaster/reports/TASKMASTER_RUNTIME_DIVERGENCE_20260713.md">Runtime divergence report</a></li>
+          <li><a href="../.taskmaster/reports/TASKMASTER_UPDATE_REVIEW_STATUS_FAILURE_20260713.md">Update/review/status failure report</a></li>
+          <li><a href="../skills/taskmaster-refining/SKILL.md">Project-local taskmaster-refining pilot skill</a></li>
+          <li><a href="../LIFO_HANDOFF.md">Lifo zero-context resume handoff</a></li>
+          <li><code>rust/limux-host-linux/src/window.rs</code>: command retry and CreatePane paths</li>
+          <li><code>rust/limux-host-linux/src/terminal.rs</code>: Ghostty surface creation on GLArea realize</li>
+        </ul>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    function radioValue(name) {
+      const node = document.querySelector(`input[name="${name}"]:checked`);
+      return node ? node.value : "No selection.";
+    }
+
+    function checkedValues(name) {
+      const nodes = Array.from(document.querySelectorAll(`input[name="${name}"]:checked`));
+      return nodes.length ? nodes.map((node) => `- ${node.value}`).join("\n") : "- No selection.";
+    }
+
+    function buildPayload() {
+      const notes = document.getElementById("notes").value.trim() || "No additional notes.";
+      const customSkills = document.getElementById("customSkills").value.trim() || "No additional skills.";
+      return [
+        "LIMUX TASKMASTER REFINEMENT WIND-DOWN DECISION",
+        "",
+        "TaskMaster re-entry:",
+        radioValue("taskmasterPath"),
+        "",
+        "Deferred pane command:",
+        radioValue("panePath"),
+        "",
+        "Execution mode:",
+        radioValue("executionMode"),
+        "",
+        "Skills:",
+        checkedValues("skills"),
+        "",
+        "Additional skills:",
+        customSkills,
+        "",
+        "Skill-ranking subagent:",
+        checkedValues("skillRanker"),
+        "",
+        "Resume contract:",
+        checkedValues("resumeContract"),
+        "",
+        "Notes:",
+        notes
+      ].join("\n");
+    }
+
+    function updatePayload() {
+      document.getElementById("payload").value = buildPayload();
+      document.getElementById("copyState").textContent = "";
+    }
+
+    async function copyPayload() {
+      const payload = document.getElementById("payload").value;
+      try {
+        await navigator.clipboard.writeText(payload);
+        document.getElementById("copyState").textContent = "Copied.";
+      } catch {
+        const box = document.getElementById("payload");
+        box.focus();
+        box.select();
+        document.execCommand("copy");
+        document.getElementById("copyState").textContent = "Copied with fallback.";
+      }
+    }
+
+    function resetPacket() {
+      document.querySelectorAll("input[type=checkbox]").forEach((node) => { node.checked = false; });
+      document.querySelector('input[name="taskmasterPath"][value^="A - Repair"]').checked = true;
+      document.querySelector('input[name="panePath"][value^="A - Fix"]').checked = true;
+      document.querySelector('input[name="executionMode"][value^="Defer"]').checked = true;
+      ["$taskmaster-reviewed", "$systematic-debugging", "$test-driven-development", "$limux-use-guide"].forEach((value) => {
+        const node = document.querySelector(`input[name="skills"][value="${value}"]`);
+        node.checked = true;
+      });
+      document.querySelectorAll('input[name="resumeContract"]').forEach((node) => { node.checked = true; });
+      document.getElementById("customSkills").value = "";
+      document.getElementById("notes").value = "";
+      updatePayload();
+    }
+
+    document.querySelectorAll("input, textarea").forEach((node) => {
+      node.addEventListener("input", updatePayload);
+      node.addEventListener("change", updatePayload);
+    });
+    document.getElementById("copyButton").addEventListener("click", copyPayload);
+    document.getElementById("resetButton").addEventListener("click", resetPacket);
+    updatePayload();
+  </script>
+</body>
+</html>
