@@ -21,6 +21,11 @@ All notable Limux changes should be recorded here when a PR merges.
   side of the application header, with bold separators and a bold active
   workspace name.
 
+### Fixed
+
+- Moved process-tree sampling off the GTK thread into one bounded worker and
+  added a hard deadline with child cleanup for live `hcom` manager queries.
+
 ## [0.2.1] - 2026-07-10
 
 ### Added

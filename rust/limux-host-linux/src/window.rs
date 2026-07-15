@@ -158,7 +158,8 @@ struct ManagerRefresh {
 
 fn install_header_status_refresh(state: &State, status_label: gtk::Label) {
     let state = state.clone();
-    let mut sampler = crate::header_status::ProcessTreeSampler::new();
+    let sampler = crate::header_status::BackgroundProcessSampler::new();
+    let mut resource_sample = (None, None);
     let mut manager_refresh = ManagerRefresh {
         directory: None,
         managers: crate::header_status::ManagerStatus::Loading,
@@ -227,7 +228,10 @@ fn install_header_status_refresh(state: &State, status_label: gtk::Label) {
             }
         }
 
-        let (ram_mb, cpu_percent) = sampler.sample();
+        if let Some(completed) = sampler.latest() {
+            resource_sample = completed;
+        }
+        let (ram_mb, cpu_percent) = resource_sample;
         let snapshot = crate::header_status::HeaderSnapshot {
             workspace_name,
             pane_count,
@@ -7858,6 +7862,23 @@ mod tests {
         assert!(function.contains("bar.set_title_widget(Some(&gtk::Box::new("));
         assert!(source.contains("install_header_status_refresh(&state"));
         assert!(!function.contains("bar.set_title_widget(Some(&gtk::Label"));
+    }
+
+    #[test]
+    fn gtk_header_refresh_only_reads_completed_background_samples() {
+        let source = include_str!("window.rs");
+        let function = source
+            .split_once("fn install_header_status_refresh")
+            .expect("header refresh")
+            .1
+            .split_once("fn workspace_ref")
+            .expect("header refresh boundary")
+            .0;
+
+        assert!(function.contains("BackgroundProcessSampler"));
+        assert!(function.contains(".latest()"));
+        assert!(!function.contains(".sample()"));
+        assert!(!function.contains("read_process_usage"));
     }
 
     #[test]

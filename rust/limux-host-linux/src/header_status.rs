@@ -1,8 +1,17 @@
 use std::collections::{BTreeSet, HashSet};
+use std::fmt;
 use std::fs;
+use std::io::Read;
+use std::os::fd::AsRawFd;
 use std::path::Path;
-use std::process::Command;
-use std::time::Instant;
+use std::process::{Command, Output, Stdio};
+use std::sync::{Arc, Condvar, Mutex};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
+
+const RESOURCE_SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
+const HCOM_QUERY_TIMEOUT: Duration = Duration::from_secs(2);
+type ResourceSample = (Option<u64>, Option<f64>);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum HeaderSection {
@@ -266,6 +275,82 @@ impl ProcessTreeSampler {
     }
 }
 
+pub(crate) struct BackgroundProcessSampler {
+    latest: Arc<Mutex<Option<ResourceSample>>>,
+    stop: Arc<(Mutex<bool>, Condvar)>,
+    worker: Option<JoinHandle<()>>,
+}
+
+impl BackgroundProcessSampler {
+    pub(crate) fn new() -> Self {
+        let mut sampler = ProcessTreeSampler::new();
+        Self::spawn_with(RESOURCE_SAMPLE_INTERVAL, move || sampler.sample())
+    }
+
+    fn spawn_with<F>(interval: Duration, mut sample: F) -> Self
+    where
+        F: FnMut() -> ResourceSample + Send + 'static,
+    {
+        let latest = Arc::new(Mutex::new(None));
+        let stop = Arc::new((Mutex::new(false), Condvar::new()));
+        let latest_for_worker = Arc::clone(&latest);
+        let stop_for_worker = Arc::clone(&stop);
+        let worker = thread::spawn(move || loop {
+            if *stop_for_worker
+                .0
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+            {
+                break;
+            }
+
+            let completed = sample();
+            *latest_for_worker
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(completed);
+
+            let stopped = stop_for_worker
+                .0
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let (stopped, _) = stop_for_worker
+                .1
+                .wait_timeout_while(stopped, interval, |stopped| !*stopped)
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if *stopped {
+                break;
+            }
+        });
+
+        Self {
+            latest,
+            stop,
+            worker: Some(worker),
+        }
+    }
+
+    pub(crate) fn latest(&self) -> Option<ResourceSample> {
+        *self
+            .latest
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+impl Drop for BackgroundProcessSampler {
+    fn drop(&mut self) {
+        *self
+            .stop
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = true;
+        self.stop.1.notify_all();
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
+}
+
 fn read_process_usage() -> Vec<ProcessUsage> {
     let Ok(entries) = fs::read_dir("/proc") else {
         return Vec::new();
@@ -288,17 +373,157 @@ fn read_process_usage() -> Vec<ProcessUsage> {
         .collect()
 }
 
+#[derive(Debug)]
+enum CommandRunError {
+    Spawn(std::io::Error),
+    Wait(std::io::Error),
+    TimedOut {
+        pid: u32,
+        timeout: Duration,
+        cleanup_error: Option<String>,
+    },
+}
+
+impl fmt::Display for CommandRunError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Spawn(error) => write!(formatter, "failed to start command: {error}"),
+            Self::Wait(error) => write!(formatter, "failed while waiting for command: {error}"),
+            Self::TimedOut {
+                pid,
+                timeout,
+                cleanup_error,
+            } => {
+                write!(
+                    formatter,
+                    "command child {pid} timed out after {} ms",
+                    timeout.as_millis()
+                )?;
+                if let Some(error) = cleanup_error {
+                    write!(formatter, "; child cleanup failed: {error}")?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+fn command_output_with_timeout(
+    program: &std::ffi::OsStr,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<Output, CommandRunError> {
+    let mut child = Command::new(program)
+        .args(args)
+        .env_remove("HCOM_NAME")
+        .env_remove("HCOM_PROCESS_ID")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(CommandRunError::Spawn)?;
+    let pid = child.id();
+    let mut stdout = child.stdout.take().ok_or_else(|| {
+        CommandRunError::Wait(std::io::Error::other("child stdout pipe was not created"))
+    })?;
+    let mut stderr = child.stderr.take().ok_or_else(|| {
+        CommandRunError::Wait(std::io::Error::other("child stderr pipe was not created"))
+    })?;
+    if let Err(error) = set_nonblocking(&stdout).and_then(|()| set_nonblocking(&stderr)) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(CommandRunError::Wait(error));
+    }
+
+    let deadline = Instant::now() + timeout;
+    let mut status = None;
+    let mut stdout_bytes = Vec::new();
+    let mut stderr_bytes = Vec::new();
+    let mut stdout_eof = false;
+    let mut stderr_eof = false;
+
+    loop {
+        if !stdout_eof {
+            stdout_eof =
+                drain_nonblocking(&mut stdout, &mut stdout_bytes).map_err(CommandRunError::Wait)?;
+        }
+        if !stderr_eof {
+            stderr_eof =
+                drain_nonblocking(&mut stderr, &mut stderr_bytes).map_err(CommandRunError::Wait)?;
+        }
+        if status.is_none() {
+            status = child.try_wait().map_err(CommandRunError::Wait)?;
+        }
+        if stdout_eof && stderr_eof {
+            if let Some(status) = status {
+                return Ok(Output {
+                    status,
+                    stdout: stdout_bytes,
+                    stderr: stderr_bytes,
+                });
+            }
+        }
+
+        if Instant::now() >= deadline {
+            let kill_error = if status.is_none() {
+                child.kill().err().map(|error| error.to_string())
+            } else {
+                None
+            };
+            let reap_error = child.wait().err().map(|error| error.to_string());
+            let cleanup_error = match (kill_error, reap_error) {
+                (None, None) => None,
+                (Some(kill), None) => Some(format!("kill: {kill}")),
+                (None, Some(reap)) => Some(format!("reap: {reap}")),
+                (Some(kill), Some(reap)) => Some(format!("kill: {kill}; reap: {reap}")),
+            };
+            return Err(CommandRunError::TimedOut {
+                pid,
+                timeout,
+                cleanup_error,
+            });
+        }
+
+        thread::sleep(
+            deadline
+                .saturating_duration_since(Instant::now())
+                .min(Duration::from_millis(10)),
+        );
+    }
+}
+
+fn set_nonblocking(stream: &impl AsRawFd) -> std::io::Result<()> {
+    let descriptor = stream.as_raw_fd();
+    let flags = unsafe { libc::fcntl(descriptor, libc::F_GETFL) };
+    if flags < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    if unsafe { libc::fcntl(descriptor, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+fn drain_nonblocking(stream: &mut impl Read, output: &mut Vec<u8>) -> std::io::Result<bool> {
+    let mut buffer = [0u8; 8_192];
+    match stream.read(&mut buffer) {
+        Ok(0) => Ok(true),
+        Ok(read) => {
+            output.extend_from_slice(&buffer[..read]);
+            Ok(false)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(false),
+        Err(error) if error.kind() == std::io::ErrorKind::Interrupted => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
 pub(crate) fn query_directory_managers(directory: &str) -> Result<Vec<String>, String> {
     let run = |program: &std::ffi::OsStr| {
-        Command::new(program)
-            .args(["list", "mgrs", "--json"])
-            .env_remove("HCOM_NAME")
-            .env_remove("HCOM_PROCESS_ID")
-            .output()
+        command_output_with_timeout(program, &["list", "mgrs", "--json"], HCOM_QUERY_TIMEOUT)
     };
     let output = match run(std::ffi::OsStr::new("hcom")) {
         Ok(output) => output,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+        Err(CommandRunError::Spawn(error)) if error.kind() == std::io::ErrorKind::NotFound => {
             let fallback = dirs::home_dir()
                 .map(|home| home.join(".local/bin/hcom"))
                 .ok_or_else(|| "failed to resolve user-local hcom path".to_string())?;
@@ -323,10 +548,16 @@ pub(crate) fn query_directory_managers(directory: &str) -> Result<Vec<String>, S
 #[cfg(test)]
 mod tests {
     use super::{
-        cpu_percent_from_ticks, manager_names_for_directory, parse_proc_stat, parse_vm_rss_kb,
-        process_tree_totals, render_header_markup, HeaderSection, HeaderSnapshot, ManagerStatus,
+        command_output_with_timeout, cpu_percent_from_ticks, manager_names_for_directory,
+        parse_proc_stat, parse_vm_rss_kb, process_tree_totals, render_header_markup,
+        BackgroundProcessSampler, CommandRunError, HeaderSection, HeaderSnapshot, ManagerStatus,
         ProcessUsage,
     };
+    use std::ffi::OsStr;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::thread;
+    use std::time::{Duration, Instant};
 
     #[test]
     fn default_header_markup_orders_sections_and_escapes_dynamic_text() {
@@ -470,5 +701,92 @@ mod tests {
             render_header_markup("0.2.2", &[HeaderSection::DirectoryManagers], &snapshot,)
                 .contains("DIR MGR(s): <b>unavailable</b>")
         );
+    }
+
+    #[test]
+    fn background_sampler_never_overlaps_and_keeps_the_latest_sample() {
+        let active = Arc::new(AtomicUsize::new(0));
+        let maximum_active = Arc::new(AtomicUsize::new(0));
+        let completed = Arc::new(AtomicUsize::new(0));
+        let active_for_worker = Arc::clone(&active);
+        let maximum_for_worker = Arc::clone(&maximum_active);
+        let completed_for_worker = Arc::clone(&completed);
+
+        let sampler = BackgroundProcessSampler::spawn_with(Duration::from_millis(1), move || {
+            let current = active_for_worker.fetch_add(1, Ordering::SeqCst) + 1;
+            maximum_for_worker.fetch_max(current, Ordering::SeqCst);
+            thread::sleep(Duration::from_millis(15));
+            active_for_worker.fetch_sub(1, Ordering::SeqCst);
+            let sequence = completed_for_worker.fetch_add(1, Ordering::SeqCst) + 1;
+            (Some(sequence as u64), None)
+        });
+
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while completed.load(Ordering::SeqCst) < 3 && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        assert!(completed.load(Ordering::SeqCst) >= 3);
+        assert_eq!(maximum_active.load(Ordering::SeqCst), 1);
+        assert!(sampler.latest().is_some_and(|sample| sample.0 >= Some(3)));
+    }
+
+    #[test]
+    fn background_sampler_stops_when_dropped() {
+        let completed = Arc::new(AtomicUsize::new(0));
+        let completed_for_worker = Arc::clone(&completed);
+        let sampler = BackgroundProcessSampler::spawn_with(Duration::from_millis(5), move || {
+            completed_for_worker.fetch_add(1, Ordering::SeqCst);
+            (Some(1), None)
+        });
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while completed.load(Ordering::SeqCst) == 0 && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(2));
+        }
+
+        drop(sampler);
+        let stopped_at = completed.load(Ordering::SeqCst);
+        thread::sleep(Duration::from_millis(25));
+
+        assert!(stopped_at > 0);
+        assert_eq!(completed.load(Ordering::SeqCst), stopped_at);
+    }
+
+    #[test]
+    fn timed_out_command_is_killed_and_reaped() {
+        let started = Instant::now();
+        let error = command_output_with_timeout(
+            OsStr::new("/bin/sh"),
+            &["-c", "sleep 10"],
+            Duration::from_millis(30),
+        )
+        .expect_err("sleeping child must exceed the deadline");
+
+        let CommandRunError::TimedOut { pid, .. } = error else {
+            panic!("expected timeout error, got {error:?}");
+        };
+        assert!(started.elapsed() < Duration::from_secs(1));
+
+        let mut status = 0;
+        let wait_result = unsafe { libc::waitpid(pid as i32, &mut status, libc::WNOHANG) };
+        assert_eq!(wait_result, -1);
+        assert_eq!(
+            std::io::Error::last_os_error().raw_os_error(),
+            Some(libc::ECHILD)
+        );
+    }
+
+    #[test]
+    fn command_deadline_includes_output_pipe_cleanup() {
+        let started = Instant::now();
+        let error = command_output_with_timeout(
+            OsStr::new("/bin/sh"),
+            &["-c", "sleep 0.25 &"],
+            Duration::from_millis(30),
+        )
+        .expect_err("inherited output pipe must not extend the command deadline");
+
+        assert!(matches!(error, CommandRunError::TimedOut { .. }));
+        assert!(started.elapsed() < Duration::from_millis(150));
     }
 }
