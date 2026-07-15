@@ -540,6 +540,24 @@
             ],
             "parentTaskId": 23,
             "parentId": "23"
+          },
+          {
+            "id": 12,
+            "title": "Harden Limux-first HCOM spawn and pane lifecycle correctness",
+            "description": "Provide deterministic Limux pane creation, readiness, prompt submission, error propagation, reconciliation, and exact teardown primitives for an HCOM adapter that defaults local agent launches into the caller Limux workspace.",
+            "details": "Acceptance: determine eligibility from non-empty LIMUX_WORKSPACE_ID, LIMUX_PANE_ID, LIMUX_SURFACE_ID, LIMUX_TAB_ID, and LIMUX_SOCKET; reconcile with explicit identify/list-panels and never use focused identity for mutation. pane.create must return stable workspace, pane, and surface IDs and accept an idempotency key or equivalent queryable operation identity. A client-visible timeout after dispatch is ambiguous: reconcile late success and never blindly retry or fall back to another terminal. Preserve server causes such as not enough room through review spawn and top-level CLI output. Distinguish unrealized/not-ready surfaces from unsupported keys. Replace fixed sleeps and API-ACK-only prompt sent status with readiness plus observable submission semantics. Expose exact created-surface teardown with no focus fallback. Tests must cover focus drift, no-room propagation, late success without duplicate panes, not-ready send_text/send_key, real PTY prompt submission, stale caller tuples, channel/socket isolation, exact teardown, and no external-terminal fallback after Limux selection or mutation. Pair with the HCOM-owned default-host adapter; do not implement HCOM host selection in Limux.",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 23
+          },
+          {
+            "id": 13,
+            "title": "Make doctor distinguish an unobservable host process from no host",
+            "description": "Prevent doctor from reporting no running Limux host when the control socket identifies a live host but the caller cannot inspect proc executable metadata.",
+            "details": "Current process discovery silently skips proc exe read failures and can emit no running Limux host process found even when identify succeeds on the live socket. Reconcile process and socket evidence: a successful control-socket identity is positive host evidence; inaccessible process metadata must be reported as unobservable or permission-limited rather than absent. Preserve a real no-host failure when neither process nor socket evidence exists. Add focused tests for socket-positive plus proc-unobservable, process-positive plus socket-failed, and neither observable. Verify JSON status and exit-code semantics remain documented and stable.",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 23
           }
         ],
         "updatedAt": "2026-07-13T05:29:52.412Z"
@@ -575,7 +593,9 @@
       "completedCount": 12,
       "tags": [
         "master"
-      ]
+      ],
+      "created": "2026-07-15T19:34:21.446Z",
+      "description": "Tasks for master context"
     }
   },
   "cmux-parity-20260707": {
