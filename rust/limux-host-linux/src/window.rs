@@ -2,6 +2,8 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 use adw::prelude::*;
 use gtk::gdk::prelude::ToplevelExt;
@@ -131,13 +133,115 @@ fn window_chrome_policy(_compositor_provides_decorations: bool) -> WindowChromeP
     }
 }
 
-fn build_window_header(title: &str, decoration_layout: &str) -> adw::HeaderBar {
+fn build_window_header(decoration_layout: &str) -> (adw::HeaderBar, gtk::Label) {
     let bar = adw::HeaderBar::new();
-    bar.set_title_widget(Some(&gtk::Label::builder().label(title).build()));
+    bar.set_title_widget(Some(&gtk::Box::new(gtk::Orientation::Horizontal, 0)));
+    let status_label = gtk::Label::builder()
+        .xalign(0.0)
+        .single_line_mode(true)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .build();
+    status_label.add_css_class("limux-live-header");
+    bar.pack_start(&status_label);
     bar.set_show_start_title_buttons(false);
     bar.set_show_end_title_buttons(true);
     bar.set_decoration_layout(Some(decoration_layout));
-    bar
+    (bar, status_label)
+}
+
+struct ManagerRefresh {
+    directory: Option<String>,
+    managers: crate::header_status::ManagerStatus,
+    receiver: Option<mpsc::Receiver<Result<Vec<String>, String>>>,
+    last_started: Option<Instant>,
+}
+
+fn install_header_status_refresh(state: &State, status_label: gtk::Label) {
+    let state = state.clone();
+    let mut sampler = crate::header_status::ProcessTreeSampler::new();
+    let mut manager_refresh = ManagerRefresh {
+        directory: None,
+        managers: crate::header_status::ManagerStatus::Loading,
+        receiver: None,
+        last_started: None,
+    };
+
+    glib::timeout_add_local(Duration::from_secs(1), move || {
+        if status_label.root().is_none() {
+            return glib::ControlFlow::Break;
+        }
+
+        if let Some(receiver) = manager_refresh.receiver.as_ref() {
+            match receiver.try_recv() {
+                Ok(Ok(managers)) => {
+                    manager_refresh.managers =
+                        crate::header_status::ManagerStatus::Available(managers);
+                    manager_refresh.receiver = None;
+                }
+                Ok(Err(_)) | Err(mpsc::TryRecvError::Disconnected) => {
+                    manager_refresh.managers = crate::header_status::ManagerStatus::Unavailable;
+                    manager_refresh.receiver = None;
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+            }
+        }
+
+        let (workspace_name, pane_count, directory, sections) = {
+            let app_state = state.borrow();
+            let sections = app_state.config.borrow().header_sections.clone();
+            if let Some(workspace) = app_state.active_workspace() {
+                (
+                    workspace.name.clone(),
+                    pane::pane_summaries_for_root(&workspace.root).len(),
+                    workspace
+                        .cwd
+                        .borrow()
+                        .clone()
+                        .or_else(|| workspace.folder_path.clone()),
+                    sections,
+                )
+            } else {
+                ("No workspace".to_string(), 0, None, sections)
+            }
+        };
+
+        let directory_changed = manager_refresh.directory != directory;
+        let refresh_due = manager_refresh
+            .last_started
+            .is_none_or(|started| started.elapsed() >= Duration::from_secs(10));
+        if directory_changed {
+            manager_refresh.directory = directory.clone();
+            manager_refresh.managers = crate::header_status::ManagerStatus::Loading;
+        }
+        if manager_refresh.receiver.is_none() && (directory_changed || refresh_due) {
+            manager_refresh.last_started = Some(Instant::now());
+            if let Some(directory) = directory.clone() {
+                let (sender, receiver) = mpsc::channel();
+                manager_refresh.receiver = Some(receiver);
+                std::thread::spawn(move || {
+                    let _ = sender.send(crate::header_status::query_directory_managers(&directory));
+                });
+            } else {
+                manager_refresh.managers =
+                    crate::header_status::ManagerStatus::Available(Vec::new());
+            }
+        }
+
+        let (ram_mb, cpu_percent) = sampler.sample();
+        let snapshot = crate::header_status::HeaderSnapshot {
+            workspace_name,
+            pane_count,
+            ram_mb,
+            cpu_percent,
+            managers: manager_refresh.managers.clone(),
+        };
+        let markup =
+            crate::header_status::render_header_markup(crate::VERSION, &sections, &snapshot);
+        status_label.set_markup(&markup);
+        status_label.set_tooltip_markup(Some(&markup));
+
+        glib::ControlFlow::Continue
+    });
 }
 
 impl AppState {
@@ -2376,10 +2480,11 @@ pub fn build_window(app: &adw::Application) {
         .unwrap_or(false);
     let chrome_policy = window_chrome_policy(compositor_provides_decorations);
 
-    let header = if chrome_policy.use_client_side_titlebar {
-        Some(build_window_header(&title, chrome_policy.decoration_layout))
+    let (header, header_status_label) = if chrome_policy.use_client_side_titlebar {
+        let (header, status_label) = build_window_header(chrome_policy.decoration_layout);
+        (Some(header), Some(status_label))
     } else {
-        None
+        (None, None)
     };
 
     let stack = gtk::Stack::new();
@@ -2528,6 +2633,10 @@ pub fn build_window(app: &adw::Application) {
     CONTROL_STATE.with(|slot| {
         *slot.borrow_mut() = Some(state.clone());
     });
+
+    if let Some(status_label) = header_status_label {
+        install_header_status_refresh(&state, status_label);
+    }
 
     install_sidebar_resize(&state, &sidebar_handle, &sidebar_shell);
 
@@ -7732,6 +7841,23 @@ mod tests {
 
         assert!(!source.contains(&forbidden_titlebar_call));
         assert!(source.contains("adw::ToolbarView"));
+    }
+
+    #[test]
+    fn application_header_places_the_live_status_strip_at_the_left_edge() {
+        let source = include_str!("window.rs");
+        let function = source
+            .split_once("fn build_window_header")
+            .expect("header builder")
+            .1
+            .split_once("impl AppState")
+            .expect("header builder boundary")
+            .0;
+
+        assert!(function.contains("bar.pack_start(&status_label);"));
+        assert!(function.contains("bar.set_title_widget(Some(&gtk::Box::new("));
+        assert!(source.contains("install_header_status_refresh(&state"));
+        assert!(!function.contains("bar.set_title_widget(Some(&gtk::Label"));
     }
 
     #[test]

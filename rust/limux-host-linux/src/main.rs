@@ -4,6 +4,7 @@ mod control_bridge;
 mod control_registry;
 mod cwd_inheritance;
 mod ghostty_config;
+mod header_status;
 mod keybind_editor;
 mod layout_state;
 mod pane;

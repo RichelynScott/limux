@@ -29,13 +29,13 @@ Download the latest release from [GitHub Releases](https://github.com/am-will/li
 
 **Debian/Ubuntu (.deb)** — recommended:
 ```bash
-sudo dpkg -i ./limux_0.2.1_amd64.deb
+sudo dpkg -i ./limux_0.2.2_amd64.deb
 ```
 
 **AppImage** — portable across Ubuntu 24.04-era desktops and newer, no install needed:
 ```bash
-chmod +x Limux-0.2.1-x86_64.AppImage
-./Limux-0.2.1-x86_64.AppImage
+chmod +x Limux-0.2.2-x86_64.AppImage
+./Limux-0.2.2-x86_64.AppImage
 ```
 
 Release AppImages are built and checked on the Ubuntu 24.04 `GLIBC_2.39`
@@ -93,7 +93,7 @@ the install id and channel.
 Example:
 
 ```text
-limux-cli 0.2.1 (abcdef123456, release) install-id=stable-abcdef123456 channel=stable
+limux-cli 0.2.2 (abcdef123456, release) install-id=stable-abcdef123456 channel=stable
 ```
 
 `target-info` / `socket-info` prints the resolved socket and channel without
@@ -110,6 +110,42 @@ stale sockets, Ghostty resource packaging, and optional log triage. Exit code
 warnings were found but no check failed. `--log-triage` summarizes common
 runtime log warnings such as Mesa/GDK environment issues without requiring a
 full manual log scrape.
+
+## Live workspace header
+
+The left side of the application header identifies the workspace currently in
+view and refreshes its live status once per second:
+
+```text
+Limux v0.2.2 | WORKSPACE: project | [LIVE] [ACTIVE] PANES:3 RAM:512MB CPU:7.3% | DIR MGR(s): lifo (1)
+```
+
+`PANES` counts panes in the active workspace. RAM and CPU cover the Limux host
+process tree, including terminal child processes; CPU is a percentage because
+it is not a memory quantity. Directory managers are refreshed in a background
+thread from `hcom list mgrs --json` and filtered to live claims covering the
+active workspace directory.
+
+Header sections can be reordered or omitted in
+`~/.config/limux/settings.json`. The default is:
+
+```json
+{
+  "header": {
+    "sections": [
+      "application",
+      "workspace",
+      "resources",
+      "directory_managers"
+    ]
+  }
+}
+```
+
+Supported section names are `application`, `workspace`, `resources`, and
+`directory_managers`. Restart Limux after editing the file manually. The
+section registry in `header_status.rs` is the extension point for future header
+fields.
 
 ## Build from source
 

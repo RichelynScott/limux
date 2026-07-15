@@ -2,6 +2,25 @@
 
 All notable Limux changes should be recorded here when a PR merges.
 
+## [0.2.2] - 2026-07-15
+
+### Added
+
+- Added a left-aligned live application header showing the active workspace,
+  active pane count, Limux process-tree RAM and CPU use, and live directory
+  managers resolved from `hcom list mgrs --json`.
+- Added configurable header section ordering and visibility through
+  `header.sections` in `~/.config/limux/settings.json`.
+- Added low-priority TaskMaster task 26 to make the active workspace row in the
+  left sidebar unmistakable at a glance without conflicting with unread,
+  favorite, focus, hover, or manual highlight states.
+
+### Changed
+
+- Moved the Limux name and version from the centered title position to the left
+  side of the application header, with bold separators and a bold active
+  workspace name.
+
 ## [0.2.1] - 2026-07-10
 
 ### Added
