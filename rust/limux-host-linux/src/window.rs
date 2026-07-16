@@ -474,6 +474,15 @@ fn pane_create_response_payload(
     })
 }
 
+fn pane_create_partial_response_payload(workspace_id: &str, pane_id: u32) -> serde_json::Value {
+    serde_json::json!({
+        "workspace_id": workspace_id,
+        "workspace_ref": workspace_ref(workspace_id),
+        "pane_id": pane_id.to_string(),
+        "pane_ref": pane_ref(pane_id),
+    })
+}
+
 fn pane_create_command_failure_data(
     response: &serde_json::Value,
     phase: &str,
@@ -6097,8 +6106,20 @@ fn handle_control_command(state: &State, command: ControlCommand) {
             };
 
             let Some(surface) = pane::active_surface_summary(&new_pane) else {
-                let _ = reply.send(Err(BridgeError::internal(
-                    "pane.create did not produce a terminal surface",
+                let partial_response = pane::pane_id_for_widget(&new_pane)
+                    .map(|pane_id| {
+                        pane_create_partial_response_payload(&resolved.workspace_id, pane_id)
+                    })
+                    .unwrap_or_else(|| {
+                        serde_json::json!({
+                            "workspace_id": resolved.workspace_id,
+                            "workspace_ref": workspace_ref(&resolved.workspace_id),
+                        })
+                    });
+                let _ = reply.send(Err(pane_create_command_failure(
+                    &partial_response,
+                    "surface-summary",
+                    "pane.create created a pane but did not produce a terminal surface; inspect current state before retrying",
                 )));
                 return;
             };
@@ -8152,7 +8173,8 @@ mod tests {
         directional_neighbor_score, favorites_prefix_len, finalize_runtime_lifecycle,
         font_size_after_delta, ghostty_prefers_dark, gtk_system_prefers_dark_from_raw,
         new_instance_command, next_active_workspace_index, pane_action_target_pane_id,
-        pane_attention_target, pane_create_command_failure_data, pane_create_source_cwd_override,
+        pane_attention_target, pane_create_command_failure_data,
+        pane_create_partial_response_payload, pane_create_source_cwd_override,
         pane_create_split_placement, queue_session_save_request, resize_axis_and_delta,
         resized_split_position, resolve_pane_create_source_id, resolved_system_prefers_dark,
         sanitize_background_opacity, shortcut_allowed_while_browser_find_active,
@@ -8760,6 +8782,16 @@ mod tests {
             assert_eq!(data["surface_id"], "17:tab-a");
             assert_eq!(data["surface_ref"], "surface:17:tab-a");
         }
+
+        let partial_response = pane_create_partial_response_payload("workspace-a", 17);
+        let data = pane_create_command_failure_data(&partial_response, "surface-summary");
+        assert_eq!(data["method"], "pane.create");
+        assert_eq!(data["phase"], "surface-summary");
+        assert_eq!(data["outcome_unknown"], true);
+        assert_eq!(data["retry_safe"], false);
+        assert_eq!(data["workspace_id"], "workspace-a");
+        assert_eq!(data["pane_id"], "17");
+        assert!(data.get("surface_id").is_none());
     }
 
     #[test]

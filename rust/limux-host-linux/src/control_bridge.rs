@@ -1428,12 +1428,9 @@ fn dispatch_queued_with_timeout(
         Err(mpsc::RecvTimeoutError::Timeout) => {
             error_response(id, control_command_timeout_error(method, timeout))
         }
-        Err(mpsc::RecvTimeoutError::Disconnected) => error_response(
-            id,
-            BridgeError::internal(format!(
-                "control command {method} reply channel disconnected"
-            )),
-        ),
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            error_response(id, control_command_disconnected_error(method))
+        }
     }
 }
 
@@ -1455,6 +1452,23 @@ fn control_command_timeout_error(method: &str, timeout: Duration) -> BridgeError
         "retry_safe": false,
         "timeout_ms": timeout.as_millis()
     }))
+}
+
+fn control_command_disconnected_error(method: &str) -> BridgeError {
+    match method {
+        "pane.create" | "new-pane" => BridgeError::internal(format!(
+                "control command {method} reply channel disconnected; outcome is unknown because the queued command may have completed; inspect current state before retrying"
+            ))
+            .with_data(json!({
+                "method": method,
+                "phase": "reply-channel-disconnected",
+                "outcome_unknown": true,
+                "retry_safe": false,
+            })),
+        _ => BridgeError::internal(format!(
+            "control command {method} reply channel disconnected"
+        )),
+    }
 }
 
 fn error_response(id: Option<Value>, error: BridgeError) -> V2Response {
@@ -1941,6 +1955,33 @@ mod tests {
         let error = response.error.expect("disconnection response error");
         assert!(error.message.contains("reply channel disconnected"));
         assert_eq!(error.data, None);
+    }
+
+    #[test]
+    fn pane_create_dispatch_disconnection_reports_unknown_outcome_and_unsafe_retry() {
+        for method in ["pane.create", "new-pane"] {
+            let (reply, reply_rx) = mpsc::channel();
+            let response = dispatch_queued_with_timeout(
+                Some(json!(3)),
+                method,
+                ControlCommand::PresentWindow { reply },
+                reply_rx,
+                &drop,
+                Duration::from_millis(1),
+            );
+
+            let error = response.error.expect("disconnection response error");
+            assert!(error
+                .message
+                .contains("inspect current state before retrying"));
+            assert_eq!(error.data.as_ref().unwrap()["method"], method);
+            assert_eq!(
+                error.data.as_ref().unwrap()["phase"],
+                "reply-channel-disconnected"
+            );
+            assert_eq!(error.data.as_ref().unwrap()["outcome_unknown"], true);
+            assert_eq!(error.data.as_ref().unwrap()["retry_safe"], false);
+        }
     }
 
     #[test]
