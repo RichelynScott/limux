@@ -319,12 +319,20 @@ def classify(
             "actor": user.get("login"),
             "actor_type": user.get("type"),
             "commit_id": comment.get("commit_id"),
+            "original_commit_id": comment.get("original_commit_id"),
             "at": comment.get("created_at"),
         }
         raw.append(metadata)
+        original_commit_id = metadata["original_commit_id"]
+        commit_id = metadata["commit_id"]
+        inline_matches_head = (
+            commit_id == frozen_head
+            if original_commit_id is None
+            else original_commit_id == frozen_head and commit_id == frozen_head
+        )
         if (
             is_bot(user, bot_logins)
-            and metadata["commit_id"] == frozen_head
+            and inline_matches_head
             and (metadata["at"] or "") >= request_time
         ):
             return {"found": True, "source": metadata["surface"], "evidence": metadata, "raw": raw}

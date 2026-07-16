@@ -81,6 +81,87 @@ class FallbackWatcherTests(unittest.TestCase):
         self.assertEqual(result["evidence"]["id"], 2)
         self.assertEqual(result["source"], "pull-request-review")
 
+    def test_reanchored_inline_comment_uses_original_commit_id(self):
+        comments = [
+            {
+                "id": 3,
+                "user": {
+                    "login": "chatgpt-codex-connector[bot]",
+                    "type": "Bot",
+                },
+                "commit_id": HEAD,
+                "original_commit_id": OLD_HEAD,
+                "created_at": "2026-07-15T20:04:00Z",
+            }
+        ]
+
+        result = MODULE.classify(
+            [], comments, [], [], HEAD, REQUEST_TIME, BOT_LOGINS
+        )
+
+        self.assertFalse(result["found"])
+        self.assertEqual(result["raw"][0]["original_commit_id"], OLD_HEAD)
+
+    def test_inline_comment_falls_back_to_commit_id_when_original_is_absent(self):
+        comments = [
+            {
+                "id": 4,
+                "user": {
+                    "login": "chatgpt-codex-connector[bot]",
+                    "type": "Bot",
+                },
+                "commit_id": HEAD,
+                "created_at": "2026-07-15T20:05:00Z",
+            }
+        ]
+
+        result = MODULE.classify(
+            [], comments, [], [], HEAD, REQUEST_TIME, BOT_LOGINS
+        )
+
+        self.assertTrue(result["found"])
+        self.assertEqual(result["evidence"]["original_commit_id"], None)
+
+    def test_inline_comment_is_terminal_when_both_commit_ids_match_head(self):
+        comments = [
+            {
+                "id": 5,
+                "user": {
+                    "login": "chatgpt-codex-connector[bot]",
+                    "type": "Bot",
+                },
+                "commit_id": HEAD,
+                "original_commit_id": HEAD,
+                "created_at": "2026-07-15T20:06:00Z",
+            }
+        ]
+
+        result = MODULE.classify(
+            [], comments, [], [], HEAD, REQUEST_TIME, BOT_LOGINS
+        )
+
+        self.assertTrue(result["found"])
+        self.assertEqual(result["evidence"]["original_commit_id"], HEAD)
+
+    def test_inline_comment_with_original_but_no_current_commit_is_not_terminal(self):
+        comments = [
+            {
+                "id": 6,
+                "user": {
+                    "login": "chatgpt-codex-connector[bot]",
+                    "type": "Bot",
+                },
+                "original_commit_id": HEAD,
+                "created_at": "2026-07-15T20:07:00Z",
+            }
+        ]
+
+        result = MODULE.classify(
+            [], comments, [], [], HEAD, REQUEST_TIME, BOT_LOGINS
+        )
+
+        self.assertFalse(result["found"])
+
     def test_issue_comment_requires_frozen_head_mention(self):
         comments = [
             {
