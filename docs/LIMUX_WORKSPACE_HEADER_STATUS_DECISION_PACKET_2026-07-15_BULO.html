@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Limux Workspace Header Status — 2026-07-15</title>
+  <style>
+    :root { color-scheme: dark; --bg:#090d14; --panel:#111827; --line:#28364b; --text:#e8eef8; --muted:#9fb0c8; --blue:#60a5fa; --green:#34d399; --yellow:#fbbf24; --red:#fb7185; }
+    * { box-sizing: border-box; }
+    body { margin:0; font:15px/1.5 Inter,Segoe UI,system-ui,sans-serif; background:var(--bg); color:var(--text); }
+    a { color:#93c5fd; }
+    code { color:#c4b5fd; overflow-wrap:anywhere; }
+    .layout { display:grid; grid-template-columns:240px minmax(0,1fr); min-height:100vh; }
+    nav { position:sticky; top:0; height:100vh; padding:28px 20px; border-right:1px solid var(--line); background:#0c121d; }
+    nav h1 { font-size:16px; margin:0 0 20px; }
+    nav a { display:block; padding:8px 0; text-decoration:none; color:var(--muted); }
+    nav a:hover { color:var(--text); }
+    main { max-width:1120px; width:100%; padding:38px; }
+    .eyebrow { color:var(--blue); font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+    h2 { margin-top:38px; border-bottom:1px solid var(--line); padding-bottom:9px; }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; }
+    .card,.decision,.copybox { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px; }
+    .metric { font-size:25px; font-weight:800; margin:4px 0; }
+    .muted { color:var(--muted); }
+    .ok { color:var(--green); } .warn { color:var(--yellow); } .bad { color:var(--red); }
+    table { border-collapse:collapse; width:100%; background:var(--panel); }
+    th,td { text-align:left; vertical-align:top; border:1px solid var(--line); padding:11px; }
+    th { color:#bfdbfe; }
+    .decision { margin:14px 0; }
+    label { display:block; margin:10px 0; cursor:pointer; }
+    input { accent-color:var(--blue); }
+    button { border:0; border-radius:8px; padding:10px 14px; background:#2563eb; color:white; font-weight:700; cursor:pointer; }
+    textarea { width:100%; min-height:145px; margin:12px 0; padding:12px; border:1px solid var(--line); border-radius:8px; background:#080c13; color:var(--text); }
+    .roadmap li { margin:9px 0; }
+    @media (max-width:760px) { .layout { display:block; } nav { position:static; height:auto; border-right:0; border-bottom:1px solid var(--line); } main { padding:24px 18px; } }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <nav>
+    <h1>Limux status packet</h1>
+    <a href="#summary">Executive status</a>
+    <a href="#roadmap">Roadmap</a>
+    <a href="#evidence">Live evidence</a>
+    <a href="#decisions">Decisions</a>
+    <a href="#copy">Copy-back</a>
+  </nav>
+  <main>
+    <div class="eyebrow">Status and activation decision</div>
+    <h1>Workspace header feature: merged, verified, not yet installed</h1>
+    <p class="muted">Prepared by bulo · Codex gpt-5.6-sol (medium) · 2026-07-15 America/New_York</p>
+
+    <section id="summary">
+      <h2>Executive status</h2>
+      <div class="cards">
+        <div class="card"><div class="muted">Implementation</div><div class="metric ok">MERGED</div><div>PR #59 landed on <code>origin/main</code>.</div></div>
+        <div class="card"><div class="muted">Merged release</div><div class="metric">0.2.2</div><div>Version and changelog were updated.</div></div>
+        <div class="card"><div class="muted">Daily-driver runtime</div><div class="metric warn">0.2.0</div><div>The running installation predates the feature.</div></div>
+        <div class="card"><div class="muted">Task tracking</div><div class="metric ok">TRACKED</div><div>Sidebar follow-up is Task 26 on merged main.</div></div>
+      </div>
+      <p>The requested header code is complete: Limux title/version is left-aligned, the workspace name and separators are bold, live active-pane/RAM/CPU metrics follow it, and directory-manager names come from the HCOM manager registry. The header is built from configurable segment definitions so fields can be reordered or extended later.</p>
+    </section>
+
+    <section id="roadmap">
+      <h2>Roadmap</h2>
+      <ol class="roadmap">
+        <li><span class="ok">Completed:</span> feature implementation, TDD coverage, changelog, and version bump.</li>
+        <li><span class="ok">Completed:</span> PR #59 merged as <code>3a182f62f14ba2691d87e354b7d9243b8bc93b43</code>.</li>
+        <li><span class="warn">Next gate:</span> install the merged build into a preview channel and verify the actual GTK header.</li>
+        <li><span class="warn">Then:</span> promote the verified build to the daily-driver lane.</li>
+        <li><span class="ok">Tracked, non-blocking:</span> low-priority Task 26 covers active-workspace sidebar visibility and operator-visible verification.</li>
+        <li><span class="warn">Manager cleanup:</span> reconcile conflicting PR #58 and the temporary worktree.</li>
+      </ol>
+    </section>
+
+    <section id="evidence">
+      <h2>Live evidence</h2>
+      <table>
+        <tr><th>Surface</th><th>Verified state</th><th>Meaning</th></tr>
+        <tr><td>GitHub</td><td><a href="https://github.com/RichelynScott/limux/pull/59">PR #59</a> merged; merge SHA <code>3a182f6</code></td><td>Code is durable on main.</td></tr>
+        <tr><td>Running host</td><td><code>limux-cli 0.2.0 (068872a1e162, release)</code></td><td>Feature is not visible in the current daily driver.</td></tr>
+        <tr><td>Preview install</td><td><code>f1db1d5a6005</code></td><td>Preview also predates PR #59.</td></tr>
+        <tr><td>Runtime health</td><td>Host/socket/resources OK; six stale-socket warnings</td><td>Operational, but doctor exits 2 because of warnings.</td></tr>
+        <tr><td>TaskMaster</td><td>Merged <code>origin/main</code> contains pending/low Task 26, “Make the active workspace unmistakable in the sidebar”</td><td>The earlier 25-task result came from the stale PR #58 branch; no task mutation is needed.</td></tr>
+        <tr><td>Open PR</td><td><a href="https://github.com/RichelynScott/limux/pull/58">PR #58</a> is open and conflicting</td><td>Separate TaskMaster/HCOM tracking lane needs manager reconciliation.</td></tr>
+        <tr><td>Ownership</td><td><code>lifo</code> is active LIMUX_MGR for this repo</td><td>Runtime promotion and branch cleanup belong in the manager lane.</td></tr>
+      </table>
+    </section>
+
+    <section id="decisions">
+      <h2>Recommended decisions</h2>
+      <div class="decision">
+        <strong>1. Activate the merged header</strong>
+        <label><input type="radio" name="runtime" value="A"> A — Preview first, complete the post-install GTK verification, then promote to daily driver</label>
+        <label><input type="radio" name="runtime" value="B" checked> B — Install directly into the daily-driver lane (operator selected 2026-07-15)</label>
+        <label><input type="radio" name="runtime" value="C"> C — Leave merged but not installed for now</label>
+        <p class="muted">A gives real UI evidence without replacing the working 0.2.0 runtime first.</p>
+      </div>
+      <div class="decision">
+        <strong>2. Reconcile the separate PR #58 lane</strong>
+        <label><input type="radio" name="pr" value="A" checked> A — LIMUX_MGR rebases and closes or lands only the still-needed TaskMaster delta (recommended)</label>
+        <label><input type="radio" name="pr" value="B"> B — Keep the conflicting PR parked</label>
+      </div>
+      <div class="decision">
+        <strong>3. Future active-workspace treatment in the left sidebar</strong>
+        <label><input type="radio" name="sidebar" value="A" checked> A — Accent bar + tinted row + bold name + ACTIVE badge (recommended; clearest without overpowering the list)</label>
+        <label><input type="radio" name="sidebar" value="B"> B — High-contrast full-row selection with bold name (strongest visibility)</label>
+        <label><input type="radio" name="sidebar" value="C"> C — Compact colored dot/checkmark + bold name (least visual noise)</label>
+        <p class="muted">This is intentionally a low-priority follow-up, not part of the merged header feature.</p>
+      </div>
+    </section>
+
+    <section id="copy">
+      <h2>Copy-back response</h2>
+      <div class="copybox">
+        <textarea id="payload" readonly></textarea>
+        <button id="copyBtn" type="button">Copy decisions</button>
+        <span id="copied" class="muted" aria-live="polite"></span>
+      </div>
+    </section>
+  </main>
+</div>
+<script>
+  function choice(name) {
+    const selected = document.querySelector(`input[name="${name}"]:checked`);
+    return selected ? selected.value : "UNSET";
+  }
+  function render() {
+    document.getElementById("payload").value = [
+      "LIMUX STATUS DECISIONS",
+      `1. Runtime activation: ${choice("runtime")}`,
+      `2. Reconcile PR #58: ${choice("pr")}`,
+      `3. Active-workspace sidebar treatment: ${choice("sidebar")}`
+    ].join("\n");
+  }
+  document.querySelectorAll("input").forEach((input) => input.addEventListener("change", render));
+  document.getElementById("copyBtn").addEventListener("click", async () => {
+    render();
+    const payload = document.getElementById("payload");
+    try { await navigator.clipboard.writeText(payload.value); }
+    catch (_) { payload.select(); document.execCommand("copy"); }
+    document.getElementById("copied").textContent = " Copied.";
+  });
+  render();
+</script>
+</body>
+</html>

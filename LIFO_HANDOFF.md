@@ -2,6 +2,42 @@
 
 Author/runtime/date: lifo / Codex gpt-5.5 (xhigh) / 2026-06-29 09:15 EDT.
 
+## 2026-07-15 Temporary PR-Bot Watcher Fallback
+
+- The temporary `pr-bot-watcher-gh-fallback` skill is implemented, hardened,
+  and repeatedly dogfooded. It uses bounded exact-head `gh` polling, treats an
+  eyes reaction as pending only, checks all four GitHub response surfaces, and
+  sends terminal metadata through an existing hcom identity without consuming
+  hcom messages.
+- Limux source PRs #60, #62, #63, and #64 merged. Source `origin/main` then
+  advanced through TaskMaster closeout PR #65 to
+  `cc8356a1582e7aa7767f6039eb983ee408364eee`.
+- Global promotion PR #139 merged to `CODEX_CLAUDE_CODE/main` as
+  `9bb17fdd63e6b3231693f946da9e888783e1dacf` after exact-head Codex review
+  loops. The canonical `pr-bot-watcher-fix-loop` skill is visibly disabled and
+  points to the temporary fallback.
+- Codex live parity is verified. Final hashes are fallback skill
+  `0bdc89e5805ff14741b00dd1903abcd795f8813f3359ef8f88db78ad54e9ebfd`,
+  script `ff2faf256d9285bc9f9858f9b9f025d89175c127db4c410529dc21da97741158`,
+  tests `13c1e2c0f9cc73b18dc4ebc8d3b2576a3bc610b860088b8d7fc00e28e6941117`,
+  and disabled compatibility skill
+  `63cae3f761870607e4091ed6d88e6f86e05ac383a24dfef1e942ce0bac70a9cb`.
+  Live tests report 19 passing; validation and external-output no-delete scans
+  pass with no generated skill-tree artifacts.
+- Limux TaskMaster tag `pr-bot-fallback-20260715`, task #1 remains
+  `in-progress`. PR #65 added the literal closeout note and preserved this
+  status because Claude activation is not complete.
+- Claude live parity is owner-routed to Kazu task #96. Kazu has the final four
+  hashes but is blocked by the account-wide Claude safety-classifier outage;
+  no Codex session may patch `~/.claude`.
+- The canonical watcher repair is separately tracked by global TaskMaster task
+  #61, merged through global PR #140. Do not retire the fallback until that
+  repair is implemented, cross-runtime validated, and Limux-dogfooded.
+- Immediate next action: Kazu returns Claude four-file parity evidence; then
+  verify it, mark Limux TaskMaster task #1 done through the reviewed wrapper,
+  and publish that one-path task-store update. All temporary worktrees from
+  this lane were clean, pushed, merged, and removed; remote branches remain.
+
 ## 2026-07-13 Reconciliation And PR State
 
 - Active branch: `lifo/restart-checkpoint-20260711`; Option A planning commit
