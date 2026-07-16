@@ -589,18 +589,30 @@
         "priority": "high",
         "subtasks": [],
         "updatedAt": "2026-07-16T17:45:09.547Z"
+      },
+      {
+        "id": 28,
+        "title": "Prevent ambiguous pane.create timeouts and duplicate retries",
+        "description": "Give command-launching pane creation enough bridge response time for Ghostty readiness and tell callers when a timeout leaves the operation outcome unknown.",
+        "details": "Root cause: pane.create --command waits up to about 4.1 seconds for a writable Ghostty surface while the generic GTK bridge deadline was 5 seconds. Under main-loop scheduling pressure the bridge returned -32603 after the pane was already queued or created, making blind retries capable of creating duplicates. Use a method-specific 15-second pane.create deadline, preserve the 5-second default for ordinary methods, distinguish reply-channel disconnection from timeout, and return method/outcome_unknown/retry_safe/timeout_ms metadata plus an inspect-before-retry message. Verify with focused RED/GREEN tests, full limux-host-linux tests, clippy -D warnings, and scripts/check.sh.\n<info added on 2026-07-16T19:48:35.041Z>\nPR #71 review round 1 at head 2ea927c was blocked by three valid P2 findings from Gera: post-split readiness and Enter failures lacked unsafe-retry identity, the CLI discarded error.data, and tests were helper-only. Revised implementation now marks both post-split phases outcome_unknown=true and retry_safe=false with workspace/pane/surface IDs and refs; carries typed V2 error data through the normal limux --json output; and adds queued-dispatch timeout/disconnection, post-split phase, and fake-socket CLI regression tests. Full BOUNDARY_REVIEWED=1 ./scripts/check.sh passed with 115 CLI tests and 394 host tests. Awaiting revised exact-head peer and Codex Bot review before merge.\n</info added on 2026-07-16T19:48:35.041Z>",
+        "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-07-16T19:36:38.446Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-16T17:45:09.547Z",
-      "taskCount": 27,
+      "lastModified": "2026-07-16T19:36:38.446Z",
+      "taskCount": 28,
       "completedCount": 12,
       "tags": [
         "master"
       ],
       "created": "2026-07-16T00:27:19.811Z",
-      "updated": "2026-07-16T17:43:31.662Z",
+      "updated": "2026-07-16T19:35:51.782Z",
       "description": "Tasks for master context"
     }
   },

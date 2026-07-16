@@ -2184,6 +2184,10 @@ pub fn active_surface_summary(pane_widget: &gtk::Widget) -> Option<SurfaceSummar
     ))
 }
 
+pub(crate) fn pane_id_for_widget(pane_widget: &gtk::Widget) -> Option<u32> {
+    find_pane_internals(pane_widget).map(|internals| internals.pane_id)
+}
+
 pub fn close_tab_in_pane(pane_widget: &gtk::Widget, tab_id: &str) -> Option<SurfaceSummary> {
     let internals = find_pane_internals(pane_widget)?;
     let pane_id = internals.pane_id;

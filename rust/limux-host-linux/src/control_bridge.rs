@@ -28,6 +28,8 @@ const UNKNOWN_METHOD_CODE: i64 = -32601;
 const INTERNAL_ERROR_CODE: i64 = -32603;
 const NOT_FOUND_CODE: i64 = -32004;
 const CONFLICT_CODE: i64 = -32009;
+const DEFAULT_CONTROL_COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
+const PANE_CREATE_CONTROL_COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 const CURSOR_PANE_CREATE_EMPTY_PARAMS: &[&str] = &[
     "workspace_id",
     "id",
@@ -328,7 +330,7 @@ impl BridgeError {
         }
     }
 
-    fn with_data(mut self, data: Value) -> Self {
+    pub(crate) fn with_data(mut self, data: Value) -> Self {
         self.data = Some(data);
         self
     }
@@ -1355,6 +1357,7 @@ fn handle_method(
                 let (reply, rx) = mpsc::channel();
                 return dispatch_queued(
                     id,
+                    method,
                     ControlCommand::FallthroughRead {
                         method: method.to_string(),
                         params: Value::Object(params.clone()),
@@ -1396,20 +1399,75 @@ fn handle_method(
 
     let (command, reply_rx) = queued;
 
-    dispatch_queued(id, command, reply_rx, dispatch)
+    dispatch_queued(id, method, command, reply_rx, dispatch)
 }
 
 fn dispatch_queued(
     id: Option<Value>,
+    method: &str,
     command: ControlCommand,
     reply_rx: mpsc::Receiver<BridgeResult>,
     dispatch: &dyn Fn(ControlCommand),
 ) -> V2Response {
+    let timeout = control_command_timeout(method);
+    dispatch_queued_with_timeout(id, method, command, reply_rx, dispatch, timeout)
+}
+
+fn dispatch_queued_with_timeout(
+    id: Option<Value>,
+    method: &str,
+    command: ControlCommand,
+    reply_rx: mpsc::Receiver<BridgeResult>,
+    dispatch: &dyn Fn(ControlCommand),
+    timeout: Duration,
+) -> V2Response {
     dispatch(command);
-    match reply_rx.recv_timeout(Duration::from_secs(5)) {
+    match reply_rx.recv_timeout(timeout) {
         Ok(Ok(result)) => V2Response::success(id, result),
         Ok(Err(error)) => error_response(id, error),
-        Err(_) => error_response(id, BridgeError::internal("control command timed out")),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            error_response(id, control_command_timeout_error(method, timeout))
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            error_response(id, control_command_disconnected_error(method))
+        }
+    }
+}
+
+fn control_command_timeout(method: &str) -> Duration {
+    match method {
+        "pane.create" | "new-pane" => PANE_CREATE_CONTROL_COMMAND_TIMEOUT,
+        _ => DEFAULT_CONTROL_COMMAND_TIMEOUT,
+    }
+}
+
+fn control_command_timeout_error(method: &str, timeout: Duration) -> BridgeError {
+    BridgeError::internal(format!(
+        "control command {method} timed out after {} ms; outcome is unknown because the queued command may still complete; inspect current state before retrying",
+        timeout.as_millis()
+    ))
+    .with_data(json!({
+        "method": method,
+        "outcome_unknown": true,
+        "retry_safe": false,
+        "timeout_ms": timeout.as_millis()
+    }))
+}
+
+fn control_command_disconnected_error(method: &str) -> BridgeError {
+    match method {
+        "pane.create" | "new-pane" => BridgeError::internal(format!(
+                "control command {method} reply channel disconnected; outcome is unknown because the queued command may have completed; inspect current state before retrying"
+            ))
+            .with_data(json!({
+                "method": method,
+                "phase": "reply-channel-disconnected",
+                "outcome_unknown": true,
+                "retry_safe": false,
+            })),
+        _ => BridgeError::internal(format!(
+            "control command {method} reply channel disconnected"
+        )),
     }
 }
 
@@ -1817,6 +1875,113 @@ mod tests {
         let result = response.result.expect("pane.create should return a result");
         assert_eq!(result["pane_ref"], "pane:9");
         assert_eq!(result["surface_ref"], "surface:9:tab");
+    }
+
+    #[test]
+    fn pane_create_timeout_exceeds_terminal_readiness_window() {
+        let readiness_window = Duration::from_millis(
+            crate::window::PANE_CREATE_COMMAND_READY_INTERVAL_MS
+                * u64::from(crate::window::PANE_CREATE_COMMAND_READY_ATTEMPTS)
+                + crate::window::PANE_CREATE_COMMAND_SUBMIT_DELAY_MS,
+        );
+
+        assert!(
+            control_command_timeout("pane.create") >= readiness_window + Duration::from_secs(5),
+            "pane.create needs scheduling margin beyond its terminal readiness window"
+        );
+        assert_eq!(
+            control_command_timeout("workspace.list"),
+            Duration::from_secs(5)
+        );
+        assert_eq!(
+            control_command_timeout("new-pane"),
+            PANE_CREATE_CONTROL_COMMAND_TIMEOUT
+        );
+    }
+
+    #[test]
+    fn control_timeout_reports_unknown_outcome_and_unsafe_retry() {
+        let error = control_command_timeout_error("pane.create", Duration::from_secs(15));
+
+        assert_eq!(error.code, INTERNAL_ERROR_CODE);
+        assert!(error
+            .message
+            .contains("inspect current state before retrying"));
+        assert_eq!(
+            error.data,
+            Some(json!({
+                "method": "pane.create",
+                "outcome_unknown": true,
+                "retry_safe": false,
+                "timeout_ms": 15_000
+            }))
+        );
+    }
+
+    #[test]
+    fn queued_dispatch_timeout_serializes_unsafe_retry_metadata() {
+        let (reply, reply_rx) = mpsc::channel();
+        let held_command = std::cell::RefCell::new(None);
+        let response = dispatch_queued_with_timeout(
+            Some(json!(1)),
+            "pane.create",
+            ControlCommand::PresentWindow { reply },
+            reply_rx,
+            &|command| {
+                held_command.replace(Some(command));
+            },
+            Duration::from_millis(1),
+        );
+
+        let error = response.error.expect("timeout response error");
+        assert_eq!(error.code, INTERNAL_ERROR_CODE);
+        assert_eq!(error.data.as_ref().unwrap()["outcome_unknown"], true);
+        assert_eq!(error.data.as_ref().unwrap()["retry_safe"], false);
+        assert_eq!(error.data.as_ref().unwrap()["method"], "pane.create");
+    }
+
+    #[test]
+    fn queued_dispatch_disconnection_is_not_reported_as_unknown_outcome() {
+        let (reply, reply_rx) = mpsc::channel();
+        let response = dispatch_queued_with_timeout(
+            Some(json!(2)),
+            "workspace.list",
+            ControlCommand::PresentWindow { reply },
+            reply_rx,
+            &drop,
+            Duration::from_millis(1),
+        );
+
+        let error = response.error.expect("disconnection response error");
+        assert!(error.message.contains("reply channel disconnected"));
+        assert_eq!(error.data, None);
+    }
+
+    #[test]
+    fn pane_create_dispatch_disconnection_reports_unknown_outcome_and_unsafe_retry() {
+        for method in ["pane.create", "new-pane"] {
+            let (reply, reply_rx) = mpsc::channel();
+            let response = dispatch_queued_with_timeout(
+                Some(json!(3)),
+                method,
+                ControlCommand::PresentWindow { reply },
+                reply_rx,
+                &drop,
+                Duration::from_millis(1),
+            );
+
+            let error = response.error.expect("disconnection response error");
+            assert!(error
+                .message
+                .contains("inspect current state before retrying"));
+            assert_eq!(error.data.as_ref().unwrap()["method"], method);
+            assert_eq!(
+                error.data.as_ref().unwrap()["phase"],
+                "reply-channel-disconnected"
+            );
+            assert_eq!(error.data.as_ref().unwrap()["outcome_unknown"], true);
+            assert_eq!(error.data.as_ref().unwrap()["retry_safe"], false);
+        }
     }
 
     #[test]
