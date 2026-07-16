@@ -11,7 +11,7 @@
         "dependencies": [],
         "status": "done",
         "subtasks": [],
-        "updatedAt": "2026-07-02T08:00:17.837Z"
+        "updatedAt": "2026-07-15T23:55:15.077Z"
       },
       {
         "id": 2,
@@ -581,14 +581,14 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-13T05:46:57.126Z",
+      "lastModified": "2026-07-15T23:55:15.077Z",
       "taskCount": 26,
       "completedCount": 12,
       "tags": [
         "master"
       ],
-      "created": "2026-07-15T23:11:20.206Z",
-      "updated": "2026-07-15T23:11:20.206Z",
+      "created": "2026-07-16T00:27:19.811Z",
+      "updated": "2026-07-16T00:27:19.811Z",
       "description": "Tasks for master context"
     }
   },
@@ -870,6 +870,34 @@
       ],
       "created": "2026-07-12T21:29:35.029Z",
       "description": "Tasks for product-hygiene context"
+    }
+  },
+  "pr-bot-fallback-20260715": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Build and dogfood temporary Codex PR bot watcher fallback",
+        "description": "Create a project-local skill using gh CLI for exact-head review requests and bounded monitoring, dogfood it on Limux PR 59, then route proven Codex and Claude global promotion through Niru.",
+        "details": "Acceptance: resolve PR number or URL and freeze current head; avoid duplicate review requests; treat eyes reactions as pending only; monitor reviews, inline comments, issue comments, and request reactions; notify registered owner sessions without consuming hcom messages; stop only on exact-head bot response, bounded timeout, or infrastructure failure; classify and fix valid findings; repeat on new head; merge only after exact-head greenlight and required tests under operator authorization. Firecrawl is optional coarse backup only because its minimum monitor cadence is 15 minutes and it is unavailable in the current runtime. Add deterministic tests, dogfood evidence, global inbox pointers, and no direct Claude-tree edits.\n<info added on 2026-07-16T00:03:00.391Z>\n2026-07-15 dogfood round 1: no-delete scans passed for watcher and tests; 7 unittest cases passed; prepare reused existing PR 59 request comment 4986372768 without POST at frozen head a99eaec67cd82af1069e1e635bf8f3b15d7fd60b; watcher exited 0 on exact-head review 4709017540, ignored old-head review 4708947416, and delivered hcom notification without hcom listen. Review contained valid P2 inline comment 3591522689, routed to Bulo for a fix and next-head loop.\n</info added on 2026-07-16T00:03:00.391Z>\n<info added on 2026-07-16T00:10:40.026Z>\n2026-07-15 hardening after Gera review: accepted and fixed five findings covering terminal head TOCTOU, bot spoofing, multi-page gh API parsing, duplicate request race, and cross-PR request comment binding. Added edited-request binding time. 13 unittests, no-delete scan, skill validator, live prepare, and hardened exact-head watch passed. PR 59 second fix round is now watching new head 3d2553d911b98b8079b6b74928b8d0a4439179d1 via request comment 4986533240; Bulo reports scripts/check.sh and maintained Xvfb smoke passed.\n</info added on 2026-07-16T00:10:40.026Z>",
+        "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-07-15T23:55:35.931Z"
+      }
+    ],
+    "metadata": {
+      "created": "2026-07-15T23:54:12.933Z",
+      "updated": "2026-07-15T23:54:36.711Z",
+      "description": "Temporary exact-head Codex PR bot watcher/fix-loop fallback while the canonical hcom dedicated-identity path is unavailable",
+      "taskCount": 1,
+      "version": "1.0.0",
+      "lastModified": "2026-07-15T23:55:35.931Z",
+      "completedCount": 0,
+      "tags": [
+        "pr-bot-fallback-20260715"
+      ]
     }
   }
 }
