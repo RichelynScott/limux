@@ -34,6 +34,9 @@ use crate::shortcut_config::{
 };
 use crate::split_tree::{self, SplitTreeContainer};
 
+#[path = "window/renderer_diagnostics.rs"]
+mod renderer_diagnostics;
+
 const PANE_CREATE_COMMAND_READY_INTERVAL_MS: u64 = 50;
 const PANE_CREATE_COMMAND_READY_ATTEMPTS: u32 = 80;
 const PANE_CREATE_COMMAND_SETTLE_ATTEMPTS: u32 = 10;
@@ -199,6 +202,22 @@ fn install_window_render_visibility_tracking(window: &adw::ApplicationWindow) {
     window.connect_unmap(|_| crate::terminal::set_window_renderable(false));
     window.connect_unrealize(|_| crate::terminal::set_window_renderable(false));
     window.connect_visible_notify(sync_window_render_visibility);
+}
+
+fn install_renderer_diagnostics(window: &adw::ApplicationWindow) {
+    let scheduled = Rc::new(Cell::new(false));
+    window.connect_map(move |window| {
+        if scheduled.replace(true) {
+            return;
+        }
+
+        let window = window.downgrade();
+        glib::timeout_add_local_once(Duration::from_secs(1), move || {
+            if let Some(window) = window.upgrade() {
+                renderer_diagnostics::capture(&window);
+            }
+        });
+    });
 }
 
 #[cfg(feature = "preview-test-hooks")]
@@ -1761,7 +1780,10 @@ fn surface_health_payload(
         return Err(BridgeError::not_found("surface not found"));
     }
 
-    Ok(serde_json::json!({ "surfaces": surfaces }))
+    Ok(serde_json::json!({
+        "surfaces": surfaces,
+        "renderer_diagnostics": renderer_diagnostics::current_json(),
+    }))
 }
 
 #[derive(Clone)]
@@ -2671,6 +2693,7 @@ pub fn build_window(app: &adw::Application) {
         .build();
     apply_window_background_class(&window, background_opacity);
     install_window_render_visibility_tracking(&window);
+    install_renderer_diagnostics(&window);
     #[cfg(feature = "preview-test-hooks")]
     install_preview_visibility_control(&window);
 
