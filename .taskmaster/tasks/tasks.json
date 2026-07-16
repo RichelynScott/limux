@@ -577,18 +577,30 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 27,
+        "title": "Fix Limux terminal Ctrl+C copy-when-selection vs. PTY-interrupt routing",
+        "description": "Implement Ghostty-surface-aware Ctrl+C handling so that when an active text selection exists Ctrl+C copies and consumes the press, repeats, and matching release; when no selection exists Ctrl+C forwards unchanged to the PTY so shells, Claude Code, Codex, and Hermes retain interrupt behavior. Leave Ctrl+Alt+C and Ctrl+Super+C untouched.",
+        "details": "Implement the fix in the Limux host key-handling layer that intercepts Ctrl+C before it reaches the PTY. The handler must query the current Ghostty surface for an active text selection at the moment the key press arrives.\n\nDecision logic (evaluate on key DOWN/press only):\n- If the Ghostty surface has an active text selection: copy the selected text to the clipboard, then consume the press so nothing is written to the PTY. Also consume subsequent auto-repeats of the same physical key while the selection remains active and consume the matching key release to avoid a stray release reaching the PTY. After copy, optionally clear or preserve the selection according to existing copy semantics; preserve prior behavior if there is an established convention.\n- If the surface has no active text selection: forward Ctrl+C unchanged to the PTY as SIGINT (byte 0x03) so that shells, Claude Code, Codex, Hermes, and other CLI tools receive the interrupt exactly as before.\n- Modifier exclusion: do NOT hijack Ctrl+Alt+C or Ctrl+Super+C (Super/Win). These must pass through with their existing behavior. Only the bare Ctrl+C chord (Ctrl pressed, no Alt, no Super) triggers the copy-vs-interrupt decision.\n\nImplementation considerations:\n- Selection state must be read at press time from the Ghostty surface; stale selection state could cause regressions, so query live rather than caching.\n- Track the physical key / keycode through press -> repeat -> release to reliably consume the full sequence when copying. Avoid consuming unrelated keys.\n- Ensure that when selection is cleared between press and release, the release is still consumed if the press was consumed (matching press/release pairing).\n- Do not change clipboard contents or selection when forwarding to the PTY.\n- Preserve existing plain-text copy semantics; do not introduce formatting/HTML copy here.\n- Verify behavior across focused and unfocused surface states; only the focused surface should participate.\n- Coordinate wording with limux-use-guide if user-facing docs mention Ctrl+C semantics.\n\nDecision table to implement in tests (press unless noted):\n1. Selection active + Ctrl+C + no Alt/Super -> copy, consume press/repeat/release, no PTY byte.\n2. No selection + Ctrl+C + no Alt/Super -> forward 0x03 to PTY, do not consume.\n3. Selection active + Ctrl+C repeat after press consumed -> consume repeat, no PTY byte.\n4. Selection active + Ctrl+C release after press consumed -> consume release, no PTY byte.\n5. No selection + Ctrl+C repeat -> forward/repeat per existing PTY behavior.\n6. Selection active + Ctrl+Alt+C -> not intercepted by this logic, existing behavior preserved.\n7. No selection + Ctrl+Alt+C -> not intercepted by this logic.\n8. Selection active + Ctrl+Super+C -> not intercepted by this logic.\n9. No selection + Ctrl+Super+C -> not intercepted by this logic.\n10. Selection cleared between press and release, press was consumed -> release still consumed (pairing).",
+        "testStrategy": "Add a focused decision-table regression suite covering all rows above. Use the Limux host test harness with a mock Ghostty surface that can toggle selection state and a PTY recorder that captures written bytes.\n\nAutomated checks:\n- For each decision-table row, assert: PTY bytes written (expected 0x03 or none), clipboard contents (expected selection text or unchanged), and press/repeat/release consumption flags.\n- Repeat + release consumption: simulate key press while selection active, then key repeat, then key release; assert no PTY bytes across all three events and clipboard updated once.\n- Modifier exclusion: with Ctrl+Alt+C and Ctrl+Super+C, assert the Limux Ctrl+C handler does not consume and does not touch clipboard regardless of selection state.\n- No-selection forwarding: assert 0x03 is delivered to the PTY exactly as prior behavior, with no clipboard mutation.\n- Press/release pairing: start with selection, consume press, clear selection before release, assert release still consumed and no PTY byte emitted on release.\n- Focused-surface-only: when the surface is not focused, assert the handler does not copy and forwards normally.\n\nRun the Limux host quality gates (build, lint/format, unit tests, integration tests). If regression suites for terminal key handling exist, ensure they pass unchanged for non-Ctrl+C keys. Add or update a regression test specifically named for Ctrl+C copy-vs-interrupt decision table.",
+        "status": "in-progress",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-07-16T17:45:09.547Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-15T23:55:15.077Z",
-      "taskCount": 26,
+      "lastModified": "2026-07-16T17:45:09.547Z",
+      "taskCount": 27,
       "completedCount": 12,
       "tags": [
         "master"
       ],
       "created": "2026-07-16T00:27:19.811Z",
-      "updated": "2026-07-16T00:27:19.811Z",
+      "updated": "2026-07-16T17:43:31.662Z",
       "description": "Tasks for master context"
     }
   },

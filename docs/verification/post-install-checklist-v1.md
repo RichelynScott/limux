@@ -138,12 +138,18 @@ Evidence:
 Action:
 1. Open a fresh terminal pane in preview.
 2. Type a normal sentence and several shell metacharacters.
-3. Use normal editing keys, `Ctrl+C`, `Ctrl+D`, arrow keys, and Backspace.
-4. Copy text outside Limux and paste with `Ctrl+Shift+V`.
-5. Press plain `Ctrl+V` at a shell prompt.
+3. With no terminal selection, press `Ctrl+C` and confirm the foreground shell
+   or TUI receives its normal interrupt/cancel input.
+4. Select terminal text, press `Ctrl+C`, and confirm the selection is copied
+   without interrupting or clearing the foreground shell or TUI.
+5. Use `Ctrl+D`, arrow keys, and Backspace normally.
+6. Copy text outside Limux and paste with `Ctrl+Shift+V`.
+7. Press plain `Ctrl+V` at a shell prompt.
 
 Expected result:
 - Plain typing stays literal and does not trigger Limux shortcuts.
+- `Ctrl+C` copies and is consumed only while terminal text is selected; without
+  a selection it retains normal terminal interrupt/cancel behavior.
 - `Ctrl+Shift+V` performs Limux terminal paste.
 - Plain `Ctrl+V` is intentionally unclaimed by Limux and passes through to the
   terminal/native shell behavior.
