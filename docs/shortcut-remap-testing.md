@@ -182,7 +182,7 @@ If a key combo does not match a resolved Limux shortcut, Limux does not intercep
 
 That means terminal-native combos like these should pass through unless you explicitly bind them in Limux:
 
-- `Ctrl+C`
+- `Ctrl+C` when the terminal has no active text selection
 - `Ctrl+L`
 - `Ctrl+R`
 - plain typing
@@ -197,6 +197,11 @@ Editable browser fields should also retain native behavior for:
 - `Ctrl+R`
 
 This is the behavior you want when testing that unbound shortcuts stop being stolen by the host.
+
+Terminal Ctrl+C has one selection-aware exception: when the focused Ghostty
+surface has selected text, Limux copies that selection and consumes the chord.
+With no selection, Ctrl+C remains unclaimed and reaches the terminal program as
+its normal interrupt/cancel input.
 
 ## Visible Tooltip Behavior
 
