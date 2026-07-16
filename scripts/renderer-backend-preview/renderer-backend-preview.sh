@@ -355,7 +355,17 @@ attempt_backend() {
         stop_tick
     done
     if [[ -z "$CURRENT_SID" || "$CURRENT_SID" == "$RUNNER_SID" ]]; then
+        host_state="$(ps -o stat= -p "$CURRENT_PID" 2>/dev/null | tr -d '[:space:]')"
+        host_exited=false
+        if ! kill -0 "$CURRENT_PID" 2>/dev/null || [[ "$host_state" == Z* ]]; then
+            host_exited=true
+        fi
         stop_current_host
+        if [[ "$host_exited" == true ]]; then
+            printf 'renderer-preview: backend exited before session discovery: %s; fallback=%s\n' \
+                "$backend" "${NEXT_BACKEND:-none}" >&2
+            return 1
+        fi
         return 2
     fi
     printf '%s\n' "$CURRENT_SID" > "$attempt_dir/host.sid" || {

@@ -19,6 +19,7 @@ printf '%s\n' \
     ': "${FAKE_BACKEND_LOG:?}"' \
     ': "${FAKE_DESCENDANT_LOG:?}"' \
     'printf "%s\n" "${GALLIUM_DRIVER:-automatic}" >> "$FAKE_BACKEND_LOG"' \
+    'if [[ "${FAKE_HOST_EXIT_BACKEND:-}" == "${GALLIUM_DRIVER:-automatic}" ]]; then exit 42; fi' \
     'timeout 300s tail -f /dev/null >/dev/null 2>&1 &' \
     'printf "%s\n" "$!" >> "$FAKE_DESCENDANT_LOG"' \
     'trap "exit 0" INT TERM' \
@@ -77,6 +78,22 @@ while IFS= read -r pid_file; do
     pid="$(< "$pid_file")"
     ! kill -0 "$pid" 2>/dev/null
 done < <(find "$ARTIFACTS" -name host.pid -type f -print)
+
+FAST_EXIT_ARTIFACTS="$TEST_ROOT/fast-exit-artifacts"
+FAKE_BACKEND_LOG="$BACKEND_LOG" \
+FAKE_DESCENDANT_LOG="$DESCENDANT_LOG" \
+FAKE_HOST_EXIT_BACKEND=definitely-missing \
+    "$RUNNER" \
+    --host "$FAKE_HOST" \
+    --cli "$FAKE_CLI" \
+    --session-template "$SESSION_TEMPLATE" \
+    --artifacts "$FAST_EXIT_ARTIFACTS" \
+    --start invalid-test \
+    --polls 20 \
+    --poll-interval-ms 25
+jq -e '.selected_backend == "wsl-d3d12-gl"' "$FAST_EXIT_ARTIFACTS/result.json" >/dev/null
+jq -e '.attempted_backends == ["invalid-test", "wsl-d3d12-gl"]' \
+    "$FAST_EXIT_ARTIFACTS/result.json" >/dev/null
 
 WRONG_ARTIFACTS="$TEST_ROOT/wrong-renderer-artifacts"
 FAKE_BACKEND_LOG="$BACKEND_LOG" \
