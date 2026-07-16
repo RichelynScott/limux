@@ -2931,6 +2931,7 @@ fn selection_copy_key_action(
     copy_active: bool,
 ) -> SelectionCopyKeyAction {
     let blocked_modifiers = gtk::gdk::ModifierType::ALT_MASK
+        | gtk::gdk::ModifierType::HYPER_MASK
         | gtk::gdk::ModifierType::META_MASK
         | gtk::gdk::ModifierType::SUPER_MASK;
     if !is_copy_key(keyval)
@@ -2950,11 +2951,11 @@ fn selection_copy_key_action(
 }
 
 fn should_suppress_selection_copy_release(
-    keyval: gtk::gdk::Key,
+    _keyval: gtk::gdk::Key,
     keycode: u32,
     copy_keycode: Option<u32>,
 ) -> bool {
-    is_copy_key(keyval) && copy_keycode == Some(keycode)
+    copy_keycode == Some(keycode)
 }
 
 fn fallback_native_keycode(keyval: gtk::gdk::Key) -> u32 {
@@ -3186,15 +3187,20 @@ mod tests {
             54,
             Some(54)
         ));
+        assert!(should_suppress_selection_copy_release(
+            gtk::gdk::Key::Control_L,
+            54,
+            Some(54)
+        ));
         assert!(!should_suppress_selection_copy_release(
             gtk::gdk::Key::c,
             55,
             Some(54)
         ));
         assert!(!should_suppress_selection_copy_release(
-            gtk::gdk::Key::Control_L,
+            gtk::gdk::Key::c,
             54,
-            Some(54)
+            None
         ));
     }
 
@@ -3204,6 +3210,7 @@ mod tests {
             gtk::gdk::ModifierType::ALT_MASK,
             gtk::gdk::ModifierType::SUPER_MASK,
             gtk::gdk::ModifierType::META_MASK,
+            gtk::gdk::ModifierType::HYPER_MASK,
         ] {
             assert_eq!(
                 selection_copy_key_action(
