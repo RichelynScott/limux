@@ -262,8 +262,8 @@ def validate_request_comment(
     binding_at = max(timestamps) if timestamps else None
     issue_url = comment.get("issue_url")
     expected_issue_suffix = f"/repos/{repo}/issues/{pr}"
-    belongs_to_pr = isinstance(issue_url, str) and issue_url.rstrip("/").endswith(
-        expected_issue_suffix
+    belongs_to_pr = isinstance(issue_url, str) and issue_url.rstrip("/").casefold().endswith(
+        expected_issue_suffix.casefold()
     )
     valid = request_names_head(body, head) and binding_at is not None and belongs_to_pr
     metadata = {
