@@ -201,6 +201,58 @@ fn install_window_render_visibility_tracking(window: &adw::ApplicationWindow) {
     window.connect_visible_notify(sync_window_render_visibility);
 }
 
+#[cfg(feature = "preview-test-hooks")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PreviewVisibilityCommand {
+    Minimize,
+    Restore,
+}
+
+#[cfg(feature = "preview-test-hooks")]
+fn parse_preview_visibility_command(value: &str) -> Option<PreviewVisibilityCommand> {
+    match value.trim() {
+        "minimize" => Some(PreviewVisibilityCommand::Minimize),
+        "restore" => Some(PreviewVisibilityCommand::Restore),
+        _ => None,
+    }
+}
+
+#[cfg(feature = "preview-test-hooks")]
+fn install_preview_visibility_control(window: &adw::ApplicationWindow) {
+    let Some(path) = std::env::var_os("LIMUX_PREVIEW_VISIBILITY_CONTROL") else {
+        return;
+    };
+    if path.is_empty() {
+        return;
+    }
+
+    let path = PathBuf::from(path);
+    let window = window.downgrade();
+    let mut last_value = String::new();
+    glib::timeout_add_local(Duration::from_millis(50), move || {
+        let Some(window) = window.upgrade() else {
+            return glib::ControlFlow::Break;
+        };
+        let Ok(value) = std::fs::read_to_string(&path) else {
+            return glib::ControlFlow::Continue;
+        };
+        if value == last_value {
+            return glib::ControlFlow::Continue;
+        }
+        last_value = value.clone();
+
+        match parse_preview_visibility_command(&value) {
+            Some(PreviewVisibilityCommand::Minimize) => window.minimize(),
+            Some(PreviewVisibilityCommand::Restore) => {
+                window.unminimize();
+                window.present();
+            }
+            None => {}
+        }
+        glib::ControlFlow::Continue
+    });
+}
+
 fn build_window_header(decoration_layout: &str) -> (adw::HeaderBar, gtk::Label) {
     let bar = adw::HeaderBar::new();
     bar.set_title_widget(Some(&gtk::Box::new(gtk::Orientation::Horizontal, 0)));
@@ -2619,6 +2671,8 @@ pub fn build_window(app: &adw::Application) {
         .build();
     apply_window_background_class(&window, background_opacity);
     install_window_render_visibility_tracking(&window);
+    #[cfg(feature = "preview-test-hooks")]
+    install_preview_visibility_control(&window);
 
     let compositor_provides_decorations = display
         .clone()
@@ -8008,6 +8062,21 @@ mod tests {
             true,
             gdk::ToplevelState::MINIMIZED.bits()
         ));
+    }
+
+    #[cfg(feature = "preview-test-hooks")]
+    #[test]
+    fn preview_visibility_command_parser_is_fail_closed() {
+        assert_eq!(
+            super::parse_preview_visibility_command("minimize\n"),
+            Some(super::PreviewVisibilityCommand::Minimize)
+        );
+        assert_eq!(
+            super::parse_preview_visibility_command("restore"),
+            Some(super::PreviewVisibilityCommand::Restore)
+        );
+        assert_eq!(super::parse_preview_visibility_command("hide"), None);
+        assert_eq!(super::parse_preview_visibility_command(""), None);
     }
 
     #[test]
