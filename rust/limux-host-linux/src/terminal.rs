@@ -2930,6 +2930,10 @@ fn selection_copy_key_action(
     has_selection: bool,
     copy_active: bool,
 ) -> SelectionCopyKeyAction {
+    if copy_active {
+        return SelectionCopyKeyAction::Suppress;
+    }
+
     let blocked_modifiers = gtk::gdk::ModifierType::ALT_MASK
         | gtk::gdk::ModifierType::HYPER_MASK
         | gtk::gdk::ModifierType::META_MASK
@@ -2941,9 +2945,7 @@ fn selection_copy_key_action(
         return SelectionCopyKeyAction::Forward;
     }
 
-    if copy_active {
-        SelectionCopyKeyAction::Suppress
-    } else if has_selection {
+    if has_selection {
         SelectionCopyKeyAction::Copy
     } else {
         SelectionCopyKeyAction::Forward
@@ -3173,10 +3175,17 @@ mod tests {
     fn ctrl_c_copy_consumes_repeats_and_matching_release() {
         let ctrl = gtk::gdk::ModifierType::CONTROL_MASK;
 
-        assert_eq!(
-            selection_copy_key_action(gtk::gdk::Key::c, ctrl, false, true),
-            SelectionCopyKeyAction::Suppress
-        );
+        for (keyval, modifier) in [
+            (gtk::gdk::Key::c, ctrl),
+            (gtk::gdk::Key::c, gtk::gdk::ModifierType::empty()),
+            (gtk::gdk::Key::c, ctrl | gtk::gdk::ModifierType::ALT_MASK),
+            (gtk::gdk::Key::Control_L, gtk::gdk::ModifierType::empty()),
+        ] {
+            assert_eq!(
+                selection_copy_key_action(keyval, modifier, false, true),
+                SelectionCopyKeyAction::Suppress
+            );
+        }
         assert!(should_suppress_selection_copy_release(
             gtk::gdk::Key::c,
             54,
