@@ -5,6 +5,8 @@ mod control_registry;
 mod cwd_inheritance;
 mod ghostty_config;
 mod header_status;
+#[cfg(test)]
+mod host_log;
 mod keybind_editor;
 mod layout_state;
 mod pane;
