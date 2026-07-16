@@ -8,6 +8,7 @@ mod header_status;
 mod keybind_editor;
 mod layout_state;
 mod pane;
+mod runtime_lifecycle;
 mod settings_editor;
 mod shortcut_config;
 mod split_tree;

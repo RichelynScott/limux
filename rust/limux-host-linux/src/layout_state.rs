@@ -2423,4 +2423,60 @@ mod tests {
 
         assert_eq!(state.sidebar.width, MIN_SIDEBAR_WIDTH);
     }
+
+    #[test]
+    fn unclean_restore_suspends_agents_without_erasing_resume_metadata() {
+        let mut layout: LayoutNodeState = serde_json::from_value(serde_json::json!({
+            "kind": "pane",
+            "pane_id": 7,
+            "active_tab_id": "agent-tab",
+            "tabs": [{
+                "id": "agent-tab",
+                "tab_kind": "terminal",
+                "cwd": "/tmp/project",
+                "agent": {
+                    "kind": "codex",
+                    "session_id": "native-session-123",
+                    "cwd": "/tmp/project",
+                    "launch_command": {
+                        "executable": "hcom",
+                        "arguments": ["r", "lifo", "--run-here"],
+                        "cwd": "/tmp/project",
+                        "environment": {"HCOM_NAME": "lifo"},
+                        "captured_at": 42.0
+                    },
+                    "restore_on_startup": true
+                }
+            }]
+        }))
+        .expect("decode layout");
+
+        let suspended = suspend_agents_for_unclean_restore(&mut layout);
+
+        assert_eq!(suspended, 1);
+        let LayoutNodeState::Pane(pane) = layout else {
+            panic!("expected pane");
+        };
+        let TabContentState::Terminal {
+            agent: Some(agent), ..
+        } = &pane.tabs[0].content
+        else {
+            panic!("expected retained agent metadata");
+        };
+        assert!(!agent.restore_on_startup);
+        assert_eq!(
+            agent.suspension_reason,
+            Some(AgentSuspensionReason::UncleanRestore)
+        );
+        assert_eq!(agent.kind, RestorableAgentKind::Codex);
+        assert_eq!(agent.session_id, "native-session-123");
+        assert_eq!(agent.cwd.as_deref(), Some("/tmp/project"));
+        let launch = agent.launch_command.as_ref().expect("launch metadata");
+        assert_eq!(launch.executable, "hcom");
+        assert_eq!(launch.arguments, ["r", "lifo", "--run-here"]);
+        assert_eq!(
+            launch.environment.get("HCOM_NAME").map(String::as_str),
+            Some("lifo")
+        );
+    }
 }
