@@ -12,6 +12,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 
 const DEFAULT_LOG_LINES: usize = 200;
+const DEFAULT_LOG_TAIL_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CheckStatus {
@@ -667,7 +668,8 @@ fn run_log_triage(lines: usize) -> Value {
     let Some(path) = path else {
         return json!({"status": "warn", "message": "could not resolve host log path"});
     };
-    let Ok(text) = fs::read_to_string(&path) else {
+    let Ok(tail) = crate::doctor_log::read_backward_tail(&path, lines, DEFAULT_LOG_TAIL_BYTES)
+    else {
         return json!({
             "status": "warn",
             "path": path.to_string_lossy(),
@@ -675,13 +677,10 @@ fn run_log_triage(lines: usize) -> Value {
         });
     };
     let mut summary: BTreeMap<&'static str, usize> = BTreeMap::new();
-    let triaged = text
-        .lines()
-        .rev()
-        .take(lines)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
+    let lines_scanned = tail.lines.len();
+    let triaged = tail
+        .lines
+        .iter()
         .filter_map(|line| {
             let cleaned = strip_terminal_controls(line);
             let class = classify_log_line(&cleaned)?;
@@ -692,7 +691,9 @@ fn run_log_triage(lines: usize) -> Value {
     json!({
         "status": "ok",
         "path": path.to_string_lossy(),
-        "lines_scanned": lines,
+        "lines_scanned": lines_scanned,
+        "bytes_read": tail.bytes_read,
+        "truncated": tail.truncated,
         "summary": summary,
         "matches": triaged,
     })

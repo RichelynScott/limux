@@ -5,7 +5,6 @@ mod control_registry;
 mod cwd_inheritance;
 mod ghostty_config;
 mod header_status;
-#[cfg(test)]
 mod host_log;
 mod keybind_editor;
 mod layout_state;
@@ -19,9 +18,6 @@ mod window;
 
 use adw::prelude::*;
 use libadwaita as adw;
-use std::fs::{self, OpenOptions};
-use std::io;
-use std::os::fd::AsRawFd;
 #[cfg(unix)]
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -50,7 +46,12 @@ const LIMUX_TARGET_ID_ENV_KEYS: &[&str] = &[
 const HOST_LOG_ENV: &str = "LIMUX_HOST_LOG";
 const HOST_LOG_PATH_ENV: &str = "LIMUX_HOST_LOG_PATH";
 const HOST_LOG_DIR_NAME: &str = "limux/logs";
-const HOST_LOG_FILE_NAME: &str = "limux-host.log";
+const HOST_LOG_FILE_NAME: &str = "limux-host.current.log";
+const HOST_LOG_RETAINED_DIR_NAME: &str = "retained";
+const HOST_LOG_MAX_ACTIVE_BYTES: u64 = 64 * 1024 * 1024;
+const HOST_LOG_MAX_RETAINED_COUNT: usize = 10;
+const HOST_LOG_MAX_TOTAL_BYTES: u64 = 640 * 1024 * 1024;
+const HOST_LOG_MAX_WARNING_CATEGORIES: usize = 256;
 
 pub(crate) fn build_info() -> limux_control::BuildInfo {
     limux_control::BuildInfo::from_compile_env(
@@ -310,7 +311,7 @@ fn host_log_path() -> Option<PathBuf> {
 }
 
 #[cfg(unix)]
-fn install_host_stderr_log() -> io::Result<Option<PathBuf>> {
+fn install_host_stderr_log() -> Result<Option<PathBuf>, String> {
     if std::env::var_os(HOST_LOG_ENV).is_some_and(|value| value == "off" || value == "0") {
         return Ok(None);
     }
@@ -318,22 +319,27 @@ fn install_host_stderr_log() -> io::Result<Option<PathBuf>> {
     let Some(path) = host_log_path() else {
         return Ok(None);
     };
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    let file = OpenOptions::new().create(true).append(true).open(&path)?;
-
-    let rc = unsafe { libc::dup2(file.as_raw_fd(), libc::STDERR_FILENO) };
-    if rc < 0 {
-        return Err(io::Error::last_os_error());
-    }
-
-    Ok(Some(path))
+    let retained_dir = path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(HOST_LOG_RETAINED_DIR_NAME);
+    let config = host_log::HostLogConfig {
+        active_path: path,
+        retained_dir,
+        max_active_bytes: HOST_LOG_MAX_ACTIVE_BYTES,
+        max_retained_count: HOST_LOG_MAX_RETAINED_COUNT,
+        max_total_bytes: HOST_LOG_MAX_TOTAL_BYTES,
+        max_warning_categories: HOST_LOG_MAX_WARNING_CATEGORIES,
+    };
+    let sequence = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| format!("system clock is before Unix epoch: {error}"))?
+        .as_nanos();
+    host_log::install_bounded_stderr(&config, sequence)
 }
 
 #[cfg(not(unix))]
-fn install_host_stderr_log() -> io::Result<Option<PathBuf>> {
+fn install_host_stderr_log() -> Result<Option<PathBuf>, String> {
     Ok(None)
 }
 
