@@ -29,6 +29,9 @@ use crate::layout_state::{
     WorkspaceState,
 };
 use crate::pane::{self, PaneCallbacks};
+use crate::runtime_lifecycle::{
+    self, RuntimeLifecycle, StartupClassification, UncleanStartupReason,
+};
 use crate::shortcut_config::{
     self, EditableCapturePolicy, ResolvedShortcutConfig, ShortcutCommand, ShortcutId,
 };
@@ -110,6 +113,9 @@ pub(crate) struct AppState {
     sidebar_expanded_width: i32,
     persistence_suspended: bool,
     save_queued: bool,
+    runtime_lifecycle: Option<RuntimeLifecycle>,
+    startup_classification: StartupClassification,
+    suspended_agent_count: usize,
     workspace_dragging: Option<String>,
     desktop_notification_routes: HashMap<u32, DesktopNotificationRoute>,
     _theme_portal_signal: Option<gio::SignalSubscription>,
@@ -1179,6 +1185,15 @@ fn surface_summary_payload(
     workspace_name: String,
     surface: pane::SurfaceSummary,
 ) -> serde_json::Value {
+    let agent_payload = surface.agent_session_id.as_ref().map(|session_id| {
+        serde_json::json!({
+            "kind": surface.agent_kind.as_deref(),
+            "session_id": session_id,
+            "hcom_name": surface.agent_hcom_name.as_deref(),
+            "suspended": surface.agent_suspended,
+            "suspension_reason": surface.agent_suspension_reason.as_deref(),
+        })
+    });
     let nested_surface = serde_json::json!({
         "id": surface.surface_id.as_str(),
         "pane_id": surface.pane_id.to_string(),
@@ -1191,6 +1206,8 @@ fn surface_summary_payload(
         "unread": false,
         "flash_count": 0,
         "refresh_count": 0,
+        "agent_suspended": surface.agent_suspended,
+        "agent_suspension_reason": surface.agent_suspension_reason.as_deref(),
     });
 
     let mut payload = serde_json::Map::new();
@@ -1227,6 +1244,21 @@ fn surface_summary_payload(
         serde_json::Value::String(surface_ref(&surface.surface_id)),
     );
     payload.insert("surface".to_string(), nested_surface);
+    if let Some(agent_payload) = agent_payload {
+        payload.insert("agent".to_string(), agent_payload);
+    }
+    payload.insert(
+        "agent_suspended".to_string(),
+        serde_json::Value::Bool(surface.agent_suspended),
+    );
+    payload.insert(
+        "agent_suspension_reason".to_string(),
+        surface
+            .agent_suspension_reason
+            .clone()
+            .map(serde_json::Value::String)
+            .unwrap_or(serde_json::Value::Null),
+    );
     if !surface.title.is_empty() {
         payload.insert(
             "surface_title".to_string(),
@@ -1680,6 +1712,30 @@ fn surface_health_row(
     );
     row.insert("in_window".to_string(), serde_json::Value::Bool(true));
     row.insert("hidden".to_string(), serde_json::Value::Bool(false));
+    row.insert(
+        "agent_suspended".to_string(),
+        serde_json::Value::Bool(surface.agent_suspended),
+    );
+    row.insert(
+        "agent_suspension_reason".to_string(),
+        surface
+            .agent_suspension_reason
+            .clone()
+            .map(serde_json::Value::String)
+            .unwrap_or(serde_json::Value::Null),
+    );
+    if let Some(session_id) = surface.agent_session_id.as_ref() {
+        row.insert(
+            "agent".to_string(),
+            serde_json::json!({
+                "kind": surface.agent_kind.as_deref(),
+                "session_id": session_id,
+                "hcom_name": surface.agent_hcom_name.as_deref(),
+                "suspended": surface.agent_suspended,
+                "suspension_reason": surface.agent_suspension_reason.as_deref(),
+            }),
+        );
+    }
 
     if surface.kind == "terminal" {
         if let Some((_surface_id, handle)) =
@@ -1761,7 +1817,23 @@ fn surface_health_payload(
         return Err(BridgeError::not_found("surface not found"));
     }
 
-    Ok(serde_json::json!({ "surfaces": surfaces }))
+    let (startup_status, startup_reason, suspended_agent_count) = {
+        let app_state = state.borrow();
+        let (status, reason) = match &app_state.startup_classification {
+            StartupClassification::Clean => ("clean", None),
+            StartupClassification::Unclean(reason) => ("unclean", Some(reason.name())),
+        };
+        (status, reason, app_state.suspended_agent_count)
+    };
+
+    Ok(serde_json::json!({
+        "surfaces": surfaces,
+        "runtime_startup": {
+            "status": startup_status,
+            "reason": startup_reason,
+            "suspended_agent_count": suspended_agent_count,
+        }
+    }))
 }
 
 #[derive(Clone)]
@@ -1912,10 +1984,14 @@ fn request_session_save(state: &State) {
     }
 }
 
-fn save_session_now(state: &State) {
+fn save_session_now(state: &State) -> bool {
     let session = snapshot_session_state(state);
-    if let Err(err) = layout_state::save_session_atomic(&session) {
-        eprintln!("limux: failed to save session state: {err}");
+    match layout_state::save_session_atomic(&session) {
+        Ok(_) => true,
+        Err(err) => {
+            eprintln!("limux: failed to save session state: {err}");
+            false
+        }
     }
 }
 
@@ -1923,12 +1999,28 @@ fn suspend_persistence(state: &State, suspended: bool) {
     state.borrow_mut().persistence_suspended = suspended;
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StartupRestoreMode {
+    ResumeEligibleAgents,
+    LayoutOnlySuspended,
+}
+
+fn startup_restore_mode(classification: &StartupClassification) -> StartupRestoreMode {
+    if classification.is_unclean() {
+        StartupRestoreMode::LayoutOnlySuspended
+    } else {
+        StartupRestoreMode::ResumeEligibleAgents
+    }
+}
+
 fn apply_loaded_session(state: &State, mut loaded: LoadedSession) {
     suspend_persistence(state, true);
+    let restore_mode = startup_restore_mode(&state.borrow().startup_classification);
 
     apply_top_bar_state_immediately(state, loaded.state.top_bar_visible);
 
     let restored_any = !loaded.state.workspaces.is_empty();
+    let mut suspended_agent_count = 0;
     if restored_any {
         let restorable_agents = layout_state::RestorableAgentIndex::load();
         for workspace in &mut loaded.state.workspaces {
@@ -1937,6 +2029,10 @@ fn apply_loaded_session(state: &State, mut loaded: LoadedSession) {
                 workspace.id.as_deref().unwrap_or(""),
                 &restorable_agents,
             );
+            if restore_mode == StartupRestoreMode::LayoutOnlySuspended {
+                suspended_agent_count +=
+                    layout_state::suspend_agents_for_unclean_restore(&mut workspace.layout);
+            }
         }
         for workspace in &loaded.state.workspaces {
             add_workspace_from_state(state, workspace);
@@ -1944,6 +2040,8 @@ fn apply_loaded_session(state: &State, mut loaded: LoadedSession) {
         restore_active_workspace(state, loaded.state.active_workspace_index);
         apply_sidebar_state_immediately(state, &loaded.state.sidebar);
     }
+
+    state.borrow_mut().suspended_agent_count = suspended_agent_count;
 
     suspend_persistence(state, false);
 
@@ -2802,6 +2900,24 @@ pub fn build_window(app: &adw::Application) {
         window.set_content(Some(&vbox));
     }
 
+    let runtime_lifecycle =
+        runtime_lifecycle::RuntimeMarkerSeed::current(crate::VERSION).and_then(|seed| {
+            runtime_lifecycle::begin_runtime_in(&layout_state::persistence_dir(), seed)
+        });
+    let (runtime_lifecycle, startup_classification) = match runtime_lifecycle {
+        Ok(lifecycle) => {
+            let classification = lifecycle.previous_shutdown().clone();
+            (Some(lifecycle), classification)
+        }
+        Err(err) => {
+            eprintln!("limux: runtime marker unavailable; using layout-only restore: {err}");
+            (
+                None,
+                StartupClassification::Unclean(UncleanStartupReason::MarkerReadFailed),
+            )
+        }
+    };
+
     let state: State = Rc::new(RefCell::new(AppState {
         app: app.clone(),
         window: window.clone(),
@@ -2823,6 +2939,9 @@ pub fn build_window(app: &adw::Application) {
         sidebar_expanded_width: SIDEBAR_WIDTH,
         persistence_suspended: false,
         save_queued: false,
+        runtime_lifecycle,
+        startup_classification,
+        suspended_agent_count: 0,
         workspace_dragging: None,
         desktop_notification_routes: HashMap::new(),
         _theme_portal_signal: None,
@@ -2982,7 +3101,13 @@ pub fn build_window(app: &adw::Application) {
     {
         let state = state.clone();
         window.connect_close_request(move |_| {
-            save_session_now(&state);
+            let session_saved = save_session_now(&state);
+            let lifecycle = state.borrow().runtime_lifecycle.clone();
+            if let Some(lifecycle) = lifecycle {
+                if let Err(err) = lifecycle.mark_clean_if_session_saved(session_saved) {
+                    eprintln!("limux: failed to mark clean shutdown: {err}");
+                }
+            }
             CONTROL_STATE.with(|slot| {
                 slot.borrow_mut().take();
             });
@@ -7972,19 +8097,19 @@ mod tests {
         shortcut_command_from_key_event, shortcut_dispatch_propagation,
         should_auto_open_sidebar_for_notification, should_emit_desktop_notification,
         should_restore_workspace_mapping, should_skip_workspace_mapping, sidebar_width_class,
-        snapshot_current_pane_id, snapshot_sidebar_width, surface_send_text_response,
-        surface_summary_payload, surface_target_response_payload, tab_drag_workspace_seed,
-        toplevel_state_allows_rendering, use_opaque_window_background,
+        snapshot_current_pane_id, snapshot_sidebar_width, startup_restore_mode,
+        surface_send_text_response, surface_summary_payload, surface_target_response_payload,
+        tab_drag_workspace_seed, toplevel_state_allows_rendering, use_opaque_window_background,
         validate_typed_terminal_text, validate_workspace_folder_input_with_dirs,
         window_chrome_policy, window_visibility_allows_rendering, workspace_drop_layout_path,
         workspace_folder_path_from_input, workspace_notification_message,
         DesktopNotificationTarget, Direction, EditableCaptureContext, ManagerRefresh,
         NeighborScore, PaneBounds, PaneCreateDirection, PaneCreateTargetError,
-        PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest, WorkspaceSeedSource,
-        BASE_CSS, HOST_ENTRY_CSS_CLASS, HOST_LAUNCH_ENV_REMOVALS, LIMUX_WINDOW_DECORATION_LAYOUT,
-        SIDEBAR_COMPACT_CSS_CLASS, SIDEBAR_COMPACT_WIDTH, SIDEBAR_MIN_WIDTH,
-        SIDEBAR_TINY_CSS_CLASS, SIDEBAR_TINY_WIDTH, WORKSPACE_RENAME_ENTRY_CSS_CLASS,
-        WORKSPACE_RENAME_ENTRY_CSS_CLASSES,
+        PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest, StartupRestoreMode,
+        WorkspaceSeedSource, BASE_CSS, HOST_ENTRY_CSS_CLASS, HOST_LAUNCH_ENV_REMOVALS,
+        LIMUX_WINDOW_DECORATION_LAYOUT, SIDEBAR_COMPACT_CSS_CLASS, SIDEBAR_COMPACT_WIDTH,
+        SIDEBAR_MIN_WIDTH, SIDEBAR_TINY_CSS_CLASS, SIDEBAR_TINY_WIDTH,
+        WORKSPACE_RENAME_ENTRY_CSS_CLASS, WORKSPACE_RENAME_ENTRY_CSS_CLASSES,
     };
     use crate::layout_state::{LayoutNodeState, PaneState, SplitOrientation, SplitState};
     use crate::shortcut_config::{
@@ -8186,6 +8311,11 @@ mod tests {
                 selected: true,
                 cwd: Some("/tmp/project".to_string()),
                 uri: None,
+                agent_kind: Some("codex".to_string()),
+                agent_session_id: Some("native-session-123".to_string()),
+                agent_hcom_name: Some("lifo".to_string()),
+                agent_suspended: true,
+                agent_suspension_reason: Some("unclean_restore".to_string()),
             },
         );
 
@@ -8201,6 +8331,32 @@ mod tests {
         assert_eq!(payload["surface"]["unread"], false);
         assert_eq!(payload["surface"]["flash_count"], 0);
         assert_eq!(payload["surface"]["refresh_count"], 0);
+        assert_eq!(payload["agent"]["kind"], "codex");
+        assert_eq!(payload["agent"]["session_id"], "native-session-123");
+        assert_eq!(payload["agent"]["hcom_name"], "lifo");
+        assert_eq!(payload["agent"]["suspended"], true);
+        assert_eq!(payload["agent"]["suspension_reason"], "unclean_restore");
+        assert_eq!(payload["surface"]["agent_suspended"], true);
+        assert_eq!(
+            payload["surface"]["agent_suspension_reason"],
+            "unclean_restore"
+        );
+    }
+
+    #[test]
+    fn unclean_startup_selects_layout_only_agent_restore() {
+        use crate::runtime_lifecycle::{StartupClassification, UncleanStartupReason};
+
+        assert_eq!(
+            startup_restore_mode(&StartupClassification::Clean),
+            StartupRestoreMode::ResumeEligibleAgents
+        );
+        assert_eq!(
+            startup_restore_mode(&StartupClassification::Unclean(
+                UncleanStartupReason::PreviousRunUnclean
+            )),
+            StartupRestoreMode::LayoutOnlySuspended
+        );
     }
 
     #[test]
@@ -8217,6 +8373,11 @@ mod tests {
                 selected: true,
                 cwd: None,
                 uri: None,
+                agent_kind: None,
+                agent_session_id: None,
+                agent_hcom_name: None,
+                agent_suspended: false,
+                agent_suspension_reason: None,
             },
         );
 

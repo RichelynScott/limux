@@ -255,6 +255,16 @@ pub enum RestorableAgentKind {
 }
 
 impl RestorableAgentKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+            Self::OpenCode => "opencode",
+            Self::Gemini => "gemini",
+            Self::Hermes => "hermes",
+        }
+    }
+
     pub fn resume_command(
         self,
         session_id: &str,
@@ -275,13 +285,7 @@ impl RestorableAgentKind {
     }
 
     fn store_name(self) -> &'static str {
-        match self {
-            Self::Claude => "claude",
-            Self::Codex => "codex",
-            Self::OpenCode => "opencode",
-            Self::Gemini => "gemini",
-            Self::Hermes => "hermes",
-        }
+        self.name()
     }
 }
 
@@ -308,6 +312,8 @@ pub struct RestorableAgentState {
     pub launch_command: Option<AgentLaunchCommandState>,
     #[serde(default)]
     pub restore_on_startup: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suspension_reason: Option<AgentSuspensionReason>,
 }
 
 impl RestorableAgentState {
@@ -320,6 +326,52 @@ impl RestorableAgentState {
             self.launch_command.as_ref(),
             self.cwd.as_deref(),
         )
+    }
+
+    pub fn is_suspended(&self) -> bool {
+        self.suspension_reason.is_some()
+    }
+
+    pub fn hcom_name(&self) -> Option<&str> {
+        let launch = self.launch_command.as_ref()?;
+        ["HCOM_NAME", "HCOM_INSTANCE_NAME"]
+            .iter()
+            .find_map(|key| launch.environment.get(*key))
+            .map(String::as_str)
+            .filter(|value| !value.trim().is_empty())
+    }
+
+    pub fn suspension_tooltip(&self) -> Option<String> {
+        self.suspension_reason.map(|reason| match reason {
+            AgentSuspensionReason::UncleanRestore => {
+                "Agent suspended after an unclean Limux shutdown".to_string()
+            }
+            AgentSuspensionReason::PressureGating => {
+                "Agent suspended by the runtime pressure gate".to_string()
+            }
+            AgentSuspensionReason::Cancelled => "Agent resume was cancelled".to_string(),
+            AgentSuspensionReason::UserChoice => "Agent resume is paused".to_string(),
+        })
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentSuspensionReason {
+    UncleanRestore,
+    PressureGating,
+    Cancelled,
+    UserChoice,
+}
+
+impl AgentSuspensionReason {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::UncleanRestore => "unclean_restore",
+            Self::PressureGating => "pressure_gating",
+            Self::Cancelled => "cancelled",
+            Self::UserChoice => "user_choice",
+        }
     }
 }
 
@@ -783,6 +835,7 @@ impl RestorableAgentIndex {
                             cwd: record.cwd.clone(),
                             launch_command: record.launch_command.clone(),
                             restore_on_startup: true,
+                            suspension_reason: None,
                         },
                         record.updated_at,
                     ),
@@ -796,6 +849,7 @@ impl RestorableAgentIndex {
                                 cwd: record.cwd.clone(),
                                 launch_command: record.launch_command.clone(),
                                 restore_on_startup: true,
+                                suspension_reason: None,
                             },
                             record.updated_at,
                         )));
@@ -814,6 +868,7 @@ impl RestorableAgentIndex {
                                     cwd: record.cwd.clone(),
                                     launch_command: record.launch_command.clone(),
                                     restore_on_startup: true,
+                                    suspension_reason: None,
                                 },
                                 record.updated_at,
                             )));
@@ -890,6 +945,30 @@ pub fn attach_restorable_agents_to_layout(
         LayoutNodeState::Split(split) => {
             attach_restorable_agents_to_layout(&mut split.start, workspace_id, index);
             attach_restorable_agents_to_layout(&mut split.end, workspace_id, index);
+        }
+    }
+}
+
+pub fn suspend_agents_for_unclean_restore(layout: &mut LayoutNodeState) -> usize {
+    match layout {
+        LayoutNodeState::Pane(pane) => pane
+            .tabs
+            .iter_mut()
+            .filter_map(|tab| match &mut tab.content {
+                TabContentState::Terminal {
+                    agent: Some(agent), ..
+                } => Some(agent),
+                _ => None,
+            })
+            .map(|agent| {
+                agent.restore_on_startup = false;
+                agent.suspension_reason = Some(AgentSuspensionReason::UncleanRestore);
+                1usize
+            })
+            .sum(),
+        LayoutNodeState::Split(split) => {
+            suspend_agents_for_unclean_restore(&mut split.start)
+                + suspend_agents_for_unclean_restore(&mut split.end)
         }
     }
 }
@@ -1770,6 +1849,7 @@ mod tests {
                         cwd: Some("/tmp/project".to_string()),
                         launch_command: None,
                         restore_on_startup: true,
+                        suspension_reason: None,
                     }),
                 },
             }],
@@ -1810,6 +1890,7 @@ mod tests {
                         cwd: Some("/tmp/project".to_string()),
                         launch_command: None,
                         restore_on_startup: true,
+                        suspension_reason: None,
                     }),
                 },
             }],
@@ -1856,6 +1937,7 @@ mod tests {
                         cwd: Some("/tmp/project".to_string()),
                         launch_command: None,
                         restore_on_startup: true,
+                        suspension_reason: None,
                     }),
                 },
             }],
@@ -1902,6 +1984,7 @@ mod tests {
                         cwd: Some("/tmp/project".to_string()),
                         launch_command: None,
                         restore_on_startup: true,
+                        suspension_reason: None,
                     }),
                 },
             }],
@@ -1942,6 +2025,7 @@ mod tests {
                         cwd: Some("/tmp/project".to_string()),
                         launch_command: None,
                         restore_on_startup: false,
+                        suspension_reason: None,
                     }),
                 },
             }],
@@ -2038,6 +2122,7 @@ mod tests {
                         captured_at: Some(12.0),
                     }),
                     restore_on_startup: true,
+                    suspension_reason: None,
                 }),
             },
         };
@@ -2077,6 +2162,7 @@ mod tests {
                 captured_at: Some(12.0),
             }),
             restore_on_startup: true,
+            suspension_reason: None,
         };
 
         let command = agent.resume_command().expect("resume command");
@@ -2102,6 +2188,7 @@ mod tests {
                 captured_at: Some(12.0),
             }),
             restore_on_startup: true,
+            suspension_reason: None,
         };
 
         let command = agent.resume_command().expect("resume command");
@@ -2126,6 +2213,7 @@ mod tests {
                 captured_at: Some(12.0),
             }),
             restore_on_startup: true,
+            suspension_reason: None,
         };
 
         let command = agent.resume_command().expect("resume command");
@@ -2154,6 +2242,7 @@ mod tests {
                 captured_at: Some(12.0),
             }),
             restore_on_startup: true,
+            suspension_reason: None,
         };
 
         let command = agent.resume_command().expect("resume command");
@@ -2185,6 +2274,7 @@ mod tests {
                 captured_at: Some(12.0),
             }),
             restore_on_startup: true,
+            suspension_reason: None,
         };
 
         let command = agent.resume_command().expect("resume command");
@@ -2202,6 +2292,7 @@ mod tests {
             cwd: Some("/tmp/project".to_string()),
             launch_command: None,
             restore_on_startup: false,
+            suspension_reason: None,
         };
 
         assert_eq!(agent.resume_command(), None);
