@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::env;
+use std::fmt;
 use std::fs::{self, OpenOptions};
 use std::hash::{Hash, Hasher};
 use std::io::{ErrorKind, Write};
@@ -11,7 +12,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use limux_control::socket_path::{
     resolve_socket_path, resolve_socket_path_for_channel, RuntimeChannel, SocketMode,
 };
-use limux_protocol::{validate_terminal_text_payload, V2Request, V2Response};
+use limux_protocol::{validate_terminal_text_payload, V2Error, V2Request, V2Response};
 use serde_json::{json, Map, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
@@ -102,6 +103,31 @@ struct Client {
     seq: u64,
 }
 
+#[derive(Debug)]
+struct ControlResponseError {
+    error: V2Error,
+}
+
+impl fmt::Display for ControlResponseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.error.code == -32004 {
+            write!(formatter, "not_found: {}", self.error.message)
+        } else {
+            write!(formatter, "{}: {}", self.error.code, self.error.message)
+        }
+    }
+}
+
+impl std::error::Error for ControlResponseError {}
+
+fn control_error_json(error: &anyhow::Error) -> Option<Value> {
+    let control = error.downcast_ref::<ControlResponseError>()?;
+    Some(json!({
+        "ok": false,
+        "error": control.error
+    }))
+}
+
 impl Client {
     fn new(socket: PathBuf) -> Self {
         Self { socket, seq: 0 }
@@ -155,10 +181,7 @@ impl Client {
             let err = response
                 .error
                 .ok_or_else(|| anyhow!("server returned !ok without error payload"))?;
-            if err.code == -32004 {
-                bail!("not_found: {}", err.message);
-            }
-            bail!("{}: {}", err.code, err.message);
+            Err(anyhow::Error::new(ControlResponseError { error: err }))
         }
     }
 }
@@ -6402,6 +6425,24 @@ async fn main() -> Result<()> {
             Ok(())
         }
         Err(err) => {
+            if opts.json_output {
+                if let Some(value) = control_error_json(&err) {
+                    if opts.pretty {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&value)
+                                .context("failed to pretty print control error")?
+                        );
+                    } else {
+                        println!(
+                            "{}",
+                            serde_json::to_string(&value)
+                                .context("failed to encode control error")?
+                        );
+                    }
+                    std::process::exit(1);
+                }
+            }
             eprintln!("{}", err);
             std::process::exit(1);
         }
@@ -7011,6 +7052,52 @@ mod cli_arg_tests {
             started.elapsed()
         );
         server.abort();
+    }
+
+    #[tokio::test]
+    async fn client_json_error_preserves_retry_safety_metadata() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let socket = dir.path().join("limux.sock");
+        let listener = tokio::net::UnixListener::bind(&socket).expect("bind listener");
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept client");
+            let (reader_half, mut writer_half) = stream.into_split();
+            let mut reader = BufReader::new(reader_half);
+            let mut request = String::new();
+            reader.read_line(&mut request).await.expect("read request");
+            let response = V2Response::error(
+                Some(json!("cli-1")),
+                -32603,
+                "pane creation outcome is unknown",
+                Some(json!({
+                    "method": "pane.create",
+                    "outcome_unknown": true,
+                    "retry_safe": false,
+                    "pane_ref": "pane:17",
+                    "surface_ref": "surface:17:tab-a"
+                })),
+            );
+            let mut payload = serde_json::to_string(&response).expect("encode response");
+            payload.push('\n');
+            writer_half
+                .write_all(payload.as_bytes())
+                .await
+                .expect("write response");
+        });
+
+        let mut client = Client::new(socket);
+        let error = client
+            .call("pane.create", json!({}))
+            .await
+            .expect_err("pane.create should fail");
+        let payload = control_error_json(&error).expect("structured control error");
+
+        assert_eq!(payload["ok"], false);
+        assert_eq!(payload["error"]["code"], -32603);
+        assert_eq!(payload["error"]["data"]["outcome_unknown"], true);
+        assert_eq!(payload["error"]["data"]["retry_safe"], false);
+        assert_eq!(payload["error"]["data"]["pane_ref"], "pane:17");
+        server.await.expect("server task");
     }
 
     #[test]

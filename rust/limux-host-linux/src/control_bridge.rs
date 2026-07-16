@@ -330,7 +330,7 @@ impl BridgeError {
         }
     }
 
-    fn with_data(mut self, data: Value) -> Self {
+    pub(crate) fn with_data(mut self, data: Value) -> Self {
         self.data = Some(data);
         self
     }
@@ -1409,8 +1409,19 @@ fn dispatch_queued(
     reply_rx: mpsc::Receiver<BridgeResult>,
     dispatch: &dyn Fn(ControlCommand),
 ) -> V2Response {
-    dispatch(command);
     let timeout = control_command_timeout(method);
+    dispatch_queued_with_timeout(id, method, command, reply_rx, dispatch, timeout)
+}
+
+fn dispatch_queued_with_timeout(
+    id: Option<Value>,
+    method: &str,
+    command: ControlCommand,
+    reply_rx: mpsc::Receiver<BridgeResult>,
+    dispatch: &dyn Fn(ControlCommand),
+    timeout: Duration,
+) -> V2Response {
+    dispatch(command);
     match reply_rx.recv_timeout(timeout) {
         Ok(Ok(result)) => V2Response::success(id, result),
         Ok(Err(error)) => error_response(id, error),
@@ -1868,6 +1879,10 @@ mod tests {
             control_command_timeout("workspace.list"),
             Duration::from_secs(5)
         );
+        assert_eq!(
+            control_command_timeout("new-pane"),
+            PANE_CREATE_CONTROL_COMMAND_TIMEOUT
+        );
     }
 
     #[test]
@@ -1887,6 +1902,45 @@ mod tests {
                 "timeout_ms": 15_000
             }))
         );
+    }
+
+    #[test]
+    fn queued_dispatch_timeout_serializes_unsafe_retry_metadata() {
+        let (reply, reply_rx) = mpsc::channel();
+        let held_command = std::cell::RefCell::new(None);
+        let response = dispatch_queued_with_timeout(
+            Some(json!(1)),
+            "pane.create",
+            ControlCommand::PresentWindow { reply },
+            reply_rx,
+            &|command| {
+                held_command.replace(Some(command));
+            },
+            Duration::from_millis(1),
+        );
+
+        let error = response.error.expect("timeout response error");
+        assert_eq!(error.code, INTERNAL_ERROR_CODE);
+        assert_eq!(error.data.as_ref().unwrap()["outcome_unknown"], true);
+        assert_eq!(error.data.as_ref().unwrap()["retry_safe"], false);
+        assert_eq!(error.data.as_ref().unwrap()["method"], "pane.create");
+    }
+
+    #[test]
+    fn queued_dispatch_disconnection_is_not_reported_as_unknown_outcome() {
+        let (reply, reply_rx) = mpsc::channel();
+        let response = dispatch_queued_with_timeout(
+            Some(json!(2)),
+            "workspace.list",
+            ControlCommand::PresentWindow { reply },
+            reply_rx,
+            &drop,
+            Duration::from_millis(1),
+        );
+
+        let error = response.error.expect("disconnection response error");
+        assert!(error.message.contains("reply channel disconnected"));
+        assert_eq!(error.data, None);
     }
 
     #[test]

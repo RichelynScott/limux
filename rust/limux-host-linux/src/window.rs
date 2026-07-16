@@ -474,6 +474,44 @@ fn pane_create_response_payload(
     })
 }
 
+fn pane_create_command_failure_data(
+    response: &serde_json::Value,
+    phase: &str,
+) -> serde_json::Value {
+    let mut data = serde_json::Map::new();
+    data.insert(
+        "method".to_string(),
+        serde_json::Value::String("pane.create".to_string()),
+    );
+    data.insert(
+        "phase".to_string(),
+        serde_json::Value::String(phase.to_string()),
+    );
+    data.insert("outcome_unknown".to_string(), serde_json::Value::Bool(true));
+    data.insert("retry_safe".to_string(), serde_json::Value::Bool(false));
+    for key in [
+        "workspace_id",
+        "workspace_ref",
+        "pane_id",
+        "pane_ref",
+        "surface_id",
+        "surface_ref",
+    ] {
+        if let Some(value) = response.get(key) {
+            data.insert(key.to_string(), value.clone());
+        }
+    }
+    serde_json::Value::Object(data)
+}
+
+fn pane_create_command_failure(
+    response: &serde_json::Value,
+    phase: &str,
+    message: impl Into<String>,
+) -> BridgeError {
+    BridgeError::internal(message).with_data(pane_create_command_failure_data(response, phase))
+}
+
 fn pane_focus_response_payload(workspace_id: &str, pane_id: u32) -> serde_json::Value {
     let pane_ref = pane_ref(pane_id);
     serde_json::json!({
@@ -558,9 +596,13 @@ fn send_pane_create_response_after_command(
                                 if handle.send_key("enter") {
                                     let _ = reply.send(Ok(response));
                                 } else {
-                                    let _ = reply.send(Err(BridgeError::internal(format!(
-                                        "pane.create command target surface {surface_id} could not submit Enter"
-                                    ))));
+                                    let _ = reply.send(Err(pane_create_command_failure(
+                                        &response,
+                                        "submit-enter",
+                                        format!(
+                                            "pane.create command target surface {surface_id} could not submit Enter; the pane already exists, so inspect current state before retrying"
+                                        ),
+                                    )));
                                 }
                             },
                         );
@@ -571,9 +613,13 @@ fn send_pane_create_response_after_command(
 
             if attempts >= PANE_CREATE_COMMAND_READY_ATTEMPTS {
                 if let Some(reply) = reply.take() {
-                    let _ = reply.send(Err(BridgeError::internal(format!(
-                        "pane.create command target surface {surface_id} never became writable"
-                    ))));
+                    let _ = reply.send(Err(pane_create_command_failure(
+                        &response,
+                        "terminal-readiness",
+                        format!(
+                            "pane.create command target surface {surface_id} never became writable; the pane already exists, so inspect current state before retrying"
+                        ),
+                    )));
                 }
                 glib::ControlFlow::Break
             } else {
@@ -8106,16 +8152,17 @@ mod tests {
         directional_neighbor_score, favorites_prefix_len, finalize_runtime_lifecycle,
         font_size_after_delta, ghostty_prefers_dark, gtk_system_prefers_dark_from_raw,
         new_instance_command, next_active_workspace_index, pane_action_target_pane_id,
-        pane_attention_target, pane_create_source_cwd_override, pane_create_split_placement,
-        queue_session_save_request, resize_axis_and_delta, resized_split_position,
-        resolve_pane_create_source_id, resolved_system_prefers_dark, sanitize_background_opacity,
-        shortcut_allowed_while_browser_find_active, shortcut_blocked_by_editable,
-        shortcut_command_from_key_event, shortcut_dispatch_propagation,
-        should_auto_open_sidebar_for_notification, should_emit_desktop_notification,
-        should_restore_workspace_mapping, should_skip_workspace_mapping, sidebar_width_class,
-        snapshot_current_pane_id, snapshot_sidebar_width, startup_restore_mode,
-        surface_send_text_response, surface_summary_payload, surface_target_response_payload,
-        tab_drag_workspace_seed, toplevel_state_allows_rendering, use_opaque_window_background,
+        pane_attention_target, pane_create_command_failure_data, pane_create_source_cwd_override,
+        pane_create_split_placement, queue_session_save_request, resize_axis_and_delta,
+        resized_split_position, resolve_pane_create_source_id, resolved_system_prefers_dark,
+        sanitize_background_opacity, shortcut_allowed_while_browser_find_active,
+        shortcut_blocked_by_editable, shortcut_command_from_key_event,
+        shortcut_dispatch_propagation, should_auto_open_sidebar_for_notification,
+        should_emit_desktop_notification, should_restore_workspace_mapping,
+        should_skip_workspace_mapping, sidebar_width_class, snapshot_current_pane_id,
+        snapshot_sidebar_width, startup_restore_mode, surface_send_text_response,
+        surface_summary_payload, surface_target_response_payload, tab_drag_workspace_seed,
+        toplevel_state_allows_rendering, use_opaque_window_background,
         validate_typed_terminal_text, validate_workspace_folder_input_with_dirs,
         window_chrome_policy, window_visibility_allows_rendering, workspace_drop_layout_path,
         workspace_folder_path_from_input, workspace_notification_message,
@@ -8688,6 +8735,31 @@ mod tests {
                 new_pane_first: false,
             }
         );
+    }
+
+    #[test]
+    fn pane_create_post_split_failures_report_partial_identity_and_unsafe_retry() {
+        let response = serde_json::json!({
+            "workspace_id": "workspace-a",
+            "workspace_ref": "workspace:workspace-a",
+            "pane_id": "17",
+            "pane_ref": "pane:17",
+            "surface_id": "17:tab-a",
+            "surface_ref": "surface:17:tab-a",
+            "ok": true
+        });
+
+        for phase in ["terminal-readiness", "submit-enter"] {
+            let data = pane_create_command_failure_data(&response, phase);
+            assert_eq!(data["method"], "pane.create");
+            assert_eq!(data["phase"], phase);
+            assert_eq!(data["outcome_unknown"], true);
+            assert_eq!(data["retry_safe"], false);
+            assert_eq!(data["pane_id"], "17");
+            assert_eq!(data["pane_ref"], "pane:17");
+            assert_eq!(data["surface_id"], "17:tab-a");
+            assert_eq!(data["surface_ref"], "surface:17:tab-a");
+        }
     }
 
     #[test]
