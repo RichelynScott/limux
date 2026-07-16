@@ -351,6 +351,26 @@ class FallbackWatcherTests(unittest.TestCase):
         self.assertFalse(valid)
         self.assertFalse(metadata["belongs_to_pr"])
 
+    def test_request_comment_repo_matching_is_case_insensitive(self):
+        def runner(argv, timeout):
+            return 0, json.dumps(
+                {
+                    "id": 99,
+                    "body": f"@codex review\n\nReview exact head: {HEAD}",
+                    "created_at": REQUEST_TIME,
+                    "updated_at": REQUEST_TIME,
+                    "issue_url": "https://api.github.com/repos/owner/repo/issues/59",
+                    "user": {"login": "owner"},
+                }
+            )
+
+        valid, binding_at, metadata = MODULE.validate_request_comment(
+            "Owner/Repo", 59, 99, HEAD, runner
+        )
+        self.assertTrue(valid)
+        self.assertEqual(binding_at, REQUEST_TIME)
+        self.assertTrue(metadata["belongs_to_pr"])
+
     def test_paginated_lists_are_slurped_and_flattened(self):
         calls = []
 
