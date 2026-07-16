@@ -36,7 +36,7 @@ impl ColorScheme {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct AppConfig {
     #[serde(default)]
     pub focus: FocusConfig,
@@ -46,6 +46,20 @@ pub struct AppConfig {
     pub notifications: NotificationConfig,
     #[serde(skip)]
     pub font_size: Option<f32>,
+    #[serde(skip)]
+    pub header_sections: Vec<crate::header_status::HeaderSection>,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            focus: FocusConfig::default(),
+            appearance: AppearanceConfig::default(),
+            notifications: NotificationConfig::default(),
+            font_size: None,
+            header_sections: crate::header_status::HeaderSection::defaults(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -262,6 +276,20 @@ fn parse_app_config_value(root: &Value) -> AppConfig {
         .map(|v| v as f32)
         .filter(|v| (1.0..=255.0).contains(v));
 
+    let header_sections = root
+        .get("header")
+        .and_then(Value::as_object)
+        .and_then(|header| header.get("sections"))
+        .and_then(Value::as_array)
+        .map(|sections| {
+            sections
+                .iter()
+                .filter_map(Value::as_str)
+                .filter_map(crate::header_status::HeaderSection::from_name)
+                .collect()
+        })
+        .unwrap_or_else(crate::header_status::HeaderSection::defaults);
+
     AppConfig {
         focus: FocusConfig {
             hover_terminal_focus,
@@ -276,6 +304,7 @@ fn parse_app_config_value(root: &Value) -> AppConfig {
             auto_open_sidebar: notification_auto_open_sidebar,
         },
         font_size,
+        header_sections,
     }
 }
 
@@ -308,6 +337,16 @@ fn save_to_path(path: &Path, config: &AppConfig) -> Result<(), String> {
             "enabled": config.notifications.enabled,
             "sound": config.notifications.sound.as_str(),
             "auto_open_sidebar": config.notifications.auto_open_sidebar,
+        }),
+    );
+    root.insert(
+        "header".to_string(),
+        json!({
+            "sections": config
+                .header_sections
+                .iter()
+                .map(|section| section.as_name())
+                .collect::<Vec<_>>(),
         }),
     );
 
@@ -428,6 +467,14 @@ fn ensure_default_config_file(path: &Path) -> std::io::Result<()> {
             "enabled": true,
             "sound": "default",
             "auto_open_sidebar": false
+        },
+        "header": {
+            "sections": [
+                "application",
+                "workspace",
+                "resources",
+                "directory_managers"
+            ]
         }
     });
     let serialized = serde_json::to_string_pretty(&default_root)
@@ -607,6 +654,34 @@ mod tests {
     }
 
     #[test]
+    fn load_from_path_reads_custom_header_section_order() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = settings_path_in(dir.path());
+        fs::create_dir_all(path.parent().expect("config dir")).expect("create config dir");
+        fs::write(
+            &path,
+            r#"{
+  "header": {
+    "sections": ["workspace", "application", "unknown", "resources"]
+  }
+}
+"#,
+        )
+        .expect("write config");
+
+        let loaded = load_from_path(&path);
+
+        assert_eq!(
+            loaded.config.header_sections,
+            vec![
+                crate::header_status::HeaderSection::Workspace,
+                crate::header_status::HeaderSection::Application,
+                crate::header_status::HeaderSection::Resources,
+            ]
+        );
+    }
+
+    #[test]
     fn save_writes_gtk_and_ghostty_color_schemes() {
         let dir = TempDir::new().expect("temp dir");
         let path = settings_path_in(dir.path());
@@ -708,6 +783,29 @@ mod tests {
         assert_eq!(
             parsed["notifications"]["auto_open_sidebar"],
             Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn save_to_path_writes_custom_header_sections() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = settings_path_in(dir.path());
+        fs::create_dir_all(path.parent().expect("config dir")).expect("create config dir");
+
+        let config = AppConfig {
+            header_sections: vec![
+                crate::header_status::HeaderSection::Workspace,
+                crate::header_status::HeaderSection::DirectoryManagers,
+            ],
+            ..AppConfig::default()
+        };
+        save_to_path(&path, &config).expect("save header sections");
+
+        let raw = fs::read_to_string(&path).expect("read config");
+        let parsed: Value = serde_json::from_str(&raw).expect("parse config");
+        assert_eq!(
+            parsed["header"]["sections"],
+            json!(["workspace", "directory_managers"])
         );
     }
 

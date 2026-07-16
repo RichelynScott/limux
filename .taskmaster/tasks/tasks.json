@@ -566,16 +566,30 @@
         "dependencies": [],
         "priority": "high",
         "subtasks": []
+      },
+      {
+        "id": 26,
+        "title": "Make the active workspace unmistakable in the sidebar",
+        "description": "Improve the left workspace list so the currently viewed workspace is immediately identifiable at a glance.",
+        "details": "Evaluate and implement an accessible active-row treatment. Recommended default: full-width accent background with bold workspace name. Also evaluate a thick left-edge accent bar plus bold name and a high-contrast ACTIVE pill with subtle tint. The chosen treatment must work in light and dark themes and remain visually distinct from unread notifications, favorite state, hover/selection, focus, and manual workspace highlight colors. Add regression tests and operator-visible verification.",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
       "version": "1.0.0",
       "lastModified": "2026-07-15T23:55:15.077Z",
-      "taskCount": 25,
+      "taskCount": 26,
       "completedCount": 12,
       "tags": [
         "master"
-      ]
+      ],
+      "created": "2026-07-16T00:27:19.811Z",
+      "updated": "2026-07-16T00:27:19.811Z",
+      "description": "Tasks for master context"
     }
   },
   "cmux-parity-20260707": {

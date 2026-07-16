@@ -2,6 +2,8 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 use adw::prelude::*;
 use gtk::gdk::prelude::ToplevelExt;
@@ -131,13 +133,166 @@ fn window_chrome_policy(_compositor_provides_decorations: bool) -> WindowChromeP
     }
 }
 
-fn build_window_header(title: &str, decoration_layout: &str) -> adw::HeaderBar {
+fn build_window_header(decoration_layout: &str) -> (adw::HeaderBar, gtk::Label) {
     let bar = adw::HeaderBar::new();
-    bar.set_title_widget(Some(&gtk::Label::builder().label(title).build()));
+    bar.set_title_widget(Some(&gtk::Box::new(gtk::Orientation::Horizontal, 0)));
+    let status_label = gtk::Label::builder()
+        .xalign(0.0)
+        .single_line_mode(true)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .build();
+    status_label.add_css_class("limux-live-header");
+    bar.pack_start(&status_label);
     bar.set_show_start_title_buttons(false);
     bar.set_show_end_title_buttons(true);
     bar.set_decoration_layout(Some(decoration_layout));
-    bar
+    (bar, status_label)
+}
+
+struct ManagerQuery {
+    directory: String,
+    receiver: mpsc::Receiver<Result<Vec<String>, String>>,
+}
+
+struct ManagerRefresh {
+    directory: Option<String>,
+    managers: crate::header_status::ManagerStatus,
+    query: Option<ManagerQuery>,
+    last_started: Option<Instant>,
+}
+
+impl ManagerRefresh {
+    fn new() -> Self {
+        Self {
+            directory: None,
+            managers: crate::header_status::ManagerStatus::Available(Vec::new()),
+            query: None,
+            last_started: None,
+        }
+    }
+
+    fn update_directory(&mut self, directory: Option<String>) {
+        if self.directory == directory {
+            return;
+        }
+
+        self.directory = directory;
+        self.last_started = None;
+        self.managers = if self.directory.is_some() {
+            crate::header_status::ManagerStatus::Loading
+        } else {
+            crate::header_status::ManagerStatus::Available(Vec::new())
+        };
+    }
+
+    fn begin_query(
+        &mut self,
+        directory: String,
+        receiver: mpsc::Receiver<Result<Vec<String>, String>>,
+    ) {
+        self.last_started = Some(Instant::now());
+        self.query = Some(ManagerQuery {
+            directory,
+            receiver,
+        });
+    }
+
+    fn poll_query(&mut self) {
+        let completed = match self.query.as_ref() {
+            Some(query) => match query.receiver.try_recv() {
+                Ok(result) => Some(result),
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    Some(Err("manager query worker disconnected".to_string()))
+                }
+                Err(mpsc::TryRecvError::Empty) => None,
+            },
+            None => None,
+        };
+        let Some(result) = completed else {
+            return;
+        };
+        let query = self.query.take().expect("completed manager query");
+        if self.directory.as_deref() != Some(query.directory.as_str()) {
+            return;
+        }
+
+        self.managers = match result {
+            Ok(managers) => crate::header_status::ManagerStatus::Available(managers),
+            Err(_) => crate::header_status::ManagerStatus::Unavailable,
+        };
+    }
+
+    fn refresh_due(&self) -> bool {
+        self.query.is_none()
+            && self.directory.is_some()
+            && self
+                .last_started
+                .is_none_or(|started| started.elapsed() >= Duration::from_secs(10))
+    }
+}
+
+fn install_header_status_refresh(state: &State, status_label: gtk::Label) {
+    let state = state.clone();
+    let sampler = crate::header_status::BackgroundProcessSampler::new();
+    let mut resource_sample = (None, None);
+    let mut manager_refresh = ManagerRefresh::new();
+
+    glib::timeout_add_local(Duration::from_secs(1), move || {
+        if status_label.root().is_none() {
+            return glib::ControlFlow::Break;
+        }
+
+        let (workspace_name, pane_count, directory, sections) = {
+            let app_state = state.borrow();
+            let sections = app_state.config.borrow().header_sections.clone();
+            if let Some(workspace) = app_state.active_workspace() {
+                (
+                    workspace.name.clone(),
+                    pane::pane_summaries_for_root(&workspace.root).len(),
+                    workspace
+                        .cwd
+                        .borrow()
+                        .clone()
+                        .or_else(|| workspace.folder_path.clone()),
+                    sections,
+                )
+            } else {
+                ("No workspace".to_string(), 0, None, sections)
+            }
+        };
+
+        manager_refresh.update_directory(directory);
+        manager_refresh.poll_query();
+        if manager_refresh.refresh_due() {
+            let directory = manager_refresh
+                .directory
+                .clone()
+                .expect("refresh due requires a directory");
+            let (sender, receiver) = mpsc::channel();
+            manager_refresh.begin_query(directory.clone(), receiver);
+            std::thread::spawn(move || {
+                let _ = sender.send(crate::header_status::query_directory_managers(&directory));
+            });
+        }
+
+        if let Some(completed) = sampler.latest() {
+            resource_sample = completed;
+        }
+        let (ram_mb, cpu_percent) = resource_sample;
+        let snapshot = crate::header_status::HeaderSnapshot {
+            workspace_name,
+            pane_count,
+            ram_mb,
+            cpu_percent,
+            managers: manager_refresh.managers.clone(),
+        };
+        let markup =
+            crate::header_status::render_header_markup(crate::VERSION, &sections, &snapshot);
+        status_label.set_markup(&markup);
+        status_label.set_tooltip_markup(Some(&markup));
+
+        glib::ControlFlow::Continue
+    });
 }
 
 impl AppState {
@@ -2376,10 +2531,11 @@ pub fn build_window(app: &adw::Application) {
         .unwrap_or(false);
     let chrome_policy = window_chrome_policy(compositor_provides_decorations);
 
-    let header = if chrome_policy.use_client_side_titlebar {
-        Some(build_window_header(&title, chrome_policy.decoration_layout))
+    let (header, header_status_label) = if chrome_policy.use_client_side_titlebar {
+        let (header, status_label) = build_window_header(chrome_policy.decoration_layout);
+        (Some(header), Some(status_label))
     } else {
-        None
+        (None, None)
     };
 
     let stack = gtk::Stack::new();
@@ -2528,6 +2684,10 @@ pub fn build_window(app: &adw::Application) {
     CONTROL_STATE.with(|slot| {
         *slot.borrow_mut() = Some(state.clone());
     });
+
+    if let Some(status_label) = header_status_label {
+        install_header_status_refresh(&state, status_label);
+    }
 
     install_sidebar_resize(&state, &sidebar_handle, &sidebar_shell);
 
@@ -7639,6 +7799,7 @@ mod tests {
     use std::cell::RefCell;
     use std::path::Path;
     use std::rc::Rc;
+    use std::sync::mpsc;
 
     use super::glib;
     use super::gtk::ffi;
@@ -7666,7 +7827,7 @@ mod tests {
         validate_workspace_folder_input_with_dirs, window_chrome_policy,
         workspace_drop_layout_path, workspace_folder_path_from_input,
         workspace_notification_message, DesktopNotificationTarget, Direction,
-        EditableCaptureContext, NeighborScore, PaneBounds, PaneCreateDirection,
+        EditableCaptureContext, ManagerRefresh, NeighborScore, PaneBounds, PaneCreateDirection,
         PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest,
         WorkspaceSeedSource, BASE_CSS, HOST_ENTRY_CSS_CLASS, HOST_LAUNCH_ENV_REMOVALS,
         LIMUX_WINDOW_DECORATION_LAYOUT, SIDEBAR_COMPACT_CSS_CLASS, SIDEBAR_COMPACT_WIDTH,
@@ -7732,6 +7893,74 @@ mod tests {
 
         assert!(!source.contains(&forbidden_titlebar_call));
         assert!(source.contains("adw::ToolbarView"));
+    }
+
+    #[test]
+    fn application_header_places_the_live_status_strip_at_the_left_edge() {
+        let source = include_str!("window.rs");
+        let function = source
+            .split_once("fn build_window_header")
+            .expect("header builder")
+            .1
+            .split_once("impl AppState")
+            .expect("header builder boundary")
+            .0;
+
+        assert!(function.contains("bar.pack_start(&status_label);"));
+        assert!(function.contains("bar.set_title_widget(Some(&gtk::Box::new("));
+        assert!(source.contains("install_header_status_refresh(&state"));
+        assert!(!function.contains("bar.set_title_widget(Some(&gtk::Label"));
+    }
+
+    #[test]
+    fn gtk_header_refresh_only_reads_completed_background_samples() {
+        let source = include_str!("window.rs");
+        let function = source
+            .split_once("fn install_header_status_refresh")
+            .expect("header refresh")
+            .1
+            .split_once("fn workspace_ref")
+            .expect("header refresh boundary")
+            .0;
+
+        assert!(function.contains("BackgroundProcessSampler"));
+        assert!(function.contains(".latest()"));
+        assert!(!function.contains(".sample()"));
+        assert!(!function.contains("read_process_usage"));
+    }
+
+    #[test]
+    fn manager_refresh_discards_stale_completion_and_immediately_queues_current_directory() {
+        let (sender, receiver) = mpsc::channel();
+        let mut refresh = ManagerRefresh::new();
+        refresh.update_directory(Some("/workspace/old".to_string()));
+        refresh.begin_query("/workspace/old".to_string(), receiver);
+
+        refresh.update_directory(Some("/workspace/new".to_string()));
+        sender
+            .send(Ok(vec!["old-manager".to_string()]))
+            .expect("old query result");
+        refresh.poll_query();
+
+        assert_eq!(
+            refresh.managers,
+            crate::header_status::ManagerStatus::Loading
+        );
+        assert!(refresh.query.is_none());
+        assert!(refresh.refresh_due());
+    }
+
+    #[test]
+    fn manager_refresh_without_directory_reports_an_empty_manager_list() {
+        let mut refresh = ManagerRefresh::new();
+
+        refresh.update_directory(None);
+
+        assert_eq!(
+            refresh.managers,
+            crate::header_status::ManagerStatus::Available(Vec::new())
+        );
+        assert!(!refresh.refresh_due());
     }
 
     #[test]
