@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
+use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -93,18 +93,25 @@ impl RuntimeLifecycle {
         &self.previous_shutdown
     }
 
-    pub fn mark_clean(&self) -> io::Result<()> {
-        let mut clean_marker = self.marker.clone();
-        clean_marker.clean_shutdown = true;
-        write_marker_atomic(&self.marker_path, &clean_marker)
+    pub fn mark_clean(&self) -> io::Result<bool> {
+        crate::durable_atomic::update_bytes_atomic_durable(&self.marker_path, |bytes| {
+            let mut current_marker = serde_json::from_slice::<RuntimeMarker>(bytes)
+                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+            if current_marker.incarnation_id != self.marker.incarnation_id {
+                return Ok(None);
+            }
+            current_marker.clean_shutdown = true;
+            serde_json::to_vec_pretty(&current_marker)
+                .map(Some)
+                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+        })
     }
 
     pub fn mark_clean_if_session_saved(&self, session_saved: bool) -> io::Result<bool> {
         if !session_saved {
             return Ok(false);
         }
-        self.mark_clean()?;
-        Ok(true)
+        self.mark_clean()
     }
 }
 
@@ -142,26 +149,9 @@ fn classify_previous_marker(path: &Path) -> StartupClassification {
 }
 
 fn write_marker_atomic(path: &Path, marker: &RuntimeMarker) -> io::Result<()> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "marker has no parent"))?;
-    fs::create_dir_all(parent)?;
-    let temp_path = parent.join(format!(
-        ".{RUNTIME_MARKER_FILE_NAME}.{}.tmp",
-        uuid::Uuid::new_v4()
-    ));
     let bytes = serde_json::to_vec_pretty(marker)
         .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temp_path)?;
-    file.write_all(&bytes)?;
-    file.sync_all()?;
-    drop(file);
-    fs::rename(&temp_path, path)?;
-    OpenOptions::new().read(true).open(parent)?.sync_all()?;
-    Ok(())
+    crate::durable_atomic::write_bytes_atomic_durable(path, &bytes)
 }
 
 #[cfg(test)]
@@ -249,5 +239,22 @@ mod tests {
             second.previous_shutdown(),
             &StartupClassification::Unclean(UncleanStartupReason::PreviousRunUnclean)
         );
+    }
+
+    #[test]
+    fn stale_incarnation_cannot_mark_a_newer_runtime_clean() {
+        let dir = tempdir().expect("tempdir");
+        let first = begin_runtime_in(dir.path(), seed(1000)).expect("first runtime");
+        let second = begin_runtime_in(dir.path(), seed(2000)).expect("second runtime");
+
+        assert!(!first
+            .mark_clean_if_session_saved(true)
+            .expect("stale clean attempt"));
+        assert!(second
+            .mark_clean_if_session_saved(true)
+            .expect("current clean attempt"));
+
+        let third = begin_runtime_in(dir.path(), seed(3000)).expect("third runtime");
+        assert_eq!(third.previous_shutdown(), &StartupClassification::Clean);
     }
 }

@@ -550,13 +550,10 @@ pub fn save_session_atomic(state: &AppSessionState) -> io::Result<PathBuf> {
 pub fn save_session_atomic_in(dir: &Path, state: &AppSessionState) -> io::Result<PathBuf> {
     fs::create_dir_all(dir)?;
     let path = canonical_session_path_in(dir);
-    // Write to a sibling temp file first so a crash never leaves a truncated canonical session.
-    let temp_path = temp_session_path(&path);
     let normalized = normalize_session(state.clone());
     let json = serde_json::to_vec_pretty(&normalized)
         .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
-    fs::write(&temp_path, json)?;
-    fs::rename(&temp_path, &path)?;
+    crate::durable_atomic::write_bytes_atomic_durable(&path, &json)?;
     Ok(path)
 }
 
@@ -984,17 +981,6 @@ fn agent_hook_state_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".local/state")
         .join(PERSISTENCE_DIR_NAME)
-}
-
-fn temp_session_path(path: &Path) -> PathBuf {
-    let temp_name = format!(
-        ".{}.{}.tmp",
-        path.file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or(SESSION_FILE_NAME),
-        std::process::id()
-    );
-    path.with_file_name(temp_name)
 }
 
 fn default_session_version() -> u32 {
@@ -1562,6 +1548,25 @@ mod tests {
             Some("22222222-2222-4222-8222-222222222222")
         );
         assert_eq!(decoded.workspaces[0].name, "workspace");
+    }
+
+    #[test]
+    fn repeated_session_commit_failures_leave_one_bounded_pending_file() {
+        let dir = tempdir().expect("tempdir");
+        let target = canonical_session_path_in(dir.path());
+        fs::create_dir(&target).expect("blocking target directory");
+
+        assert!(save_session_atomic_in(dir.path(), &AppSessionState::default()).is_err());
+        let changed = AppSessionState {
+            top_bar_visible: false,
+            ..AppSessionState::default()
+        };
+        assert!(save_session_atomic_in(dir.path(), &changed).is_err());
+
+        let pending = dir.path().join(".session.json.pending");
+        let raw = fs::read_to_string(pending).expect("bounded pending session");
+        let decoded: AppSessionState = serde_json::from_str(&raw).expect("decode pending session");
+        assert!(!decoded.top_bar_visible);
     }
 
     #[test]

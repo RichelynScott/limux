@@ -1995,6 +1995,28 @@ fn save_session_now(state: &State) -> bool {
     }
 }
 
+fn finalize_runtime_lifecycle(
+    lifecycle: Option<&RuntimeLifecycle>,
+    session_saved: bool,
+) -> std::io::Result<bool> {
+    match lifecycle {
+        Some(lifecycle) => lifecycle.mark_clean_if_session_saved(session_saved),
+        None => Ok(false),
+    }
+}
+
+fn finalize_clean_shutdown(state: &State) {
+    let session_saved = save_session_now(state);
+    let lifecycle = state.borrow().runtime_lifecycle.clone();
+    match finalize_runtime_lifecycle(lifecycle.as_ref(), session_saved) {
+        Ok(false) if session_saved && lifecycle.is_some() => {
+            eprintln!("limux: skipped clean marker for a stale runtime incarnation");
+        }
+        Err(err) => eprintln!("limux: failed to mark clean shutdown: {err}"),
+        Ok(_) => {}
+    }
+}
+
 fn suspend_persistence(state: &State, suspended: bool) {
     state.borrow_mut().persistence_suspended = suspended;
 }
@@ -3101,13 +3123,7 @@ pub fn build_window(app: &adw::Application) {
     {
         let state = state.clone();
         window.connect_close_request(move |_| {
-            let session_saved = save_session_now(&state);
-            let lifecycle = state.borrow().runtime_lifecycle.clone();
-            if let Some(lifecycle) = lifecycle {
-                if let Err(err) = lifecycle.mark_clean_if_session_saved(session_saved) {
-                    eprintln!("limux: failed to mark clean shutdown: {err}");
-                }
-            }
+            finalize_clean_shutdown(&state);
             CONTROL_STATE.with(|slot| {
                 slot.borrow_mut().take();
             });
@@ -7336,7 +7352,7 @@ fn show_runtime_error(state: &State, title: &str, detail: &str) {
 }
 
 fn quit_app(state: &State) {
-    save_session_now(state);
+    finalize_clean_shutdown(state);
     state.borrow().app.quit();
 }
 
@@ -8087,12 +8103,12 @@ mod tests {
         desktop_notification_action_from_signal, desktop_notification_actions,
         desktop_notification_activation_token_from_signal,
         desktop_notification_closed_id_from_signal, desktop_notification_id_from_response,
-        directional_neighbor_score, favorites_prefix_len, font_size_after_delta,
-        ghostty_prefers_dark, gtk_system_prefers_dark_from_raw, new_instance_command,
-        next_active_workspace_index, pane_action_target_pane_id, pane_attention_target,
-        pane_create_source_cwd_override, pane_create_split_placement, queue_session_save_request,
-        resize_axis_and_delta, resized_split_position, resolve_pane_create_source_id,
-        resolved_system_prefers_dark, sanitize_background_opacity,
+        directional_neighbor_score, favorites_prefix_len, finalize_runtime_lifecycle,
+        font_size_after_delta, ghostty_prefers_dark, gtk_system_prefers_dark_from_raw,
+        new_instance_command, next_active_workspace_index, pane_action_target_pane_id,
+        pane_attention_target, pane_create_source_cwd_override, pane_create_split_placement,
+        queue_session_save_request, resize_axis_and_delta, resized_split_position,
+        resolve_pane_create_source_id, resolved_system_prefers_dark, sanitize_background_opacity,
         shortcut_allowed_while_browser_find_active, shortcut_blocked_by_editable,
         shortcut_command_from_key_event, shortcut_dispatch_propagation,
         should_auto_open_sidebar_for_notification, should_emit_desktop_notification,
@@ -9502,5 +9518,42 @@ mod tests {
             .unwrap_err();
 
         assert!(error.ends_with(" is not a folder"));
+    }
+
+    #[test]
+    fn clean_finalization_requires_a_successful_session_save() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let seed = crate::runtime_lifecycle::RuntimeMarkerSeed {
+            pid: 4242,
+            started_at_unix_ms: 1000,
+            version: "0.2.2",
+        };
+        let failed = crate::runtime_lifecycle::begin_runtime_in(dir.path(), seed)
+            .expect("failed-save runtime");
+
+        assert!(!finalize_runtime_lifecycle(Some(&failed), false).expect("skip clean marker"));
+        let after_failed = crate::runtime_lifecycle::begin_runtime_in(
+            dir.path(),
+            crate::runtime_lifecycle::RuntimeMarkerSeed {
+                started_at_unix_ms: 2000,
+                ..seed
+            },
+        )
+        .expect("restart after failed save");
+        assert!(after_failed.previous_shutdown().is_unclean());
+
+        assert!(finalize_runtime_lifecycle(Some(&after_failed), true).expect("mark clean"));
+        let after_success = crate::runtime_lifecycle::begin_runtime_in(
+            dir.path(),
+            crate::runtime_lifecycle::RuntimeMarkerSeed {
+                started_at_unix_ms: 3000,
+                ..seed
+            },
+        )
+        .expect("restart after successful save");
+        assert_eq!(
+            after_success.previous_shutdown(),
+            &crate::runtime_lifecycle::StartupClassification::Clean
+        );
     }
 }

@@ -3,6 +3,7 @@ mod app_config;
 mod control_bridge;
 mod control_registry;
 mod cwd_inheritance;
+mod durable_atomic;
 mod ghostty_config;
 mod header_status;
 mod keybind_editor;
