@@ -399,12 +399,16 @@ attempt_backend() {
                 2> "$attempt_dir/surface-health.stderr" && \
             jq -e '
                 .renderer_diagnostics.status == "captured" and
-                (.surfaces | type == "array" and length > 0) and
-                all(.surfaces[];
-                    .healthy == true and
-                    .realized == true and
-                    (.width_px // 0) > 0 and
-                    (.height_px // 0) > 0)
+                ((.surfaces // []) as $surfaces |
+                    ($surfaces | type == "array") and
+                    ([$surfaces[] | select((.type // "terminal") == "terminal")]
+                        as $terminals |
+                        ($terminals | length > 0) and
+                        all($terminals[];
+                            .healthy == true and
+                            .realized == true and
+                            (.width_px // 0) > 0 and
+                            (.height_px // 0) > 0)))
             ' "$attempt_dir/surface-health.json" >/dev/null && \
             backend_matches_diagnostics "$backend" \
                 "$attempt_dir/surface-health.json"; then
@@ -417,12 +421,16 @@ attempt_backend() {
             ' "$attempt_dir/surface-health.json" >/dev/null 2>&1 && \
             {
                 ! jq -e '
-                    (.surfaces | type == "array" and length > 0) and
-                    all(.surfaces[];
-                        .healthy == true and
-                        .realized == true and
-                        (.width_px // 0) > 0 and
-                        (.height_px // 0) > 0)
+                    (.surfaces // []) as $surfaces |
+                    ($surfaces | type == "array") and
+                    ([$surfaces[] | select((.type // "terminal") == "terminal")]
+                        as $terminals |
+                        ($terminals | length > 0) and
+                        all($terminals[];
+                            .healthy == true and
+                            .realized == true and
+                            (.width_px // 0) > 0 and
+                            (.height_px // 0) > 0))
                 ' "$attempt_dir/surface-health.json" >/dev/null 2>&1 ||
                 ! backend_matches_diagnostics "$backend" \
                     "$attempt_dir/surface-health.json"

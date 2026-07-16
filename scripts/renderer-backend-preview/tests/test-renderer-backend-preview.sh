@@ -44,7 +44,8 @@ printf '%s\n' \
     '  elif [[ "$backend" == "d3d12" && "${FAKE_D3D12_WRONG:-0}" == "1" ]]; then' \
     '    printf "%s\n" '\''{"renderer_diagnostics":{"status":"captured","selected_renderer":"GskGLRenderer","is_software_fallback":true,"fallback_indicators":["thread:llvmpipe"],"requested_policy":{"gallium_driver":"d3d12","lp_num_threads":null},"gpu_device_usage":{"dxg_open":false}},"surfaces":[{"healthy":true,"realized":true,"width_px":1200,"height_px":800}]}'\''' \
     '  elif [[ "$backend" == "d3d12" ]]; then' \
-    '    printf "%s\n" '\''{"renderer_diagnostics":{"status":"captured","selected_renderer":"GskGLRenderer","is_software_fallback":false,"fallback_indicators":[],"requested_policy":{"gallium_driver":"d3d12","lp_num_threads":null},"gpu_device_usage":{"dxg_open":true}},"surfaces":[{"healthy":true,"realized":true,"width_px":1200,"height_px":800}]}'\''' \
+    '    if [[ "${FAKE_INCLUDE_BROWSER:-0}" == "1" ]]; then surfaces='\''[{"type":"terminal","healthy":true,"realized":true,"width_px":1200,"height_px":800},{"type":"browser","healthy":true,"realized":true}]'\''; else surfaces='\''[{"healthy":true,"realized":true,"width_px":1200,"height_px":800}]'\''; fi' \
+    '    printf '\''{"renderer_diagnostics":{"status":"captured","selected_renderer":"GskGLRenderer","is_software_fallback":false,"fallback_indicators":[],"requested_policy":{"gallium_driver":"d3d12","lp_num_threads":null},"gpu_device_usage":{"dxg_open":true}},"surfaces":%s}\n'\'' "$surfaces"' \
     '  elif [[ "$backend" == "llvmpipe" ]]; then' \
     '    if [[ "${FAKE_SOFTWARE_UNOBSERVED:-0}" == "1" ]]; then indicators='\''["env:LIBGL_ALWAYS_SOFTWARE","env:GALLIUM_DRIVER=llvmpipe"]'\''; else indicators='\''["env:LIBGL_ALWAYS_SOFTWARE","env:GALLIUM_DRIVER=llvmpipe","thread:llvmpipe"]'\''; fi' \
     '    printf '\''{"renderer_diagnostics":{"status":"captured","selected_renderer":"GskGLRenderer","is_software_fallback":true,"fallback_indicators":%s,"requested_policy":{"gallium_driver":"llvmpipe","lp_num_threads":"2"},"gpu_device_usage":{"dxg_open":false}},"surfaces":[{"healthy":true,"realized":true,"width_px":1200,"height_px":800}]}\n'\'' "$indicators"' \
@@ -78,6 +79,23 @@ while IFS= read -r pid_file; do
     pid="$(< "$pid_file")"
     ! kill -0 "$pid" 2>/dev/null
 done < <(find "$ARTIFACTS" -name host.pid -type f -print)
+
+MIXED_SURFACE_ARTIFACTS="$TEST_ROOT/mixed-surface-artifacts"
+FAKE_BACKEND_LOG="$BACKEND_LOG" \
+FAKE_DESCENDANT_LOG="$DESCENDANT_LOG" \
+FAKE_INCLUDE_BROWSER=1 \
+    "$RUNNER" \
+    --host "$FAKE_HOST" \
+    --cli "$FAKE_CLI" \
+    --session-template "$SESSION_TEMPLATE" \
+    --artifacts "$MIXED_SURFACE_ARTIFACTS" \
+    --start wsl-d3d12-gl \
+    --polls 20 \
+    --poll-interval-ms 25
+jq -e '.selected_backend == "wsl-d3d12-gl"' \
+    "$MIXED_SURFACE_ARTIFACTS/result.json" >/dev/null
+jq -e '.attempted_backends == ["wsl-d3d12-gl"]' \
+    "$MIXED_SURFACE_ARTIFACTS/result.json" >/dev/null
 
 FAST_EXIT_ARTIFACTS="$TEST_ROOT/fast-exit-artifacts"
 FAKE_BACKEND_LOG="$BACKEND_LOG" \
