@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 
 const RESOURCE_SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 const HCOM_QUERY_TIMEOUT: Duration = Duration::from_secs(2);
+const HEADER_SECTION_SEPARATOR: &str = "   <span weight=\"normal\">│</span>   ";
 type ResourceSample = (Option<u64>, Option<f64>);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -110,7 +111,7 @@ pub(crate) fn render_header_markup(
         })
         .collect::<Vec<_>>();
 
-    segments.join(" <b>|</b> ")
+    segments.join(HEADER_SECTION_SEPARATOR)
 }
 
 fn escape_markup(value: &str) -> String {
@@ -573,7 +574,7 @@ mod tests {
 
         assert_eq!(
             markup,
-            "Limux v0.2.2 <b>|</b> <b>WORKSPACE: A&amp;B &lt;ops&gt;</b> <b>|</b> <b>[LIVE]</b> <b>[ACTIVE]</b> PANES:3 RAM:512MB CPU:7.3% <b>|</b> DIR MGR(s): <b>lifo, ops&lt;&amp; (2)</b>"
+            "Limux v0.2.2   <span weight=\"normal\">│</span>   <b>WORKSPACE: A&amp;B &lt;ops&gt;</b>   <span weight=\"normal\">│</span>   <b>[LIVE]</b> <b>[ACTIVE]</b> PANES:3 RAM:512MB CPU:7.3%   <span weight=\"normal\">│</span>   DIR MGR(s): <b>lifo, ops&lt;&amp; (2)</b>"
         );
     }
 
@@ -593,7 +594,10 @@ mod tests {
             &snapshot,
         );
 
-        assert_eq!(markup, "<b>WORKSPACE: dev</b> <b>|</b> Limux v0.2.2");
+        assert_eq!(
+            markup,
+            "<b>WORKSPACE: dev</b>   <span weight=\"normal\">│</span>   Limux v0.2.2"
+        );
     }
 
     #[test]
