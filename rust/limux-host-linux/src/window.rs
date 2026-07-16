@@ -141,17 +141,32 @@ fn toplevel_state_allows_rendering(state_bits: u32) -> bool {
     state_bits & hidden_bits == 0
 }
 
+fn window_visibility_allows_rendering(
+    widget_visible: bool,
+    widget_mapped: bool,
+    surface_mapped: bool,
+    toplevel_state_bits: u32,
+) -> bool {
+    widget_visible
+        && widget_mapped
+        && surface_mapped
+        && toplevel_state_allows_rendering(toplevel_state_bits)
+}
+
 fn window_allows_rendering(window: &adw::ApplicationWindow) -> bool {
-    if !window.is_visible() || !window.is_mapped() {
-        return false;
-    }
     let Some(surface) = window.surface() else {
         return false;
     };
+    let surface_mapped = surface.is_mapped();
     let Ok(toplevel) = surface.dynamic_cast::<gtk::gdk::Toplevel>() else {
         return false;
     };
-    toplevel_state_allows_rendering(toplevel.state().bits())
+    window_visibility_allows_rendering(
+        window.is_visible(),
+        window.is_mapped(),
+        surface_mapped,
+        toplevel.state().bits(),
+    )
 }
 
 fn sync_window_render_visibility(window: &adw::ApplicationWindow) {
@@ -163,6 +178,12 @@ fn install_window_render_visibility_tracking(window: &adw::ApplicationWindow) {
 
     window.connect_realize(|window| {
         if let Some(surface) = window.surface() {
+            let mapped_window = window.downgrade();
+            surface.connect_mapped_notify(move |_| {
+                if let Some(window) = mapped_window.upgrade() {
+                    sync_window_render_visibility(&window);
+                }
+            });
             if let Ok(toplevel) = surface.dynamic_cast::<gtk::gdk::Toplevel>() {
                 let window = window.downgrade();
                 toplevel.connect_state_notify(move |_| {
@@ -7901,14 +7922,15 @@ mod tests {
         surface_summary_payload, surface_target_response_payload, tab_drag_workspace_seed,
         toplevel_state_allows_rendering, use_opaque_window_background,
         validate_typed_terminal_text, validate_workspace_folder_input_with_dirs,
-        window_chrome_policy, workspace_drop_layout_path, workspace_folder_path_from_input,
-        workspace_notification_message, DesktopNotificationTarget, Direction,
-        EditableCaptureContext, ManagerRefresh, NeighborScore, PaneBounds, PaneCreateDirection,
-        PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest,
-        WorkspaceSeedSource, BASE_CSS, HOST_ENTRY_CSS_CLASS, HOST_LAUNCH_ENV_REMOVALS,
-        LIMUX_WINDOW_DECORATION_LAYOUT, SIDEBAR_COMPACT_CSS_CLASS, SIDEBAR_COMPACT_WIDTH,
-        SIDEBAR_MIN_WIDTH, SIDEBAR_TINY_CSS_CLASS, SIDEBAR_TINY_WIDTH,
-        WORKSPACE_RENAME_ENTRY_CSS_CLASS, WORKSPACE_RENAME_ENTRY_CSS_CLASSES,
+        window_chrome_policy, window_visibility_allows_rendering, workspace_drop_layout_path,
+        workspace_folder_path_from_input, workspace_notification_message,
+        DesktopNotificationTarget, Direction, EditableCaptureContext, ManagerRefresh,
+        NeighborScore, PaneBounds, PaneCreateDirection, PaneCreateTargetError,
+        PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest, WorkspaceSeedSource,
+        BASE_CSS, HOST_ENTRY_CSS_CLASS, HOST_LAUNCH_ENV_REMOVALS, LIMUX_WINDOW_DECORATION_LAYOUT,
+        SIDEBAR_COMPACT_CSS_CLASS, SIDEBAR_COMPACT_WIDTH, SIDEBAR_MIN_WIDTH,
+        SIDEBAR_TINY_CSS_CLASS, SIDEBAR_TINY_WIDTH, WORKSPACE_RENAME_ENTRY_CSS_CLASS,
+        WORKSPACE_RENAME_ENTRY_CSS_CLASSES,
     };
     use crate::layout_state::{LayoutNodeState, PaneState, SplitOrientation, SplitState};
     use crate::shortcut_config::{
@@ -7971,6 +7993,20 @@ mod tests {
         assert!(!toplevel_state_allows_rendering(1 << 16));
         assert!(toplevel_state_allows_rendering(
             gdk::ToplevelState::MAXIMIZED.bits() | gdk::ToplevelState::FOCUSED.bits()
+        ));
+    }
+
+    #[test]
+    fn window_rendering_requires_widget_and_native_surface_mapping() {
+        assert!(window_visibility_allows_rendering(true, true, true, 0));
+        assert!(!window_visibility_allows_rendering(false, true, true, 0));
+        assert!(!window_visibility_allows_rendering(true, false, true, 0));
+        assert!(!window_visibility_allows_rendering(true, true, false, 0));
+        assert!(!window_visibility_allows_rendering(
+            true,
+            true,
+            true,
+            gdk::ToplevelState::MINIMIZED.bits()
         ));
     }
 
