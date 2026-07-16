@@ -2077,6 +2077,8 @@ pub fn create_terminal(
         });
     }
 
+    let selection_copy_keycode = Rc::new(Cell::new(None));
+
     // Keyboard input
     //
     // Send key events with the text field populated. Ghostty uses the
@@ -2090,9 +2092,29 @@ pub fn create_terminal(
         let im_context_release = im_context.clone();
         let ime_state_press = ime_state.clone();
         let ime_state_release = ime_state.clone();
+        let selection_copy_keycode_press = selection_copy_keycode.clone();
+        let selection_copy_keycode_release = selection_copy_keycode.clone();
         let key_controller = gtk::EventControllerKey::new();
         key_controller.connect_key_pressed(move |ctrl, keyval, keycode, modifier| {
             if let Some(surface) = *sc_press.borrow() {
+                let has_selection = unsafe { ghostty_surface_has_selection(surface) };
+                match selection_copy_key_action(
+                    keyval,
+                    modifier,
+                    has_selection,
+                    selection_copy_keycode_press.get() == Some(keycode),
+                ) {
+                    SelectionCopyKeyAction::Copy => {
+                        selection_copy_keycode_press.set(Some(keycode));
+                        surface_action(Some(surface), "copy_to_clipboard");
+                        return glib::Propagation::Stop;
+                    }
+                    SelectionCopyKeyAction::Suppress => {
+                        return glib::Propagation::Stop;
+                    }
+                    SelectionCopyKeyAction::Forward => {}
+                }
+
                 let current_event = ctrl
                     .current_event()
                     .and_then(|event| event.downcast::<gtk::gdk::KeyEvent>().ok());
@@ -2145,6 +2167,15 @@ pub fn create_terminal(
         });
 
         key_controller.connect_key_released(move |ctrl, keyval, keycode, modifier| {
+            if should_suppress_selection_copy_release(
+                keyval,
+                keycode,
+                selection_copy_keycode_release.get(),
+            ) {
+                selection_copy_keycode_release.set(None);
+                return;
+            }
+
             if let Some(surface) = *sc_release.borrow() {
                 let current_event = ctrl
                     .current_event()
@@ -2316,6 +2347,7 @@ pub fn create_terminal(
         let had_focus_leave = had_focus.clone();
         let im_context_enter = im_context.clone();
         let im_context_leave = im_context.clone();
+        let selection_copy_keycode_leave = selection_copy_keycode.clone();
         let focus_ctrl = gtk::EventControllerFocus::new();
         let sc = surface_cell.clone();
         focus_ctrl.connect_enter(move |_| {
@@ -2326,6 +2358,7 @@ pub fn create_terminal(
             }
         });
         focus_ctrl.connect_leave(move |_| {
+            selection_copy_keycode_leave.set(None);
             had_focus_leave.set(false);
             im_context_leave.focus_out();
             if let Some(surface) = *surface_cell.borrow() {
@@ -2880,6 +2913,53 @@ fn fallback_unshifted_codepoint(keyval: gtk::gdk::Key) -> u32 {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SelectionCopyKeyAction {
+    Copy,
+    Suppress,
+    Forward,
+}
+
+fn is_copy_key(keyval: gtk::gdk::Key) -> bool {
+    matches!(keyval, gtk::gdk::Key::c | gtk::gdk::Key::C)
+}
+
+fn selection_copy_key_action(
+    keyval: gtk::gdk::Key,
+    modifier: gtk::gdk::ModifierType,
+    has_selection: bool,
+    copy_active: bool,
+) -> SelectionCopyKeyAction {
+    if copy_active {
+        return SelectionCopyKeyAction::Suppress;
+    }
+
+    let blocked_modifiers = gtk::gdk::ModifierType::ALT_MASK
+        | gtk::gdk::ModifierType::HYPER_MASK
+        | gtk::gdk::ModifierType::META_MASK
+        | gtk::gdk::ModifierType::SUPER_MASK;
+    if !is_copy_key(keyval)
+        || !modifier.contains(gtk::gdk::ModifierType::CONTROL_MASK)
+        || modifier.intersects(blocked_modifiers)
+    {
+        return SelectionCopyKeyAction::Forward;
+    }
+
+    if has_selection {
+        SelectionCopyKeyAction::Copy
+    } else {
+        SelectionCopyKeyAction::Forward
+    }
+}
+
+fn should_suppress_selection_copy_release(
+    _keyval: gtk::gdk::Key,
+    keycode: u32,
+    copy_keycode: Option<u32>,
+) -> bool {
+    copy_keycode == Some(keycode)
+}
+
 fn fallback_native_keycode(keyval: gtk::gdk::Key) -> u32 {
     if keyval == gtk::gdk::Key::Return {
         return 0x24;
@@ -3076,6 +3156,82 @@ unsafe fn release_active_mouse_button(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ctrl_c_copies_only_when_terminal_has_selection() {
+        let ctrl = gtk::gdk::ModifierType::CONTROL_MASK;
+
+        assert_eq!(
+            selection_copy_key_action(gtk::gdk::Key::c, ctrl, true, false),
+            SelectionCopyKeyAction::Copy
+        );
+        assert_eq!(
+            selection_copy_key_action(gtk::gdk::Key::c, ctrl, false, false),
+            SelectionCopyKeyAction::Forward
+        );
+    }
+
+    #[test]
+    fn ctrl_c_copy_consumes_repeats_and_matching_release() {
+        let ctrl = gtk::gdk::ModifierType::CONTROL_MASK;
+
+        for (keyval, modifier) in [
+            (gtk::gdk::Key::c, ctrl),
+            (gtk::gdk::Key::c, gtk::gdk::ModifierType::empty()),
+            (gtk::gdk::Key::c, ctrl | gtk::gdk::ModifierType::ALT_MASK),
+            (gtk::gdk::Key::Control_L, gtk::gdk::ModifierType::empty()),
+        ] {
+            assert_eq!(
+                selection_copy_key_action(keyval, modifier, false, true),
+                SelectionCopyKeyAction::Suppress
+            );
+        }
+        assert!(should_suppress_selection_copy_release(
+            gtk::gdk::Key::c,
+            54,
+            Some(54)
+        ));
+        assert!(should_suppress_selection_copy_release(
+            gtk::gdk::Key::C,
+            54,
+            Some(54)
+        ));
+        assert!(should_suppress_selection_copy_release(
+            gtk::gdk::Key::Control_L,
+            54,
+            Some(54)
+        ));
+        assert!(!should_suppress_selection_copy_release(
+            gtk::gdk::Key::c,
+            55,
+            Some(54)
+        ));
+        assert!(!should_suppress_selection_copy_release(
+            gtk::gdk::Key::c,
+            54,
+            None
+        ));
+    }
+
+    #[test]
+    fn ctrl_c_copy_does_not_hijack_alt_or_super_chords() {
+        for extra in [
+            gtk::gdk::ModifierType::ALT_MASK,
+            gtk::gdk::ModifierType::SUPER_MASK,
+            gtk::gdk::ModifierType::META_MASK,
+            gtk::gdk::ModifierType::HYPER_MASK,
+        ] {
+            assert_eq!(
+                selection_copy_key_action(
+                    gtk::gdk::Key::c,
+                    gtk::gdk::ModifierType::CONTROL_MASK | extra,
+                    true,
+                    false,
+                ),
+                SelectionCopyKeyAction::Forward
+            );
+        }
+    }
 
     #[test]
     fn surface_visibility_state_starts_hidden_until_mapped() {
