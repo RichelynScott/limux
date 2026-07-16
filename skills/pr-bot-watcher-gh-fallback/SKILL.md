@@ -116,5 +116,6 @@ After a terminal notification:
 python3 -m unittest discover \
   -s skills/pr-bot-watcher-gh-fallback/tests -v
 python3 /home/riche/.codex/scripts/static_check_no_delete_api.py \
-  --target-dir skills/pr-bot-watcher-gh-fallback
+  --target-dir skills/pr-bot-watcher-gh-fallback \
+  --out-tsv "${TMPDIR:-/tmp}/pr-bot-watcher-gh-fallback-no-delete.tsv"
 ```
