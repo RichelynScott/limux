@@ -664,7 +664,7 @@ fn check_ghostty_resources(install_roots: &[PathBuf]) -> Check {
 fn run_log_triage(lines: usize) -> Value {
     let path = env::var_os("LIMUX_HOST_LOG_PATH")
         .map(PathBuf::from)
-        .or_else(|| dirs::state_dir().map(|dir| dir.join("limux/logs/limux-host.log")));
+        .or_else(|| dirs::state_dir().map(|dir| default_host_log_path(&dir)));
     let Some(path) = path else {
         return json!({"status": "warn", "message": "could not resolve host log path"});
     };
@@ -697,6 +697,12 @@ fn run_log_triage(lines: usize) -> Value {
         "summary": summary,
         "matches": triaged,
     })
+}
+
+fn default_host_log_path(state_dir: &Path) -> PathBuf {
+    state_dir
+        .join("limux/logs")
+        .join(limux_control::DEFAULT_HOST_LOG_FILE_NAME)
 }
 
 fn classify_log_line(line: &str) -> Option<&'static str> {
@@ -848,6 +854,16 @@ exec "${INSTALL_ROOT}/libexec/limux-cli" "$@"
         assert_eq!(
             user_prefix_from_installed_exe(Path::new("/repo/target/debug/limux-cli")),
             None
+        );
+    }
+
+    #[test]
+    fn default_log_triage_path_targets_bounded_active_log() {
+        let state_dir = Path::new("/isolated/state");
+
+        assert_eq!(
+            default_host_log_path(state_dir),
+            state_dir.join("limux/logs/limux-host.current.log")
         );
     }
 

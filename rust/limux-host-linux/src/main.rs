@@ -46,7 +46,6 @@ const LIMUX_TARGET_ID_ENV_KEYS: &[&str] = &[
 const HOST_LOG_ENV: &str = "LIMUX_HOST_LOG";
 const HOST_LOG_PATH_ENV: &str = "LIMUX_HOST_LOG_PATH";
 const HOST_LOG_DIR_NAME: &str = "limux/logs";
-const HOST_LOG_FILE_NAME: &str = "limux-host.current.log";
 const HOST_LOG_RETAINED_DIR_NAME: &str = "retained";
 const HOST_LOG_MAX_ACTIVE_BYTES: u64 = 64 * 1024 * 1024;
 const HOST_LOG_MAX_RETAINED_COUNT: usize = 10;
@@ -306,7 +305,10 @@ fn host_log_path() -> Option<PathBuf> {
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .or_else(|| {
-            dirs::state_dir().map(|dir| dir.join(HOST_LOG_DIR_NAME).join(HOST_LOG_FILE_NAME))
+            dirs::state_dir().map(|dir| {
+                dir.join(HOST_LOG_DIR_NAME)
+                    .join(limux_control::DEFAULT_HOST_LOG_FILE_NAME)
+            })
         })
 }
 

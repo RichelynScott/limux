@@ -25,6 +25,14 @@ pub(crate) fn read_backward_tail(
     let file_len = file.metadata()?.len();
     let byte_limit = u64::try_from(byte_limit).unwrap_or(u64::MAX);
     let start = file_len.saturating_sub(byte_limit);
+    let starts_mid_line = if start > 0 {
+        file.seek(SeekFrom::Start(start - 1))?;
+        let mut previous = [0_u8; 1];
+        file.read_exact(&mut previous)?;
+        previous[0] != b'\n'
+    } else {
+        false
+    };
     file.seek(SeekFrom::Start(start))?;
     let bytes_to_read = usize::try_from(file_len - start).unwrap_or(usize::MAX);
     let mut bytes = Vec::with_capacity(bytes_to_read.min(byte_limit as usize));
@@ -32,7 +40,7 @@ pub(crate) fn read_backward_tail(
     let bytes_read = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
     let text = String::from_utf8_lossy(&bytes);
     let mut candidate_lines = text.lines();
-    if start > 0 {
+    if starts_mid_line {
         let _ = candidate_lines.next();
     }
     let lines = candidate_lines
@@ -93,6 +101,19 @@ mod tests {
 
         assert_eq!(tail.lines, ["keep-one", "keep-two"]);
         assert!(tail.bytes_read <= 20, "read {} bytes", tail.bytes_read);
+    }
+
+    #[test]
+    fn backward_tail_keeps_first_line_when_suffix_starts_at_line_boundary() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("line-boundary.fixture");
+        fs::write(&path, b"a\nb\nc\n").expect("fixture");
+
+        let tail = read_backward_tail(&path, 2, 4).expect("bounded tail");
+
+        assert_eq!(tail.lines, ["b", "c"]);
+        assert_eq!(tail.bytes_read, 4);
+        assert!(tail.truncated);
     }
 
     #[test]
