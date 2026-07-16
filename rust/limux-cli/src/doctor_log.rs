@@ -54,7 +54,7 @@ pub(crate) fn read_backward_tail(
 mod tests {
     use super::*;
     use std::fs::{self, OpenOptions};
-    use std::io::Write;
+    use std::io::{Seek, SeekFrom, Write};
 
     #[test]
     fn backward_tail_reads_only_the_bounded_suffix() {
@@ -93,5 +93,29 @@ mod tests {
 
         assert_eq!(tail.lines, ["keep-one", "keep-two"]);
         assert!(tail.bytes_read <= 20, "read {} bytes", tail.bytes_read);
+    }
+
+    #[test]
+    fn preview_smoke_doctor_reads_no_more_than_one_mib() {
+        const ONE_MIB: usize = 1024 * 1024;
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("bounded-doctor-smoke.log");
+        let mut file = OpenOptions::new()
+            .create_new(true)
+            .read(true)
+            .write(true)
+            .open(&path)
+            .expect("fixture file");
+        file.set_len((ONE_MIB as u64) * 2).expect("sparse fixture");
+        file.seek(SeekFrom::End(0)).expect("fixture end");
+        file.write_all(b"\nlast-one\nlast-two\n")
+            .expect("fixture tail");
+        file.flush().expect("fixture flush");
+
+        let tail = read_backward_tail(&path, 2, ONE_MIB).expect("bounded doctor tail");
+
+        assert_eq!(tail.lines, ["last-one", "last-two"]);
+        assert!(tail.bytes_read <= ONE_MIB as u64);
+        assert!(tail.truncated);
     }
 }

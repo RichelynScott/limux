@@ -1,13 +1,16 @@
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, BufRead, BufReader, Read, Write};
-use std::os::fd::FromRawFd;
+use std::io::{self, Read, Write};
+use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::thread;
+use std::time::{Duration, Instant};
 
 const MAX_WARNING_LINE_BYTES: u64 = 16 * 1024;
+const STDERR_READ_CHUNK_BYTES: usize = 8 * 1024;
+const STDERR_IDLE_TICK: Duration = Duration::from_millis(25);
 
 #[derive(Debug, Clone)]
 pub(crate) struct HostLogConfig {
@@ -46,7 +49,6 @@ pub(crate) enum WarningEvent {
     Suppressed {
         count: u64,
     },
-    #[cfg(test)]
     Recovered {
         total_count: u64,
         repeated_count: u64,
@@ -59,56 +61,74 @@ pub(crate) enum WarningEvent {
 
 #[derive(Debug)]
 pub(crate) struct WarningAggregator {
-    counts: HashMap<String, u64>,
+    states: HashMap<String, WarningState>,
     max_categories: usize,
+}
+
+#[derive(Debug)]
+struct WarningState {
+    total_count: u64,
+    summarized_count: u64,
 }
 
 impl WarningAggregator {
     pub(crate) fn new(max_categories: usize) -> Self {
         Self {
-            counts: HashMap::new(),
+            states: HashMap::new(),
             max_categories,
         }
     }
 
     pub(crate) fn record(&mut self, category: &str, message: &str) -> WarningEvent {
-        if let Some(count) = self.counts.get_mut(category) {
-            *count = count.saturating_add(1);
-            return WarningEvent::Suppressed { count: *count };
+        if let Some(state) = self.states.get_mut(category) {
+            state.total_count = state.total_count.saturating_add(1);
+            return WarningEvent::Suppressed {
+                count: state.total_count,
+            };
         }
-        if self.counts.len() >= self.max_categories {
+        if self.states.len() >= self.max_categories {
             return WarningEvent::CategoryLimitReached {
                 max_categories: self.max_categories,
             };
         }
-        self.counts.insert(category.to_string(), 1);
+        self.states.insert(
+            category.to_string(),
+            WarningState {
+                total_count: 1,
+                summarized_count: 1,
+            },
+        );
         WarningEvent::First {
             message: message.to_string(),
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn recover(&mut self, category: &str) -> WarningEvent {
-        let Some(total_count) = self.counts.remove(category) else {
+        let Some(state) = self.states.remove(category) else {
             return WarningEvent::NotTracked;
         };
         WarningEvent::Recovered {
-            total_count,
-            repeated_count: total_count.saturating_sub(1),
+            total_count: state.total_count,
+            repeated_count: state.total_count.saturating_sub(1),
         }
     }
 
     #[cfg(test)]
     pub(crate) fn category_count(&self) -> usize {
-        self.counts.len()
+        self.states.len()
     }
 
-    fn summaries(&self) -> Vec<(String, u64)> {
+    fn take_summaries(&mut self) -> Vec<(String, u64)> {
         let mut summaries = self
-            .counts
-            .iter()
-            .filter(|(_, count)| **count > 1)
-            .map(|(category, count)| (category.clone(), *count))
+            .states
+            .iter_mut()
+            .filter(|(_, state)| {
+                state.total_count > 1 && state.total_count > state.summarized_count
+            })
+            .map(|(category, state)| {
+                state.summarized_count = state.total_count;
+                (category.clone(), state.total_count)
+            })
             .collect::<Vec<_>>();
         summaries.sort_by(|left, right| left.0.cmp(&right.0));
         summaries
@@ -120,17 +140,30 @@ pub(crate) struct BoundedLogWriter {
     max_bytes: u64,
     bytes_written: u64,
     warnings: WarningAggregator,
+    summary_interval: Duration,
+    last_summary_flush: Duration,
     finished: bool,
 }
 
 impl BoundedLogWriter {
     pub(crate) fn new(file: File, max_bytes: u64, warnings: WarningAggregator) -> Self {
+        Self::new_with_summary_interval(file, max_bytes, warnings, Duration::from_secs(60))
+    }
+
+    pub(crate) fn new_with_summary_interval(
+        file: File,
+        max_bytes: u64,
+        warnings: WarningAggregator,
+        summary_interval: Duration,
+    ) -> Self {
         let bytes_written = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
         Self {
             file,
             max_bytes,
             bytes_written,
             warnings,
+            summary_interval,
+            last_summary_flush: Duration::ZERO,
             finished: false,
         }
     }
@@ -145,10 +178,20 @@ impl BoundedLogWriter {
         Ok(true)
     }
 
+    #[cfg(test)]
     pub(crate) fn write_warning(
         &mut self,
         category: &str,
         message: &str,
+    ) -> io::Result<WarningEvent> {
+        self.write_warning_at(category, message, self.last_summary_flush)
+    }
+
+    pub(crate) fn write_warning_at(
+        &mut self,
+        category: &str,
+        message: &str,
+        elapsed: Duration,
     ) -> io::Result<WarningEvent> {
         let event = self.warnings.record(category, message);
         if matches!(event, WarningEvent::First { .. }) {
@@ -156,6 +199,35 @@ impl BoundedLogWriter {
             line.push(b'\n');
             let _ = self.write_bounded(&line)?;
         }
+        let _ = self.flush_due(elapsed)?;
+        Ok(event)
+    }
+
+    pub(crate) fn recover_warning_at(
+        &mut self,
+        category: &str,
+        message: &str,
+        elapsed: Duration,
+    ) -> io::Result<WarningEvent> {
+        let event = self.warnings.recover(category);
+        match &event {
+            WarningEvent::Recovered {
+                total_count,
+                repeated_count,
+            } => {
+                let recovery = format!(
+                    "limux-warning-recovery category={category} total={total_count} repeated={repeated_count} {message}\n"
+                );
+                let _ = self.write_bounded(recovery.as_bytes())?;
+            }
+            WarningEvent::NotTracked => {
+                let mut raw = message.as_bytes().to_vec();
+                raw.push(b'\n');
+                let _ = self.write_bounded(&raw)?;
+            }
+            _ => {}
+        }
+        let _ = self.flush_due(elapsed)?;
         Ok(event)
     }
 
@@ -163,18 +235,31 @@ impl BoundedLogWriter {
         self.write_bounded(bytes)
     }
 
-    pub(crate) fn finish(&mut self) -> io::Result<()> {
-        if self.finished {
-            return Ok(());
-        }
-        for (category, total) in self.warnings.summaries() {
+    fn flush_summaries(&mut self) -> io::Result<()> {
+        for (category, total) in self.warnings.take_summaries() {
             let repeated = total.saturating_sub(1);
             let summary = format!(
                 "limux-warning-summary category={category} total={total} repeated={repeated}\n"
             );
             let _ = self.write_bounded(summary.as_bytes())?;
         }
-        self.file.flush()?;
+        self.file.flush()
+    }
+
+    pub(crate) fn flush_due(&mut self, elapsed: Duration) -> io::Result<bool> {
+        if elapsed.saturating_sub(self.last_summary_flush) < self.summary_interval {
+            return Ok(false);
+        }
+        self.flush_summaries()?;
+        self.last_summary_flush = elapsed;
+        Ok(true)
+    }
+
+    pub(crate) fn finish(&mut self) -> io::Result<()> {
+        if self.finished {
+            return Ok(());
+        }
+        self.flush_summaries()?;
         self.finished = true;
         Ok(())
     }
@@ -362,41 +447,133 @@ pub(crate) fn prepare_host_logging(config: &HostLogConfig, sequence: u128) -> Ho
     }
 }
 
-fn warning_key(line: &str) -> Option<String> {
-    let class = if line.contains("CRITICAL") {
-        "critical"
-    } else if line.contains("WARNING") || line.contains("warning") {
-        "warning"
-    } else {
-        return None;
-    };
-    let normalized = line.trim().chars().take(160).collect::<String>();
-    Some(format!("{class}:{normalized}"))
+#[derive(Debug, PartialEq, Eq)]
+enum LogAction {
+    Warning { category: String },
+    Recovery { category: String },
+    Raw,
 }
 
-fn drain_stderr(reader: File, mut writer: BoundedLogWriter) {
-    let mut reader = BufReader::new(reader);
+fn source_category(line: &str) -> String {
+    line.split_whitespace()
+        .next()
+        .unwrap_or("warning")
+        .chars()
+        .take(64)
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn classify_log_action(line: &str) -> LogAction {
+    let lowercase = line.to_ascii_lowercase();
+    let category = if lowercase.contains("renderer") && lowercase.contains("context") {
+        Some("renderer_context_lost".to_string())
+    } else if lowercase.contains("wsl")
+        && lowercase.contains("vhd")
+        && lowercase.contains("timeout")
+    {
+        Some("wsl_vhd_wait_timeout".to_string())
+    } else if lowercase.contains("warning") || lowercase.contains("critical") {
+        Some(source_category(line))
+    } else {
+        None
+    };
+    let recovered = lowercase.contains("recovered") || lowercase.contains("restored");
+    match (category, recovered) {
+        (Some(category), true) => LogAction::Recovery { category },
+        (Some(category), false) => LogAction::Warning { category },
+        (None, _) => LogAction::Raw,
+    }
+}
+
+fn process_stderr_line(
+    writer: &mut BoundedLogWriter,
+    line: &[u8],
+    elapsed: Duration,
+) -> io::Result<()> {
+    let text = String::from_utf8_lossy(line);
+    let message = text.trim_end_matches(['\r', '\n']);
+    match classify_log_action(message) {
+        LogAction::Warning { category } => {
+            let event = writer.write_warning_at(&category, message, elapsed)?;
+            if matches!(event, WarningEvent::CategoryLimitReached { .. }) {
+                let _ = writer.write_raw(line)?;
+            }
+        }
+        LogAction::Recovery { category } => {
+            let _ = writer.recover_warning_at(&category, message, elapsed)?;
+        }
+        LogAction::Raw => {
+            let _ = writer.write_raw(line)?;
+        }
+    }
+    Ok(())
+}
+
+fn drain_complete_lines(
+    writer: &mut BoundedLogWriter,
+    pending: &mut Vec<u8>,
+    elapsed: Duration,
+) -> io::Result<()> {
     loop {
-        let mut line = Vec::new();
-        let read = match reader
-            .by_ref()
-            .take(MAX_WARNING_LINE_BYTES)
-            .read_until(b'\n', &mut line)
-        {
-            Ok(read) => read,
-            Err(_) => break,
+        let newline = pending.iter().position(|byte| *byte == b'\n');
+        let take = newline.map(|index| index + 1).or_else(|| {
+            (pending.len() >= MAX_WARNING_LINE_BYTES as usize)
+                .then_some(MAX_WARNING_LINE_BYTES as usize)
+        });
+        let Some(take) = take else {
+            break;
         };
-        if read == 0 {
+        let line = pending.drain(..take).collect::<Vec<_>>();
+        process_stderr_line(writer, &line, elapsed)?;
+    }
+    Ok(())
+}
+
+fn set_nonblocking(file: &File) -> io::Result<()> {
+    let flags = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETFL) };
+    if flags < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if unsafe { libc::fcntl(file.as_raw_fd(), libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+fn drain_stderr(mut reader: File, mut writer: BoundedLogWriter) {
+    let started = Instant::now();
+    let mut pending = Vec::with_capacity(MAX_WARNING_LINE_BYTES as usize);
+    let mut chunk = [0u8; STDERR_READ_CHUNK_BYTES];
+    loop {
+        let elapsed = started.elapsed();
+        if writer.flush_due(elapsed).is_err() {
             break;
         }
-        let text = String::from_utf8_lossy(&line);
-        let result = if let Some(category) = warning_key(&text) {
-            writer.write_warning(&category, text.trim_end_matches('\n'))
-        } else {
-            writer.write_raw(&line).map(|_| WarningEvent::NotTracked)
-        };
-        if result.is_err() {
-            break;
+        match reader.read(&mut chunk) {
+            Ok(0) => {
+                if !pending.is_empty() {
+                    let _ = process_stderr_line(&mut writer, &pending, elapsed);
+                }
+                break;
+            }
+            Ok(read) => {
+                pending.extend_from_slice(&chunk[..read]);
+                if drain_complete_lines(&mut writer, &mut pending, elapsed).is_err() {
+                    break;
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                thread::sleep(STDERR_IDLE_TICK);
+            }
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(_) => break,
         }
     }
     let _ = writer.finish();
@@ -425,6 +602,14 @@ pub(crate) fn install_bounded_stderr(
     }
     let read_file = unsafe { File::from_raw_fd(pipe_fds[0]) };
     let write_fd = pipe_fds[1];
+    if let Err(error) = set_nonblocking(&read_file) {
+        unsafe {
+            libc::close(write_fd);
+        }
+        return Err(format!(
+            "could not make bounded log drain nonblocking: {error}"
+        ));
+    }
     let writer = BoundedLogWriter::new(file, config.max_active_bytes, warnings);
     let drain = thread::Builder::new()
         .name("limux-bounded-log".to_string())
@@ -452,6 +637,7 @@ pub(crate) fn install_bounded_stderr(
 mod tests {
     use super::*;
     use std::fs;
+    use std::time::Duration;
 
     fn config(root: &std::path::Path) -> HostLogConfig {
         HostLogConfig {
@@ -638,5 +824,199 @@ mod tests {
         assert_eq!(content.matches("Gtk-WARNING repeated warning").count(), 1);
         assert!(content.contains("category=gtk_warning total=3 repeated=2"));
         assert!(fs::metadata(&path).expect("bounded metadata").len() <= 128);
+    }
+
+    #[test]
+    fn periodic_summary_flushes_at_deadline_without_waiting_for_eof() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("periodic-summary.log");
+        let file = OpenOptions::new()
+            .create_new(true)
+            .append(true)
+            .open(&path)
+            .expect("active fixture");
+        let mut writer = BoundedLogWriter::new_with_summary_interval(
+            file,
+            512,
+            WarningAggregator::new(2),
+            Duration::from_secs(60),
+        );
+        writer
+            .write_warning_at(
+                "renderer_context_lost",
+                "renderer context lost",
+                Duration::ZERO,
+            )
+            .expect("first warning");
+        writer
+            .write_warning_at(
+                "renderer_context_lost",
+                "renderer context lost",
+                Duration::from_secs(1),
+            )
+            .expect("repeated warning");
+
+        assert!(!writer
+            .flush_due(Duration::from_secs(59))
+            .expect("early flush"));
+        assert!(writer
+            .flush_due(Duration::from_secs(60))
+            .expect("deadline flush"));
+
+        let content = fs::read_to_string(&path).expect("periodic contents");
+        assert!(content.contains("category=renderer_context_lost total=2 repeated=1"));
+    }
+
+    #[test]
+    fn recovery_writes_accounting_and_releases_category_capacity() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("recovery.log");
+        let file = OpenOptions::new()
+            .create_new(true)
+            .append(true)
+            .open(&path)
+            .expect("active fixture");
+        let mut writer = BoundedLogWriter::new_with_summary_interval(
+            file,
+            512,
+            WarningAggregator::new(1),
+            Duration::from_secs(60),
+        );
+        writer
+            .write_warning_at("renderer_context_lost", "lost", Duration::ZERO)
+            .expect("first warning");
+        writer
+            .write_warning_at(
+                "renderer_context_lost",
+                "lost again",
+                Duration::from_secs(1),
+            )
+            .expect("repeat warning");
+
+        assert_eq!(
+            writer
+                .recover_warning_at(
+                    "renderer_context_lost",
+                    "renderer context restored",
+                    Duration::from_secs(2),
+                )
+                .expect("recovery"),
+            WarningEvent::Recovered {
+                total_count: 2,
+                repeated_count: 1,
+            }
+        );
+        assert!(matches!(
+            writer.write_warning_at(
+                "wsl_vhd_wait_timeout",
+                "new category after recovery",
+                Duration::from_secs(3),
+            ),
+            Ok(WarningEvent::First { .. })
+        ));
+
+        let content = fs::read_to_string(&path).expect("recovery contents");
+        assert!(content.contains(
+            "limux-warning-recovery category=renderer_context_lost total=2 repeated=1 renderer context restored"
+        ));
+    }
+
+    #[test]
+    fn stderr_line_classification_pairs_warning_and_recovery_categories() {
+        assert_eq!(
+            classify_log_action("Gtk-WARNING renderer context lost"),
+            LogAction::Warning {
+                category: "renderer_context_lost".to_string(),
+            }
+        );
+        assert_eq!(
+            classify_log_action("renderer context restored"),
+            LogAction::Recovery {
+                category: "renderer_context_lost".to_string(),
+            }
+        );
+        assert_eq!(
+            classify_log_action("ordinary diagnostic line"),
+            LogAction::Raw
+        );
+    }
+
+    #[test]
+    fn preview_smoke_repeated_warning_growth_remains_bounded() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("repeated-warning-smoke.log");
+        let file = OpenOptions::new()
+            .create_new(true)
+            .append(true)
+            .open(&path)
+            .expect("active fixture");
+        let mut writer = BoundedLogWriter::new_with_summary_interval(
+            file,
+            512,
+            WarningAggregator::new(4),
+            Duration::from_secs(60),
+        );
+
+        for second in 0..10_000 {
+            writer
+                .write_warning_at(
+                    "renderer_context_lost",
+                    "Gtk-WARNING renderer context lost",
+                    Duration::from_secs(second),
+                )
+                .expect("warning write");
+        }
+        writer.finish().expect("finish writer");
+
+        let content = fs::read_to_string(&path).expect("bounded content");
+        assert_eq!(
+            content.matches("Gtk-WARNING renderer context lost").count(),
+            1
+        );
+        assert!(fs::metadata(&path).expect("bounded metadata").len() <= 512);
+    }
+
+    #[test]
+    fn preview_smoke_multi_start_retention_never_clobbers_and_fails_closed() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut config = config(tmp.path());
+        config.max_total_bytes = 192;
+
+        for (sequence, payload) in [(50, b"first".as_slice()), (50, b"second"), (50, b"third")] {
+            let HostLogSetup::Active { mut file, .. } = prepare_host_logging(&config, sequence)
+            else {
+                panic!("start {sequence} should receive a bounded active log");
+            };
+            file.write_all(payload).expect("active payload");
+            file.flush().expect("active flush");
+        }
+
+        assert_eq!(
+            fs::read(config.retained_dir.join("limux-host.50.log")).expect("first retained"),
+            b"first"
+        );
+        assert_eq!(
+            fs::read(config.retained_dir.join("limux-host.50.1.log")).expect("collision retained"),
+            b"second"
+        );
+        assert!(matches!(
+            prepare_host_logging(&config, 52),
+            HostLogSetup::StderrFallback { .. }
+        ));
+        assert_eq!(
+            fs::read(&config.active_path).expect("active preserved on fallback"),
+            b"third"
+        );
+    }
+
+    #[test]
+    fn preview_smoke_setup_failure_keeps_startup_on_stderr_fallback() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let config = config(tmp.path());
+        fs::write(tmp.path().join("managed"), b"not a directory").expect("blocked parent");
+
+        let setup = prepare_host_logging(&config, 60);
+
+        assert!(matches!(setup, HostLogSetup::StderrFallback { .. }));
     }
 }
