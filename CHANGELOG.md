@@ -27,7 +27,8 @@ All notable Limux changes should be recorded here when a PR merges.
   added a hard deadline with child cleanup for live `hcom` manager queries.
 - Bound manager-query results to their originating workspace directory so stale
   completions cannot overwrite the active workspace, while keeping new
-  directories immediately eligible for refresh.
+  directories immediately eligible for refresh and showing an empty manager
+  list when no workspace directory is active.
 
 ## [0.2.1] - 2026-07-10
 

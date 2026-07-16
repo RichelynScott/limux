@@ -165,7 +165,7 @@ impl ManagerRefresh {
     fn new() -> Self {
         Self {
             directory: None,
-            managers: crate::header_status::ManagerStatus::Loading,
+            managers: crate::header_status::ManagerStatus::Available(Vec::new()),
             query: None,
             last_started: None,
         }
@@ -7948,6 +7948,19 @@ mod tests {
         );
         assert!(refresh.query.is_none());
         assert!(refresh.refresh_due());
+    }
+
+    #[test]
+    fn manager_refresh_without_directory_reports_an_empty_manager_list() {
+        let mut refresh = ManagerRefresh::new();
+
+        refresh.update_directory(None);
+
+        assert_eq!(
+            refresh.managers,
+            crate::header_status::ManagerStatus::Available(Vec::new())
+        );
+        assert!(!refresh.refresh_due());
     }
 
     #[test]
