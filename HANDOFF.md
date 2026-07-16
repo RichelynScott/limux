@@ -1,5 +1,10 @@
 # Limux Session Handoff
 
+> **Current manager handoff:** Read [`LIFO_HANDOFF.md`](LIFO_HANDOFF.md) first.
+> The Halo-owned material below is retained as historical June 2026 context;
+> the current Limux manager state, runtime SHA, TaskMaster gate, and next action
+> are maintained in the Lifo handoff.
+
 Last updated: 2026-06-20 EDT
 Owner/session: halo / Codex GPT-5
 

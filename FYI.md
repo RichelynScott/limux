@@ -2016,3 +2016,39 @@ Current work now has PR-backed public sources and a no-loss cleanup path. The
 remaining explicit-targeting source patch is isolated for a separate current-
 main port, and runtime installation remains held for an explicit restart
 window.
+
+## 2026-07-16 - PR #70/#71 Merge, Reviewed Install, And Closure Pass
+### What:
+Merged the Ctrl+C selection-routing and pane-create retry-safety fixes into the
+runtime aggregate branch, installed a clean-provenance legacy runtime, moved
+TaskMaster tasks 27/28 to `review`, and reduced registered worktrees to the
+primary checkout only.
+
+### Why:
+The operator needed Ctrl+C to copy selected terminal text without breaking
+normal PTY interrupt behavior, and `pane.create --command` could report an
+ambiguous failure after already creating a pane. The repo also retained stale
+worktree registrations, generated build output, and task statuses that no
+longer reflected the reviewed/installed state.
+
+### How:
+PR #70 merged the Ghostty-selection-aware Ctrl+C state machine. PR #71 added a
+15-second pane-create bridge deadline, structured unsafe-retry metadata for
+timeouts, mutating disconnections, and all post-split failure phases, plus CLI
+JSON preservation. Gera and Bulo passed exact head `f719e5d`; the full source
+gate passed 115 CLI and 395 host tests. The clean build was installed as
+`main-1005f58d-pane-timeout-clean-20260716`. Dead worktree registrations were
+pruned, clean stale worktrees were removed or archive-preserved, and the
+generated concurrency target was moved under ignored `archive/generated/`.
+
+### Impact:
+The next Limux launch will use code SHA `1005f58d92a1`. The currently connected
+host remains `1f927cf7accc`, so activation and live operator smoke remain the
+gate before TaskMaster tasks 27/28 become `done`. `origin/main` is still
+`0.2.2`; a patch-scoped next release should be `0.2.3` through a deliberate
+aggregate release PR after open branch reconciliation.
+
+### Related:
+`4704e489d849e55dd4ff338a43a076a79e7c7e30` | PR #70 |
+`1005f58d92a1a1c415b4d1cea07ea02bf90cb109` | PR #71 |
+`6bff7f6f0c60cece7fdbe6cb30a522a57b882dfa` | TaskMaster review-state sync

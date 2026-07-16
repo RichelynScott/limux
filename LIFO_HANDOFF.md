@@ -1,6 +1,86 @@
 # Limux Lifo Handoff
 
-Author/runtime/date: lifo / Codex gpt-5.5 (xhigh) / 2026-06-29 09:15 EDT.
+Current owner/runtime/date: lifo / Codex gpt-5.6-sol (medium) /
+2026-07-16 6:31 PM EST.
+
+## 2026-07-16 PR #70/#71 And Housekeeping Closeout
+
+### Immediate Next Action
+
+1. Checkpoint active sessions, close the currently running Limux host, and
+   launch `limux` again. The launcher is already installed; do not rerun the
+   installer from `origin/main` because main does not yet contain PR #70/#71.
+2. Run `limux doctor --json`. Require both CLI and connected host SHA to be
+   `1005f58d92a1`; the pre-restart host still reports `1f927cf7accc`.
+3. Live-smoke Ctrl+C with and without a terminal selection and one
+   `pane.create --command` flow. If both pass, switch TaskMaster to `master`,
+   set tasks 27 and 28 to `done`, then restore the
+   `limux-resource-crash-20260716` tag.
+4. Reconcile the open PR stack before a release: PR #58 is conflicting; PRs
+   #66-#68 remain open; runtime aggregate branch
+   `lifo/runtime-markers-task4-20260716` contains PR #70/#71 plus the current
+   TaskMaster state and is not yet merged to `main`.
+
+### Current State
+
+| Area | State |
+|---|---|
+| Primary checkout | `lifo/limux-first-hcom-tracking-20260715` at `25d1763`, tracking its remote; docs closeout will advance this branch/PR #58. |
+| Source main | `origin/main` at `cc8356a1582e7aa7767f6039eb983ee408364eee`, version `0.2.2`. |
+| Runtime aggregate | `origin/lifo/runtime-markers-task4-20260716` at `6bff7f6f0c60cece7fdbe6cb30a522a57b882dfa`; code-bearing merge is `1005f58d92a1a1c415b4d1cea07ea02bf90cb109`, followed only by TaskMaster status reconciliation. |
+| Installed launcher | Limux `0.2.2 (1005f58d92a1, release)`, install ID `main-1005f58d-pane-timeout-clean-20260716`. |
+| Running host | Still `1f927cf7accc`; restart/live validation remains required. |
+| PR #70 | Merged; Ctrl+C copies only when the focused terminal has a selection and otherwise preserves PTY interrupt behavior. |
+| PR #71 | Merged after exact-head PASS from Gera and Bulo; pane-create timeout/disconnection/post-split failures now expose conservative retry-safety metadata. |
+| Open PRs | #58 conflicting against main; #66, #67, and #68 open and mergeable as a resource-conservation stack. |
+| Worktrees | Only `/home/riche/MCPs/limux` remains registered. Three dead registrations were pruned; the PR #71 worktree was removed; the reviewed runtime snapshot is preserved under `archive/worktrees/`. |
+| Generated build output | `target-task4-concurrency/` moved to ignored `archive/generated/target-task4-concurrency-20260716/` (376 MiB). |
+
+### TaskMaster State
+
+- Canonical current task store for this work is on runtime aggregate commit
+  `6bff7f6`, not the older primary branch snapshot.
+- `master` tasks 27 and 28 are `review`, not `done`: implementation, review,
+  merge, full source gates, and installation are complete; activation and live
+  operator smoke are still outstanding.
+- Active tag was restored to `limux-resource-crash-20260716` after the status
+  update. Resource task 1 is done; task 4 remains in progress; tasks 2, 3, 5,
+  and 6 remain pending.
+- Do not hand-edit `.taskmaster/tasks/tasks.json`. Use
+  `task-master-reviewed tags use`, `set-status`, and restore the prior tag.
+
+### Completed In This Closeout
+
+| Item | Evidence |
+|---|---|
+| Closed PR #71 review loop | Gera and Bulo both PASS on exact head `f719e5d641d0935892b7acc9c8a12852f61920d8`. |
+| Merged PR #71 | Merge commit `1005f58d92a1a1c415b4d1cea07ea02bf90cb109`. |
+| Verified source | `BOUNDARY_REVIEWED=1 ./scripts/check.sh`: 115 CLI tests and 395 host tests passed, including Clippy. |
+| Installed clean runtime | Version output has no dirty marker; Ghostty resources and `gladLoaderLoadGLContext` export verified. |
+| Reconciled TaskMaster | Tasks 27/28 moved from `in-progress` to `review`; task-only commit `6bff7f6` pushed to the runtime aggregate branch. |
+| Cleaned worktrees | All stale `/tmp` registrations removed or pruned after clean/pushed verification; only primary remains. |
+| Routed global-config residue | PAPA_GIT bootstrap repair was completed by Niru and successor ownership for PR #159 was handed to Zufa. |
+
+### Key Files And Branches
+
+| Pointer | Purpose |
+|---|---|
+| `/home/riche/MCPs/limux/LIFO_HANDOFF.md` | Current zero-context manager resume state. |
+| `/home/riche/MCPs/limux/FYI.md` | Append-only decision journal; now beyond the 1,800-line condensation threshold. |
+| `/home/riche/MCPs/limux/.taskmaster/tasks/tasks.json` | Primary branch task snapshot; do not mistake it for the newer runtime-aggregate task store. |
+| `origin/lifo/runtime-markers-task4-20260716` | Current code/task aggregate containing PR #70/#71 and task review status. |
+| `/home/riche/.local/limux-reviewed/main-1005f58d-pane-timeout-clean-20260716/` | Installed runtime to activate on next host restart. |
+
+### Critical Behavior Rules
+
+- Do not call tasks 27/28 done until the connected host is `1005f58d92a1`
+  and the operator-visible Ctrl+C and pane-create smokes pass.
+- Do not install from `origin/main` before PR #70/#71 are integrated there;
+  that would regress the just-installed fixes.
+- Preserve the stacked PR bases until retarget/review evidence is recorded.
+- Do not delete archived worktree/build evidence during this closeout.
+- The next patch release should be `0.2.3` if scope remains patch-level, but
+  version/changelog/tag changes belong to a deliberate aggregate release PR.
 
 ## 2026-07-15 Temporary PR-Bot Watcher Fallback
 
