@@ -118,7 +118,6 @@ impl RuntimeLifecycle {
 pub fn begin_runtime_in(dir: &Path, seed: RuntimeMarkerSeed<'_>) -> io::Result<RuntimeLifecycle> {
     fs::create_dir_all(dir)?;
     let marker_path = dir.join(RUNTIME_MARKER_FILE_NAME);
-    let previous_shutdown = classify_previous_marker(&marker_path);
     let marker = RuntimeMarker {
         incarnation_id: uuid::Uuid::new_v4().to_string(),
         pid: seed.pid,
@@ -126,7 +125,15 @@ pub fn begin_runtime_in(dir: &Path, seed: RuntimeMarkerSeed<'_>) -> io::Result<R
         version: seed.version.to_string(),
         clean_shutdown: false,
     };
-    write_marker_atomic(&marker_path, &marker)?;
+    let marker_bytes = serde_json::to_vec_pretty(&marker)
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+    let previous_shutdown =
+        crate::durable_atomic::transact_bytes_atomic_durable(&marker_path, |previous_marker| {
+            Ok((
+                classify_previous_marker(previous_marker),
+                Some(marker_bytes),
+            ))
+        })?;
     Ok(RuntimeLifecycle {
         marker_path,
         marker,
@@ -134,30 +141,24 @@ pub fn begin_runtime_in(dir: &Path, seed: RuntimeMarkerSeed<'_>) -> io::Result<R
     })
 }
 
-fn classify_previous_marker(path: &Path) -> StartupClassification {
-    match fs::read(path) {
-        Ok(bytes) => match serde_json::from_slice::<RuntimeMarker>(&bytes) {
+fn classify_previous_marker(previous_marker: io::Result<Option<Vec<u8>>>) -> StartupClassification {
+    match previous_marker {
+        Ok(Some(bytes)) => match serde_json::from_slice::<RuntimeMarker>(&bytes) {
             Ok(marker) if marker.clean_shutdown => StartupClassification::Clean,
             Ok(_) => StartupClassification::Unclean(UncleanStartupReason::PreviousRunUnclean),
             Err(_) => StartupClassification::Unclean(UncleanStartupReason::MalformedMarker),
         },
-        Err(err) if err.kind() == io::ErrorKind::NotFound => {
-            StartupClassification::Unclean(UncleanStartupReason::MissingMarker)
-        }
+        Ok(None) => StartupClassification::Unclean(UncleanStartupReason::MissingMarker),
         Err(_) => StartupClassification::Unclean(UncleanStartupReason::MarkerReadFailed),
     }
-}
-
-fn write_marker_atomic(path: &Path, marker: &RuntimeMarker) -> io::Result<()> {
-    let bytes = serde_json::to_vec_pretty(marker)
-        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
-    crate::durable_atomic::write_bytes_atomic_durable(path, &bytes)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{begin_runtime_in, RuntimeMarkerSeed, StartupClassification, UncleanStartupReason};
     use std::fs;
+    use std::sync::{Arc, Barrier};
+    use std::thread;
     use tempfile::tempdir;
 
     fn seed(started_at_unix_ms: u64) -> RuntimeMarkerSeed<'static> {
@@ -256,5 +257,36 @@ mod tests {
 
         let third = begin_runtime_in(dir.path(), seed(3000)).expect("third runtime");
         assert_eq!(third.previous_shutdown(), &StartupClassification::Clean);
+    }
+
+    #[test]
+    fn concurrent_starts_classify_a_clean_predecessor_at_most_once() {
+        const CONTENDERS: usize = 16;
+        let dir = tempdir().expect("tempdir");
+        let predecessor = begin_runtime_in(dir.path(), seed(1000)).expect("predecessor");
+        assert!(predecessor.mark_clean().expect("mark predecessor clean"));
+
+        let barrier = Arc::new(Barrier::new(CONTENDERS));
+        let runtime_dir = Arc::new(dir.path().to_path_buf());
+        let threads: Vec<_> = (0..CONTENDERS)
+            .map(|index| {
+                let barrier = Arc::clone(&barrier);
+                let runtime_dir = Arc::clone(&runtime_dir);
+                thread::spawn(move || {
+                    barrier.wait();
+                    begin_runtime_in(&runtime_dir, seed(2000 + index as u64))
+                        .expect("concurrent runtime")
+                        .previous_shutdown()
+                        .clone()
+                })
+            })
+            .collect();
+
+        let clean_count = threads
+            .into_iter()
+            .map(|thread| thread.join().expect("join contender"))
+            .filter(|classification| classification == &StartupClassification::Clean)
+            .count();
+        assert!(clean_count <= 1, "observed {clean_count} clean starts");
     }
 }
