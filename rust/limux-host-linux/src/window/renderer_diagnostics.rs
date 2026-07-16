@@ -7,7 +7,7 @@ use gtk4 as gtk;
 use libadwaita as adw;
 use serde::Serialize;
 
-const RENDERER_ENV_KEYS: [&str; 7] = [
+const RENDERER_ENV_KEYS: [&str; 8] = [
     "GSK_RENDERER",
     "GDK_DISABLE",
     "GDK_DEBUG",
@@ -15,6 +15,7 @@ const RENDERER_ENV_KEYS: [&str; 7] = [
     "GALLIUM_DRIVER",
     "MESA_LOADER_DRIVER_OVERRIDE",
     "MESA_D3D12_DEFAULT_ADAPTER_NAME",
+    "LP_NUM_THREADS",
 ];
 
 static DIAGNOSTICS: OnceLock<RendererDiagnostics> = OnceLock::new();
@@ -28,6 +29,7 @@ struct RequestedRendererPolicy {
     gallium_driver: Option<String>,
     mesa_loader_driver_override: Option<String>,
     mesa_d3d12_default_adapter_name: Option<String>,
+    lp_num_threads: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -40,6 +42,12 @@ struct SoftwareFallbackEvidence {
 struct GpuDeviceAvailability {
     dxg: bool,
     dri_render_node: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+struct GpuDeviceUsage {
+    dxg_open: bool,
+    dri_render_node_open: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -57,6 +65,7 @@ struct RendererDiagnostics {
     is_software_fallback: bool,
     fallback_indicators: Vec<String>,
     gpu_devices: GpuDeviceAvailability,
+    gpu_device_usage: GpuDeviceUsage,
     preview_backend_matrix: Vec<PreviewBackend>,
     preview_fallback_chain: Vec<&'static str>,
 }
@@ -91,6 +100,7 @@ where
             "MESA_D3D12_DEFAULT_ADAPTER_NAME" => {
                 policy.mesa_d3d12_default_adapter_name = value;
             }
+            "LP_NUM_THREADS" => policy.lp_num_threads = value,
             _ => {}
         }
     }
@@ -126,8 +136,12 @@ fn detect_software_fallback<'a>(
 ) -> SoftwareFallbackEvidence {
     let mut indicators = Vec::new();
 
-    if let Some(renderer) = selected_renderer.and_then(software_driver_name) {
-        indicators.push(format!("renderer:{renderer}"));
+    if let Some(renderer) = selected_renderer {
+        if renderer.to_ascii_lowercase().contains("cairorenderer") {
+            indicators.push(format!("renderer:{renderer}"));
+        } else if let Some(driver) = software_driver_name(renderer) {
+            indicators.push(format!("renderer:{driver}"));
+        }
     }
     if policy
         .libgl_always_software
@@ -189,6 +203,7 @@ fn preview_backend_matrix() -> Vec<PreviewBackend> {
                 ("GSK_RENDERER", "gl"),
                 ("LIBGL_ALWAYS_SOFTWARE", "1"),
                 ("GALLIUM_DRIVER", "llvmpipe"),
+                ("LP_NUM_THREADS", "2"),
             ],
             expected: "bounded final software GL fallback",
             fallback: None,
@@ -224,6 +239,7 @@ fn build_diagnostics<'a>(
     selected_renderer: Option<String>,
     thread_names: impl IntoIterator<Item = &'a str>,
     gpu_devices: GpuDeviceAvailability,
+    gpu_device_usage: GpuDeviceUsage,
 ) -> RendererDiagnostics {
     let evidence = detect_software_fallback(
         selected_renderer.as_deref(),
@@ -239,6 +255,7 @@ fn build_diagnostics<'a>(
         is_software_fallback: evidence.is_software_fallback,
         fallback_indicators: evidence.indicators,
         gpu_devices,
+        gpu_device_usage,
         preview_backend_matrix,
         preview_fallback_chain,
     }
@@ -276,6 +293,49 @@ fn gpu_device_availability() -> GpuDeviceAvailability {
     }
 }
 
+fn gpu_device_usage_from_targets<I, P>(targets: I) -> GpuDeviceUsage
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
+    let mut usage = GpuDeviceUsage {
+        dxg_open: false,
+        dri_render_node_open: false,
+    };
+    for target in targets {
+        let target = target.as_ref();
+        usage.dxg_open |= target == Path::new("/dev/dxg");
+        usage.dri_render_node_open |= target
+            .parent()
+            .is_some_and(|parent| parent == Path::new("/dev/dri"))
+            && target
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with("renderD"));
+    }
+    usage
+}
+
+#[cfg(target_os = "linux")]
+fn gpu_device_usage() -> GpuDeviceUsage {
+    let targets = std::fs::read_dir("/proc/self/fd")
+        .ok()
+        .into_iter()
+        .flatten()
+        .take(1024)
+        .filter_map(Result::ok)
+        .filter_map(|entry| std::fs::read_link(entry.path()).ok())
+        .collect::<Vec<_>>();
+    gpu_device_usage_from_targets(targets)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn gpu_device_usage() -> GpuDeviceUsage {
+    GpuDeviceUsage {
+        dxg_open: false,
+        dri_render_node_open: false,
+    }
+}
+
 pub(super) fn capture(window: &adw::ApplicationWindow) {
     if DIAGNOSTICS.get().is_some() {
         return;
@@ -290,6 +350,7 @@ pub(super) fn capture(window: &adw::ApplicationWindow) {
         selected_renderer,
         thread_names.iter().map(String::as_str),
         gpu_device_availability(),
+        gpu_device_usage(),
     );
 
     if DIAGNOSTICS.set(diagnostics.clone()).is_ok() {
@@ -302,6 +363,9 @@ pub(super) fn current_json() -> serde_json::Value {
         return serde_json::json!({ "status": "pending" });
     };
     let mut payload = diagnostics.to_json();
+    if payload.get("status").and_then(serde_json::Value::as_str) == Some("error") {
+        return payload;
+    }
     if let Some(payload) = payload.as_object_mut() {
         payload.insert(
             "status".to_string(),
@@ -349,6 +413,7 @@ mod tests {
         let policy = requested_policy_from_pairs([
             ("LIBGL_ALWAYS_SOFTWARE", "1"),
             ("GALLIUM_DRIVER", "swrast"),
+            ("LP_NUM_THREADS", "2"),
         ]);
         let evidence = detect_software_fallback(Some("GskGLRenderer"), &policy, []);
 
@@ -357,6 +422,19 @@ mod tests {
             evidence.indicators,
             ["env:LIBGL_ALWAYS_SOFTWARE", "env:GALLIUM_DRIVER=swrast"]
         );
+        assert_eq!(policy.lp_num_threads.as_deref(), Some("2"));
+    }
+
+    #[test]
+    fn cairo_renderer_is_reported_as_software_fallback() {
+        let evidence = detect_software_fallback(
+            Some("GskCairoRenderer"),
+            &RequestedRendererPolicy::default(),
+            [],
+        );
+
+        assert!(evidence.is_software_fallback);
+        assert_eq!(evidence.indicators, ["renderer:GskCairoRenderer"]);
     }
 
     #[test]
@@ -380,6 +458,10 @@ mod tests {
                 dxg: true,
                 dri_render_node: false,
             },
+            GpuDeviceUsage {
+                dxg_open: false,
+                dri_render_node_open: false,
+            },
         );
         let payload = diagnostics.to_json();
 
@@ -387,5 +469,17 @@ mod tests {
         assert_eq!(payload["is_software_fallback"], true);
         assert_eq!(payload["gpu_devices"]["dxg"], true);
         assert_eq!(payload["fallback_indicators"][0], "thread:llvmpipe");
+    }
+
+    #[test]
+    fn gpu_device_usage_distinguishes_open_dxg_and_dri_render_nodes() {
+        let usage = gpu_device_usage_from_targets([
+            "/dev/dxg",
+            "/dev/dri/renderD128",
+            "/tmp/unrelated-device",
+        ]);
+
+        assert!(usage.dxg_open);
+        assert!(usage.dri_render_node_open);
     }
 }
