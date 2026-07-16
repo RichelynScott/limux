@@ -293,6 +293,43 @@ def classify(
     bot_logins: set[str],
 ) -> dict:
     raw = []
+    reviews_by_id = {
+        review["id"]: review
+        for review in reviews
+        if type(review.get("id")) is int
+    }
+    for comment in inline_comments:
+        user = comment.get("user") or {}
+        review_id = comment.get("pull_request_review_id")
+        linked_review = (
+            reviews_by_id.get(review_id) if type(review_id) is int else None
+        )
+        linked_user = (linked_review or {}).get("user") or {}
+        metadata = {
+            "surface": "inline-comment",
+            "id": comment.get("id"),
+            "actor": user.get("login"),
+            "actor_type": user.get("type"),
+            "commit_id": comment.get("commit_id"),
+            "original_commit_id": comment.get("original_commit_id"),
+            "pull_request_review_id": review_id,
+            "linked_review_id": (linked_review or {}).get("id"),
+            "linked_review_actor": linked_user.get("login"),
+            "linked_review_actor_type": linked_user.get("type"),
+            "linked_review_commit_id": (linked_review or {}).get("commit_id"),
+            "linked_review_submitted_at": (linked_review or {}).get("submitted_at"),
+            "at": comment.get("created_at"),
+        }
+        raw.append(metadata)
+        if (
+            is_bot(user, bot_logins)
+            and linked_review is not None
+            and is_bot(linked_user, bot_logins)
+            and metadata["linked_review_commit_id"] == frozen_head
+            and (metadata["linked_review_submitted_at"] or "") >= request_time
+            and (metadata["at"] or "") >= request_time
+        ):
+            return {"found": True, "source": metadata["surface"], "evidence": metadata, "raw": raw}
     for review in reviews:
         user = review.get("user") or {}
         metadata = {
@@ -308,31 +345,6 @@ def classify(
         if (
             is_bot(user, bot_logins)
             and metadata["commit_id"] == frozen_head
-            and (metadata["at"] or "") >= request_time
-        ):
-            return {"found": True, "source": metadata["surface"], "evidence": metadata, "raw": raw}
-    for comment in inline_comments:
-        user = comment.get("user") or {}
-        metadata = {
-            "surface": "inline-comment",
-            "id": comment.get("id"),
-            "actor": user.get("login"),
-            "actor_type": user.get("type"),
-            "commit_id": comment.get("commit_id"),
-            "original_commit_id": comment.get("original_commit_id"),
-            "at": comment.get("created_at"),
-        }
-        raw.append(metadata)
-        original_commit_id = metadata["original_commit_id"]
-        commit_id = metadata["commit_id"]
-        inline_matches_head = (
-            commit_id == frozen_head
-            if original_commit_id is None
-            else original_commit_id == frozen_head and commit_id == frozen_head
-        )
-        if (
-            is_bot(user, bot_logins)
-            and inline_matches_head
             and (metadata["at"] or "") >= request_time
         ):
             return {"found": True, "source": metadata["surface"], "evidence": metadata, "raw": raw}
