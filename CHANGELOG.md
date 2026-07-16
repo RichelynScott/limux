@@ -25,6 +25,9 @@ All notable Limux changes should be recorded here when a PR merges.
 
 - Moved process-tree sampling off the GTK thread into one bounded worker and
   added a hard deadline with child cleanup for live `hcom` manager queries.
+- Bound manager-query results to their originating workspace directory so stale
+  completions cannot overwrite the active workspace, while keeping new
+  directories immediately eligible for refresh.
 
 ## [0.2.1] - 2026-07-10
 

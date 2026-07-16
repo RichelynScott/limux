@@ -149,42 +149,97 @@ fn build_window_header(decoration_layout: &str) -> (adw::HeaderBar, gtk::Label) 
     (bar, status_label)
 }
 
+struct ManagerQuery {
+    directory: String,
+    receiver: mpsc::Receiver<Result<Vec<String>, String>>,
+}
+
 struct ManagerRefresh {
     directory: Option<String>,
     managers: crate::header_status::ManagerStatus,
-    receiver: Option<mpsc::Receiver<Result<Vec<String>, String>>>,
+    query: Option<ManagerQuery>,
     last_started: Option<Instant>,
+}
+
+impl ManagerRefresh {
+    fn new() -> Self {
+        Self {
+            directory: None,
+            managers: crate::header_status::ManagerStatus::Loading,
+            query: None,
+            last_started: None,
+        }
+    }
+
+    fn update_directory(&mut self, directory: Option<String>) {
+        if self.directory == directory {
+            return;
+        }
+
+        self.directory = directory;
+        self.last_started = None;
+        self.managers = if self.directory.is_some() {
+            crate::header_status::ManagerStatus::Loading
+        } else {
+            crate::header_status::ManagerStatus::Available(Vec::new())
+        };
+    }
+
+    fn begin_query(
+        &mut self,
+        directory: String,
+        receiver: mpsc::Receiver<Result<Vec<String>, String>>,
+    ) {
+        self.last_started = Some(Instant::now());
+        self.query = Some(ManagerQuery {
+            directory,
+            receiver,
+        });
+    }
+
+    fn poll_query(&mut self) {
+        let completed = match self.query.as_ref() {
+            Some(query) => match query.receiver.try_recv() {
+                Ok(result) => Some(result),
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    Some(Err("manager query worker disconnected".to_string()))
+                }
+                Err(mpsc::TryRecvError::Empty) => None,
+            },
+            None => None,
+        };
+        let Some(result) = completed else {
+            return;
+        };
+        let query = self.query.take().expect("completed manager query");
+        if self.directory.as_deref() != Some(query.directory.as_str()) {
+            return;
+        }
+
+        self.managers = match result {
+            Ok(managers) => crate::header_status::ManagerStatus::Available(managers),
+            Err(_) => crate::header_status::ManagerStatus::Unavailable,
+        };
+    }
+
+    fn refresh_due(&self) -> bool {
+        self.query.is_none()
+            && self.directory.is_some()
+            && self
+                .last_started
+                .is_none_or(|started| started.elapsed() >= Duration::from_secs(10))
+    }
 }
 
 fn install_header_status_refresh(state: &State, status_label: gtk::Label) {
     let state = state.clone();
     let sampler = crate::header_status::BackgroundProcessSampler::new();
     let mut resource_sample = (None, None);
-    let mut manager_refresh = ManagerRefresh {
-        directory: None,
-        managers: crate::header_status::ManagerStatus::Loading,
-        receiver: None,
-        last_started: None,
-    };
+    let mut manager_refresh = ManagerRefresh::new();
 
     glib::timeout_add_local(Duration::from_secs(1), move || {
         if status_label.root().is_none() {
             return glib::ControlFlow::Break;
-        }
-
-        if let Some(receiver) = manager_refresh.receiver.as_ref() {
-            match receiver.try_recv() {
-                Ok(Ok(managers)) => {
-                    manager_refresh.managers =
-                        crate::header_status::ManagerStatus::Available(managers);
-                    manager_refresh.receiver = None;
-                }
-                Ok(Err(_)) | Err(mpsc::TryRecvError::Disconnected) => {
-                    manager_refresh.managers = crate::header_status::ManagerStatus::Unavailable;
-                    manager_refresh.receiver = None;
-                }
-                Err(mpsc::TryRecvError::Empty) => {}
-            }
         }
 
         let (workspace_name, pane_count, directory, sections) = {
@@ -206,26 +261,18 @@ fn install_header_status_refresh(state: &State, status_label: gtk::Label) {
             }
         };
 
-        let directory_changed = manager_refresh.directory != directory;
-        let refresh_due = manager_refresh
-            .last_started
-            .is_none_or(|started| started.elapsed() >= Duration::from_secs(10));
-        if directory_changed {
-            manager_refresh.directory = directory.clone();
-            manager_refresh.managers = crate::header_status::ManagerStatus::Loading;
-        }
-        if manager_refresh.receiver.is_none() && (directory_changed || refresh_due) {
-            manager_refresh.last_started = Some(Instant::now());
-            if let Some(directory) = directory.clone() {
-                let (sender, receiver) = mpsc::channel();
-                manager_refresh.receiver = Some(receiver);
-                std::thread::spawn(move || {
-                    let _ = sender.send(crate::header_status::query_directory_managers(&directory));
-                });
-            } else {
-                manager_refresh.managers =
-                    crate::header_status::ManagerStatus::Available(Vec::new());
-            }
+        manager_refresh.update_directory(directory);
+        manager_refresh.poll_query();
+        if manager_refresh.refresh_due() {
+            let directory = manager_refresh
+                .directory
+                .clone()
+                .expect("refresh due requires a directory");
+            let (sender, receiver) = mpsc::channel();
+            manager_refresh.begin_query(directory.clone(), receiver);
+            std::thread::spawn(move || {
+                let _ = sender.send(crate::header_status::query_directory_managers(&directory));
+            });
         }
 
         if let Some(completed) = sampler.latest() {
@@ -7752,6 +7799,7 @@ mod tests {
     use std::cell::RefCell;
     use std::path::Path;
     use std::rc::Rc;
+    use std::sync::mpsc;
 
     use super::glib;
     use super::gtk::ffi;
@@ -7779,7 +7827,7 @@ mod tests {
         validate_workspace_folder_input_with_dirs, window_chrome_policy,
         workspace_drop_layout_path, workspace_folder_path_from_input,
         workspace_notification_message, DesktopNotificationTarget, Direction,
-        EditableCaptureContext, NeighborScore, PaneBounds, PaneCreateDirection,
+        EditableCaptureContext, ManagerRefresh, NeighborScore, PaneBounds, PaneCreateDirection,
         PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest,
         WorkspaceSeedSource, BASE_CSS, HOST_ENTRY_CSS_CLASS, HOST_LAUNCH_ENV_REMOVALS,
         LIMUX_WINDOW_DECORATION_LAYOUT, SIDEBAR_COMPACT_CSS_CLASS, SIDEBAR_COMPACT_WIDTH,
@@ -7879,6 +7927,27 @@ mod tests {
         assert!(function.contains(".latest()"));
         assert!(!function.contains(".sample()"));
         assert!(!function.contains("read_process_usage"));
+    }
+
+    #[test]
+    fn manager_refresh_discards_stale_completion_and_immediately_queues_current_directory() {
+        let (sender, receiver) = mpsc::channel();
+        let mut refresh = ManagerRefresh::new();
+        refresh.update_directory(Some("/workspace/old".to_string()));
+        refresh.begin_query("/workspace/old".to_string(), receiver);
+
+        refresh.update_directory(Some("/workspace/new".to_string()));
+        sender
+            .send(Ok(vec!["old-manager".to_string()]))
+            .expect("old query result");
+        refresh.poll_query();
+
+        assert_eq!(
+            refresh.managers,
+            crate::header_status::ManagerStatus::Loading
+        );
+        assert!(refresh.query.is_none());
+        assert!(refresh.refresh_due());
     }
 
     #[test]
