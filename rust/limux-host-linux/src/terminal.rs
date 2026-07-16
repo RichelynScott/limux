@@ -98,15 +98,34 @@ impl SurfaceVisibility {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct SurfaceVisibilityState {
+    mapped: bool,
+    window_renderable: bool,
     visible: bool,
     has_ever_mapped: bool,
     destroyed: bool,
     transition_count: u64,
 }
 
+impl Default for SurfaceVisibilityState {
+    fn default() -> Self {
+        Self::new(true)
+    }
+}
+
 impl SurfaceVisibilityState {
+    fn new(window_renderable: bool) -> Self {
+        Self {
+            mapped: false,
+            window_renderable,
+            visible: false,
+            has_ever_mapped: false,
+            destroyed: false,
+            transition_count: 0,
+        }
+    }
+
     fn visible(&self) -> bool {
         self.visible
     }
@@ -123,16 +142,30 @@ impl SurfaceVisibilityState {
         if self.destroyed {
             return None;
         }
+        self.mapped = mapped;
         if mapped {
             self.has_ever_mapped = true;
         }
-        if self.visible == mapped {
+        self.recompute_visibility()
+    }
+
+    fn set_window_renderable(&mut self, renderable: bool) -> Option<SurfaceVisibility> {
+        if self.destroyed {
+            return None;
+        }
+        self.window_renderable = renderable;
+        self.recompute_visibility()
+    }
+
+    fn recompute_visibility(&mut self) -> Option<SurfaceVisibility> {
+        let visible = self.mapped && self.window_renderable;
+        if self.visible == visible {
             return None;
         }
 
-        self.visible = mapped;
+        self.visible = visible;
         self.transition_count += 1;
-        Some(if mapped {
+        Some(if visible {
             SurfaceVisibility::Visible
         } else {
             SurfaceVisibility::Hidden
@@ -267,6 +300,7 @@ impl TerminalImeState {
 
 thread_local! {
     static SURFACE_MAP: RefCell<HashMap<usize, SurfaceEntry>> = RefCell::new(HashMap::new());
+    static WINDOW_RENDERABLE: Cell<bool> = const { Cell::new(true) };
 }
 
 pub fn ghostty_render_debug_snapshot() -> GhosttyRenderDebugSnapshot {
@@ -717,6 +751,12 @@ fn update_visible_surface_count(visibility: SurfaceVisibility) {
     debug_assert!(previous > 0, "visible Ghostty surface count underflow");
 }
 
+fn apply_surface_visibility_transition(surface: ghostty_surface_t, visibility: SurfaceVisibility) {
+    unsafe { ghostty_surface_set_occlusion(surface, visibility.is_visible()) };
+    VISIBILITY_TRANSITION_COUNT.fetch_add(1, Ordering::Relaxed);
+    update_visible_surface_count(visibility);
+}
+
 fn set_surface_mapped(surface: ghostty_surface_t, mapped: bool) {
     let transition = SURFACE_MAP.with(|map| {
         map.borrow_mut()
@@ -727,9 +767,35 @@ fn set_surface_mapped(surface: ghostty_surface_t, mapped: bool) {
         return;
     };
 
-    unsafe { ghostty_surface_set_occlusion(surface, visibility.is_visible()) };
-    VISIBILITY_TRANSITION_COUNT.fetch_add(1, Ordering::Relaxed);
-    update_visible_surface_count(visibility);
+    apply_surface_visibility_transition(surface, visibility);
+}
+
+pub(crate) fn set_window_renderable(renderable: bool) {
+    let changed = WINDOW_RENDERABLE.with(|current| {
+        if current.get() == renderable {
+            return false;
+        }
+        current.set(renderable);
+        true
+    });
+    if !changed {
+        return;
+    }
+
+    let transitions = SURFACE_MAP.with(|map| {
+        map.borrow_mut()
+            .iter_mut()
+            .filter_map(|(surface, entry)| {
+                entry
+                    .visibility
+                    .set_window_renderable(renderable)
+                    .map(|visibility| (*surface as ghostty_surface_t, visibility))
+            })
+            .collect::<Vec<_>>()
+    });
+    for (surface, visibility) in transitions {
+        apply_surface_visibility_transition(surface, visibility);
+    }
 }
 
 fn mark_surface_destroyed(visibility: &mut SurfaceVisibilityState) {
@@ -1953,7 +2019,7 @@ pub fn create_terminal(
                         open_url_external: open_url_external_for_map.clone(),
                         clipboard_context,
                         pending_selection_auto_copy: None,
-                        visibility: SurfaceVisibilityState::default(),
+                        visibility: SurfaceVisibilityState::new(WINDOW_RENDERABLE.with(Cell::get)),
                     },
                 );
             });
@@ -3040,6 +3106,34 @@ mod tests {
         assert_eq!(state.set_mapped(false), Some(SurfaceVisibility::Hidden));
         assert_eq!(state.set_mapped(true), Some(SurfaceVisibility::Visible));
         assert_eq!(state.transition_count(), 3);
+    }
+
+    #[test]
+    fn surface_visibility_requires_mapping_and_renderable_window() {
+        let mut state = SurfaceVisibilityState::default();
+
+        assert_eq!(state.set_mapped(true), Some(SurfaceVisibility::Visible));
+        assert_eq!(
+            state.set_window_renderable(false),
+            Some(SurfaceVisibility::Hidden)
+        );
+        assert_eq!(state.set_mapped(false), None);
+        assert_eq!(state.set_window_renderable(true), None);
+        assert_eq!(state.set_mapped(true), Some(SurfaceVisibility::Visible));
+        assert_eq!(state.transition_count(), 3);
+    }
+
+    #[test]
+    fn surface_visibility_can_start_with_a_hidden_window() {
+        let mut state = SurfaceVisibilityState::new(false);
+
+        assert_eq!(state.set_mapped(true), None);
+        assert!(!state.visible());
+        assert!(state.has_ever_mapped());
+        assert_eq!(
+            state.set_window_renderable(true),
+            Some(SurfaceVisibility::Visible)
+        );
     }
 
     #[test]

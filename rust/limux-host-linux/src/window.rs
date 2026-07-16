@@ -40,6 +40,9 @@ const PANE_CREATE_COMMAND_SETTLE_ATTEMPTS: u32 = 10;
 const PANE_CREATE_COMMAND_SUBMIT_DELAY_MS: u64 = 100;
 const ACTIVE_WORKSPACE_NOTIFICATION_MS: u64 = 3_000;
 const LIMUX_WINDOW_DECORATION_LAYOUT: &str = ":minimize,maximize,close";
+// GDK 4.12 added SUSPENDED without changing the underlying state bitset.
+// Keep Limux's GTK 4.10 build floor while honoring the bit on newer runtimes.
+const GDK_TOPLEVEL_STATE_SUSPENDED_BIT: u32 = 1 << 16;
 const HOST_LAUNCH_ENV_REMOVALS: &[&str] = &[
     "LIMUX_SOCKET",
     "LIMUX_SOCKET_PATH",
@@ -131,6 +134,50 @@ fn window_chrome_policy(_compositor_provides_decorations: bool) -> WindowChromeP
         use_client_side_titlebar: true,
         decoration_layout: LIMUX_WINDOW_DECORATION_LAYOUT,
     }
+}
+
+fn toplevel_state_allows_rendering(state_bits: u32) -> bool {
+    let hidden_bits = gtk::gdk::ToplevelState::MINIMIZED.bits() | GDK_TOPLEVEL_STATE_SUSPENDED_BIT;
+    state_bits & hidden_bits == 0
+}
+
+fn window_allows_rendering(window: &adw::ApplicationWindow) -> bool {
+    if !window.is_visible() || !window.is_mapped() {
+        return false;
+    }
+    let Some(surface) = window.surface() else {
+        return false;
+    };
+    let Ok(toplevel) = surface.dynamic_cast::<gtk::gdk::Toplevel>() else {
+        return false;
+    };
+    toplevel_state_allows_rendering(toplevel.state().bits())
+}
+
+fn sync_window_render_visibility(window: &adw::ApplicationWindow) {
+    crate::terminal::set_window_renderable(window_allows_rendering(window));
+}
+
+fn install_window_render_visibility_tracking(window: &adw::ApplicationWindow) {
+    sync_window_render_visibility(window);
+
+    window.connect_realize(|window| {
+        if let Some(surface) = window.surface() {
+            if let Ok(toplevel) = surface.dynamic_cast::<gtk::gdk::Toplevel>() {
+                let window = window.downgrade();
+                toplevel.connect_state_notify(move |_| {
+                    if let Some(window) = window.upgrade() {
+                        sync_window_render_visibility(&window);
+                    }
+                });
+            }
+        }
+        sync_window_render_visibility(window);
+    });
+    window.connect_map(sync_window_render_visibility);
+    window.connect_unmap(|_| crate::terminal::set_window_renderable(false));
+    window.connect_unrealize(|_| crate::terminal::set_window_renderable(false));
+    window.connect_visible_notify(sync_window_render_visibility);
 }
 
 fn build_window_header(decoration_layout: &str) -> (adw::HeaderBar, gtk::Label) {
@@ -2550,6 +2597,7 @@ pub fn build_window(app: &adw::Application) {
         .default_height(900)
         .build();
     apply_window_background_class(&window, background_opacity);
+    install_window_render_visibility_tracking(&window);
 
     let compositor_provides_decorations = display
         .clone()
@@ -7851,9 +7899,9 @@ mod tests {
         should_restore_workspace_mapping, should_skip_workspace_mapping, sidebar_width_class,
         snapshot_current_pane_id, snapshot_sidebar_width, surface_send_text_response,
         surface_summary_payload, surface_target_response_payload, tab_drag_workspace_seed,
-        use_opaque_window_background, validate_typed_terminal_text,
-        validate_workspace_folder_input_with_dirs, window_chrome_policy,
-        workspace_drop_layout_path, workspace_folder_path_from_input,
+        toplevel_state_allows_rendering, use_opaque_window_background,
+        validate_typed_terminal_text, validate_workspace_folder_input_with_dirs,
+        window_chrome_policy, workspace_drop_layout_path, workspace_folder_path_from_input,
         workspace_notification_message, DesktopNotificationTarget, Direction,
         EditableCaptureContext, ManagerRefresh, NeighborScore, PaneBounds, PaneCreateDirection,
         PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest,
@@ -7912,6 +7960,18 @@ mod tests {
         assert!(with_compositor_decorations
             .decoration_layout
             .contains("close"));
+    }
+
+    #[test]
+    fn minimized_or_suspended_toplevel_does_not_render() {
+        assert!(toplevel_state_allows_rendering(0));
+        assert!(!toplevel_state_allows_rendering(
+            gdk::ToplevelState::MINIMIZED.bits()
+        ));
+        assert!(!toplevel_state_allows_rendering(1 << 16));
+        assert!(toplevel_state_allows_rendering(
+            gdk::ToplevelState::MAXIMIZED.bits() | gdk::ToplevelState::FOCUSED.bits()
+        ));
     }
 
     #[test]
