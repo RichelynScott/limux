@@ -28,7 +28,9 @@ Supported candidates and fallback order:
 3. `software-gl`
 
 The final software entry sets `LP_NUM_THREADS=2` so fallback CPU use is bounded
-during preview evidence collection.
+during preview evidence collection. It is accepted only when runtime evidence
+contains `thread:llvmpipe` or `renderer:llvmpipe` and the process has no open
+`/dev/dxg` descriptor; requested environment variables alone are insufficient.
 
 `invalid-test` is a deliberate failure-injection entry that falls back to
 `wsl-d3d12-gl`. It is for isolated validation only.
@@ -40,8 +42,9 @@ candidate. D3D12 additionally requires a non-software `GskGLRenderer` and an
 open `/dev/dxg` descriptor. Automatic desktop GL rejects software fallback so
 the bounded `LP_NUM_THREADS=2` software entry is not skipped. Successful hosts
 are also stopped after verification; `result.json` records the selected backend
-and attempt order. Each CLI probe has a two-second timeout and each backend has
-a 30-second wall-time limit.
+and attempt order. Each CLI probe receives `TERM` after two seconds and `KILL`
+after a further 0.5-second grace period, so an uncooperative CLI cannot bypass
+the 30-second backend wall-time limit or process-session cleanup.
 
 Before executing a modified runner or test, apply the global no-delete static
 gate to this directory.

@@ -266,7 +266,10 @@ backend_matches_diagnostics() {
              $diagnostics.selected_renderer == "GskNglRenderer") and
             $diagnostics.is_software_fallback == true and
             $diagnostics.requested_policy.gallium_driver == "llvmpipe" and
-            $diagnostics.requested_policy.lp_num_threads == "2"
+            $diagnostics.requested_policy.lp_num_threads == "2" and
+            $diagnostics.gpu_device_usage.dxg_open == false and
+            (($diagnostics.fallback_indicators // []) |
+                any(. == "thread:llvmpipe" or . == "renderer:llvmpipe"))
         else
             false
         end
@@ -367,7 +370,7 @@ attempt_backend() {
         if ! kill -0 "$CURRENT_PID" 2>/dev/null; then
             break
         fi
-        if timeout "${CLI_TIMEOUT_SECONDS}s" \
+        if timeout --signal=TERM --kill-after=0.5s "${CLI_TIMEOUT_SECONDS}s" \
             env LIMUX_SOCKET="$socket" "$CLI" --json list-workspaces \
             > "$attempt_dir/list-workspaces.json" \
             2> "$attempt_dir/list-workspaces.stderr"; then
@@ -379,7 +382,7 @@ attempt_backend() {
                 "$attempt_dir/list-workspaces.json")"
         fi
         if [[ -n "$workspace_ref" ]] && \
-            timeout "${CLI_TIMEOUT_SECONDS}s" \
+            timeout --signal=TERM --kill-after=0.5s "${CLI_TIMEOUT_SECONDS}s" \
                 env LIMUX_SOCKET="$socket" "$CLI" --json surface-health \
                 --workspace "$workspace_ref" \
                 > "$attempt_dir/surface-health.json" \

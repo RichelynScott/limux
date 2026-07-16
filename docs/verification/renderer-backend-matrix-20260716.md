@@ -28,7 +28,7 @@ This indicates software GL selection despite an available WSL GPU path.
 |---|---|---|---|---|---|
 | WSL D3D12 GL | `GSK_RENDERER=gl`, `GALLIUM_DRIVER=d3d12` | `GskGLRenderer` | none | `/dev/dxg` | PASS |
 | Desktop GL | `GSK_RENDERER=gl` | not separately forced in this round | daily driver resolves to llvmpipe | none on daily driver | BASELINE / NEEDS ISOLATED RECHECK |
-| Software GL | `GSK_RENDERER=gl`, `LIBGL_ALWAYS_SOFTWARE=1`, `GALLIUM_DRIVER=llvmpipe`, `LP_NUM_THREADS=2` | `GskGLRenderer` | env and llvmpipe thread indicators | none required | PASS AS FINAL FALLBACK |
+| Software GL | `GSK_RENDERER=gl`, `LIBGL_ALWAYS_SOFTWARE=1`, `GALLIUM_DRIVER=llvmpipe`, `LP_NUM_THREADS=2` | `GskGLRenderer` | env plus observed llvmpipe thread indicator | `/dev/dxg` closed | PASS AS FINAL FALLBACK |
 
 The queryable fallback order is:
 
@@ -66,7 +66,29 @@ initialization.
 - `is_software_fallback = true`.
 - Indicators: `env:LIBGL_ALWAYS_SOFTWARE`,
   `env:GALLIUM_DRIVER=llvmpipe`, and `thread:llvmpipe`.
+- `LP_NUM_THREADS=2` was captured in the requested policy and no `/dev/dxg`
+  descriptor was open.
 - Approximately 344 MiB RSS and 0-3% CPU with `LP_NUM_THREADS=2`.
+
+The process fallback runner now requires the observed `thread:llvmpipe` or
+`renderer:llvmpipe` indicator and rejects requested-policy-only evidence. The
+authoritative real software acceptance artifact is:
+
+`/tmp/limux-renderer-software-real-r1-20260716/result.json`
+
+Its accepted health record contains `thread:llvmpipe`,
+`gpu_device_usage.dxg_open = false`, and two healthy realized terminal
+surfaces. The process and all attempt-owned helpers were stopped after capture.
+
+### Build provenance correction
+
+The first post-restart rerun retained at
+`/tmp/limux-renderer-fallback-real-r3-20260716` is not acceptance evidence.
+The shared target had most recently been built from Task 3 source
+`490101c3a7f0`, which the host startup log exposed; that binary did not contain
+the Task 2 diagnostics and all candidates were correctly rejected. After Task
+3 released the shared target, a one-job Task 2 rebuild embedded
+`5b4f6871dfcedeb`. The `r4` artifact below is the authoritative rerun.
 
 ### Real failed-candidate fallback
 
@@ -75,11 +97,12 @@ GTK fell back to `GskCairoRenderer`, the diagnostic correctly classified that
 as software, and terminal health remained unrealized at `0x0`. The runner
 rejected and stopped that child, then launched `wsl-d3d12-gl`. The D3D12 child
 reported `GskGLRenderer`, no software indicators, and a healthy realized
-`1369x823` terminal. It was accepted and stopped after capture.
+pair of `685x823` and `683x823` terminal surfaces. It was accepted and stopped
+after capture.
 
 Retained result:
 
-`/tmp/limux-renderer-fallback-real-r2-20260716/result.json`
+`/tmp/limux-renderer-fallback-real-r4-20260716/result.json`
 
 Attempt order: `invalid-test`, then `wsl-d3d12-gl`. The accepted record includes
 `gpu_device_usage.dxg_open = true`; the rejected Cairo attempt records it as
@@ -123,7 +146,11 @@ Promotion remains gated on:
 - Process-level fallback harness: passed; injected failure rejected and D3D12
   accepted; healthy-but-software D3D12 was rejected; setup failure stopped
   before host launch; focused-workspace selection and host-session descendant
-  cleanup passed.
+  cleanup passed; requested-but-unobserved software was rejected; and a
+  TERM-ignoring CLI was force-stopped after the bounded grace period without
+  leaking the host session or capture helpers.
+- Real software fallback predicate: passed with observed `thread:llvmpipe`,
+  `LP_NUM_THREADS=2`, and no open `/dev/dxg` descriptor.
 - No-delete static scan for the runner and test: passed with zero findings.
 - `cargo test -p limux-host-linux`: 380 passed.
 - `cargo clippy -p limux-host-linux --all-targets -- -D warnings`: passed.
