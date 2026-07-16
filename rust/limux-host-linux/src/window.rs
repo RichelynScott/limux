@@ -37,10 +37,10 @@ use crate::shortcut_config::{
 };
 use crate::split_tree::{self, SplitTreeContainer};
 
-const PANE_CREATE_COMMAND_READY_INTERVAL_MS: u64 = 50;
-const PANE_CREATE_COMMAND_READY_ATTEMPTS: u32 = 80;
+pub(crate) const PANE_CREATE_COMMAND_READY_INTERVAL_MS: u64 = 50;
+pub(crate) const PANE_CREATE_COMMAND_READY_ATTEMPTS: u32 = 80;
 const PANE_CREATE_COMMAND_SETTLE_ATTEMPTS: u32 = 10;
-const PANE_CREATE_COMMAND_SUBMIT_DELAY_MS: u64 = 100;
+pub(crate) const PANE_CREATE_COMMAND_SUBMIT_DELAY_MS: u64 = 100;
 const ACTIVE_WORKSPACE_NOTIFICATION_MS: u64 = 3_000;
 const LIMUX_WINDOW_DECORATION_LAYOUT: &str = ":minimize,maximize,close";
 // GDK 4.12 added SUSPENDED without changing the underlying state bitset.
