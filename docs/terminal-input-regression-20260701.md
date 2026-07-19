@@ -122,3 +122,28 @@ The packaging-side guardrails for this regression class shipped with PRD-B
   (`.github/workflows/rust-quality.yml`), which asserts the staged shape,
   the manifest invariants, SHA256SUMS coverage of shipped resources, and the
   source-only rejection regression test.
+
+## Follow-up: Streamed-Output Responsiveness (2026-07-19)
+
+A separate GTK contention path appeared under sustained OMP output: terminal
+input could become unresponsive while the visible scrollbar repeatedly snapped
+back to the bottom. This was not a recurrence of the Ghostty resource-packaging
+failure above.
+
+Two feedback loops were responsible:
+
+- every Ghostty renderer wakeup enqueued another GTK idle callback, allowing a
+  text flood to build an unbounded main-loop backlog;
+- every Ghostty scrollbar event reconfigured the GTK adjustment, even when its
+  value, upper bound, and page size were unchanged. GTK then re-emitted
+  `value-changed` and competed with a user's scrollbar drag.
+
+The runtime now coalesces renderer wakeups to one pending idle callback and
+reconfigures the scrollbar adjustment only when the reported state changes
+beyond a small floating-point tolerance. Regression tests cover wakeup-slot
+coalescing, identical adjustment suppression, and changed-state propagation.
+
+Before promoting a build containing this fix, stream a long-running OMP
+response while typing and dragging the scrollbar away from the bottom. Input
+must remain responsive, and new renderer ticks must not pull the scrollbar away
+from the user's selected history position.

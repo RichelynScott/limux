@@ -2,6 +2,15 @@
 
 All notable Limux changes should be recorded here when a PR merges.
 
+## [Unreleased]
+
+### Fixed
+
+- Coalesced Ghostty renderer wakeups so sustained terminal output cannot flood
+  the GTK main loop and make terminal input unresponsive.
+- Avoided redundant GTK scrollbar adjustment updates that fought user dragging
+  and could leave the terminal pinned at the bottom during streamed output.
+
 ## [0.2.2] - 2026-07-15
 
 ### Added
