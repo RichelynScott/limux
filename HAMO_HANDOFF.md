@@ -18,7 +18,7 @@ legacy v0.2.2.
 | Area | Verified state |
 |---|---|
 | Repository | `/home/riche/MCPs/limux` |
-| Current main | `7c760f0c5d98f0e5f7a28c1849d0f4dc513d007e` |
+| Release/task-closeout baseline | `7c760f0c5d98f0e5f7a28c1849d0f4dc513d007e` |
 | Release merge | PR #73, merge SHA `1a26bda0bd1c3d256f91eaa9c1fbc444d1375e6a` |
 | Task closeout | PR #74, merge SHA `7c760f0c5d98f0e5f7a28c1849d0f4dc513d007e` |
 | Stable install | `/home/riche/.local/limux-reviewed/stable/main-1a26bda0-v0.2.3-20260719` |
