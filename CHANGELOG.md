@@ -2,6 +2,47 @@
 
 All notable Limux changes should be recorded here when a PR merges.
 
+## [0.2.3] - 2026-07-19
+
+### Added
+
+- Added durable, atomic runtime lifecycle markers so clean and unclean host
+  exits can be distinguished without trusting a partially written state file.
+- Added isolated visibility controls and renderer counters used to verify
+  hidden-workspace resource behavior without changing the daily-driver host.
+
+### Changed
+
+- Hidden, minimized, and unmapped terminal surfaces are now marked occluded and
+  use a reduced fallback renderer cadence while terminal child processes stay
+  alive.
+- Restored agents are suspended after an unclean host exit instead of being
+  started automatically, preventing crash-recovery session storms.
+- Live header sections use clearer spacing without changing their configured
+  order or visibility.
+
+### Fixed
+
+- #70 copies selected terminal text on Ctrl+C while preserving the normal PTY
+  interrupt when no selection exists, including matched repeat/release events.
+- #71 gives command-launching `pane.create` requests a method-specific response
+  deadline and returns conservative retry-safety metadata when the outcome may
+  be ambiguous, preventing blind duplicate-pane retries.
+- Runtime lifecycle commits are serialized and written atomically so concurrent
+  shutdown paths cannot corrupt recovery state.
+- Native window mapping is tracked when deciding renderer visibility, including
+  minimized-window and hidden-workspace transitions.
+- Host builds now fail immediately when the Ghostty GLAD sources are missing
+  instead of producing a binary that fails later with an unresolved GL loader
+  symbol.
+
+### Release Notes
+
+- This release reconciles the previously installed runtime aggregate at
+  `1005f58d92a1` with the versioned source release. Native OMP runtime identity
+  remains a separately owned OMP/hcom integration and is not claimed by this
+  Limux release.
+
 ## [0.2.2] - 2026-07-15
 
 ### Added

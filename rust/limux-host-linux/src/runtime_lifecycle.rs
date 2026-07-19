@@ -41,7 +41,6 @@ impl<'a> RuntimeMarkerSeed<'a> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UncleanStartupReason {
-    MissingMarker,
     MalformedMarker,
     PreviousRunUnclean,
     MarkerReadFailed,
@@ -50,7 +49,6 @@ pub enum UncleanStartupReason {
 impl UncleanStartupReason {
     pub fn name(self) -> &'static str {
         match self {
-            Self::MissingMarker => "missing_marker",
             Self::MalformedMarker => "malformed_marker",
             Self::PreviousRunUnclean => "previous_run_unclean",
             Self::MarkerReadFailed => "marker_read_failed",
@@ -61,6 +59,7 @@ impl UncleanStartupReason {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(tag = "status", content = "reason", rename_all = "snake_case")]
 pub enum StartupClassification {
+    Bootstrap,
     Clean,
     Unclean(UncleanStartupReason),
 }
@@ -148,7 +147,7 @@ fn classify_previous_marker(previous_marker: io::Result<Option<Vec<u8>>>) -> Sta
             Ok(_) => StartupClassification::Unclean(UncleanStartupReason::PreviousRunUnclean),
             Err(_) => StartupClassification::Unclean(UncleanStartupReason::MalformedMarker),
         },
-        Ok(None) => StartupClassification::Unclean(UncleanStartupReason::MissingMarker),
+        Ok(None) => StartupClassification::Bootstrap,
         Err(_) => StartupClassification::Unclean(UncleanStartupReason::MarkerReadFailed),
     }
 }
@@ -170,14 +169,14 @@ mod tests {
     }
 
     #[test]
-    fn missing_marker_is_unclean_and_new_incarnation_starts_dirty() {
+    fn missing_marker_is_bootstrap_and_new_incarnation_starts_dirty() {
         let dir = tempdir().expect("tempdir");
 
         let lifecycle = begin_runtime_in(dir.path(), seed(1000)).expect("begin runtime");
 
         assert_eq!(
             lifecycle.previous_shutdown(),
-            &StartupClassification::Unclean(UncleanStartupReason::MissingMarker)
+            &StartupClassification::Bootstrap
         );
         assert!(!lifecycle.marker().clean_shutdown);
         assert_eq!(lifecycle.marker().pid, 4242);

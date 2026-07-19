@@ -1875,6 +1875,7 @@ fn surface_health_payload(
     let (startup_status, startup_reason, suspended_agent_count) = {
         let app_state = state.borrow();
         let (status, reason) = match &app_state.startup_classification {
+            StartupClassification::Bootstrap => ("bootstrap", None),
             StartupClassification::Clean => ("clean", None),
             StartupClassification::Unclean(reason) => ("unclean", Some(reason.name())),
         };
@@ -2101,9 +2102,16 @@ fn apply_loaded_session(state: &State, mut loaded: LoadedSession) {
     if restored_any {
         let restorable_agents = layout_state::RestorableAgentIndex::load();
         for workspace in &mut loaded.state.workspaces {
+            let workspace_id = workspace.id.as_deref().unwrap_or("");
+            layout_state::seed_legacy_unclean_suspension_baseline(
+                &mut workspace.layout,
+                workspace_id,
+                &restorable_agents,
+                loaded.persisted_at,
+            );
             layout_state::attach_restorable_agents_to_layout(
                 &mut workspace.layout,
-                workspace.id.as_deref().unwrap_or(""),
+                workspace_id,
                 &restorable_agents,
             );
             if restore_mode == StartupRestoreMode::LayoutOnlySuspended {
@@ -8432,6 +8440,10 @@ mod tests {
     fn unclean_startup_selects_layout_only_agent_restore() {
         use crate::runtime_lifecycle::{StartupClassification, UncleanStartupReason};
 
+        assert_eq!(
+            startup_restore_mode(&StartupClassification::Bootstrap),
+            StartupRestoreMode::ResumeEligibleAgents
+        );
         assert_eq!(
             startup_restore_mode(&StartupClassification::Clean),
             StartupRestoreMode::ResumeEligibleAgents

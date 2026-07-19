@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use limux_control::socket_path::RuntimeChannel;
 
@@ -30,6 +31,7 @@ pub enum SessionLoadSource {
 pub struct LoadedSession {
     pub state: AppSessionState,
     pub source: SessionLoadSource,
+    pub persisted_at: Option<f64>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -314,6 +316,12 @@ pub struct RestorableAgentState {
     pub restore_on_startup: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub suspension_reason: Option<AgentSuspensionReason>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suspended_at: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hook_updated_at: Option<f64>,
+    #[serde(default)]
+    pub hook_observation_initialized: bool,
 }
 
 impl RestorableAgentState {
@@ -521,6 +529,7 @@ pub fn load_session_from_dir(dir: &Path) -> LoadedSession {
         return LoadedSession {
             state,
             source: SessionLoadSource::Canonical,
+            persisted_at: file_modified_seconds(&canonical_path),
         };
     }
 
@@ -534,13 +543,25 @@ pub fn load_session_from_dir(dir: &Path) -> LoadedSession {
         return LoadedSession {
             state,
             source: SessionLoadSource::Legacy,
+            persisted_at: file_modified_seconds(&legacy_path),
         };
     }
 
     LoadedSession {
         state: AppSessionState::default(),
         source: SessionLoadSource::Empty,
+        persisted_at: None,
     }
+}
+
+fn file_modified_seconds(path: &Path) -> Option<f64> {
+    fs::metadata(path)
+        .ok()?
+        .modified()
+        .ok()?
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_secs_f64())
 }
 
 pub fn save_session_atomic(state: &AppSessionState) -> io::Result<PathBuf> {
@@ -833,6 +854,9 @@ impl RestorableAgentIndex {
                             launch_command: record.launch_command.clone(),
                             restore_on_startup: true,
                             suspension_reason: None,
+                            suspended_at: None,
+                            hook_updated_at: Some(record.updated_at),
+                            hook_observation_initialized: true,
                         },
                         record.updated_at,
                     ),
@@ -847,6 +871,9 @@ impl RestorableAgentIndex {
                                 launch_command: record.launch_command.clone(),
                                 restore_on_startup: true,
                                 suspension_reason: None,
+                                suspended_at: None,
+                                hook_updated_at: Some(record.updated_at),
+                                hook_observation_initialized: true,
                             },
                             record.updated_at,
                         )));
@@ -866,6 +893,9 @@ impl RestorableAgentIndex {
                                     launch_command: record.launch_command.clone(),
                                     restore_on_startup: true,
                                     suspension_reason: None,
+                                    suspended_at: None,
+                                    hook_updated_at: Some(record.updated_at),
+                                    hook_observation_initialized: true,
                                 },
                                 record.updated_at,
                             )));
@@ -880,12 +910,23 @@ impl RestorableAgentIndex {
         index
     }
 
-    pub fn agent_for_surface(
+    #[cfg(test)]
+    fn agent_for_surface(
         &self,
         workspace_id: &str,
         pane_id: Option<u32>,
         tab_id: &str,
     ) -> Option<RestorableAgentState> {
+        self.agent_for_surface_entry(workspace_id, pane_id, tab_id)
+            .map(|(agent, _)| agent)
+    }
+
+    fn agent_for_surface_entry(
+        &self,
+        workspace_id: &str,
+        pane_id: Option<u32>,
+        tab_id: &str,
+    ) -> Option<(RestorableAgentState, f64)> {
         let surface_id = pane_id.map(|pane_id| format!("{pane_id}:{tab_id}"));
         surface_id
             .as_ref()
@@ -903,7 +944,7 @@ impl RestorableAgentIndex {
                     .get(tab_id)
                     .and_then(|candidate| candidate.as_ref())
             })
-            .map(|(agent, _)| agent.clone())
+            .map(|(agent, updated_at)| (agent.clone(), *updated_at))
     }
 
     fn has_loaded_kind(&self, kind: RestorableAgentKind) -> bool {
@@ -920,15 +961,35 @@ pub fn attach_restorable_agents_to_layout(
         LayoutNodeState::Pane(pane) => {
             for tab in &mut pane.tabs {
                 if let TabContentState::Terminal { agent, .. } = &mut tab.content {
-                    if agent
-                        .as_ref()
-                        .is_some_and(|agent| !agent.restore_on_startup)
+                    let restored_agent =
+                        index.agent_for_surface_entry(workspace_id, pane.pane_id, &tab.id);
+                    if let Some(existing) = agent.as_ref().filter(|agent| !agent.restore_on_startup)
                     {
-                        continue;
+                        if existing.suspension_reason != Some(AgentSuspensionReason::UncleanRestore)
+                        {
+                            continue;
+                        }
+                        let is_fresh =
+                            restored_agent
+                                .as_ref()
+                                .is_some_and(|(candidate, updated_at)| {
+                                    if existing.hook_observation_initialized {
+                                        candidate.kind == existing.kind
+                                            && candidate.session_id == existing.session_id
+                                            && existing.hook_updated_at.is_none_or(|observed_at| {
+                                                *updated_at != observed_at
+                                            })
+                                    } else {
+                                        existing
+                                            .suspended_at
+                                            .is_some_and(|suspended_at| *updated_at > suspended_at)
+                                    }
+                                });
+                        if !is_fresh {
+                            continue;
+                        }
                     }
-                    if let Some(restored_agent) =
-                        index.agent_for_surface(workspace_id, pane.pane_id, &tab.id)
-                    {
+                    if let Some((restored_agent, _)) = restored_agent {
                         *agent = Some(restored_agent);
                     } else if agent
                         .as_ref()
@@ -947,6 +1008,14 @@ pub fn attach_restorable_agents_to_layout(
 }
 
 pub fn suspend_agents_for_unclean_restore(layout: &mut LayoutNodeState) -> usize {
+    let suspended_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs_f64())
+        .unwrap_or(f64::MAX);
+    suspend_agents_for_unclean_restore_at(layout, suspended_at)
+}
+
+fn suspend_agents_for_unclean_restore_at(layout: &mut LayoutNodeState, suspended_at: f64) -> usize {
     match layout {
         LayoutNodeState::Pane(pane) => pane
             .tabs
@@ -957,15 +1026,85 @@ pub fn suspend_agents_for_unclean_restore(layout: &mut LayoutNodeState) -> usize
                 } => Some(agent),
                 _ => None,
             })
+            .filter(|agent| {
+                agent.restore_on_startup
+                    || agent.suspension_reason == Some(AgentSuspensionReason::UncleanRestore)
+            })
             .map(|agent| {
                 agent.restore_on_startup = false;
                 agent.suspension_reason = Some(AgentSuspensionReason::UncleanRestore);
+                agent.suspended_at = Some(suspended_at);
                 1usize
             })
             .sum(),
         LayoutNodeState::Split(split) => {
-            suspend_agents_for_unclean_restore(&mut split.start)
-                + suspend_agents_for_unclean_restore(&mut split.end)
+            suspend_agents_for_unclean_restore_at(&mut split.start, suspended_at)
+                + suspend_agents_for_unclean_restore_at(&mut split.end, suspended_at)
+        }
+    }
+}
+
+pub fn seed_legacy_unclean_suspension_baseline(
+    layout: &mut LayoutNodeState,
+    workspace_id: &str,
+    index: &RestorableAgentIndex,
+    persisted_at: Option<f64>,
+) -> usize {
+    match layout {
+        LayoutNodeState::Pane(pane) => {
+            let mut seeded = 0;
+            for tab in &mut pane.tabs {
+                let TabContentState::Terminal {
+                    agent: Some(agent), ..
+                } = &mut tab.content
+                else {
+                    continue;
+                };
+                if agent.restore_on_startup
+                    || agent.suspension_reason != Some(AgentSuspensionReason::UncleanRestore)
+                {
+                    continue;
+                }
+
+                let mut changed = false;
+                if !agent.hook_observation_initialized && agent.hook_updated_at.is_none() {
+                    if let Some((observed_agent, observed_at)) =
+                        index.agent_for_surface_entry(workspace_id, pane.pane_id, &tab.id)
+                    {
+                        if observed_agent.kind == agent.kind
+                            && observed_agent.session_id == agent.session_id
+                        {
+                            agent.hook_updated_at = Some(observed_at);
+                            changed = true;
+                        }
+                    }
+                }
+                if !agent.hook_observation_initialized {
+                    agent.hook_observation_initialized = true;
+                    changed = true;
+                }
+                if agent.suspended_at.is_none() {
+                    if let Some(persisted_at) = persisted_at {
+                        agent.suspended_at = Some(persisted_at);
+                        changed = true;
+                    }
+                }
+                seeded += usize::from(changed);
+            }
+            seeded
+        }
+        LayoutNodeState::Split(split) => {
+            seed_legacy_unclean_suspension_baseline(
+                &mut split.start,
+                workspace_id,
+                index,
+                persisted_at,
+            ) + seed_legacy_unclean_suspension_baseline(
+                &mut split.end,
+                workspace_id,
+                index,
+                persisted_at,
+            )
         }
     }
 }
@@ -1453,6 +1592,7 @@ mod tests {
 
         let loaded = load_session_from_dir(dir.path());
         assert_eq!(loaded.source, SessionLoadSource::Canonical);
+        assert!(loaded.persisted_at.is_some_and(|value| value > 0.0));
         assert_eq!(loaded.state.workspaces[0].name, "canonical");
     }
 
@@ -1855,6 +1995,9 @@ mod tests {
                         launch_command: None,
                         restore_on_startup: true,
                         suspension_reason: None,
+                        suspended_at: None,
+                        hook_updated_at: None,
+                        hook_observation_initialized: false,
                     }),
                 },
             }],
@@ -1896,6 +2039,9 @@ mod tests {
                         launch_command: None,
                         restore_on_startup: true,
                         suspension_reason: None,
+                        suspended_at: None,
+                        hook_updated_at: None,
+                        hook_observation_initialized: false,
                     }),
                 },
             }],
@@ -1943,6 +2089,9 @@ mod tests {
                         launch_command: None,
                         restore_on_startup: true,
                         suspension_reason: None,
+                        suspended_at: None,
+                        hook_updated_at: None,
+                        hook_observation_initialized: false,
                     }),
                 },
             }],
@@ -1990,6 +2139,9 @@ mod tests {
                         launch_command: None,
                         restore_on_startup: true,
                         suspension_reason: None,
+                        suspended_at: None,
+                        hook_updated_at: None,
+                        hook_observation_initialized: false,
                     }),
                 },
             }],
@@ -2031,6 +2183,9 @@ mod tests {
                         launch_command: None,
                         restore_on_startup: false,
                         suspension_reason: None,
+                        suspended_at: None,
+                        hook_updated_at: None,
+                        hook_observation_initialized: false,
                     }),
                 },
             }],
@@ -2050,6 +2205,627 @@ mod tests {
             }
             other => panic!("expected terminal tab, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn hook_merge_reactivates_unclean_suspension_after_fresh_hook_evidence() {
+        let dir = tempdir().expect("tempdir");
+        fs::write(
+            dir.path().join("codex-hook-sessions.json"),
+            r#"{
+                "version": 1,
+                "sessions": {
+                    "session-a": {
+                        "session_id": "session-a",
+                        "workspace_id": "workspace-a",
+                        "surface_id": "42:tab-a",
+                        "cwd": "/tmp/project",
+                        "updated_at": 20.0
+                    }
+                }
+            }"#,
+        )
+        .expect("write hook state");
+        let index = RestorableAgentIndex::load_from_dir(dir.path());
+        let mut layout: LayoutNodeState = serde_json::from_value(serde_json::json!({
+            "kind": "pane",
+            "pane_id": 42,
+            "active_tab_id": "tab-a",
+            "tabs": [{
+                "id": "tab-a",
+                "tab_kind": "terminal",
+                "cwd": "/tmp/project",
+                "agent": {
+                    "kind": "codex",
+                    "session_id": "session-a",
+                    "cwd": "/tmp/project",
+                    "restore_on_startup": false,
+                    "suspension_reason": "unclean_restore",
+                    "suspended_at": 15.0
+                }
+            }]
+        }))
+        .expect("decode suspended layout");
+
+        attach_restorable_agents_to_layout(&mut layout, "workspace-a", &index);
+
+        let LayoutNodeState::Pane(pane) = layout else {
+            panic!("expected pane");
+        };
+        let TabContentState::Terminal {
+            agent: Some(agent), ..
+        } = &pane.tabs[0].content
+        else {
+            panic!("expected restored agent");
+        };
+        assert!(agent.restore_on_startup);
+        assert_eq!(agent.suspension_reason, None);
+    }
+
+    #[test]
+    fn hook_merge_keeps_unclean_suspension_when_hook_evidence_is_stale() {
+        let dir = tempdir().expect("tempdir");
+        fs::write(
+            dir.path().join("codex-hook-sessions.json"),
+            r#"{
+                "version": 1,
+                "sessions": {
+                    "session-a": {
+                        "session_id": "session-a",
+                        "workspace_id": "workspace-a",
+                        "surface_id": "42:tab-a",
+                        "cwd": "/tmp/project",
+                        "updated_at": 10.0
+                    }
+                }
+            }"#,
+        )
+        .expect("write hook state");
+        let index = RestorableAgentIndex::load_from_dir(dir.path());
+        let mut layout: LayoutNodeState = serde_json::from_value(serde_json::json!({
+            "kind": "pane",
+            "pane_id": 42,
+            "active_tab_id": "tab-a",
+            "tabs": [{
+                "id": "tab-a",
+                "tab_kind": "terminal",
+                "cwd": "/tmp/project",
+                "agent": {
+                    "kind": "codex",
+                    "session_id": "session-a",
+                    "cwd": "/tmp/project",
+                    "restore_on_startup": false,
+                    "suspension_reason": "unclean_restore",
+                    "suspended_at": 15.0
+                }
+            }]
+        }))
+        .expect("decode suspended layout");
+
+        attach_restorable_agents_to_layout(&mut layout, "workspace-a", &index);
+
+        let LayoutNodeState::Pane(pane) = layout else {
+            panic!("expected pane");
+        };
+        let TabContentState::Terminal {
+            agent: Some(agent), ..
+        } = &pane.tabs[0].content
+        else {
+            panic!("expected retained agent");
+        };
+        assert!(!agent.restore_on_startup);
+        assert_eq!(
+            agent.suspension_reason,
+            Some(AgentSuspensionReason::UncleanRestore)
+        );
+    }
+
+    #[test]
+    fn fresh_hook_reactivation_survives_clean_save_and_resumes_same_hcom_identity_once() {
+        let dir = tempdir().expect("tempdir");
+        fs::write(
+            dir.path().join("codex-hook-sessions.json"),
+            r#"{
+                "version": 1,
+                "sessions": {
+                    "session-a": {
+                        "session_id": "session-a",
+                        "workspace_id": "workspace-a",
+                        "surface_id": "42:tab-a",
+                        "cwd": "/tmp/project",
+                        "launch_command": {
+                            "executable": "codex",
+                            "arguments": ["codex"],
+                            "cwd": "/tmp/project",
+                            "environment": {
+                                "HCOM_NAME": "lifo",
+                                "HCOM_PROCESS_ID": "hcom-process-1"
+                            },
+                            "captured_at": 20.0
+                        },
+                        "updated_at": 20.0
+                    }
+                }
+            }"#,
+        )
+        .expect("write hook state");
+        let index = RestorableAgentIndex::load_from_dir(dir.path());
+        let mut layout: LayoutNodeState = serde_json::from_value(serde_json::json!({
+            "kind": "pane",
+            "pane_id": 42,
+            "active_tab_id": "tab-a",
+            "tabs": [{
+                "id": "tab-a",
+                "tab_kind": "terminal",
+                "cwd": "/tmp/project",
+                "agent": {
+                    "kind": "codex",
+                    "session_id": "session-a",
+                    "cwd": "/tmp/project",
+                    "launch_command": {
+                        "executable": "codex",
+                        "arguments": ["codex"],
+                        "cwd": "/tmp/project",
+                        "environment": {
+                            "HCOM_NAME": "lifo",
+                            "HCOM_PROCESS_ID": "hcom-process-1"
+                        },
+                        "captured_at": 10.0
+                    },
+                    "restore_on_startup": true
+                }
+            }]
+        }))
+        .expect("decode restorable layout");
+
+        assert_eq!(suspend_agents_for_unclean_restore_at(&mut layout, 15.0), 1);
+        attach_restorable_agents_to_layout(&mut layout, "workspace-a", &index);
+
+        let clean_save = serde_json::to_vec(&layout).expect("serialize clean save");
+        let mut next_clean_start: LayoutNodeState =
+            serde_json::from_slice(&clean_save).expect("reload clean save");
+        attach_restorable_agents_to_layout(&mut next_clean_start, "workspace-a", &index);
+
+        let LayoutNodeState::Pane(pane) = next_clean_start else {
+            panic!("expected pane");
+        };
+        let TabContentState::Terminal {
+            agent: Some(agent), ..
+        } = &pane.tabs[0].content
+        else {
+            panic!("expected restored agent");
+        };
+        let command = agent.resume_command().expect("reactivated resume command");
+        assert_eq!(command.matches("'hcom' 'r' 'lifo'").count(), 1);
+        assert!(command.contains("'--run-here' '--go'"));
+        assert_eq!(agent.session_id, "session-a");
+        assert!(agent.restore_on_startup);
+        assert_eq!(agent.suspension_reason, None);
+        assert_eq!(agent.suspended_at, None);
+    }
+
+    #[test]
+    fn unchanged_future_dated_hook_stays_suspended_after_clock_rollback() {
+        let dir = tempdir().expect("tempdir");
+        fs::write(
+            dir.path().join("codex-hook-sessions.json"),
+            r#"{
+                "version": 1,
+                "sessions": {
+                    "session-a": {
+                        "session_id": "session-a",
+                        "workspace_id": "workspace-a",
+                        "surface_id": "42:tab-a",
+                        "cwd": "/tmp/project",
+                        "updated_at": 200.0
+                    }
+                }
+            }"#,
+        )
+        .expect("write hook state");
+        let index = RestorableAgentIndex::load_from_dir(dir.path());
+        let mut layout = LayoutNodeState::Pane(PaneState {
+            pane_id: Some(42),
+            active_tab_id: Some("tab-a".to_string()),
+            flag_color: None,
+            tabs: vec![TabState::terminal("tab-a", Some("/tmp/project"))],
+        });
+
+        attach_restorable_agents_to_layout(&mut layout, "workspace-a", &index);
+        assert_eq!(suspend_agents_for_unclean_restore_at(&mut layout, 150.0), 1);
+        attach_restorable_agents_to_layout(&mut layout, "workspace-a", &index);
+
+        let LayoutNodeState::Pane(pane) = layout else {
+            panic!("expected pane");
+        };
+        let TabContentState::Terminal {
+            agent: Some(agent), ..
+        } = &pane.tabs[0].content
+        else {
+            panic!("expected retained agent");
+        };
+        assert!(!agent.restore_on_startup);
+        assert_eq!(agent.resume_command(), None);
+    }
+
+    #[test]
+    fn changed_hook_reactivates_even_when_clock_moves_backward() {
+        let dir = tempdir().expect("tempdir");
+        let hook_path = dir.path().join("codex-hook-sessions.json");
+        fs::write(
+            &hook_path,
+            r#"{
+                "version": 1,
+                "sessions": {
+                    "session-a": {
+                        "session_id": "session-a",
+                        "workspace_id": "workspace-a",
+                        "surface_id": "42:tab-a",
+                        "cwd": "/tmp/project",
+                        "updated_at": 200.0
+                    }
+                }
+            }"#,
+        )
+        .expect("write initial hook state");
+        let initial_index = RestorableAgentIndex::load_from_dir(dir.path());
+        let mut layout = LayoutNodeState::Pane(PaneState {
+            pane_id: Some(42),
+            active_tab_id: Some("tab-a".to_string()),
+            flag_color: None,
+            tabs: vec![TabState::terminal("tab-a", Some("/tmp/project"))],
+        });
+        attach_restorable_agents_to_layout(&mut layout, "workspace-a", &initial_index);
+        assert_eq!(suspend_agents_for_unclean_restore_at(&mut layout, 150.0), 1);
+
+        fs::write(
+            &hook_path,
+            r#"{
+                "version": 1,
+                "sessions": {
+                    "session-a": {
+                        "session_id": "session-a",
+                        "workspace_id": "workspace-a",
+                        "surface_id": "42:tab-a",
+                        "cwd": "/tmp/project",
+                        "updated_at": 140.0
+                    }
+                }
+            }"#,
+        )
+        .expect("write post-rollback hook state");
+        let changed_index = RestorableAgentIndex::load_from_dir(dir.path());
+        attach_restorable_agents_to_layout(&mut layout, "workspace-a", &changed_index);
+
+        let LayoutNodeState::Pane(pane) = layout else {
+            panic!("expected pane");
+        };
+        let TabContentState::Terminal {
+            agent: Some(agent), ..
+        } = &pane.tabs[0].content
+        else {
+            panic!("expected restored agent");
+        };
+        assert!(agent.restore_on_startup);
+        assert_eq!(agent.suspension_reason, None);
+    }
+
+    #[test]
+    fn unclean_suspend_preserves_manual_no_resume_through_fresh_hook_and_reload() {
+        let dir = tempdir().expect("tempdir");
+        fs::write(
+            dir.path().join("codex-hook-sessions.json"),
+            r#"{
+                "version": 1,
+                "sessions": {
+                    "session-a": {
+                        "session_id": "session-a",
+                        "workspace_id": "workspace-a",
+                        "surface_id": "42:tab-a",
+                        "cwd": "/tmp/project",
+                        "updated_at": 20.0
+                    }
+                }
+            }"#,
+        )
+        .expect("write hook state");
+        let index = RestorableAgentIndex::load_from_dir(dir.path());
+        let mut layout: LayoutNodeState = serde_json::from_value(serde_json::json!({
+            "kind": "pane",
+            "pane_id": 42,
+            "active_tab_id": "tab-a",
+            "tabs": [{
+                "id": "tab-a",
+                "tab_kind": "terminal",
+                "cwd": "/tmp/project",
+                "agent": {
+                    "kind": "codex",
+                    "session_id": "session-a",
+                    "cwd": "/tmp/project",
+                    "restore_on_startup": false
+                }
+            }]
+        }))
+        .expect("decode manual no-resume layout");
+
+        assert_eq!(suspend_agents_for_unclean_restore_at(&mut layout, 15.0), 0);
+        attach_restorable_agents_to_layout(&mut layout, "workspace-a", &index);
+        let saved = serde_json::to_vec(&layout).expect("serialize layout");
+        let reloaded: LayoutNodeState = serde_json::from_slice(&saved).expect("reload layout");
+
+        let LayoutNodeState::Pane(pane) = reloaded else {
+            panic!("expected pane");
+        };
+        let TabContentState::Terminal {
+            agent: Some(agent), ..
+        } = &pane.tabs[0].content
+        else {
+            panic!("expected retained manual agent");
+        };
+        assert!(!agent.restore_on_startup);
+        assert_eq!(agent.suspension_reason, None);
+        assert_eq!(agent.resume_command(), None);
+    }
+
+    #[test]
+    fn unclean_suspend_preserves_user_choice_suspension_through_fresh_hook() {
+        let dir = tempdir().expect("tempdir");
+        fs::write(
+            dir.path().join("codex-hook-sessions.json"),
+            r#"{
+                "version": 1,
+                "sessions": {
+                    "session-a": {
+                        "session_id": "session-a",
+                        "workspace_id": "workspace-a",
+                        "surface_id": "42:tab-a",
+                        "cwd": "/tmp/project",
+                        "updated_at": 20.0
+                    }
+                }
+            }"#,
+        )
+        .expect("write hook state");
+        let index = RestorableAgentIndex::load_from_dir(dir.path());
+        let mut layout: LayoutNodeState = serde_json::from_value(serde_json::json!({
+            "kind": "pane",
+            "pane_id": 42,
+            "active_tab_id": "tab-a",
+            "tabs": [{
+                "id": "tab-a",
+                "tab_kind": "terminal",
+                "cwd": "/tmp/project",
+                "agent": {
+                    "kind": "codex",
+                    "session_id": "session-a",
+                    "cwd": "/tmp/project",
+                    "restore_on_startup": false,
+                    "suspension_reason": "user_choice"
+                }
+            }]
+        }))
+        .expect("decode user-choice suspension");
+
+        assert_eq!(suspend_agents_for_unclean_restore_at(&mut layout, 15.0), 0);
+        attach_restorable_agents_to_layout(&mut layout, "workspace-a", &index);
+
+        let LayoutNodeState::Pane(pane) = layout else {
+            panic!("expected pane");
+        };
+        let TabContentState::Terminal {
+            agent: Some(agent), ..
+        } = &pane.tabs[0].content
+        else {
+            panic!("expected retained user-choice agent");
+        };
+        assert!(!agent.restore_on_startup);
+        assert_eq!(
+            agent.suspension_reason,
+            Some(AgentSuspensionReason::UserChoice)
+        );
+        assert_eq!(agent.resume_command(), None);
+    }
+
+    #[test]
+    fn legacy_unclean_suspension_uses_changed_hook_observation_across_clock_rollback() {
+        let stale_dir = tempdir().expect("stale tempdir");
+        let fresh_dir = tempdir().expect("fresh tempdir");
+        for (dir, updated_at) in [(stale_dir.path(), 200.0), (fresh_dir.path(), 140.0)] {
+            fs::write(
+                dir.join("codex-hook-sessions.json"),
+                format!(
+                    r#"{{
+                        "version": 1,
+                        "sessions": {{
+                            "session-a": {{
+                                "session_id": "session-a",
+                                "workspace_id": "workspace-a",
+                                "surface_id": "42:tab-a",
+                                "cwd": "/tmp/project",
+                                "launch_command": {{
+                                    "executable": "codex",
+                                    "arguments": ["codex"],
+                                    "cwd": "/tmp/project",
+                                    "environment": {{
+                                        "HCOM_NAME": "lifo",
+                                        "HCOM_PROCESS_ID": "hcom-process-1"
+                                    }},
+                                    "captured_at": {updated_at}
+                                }},
+                                "updated_at": {updated_at}
+                            }}
+                        }}
+                    }}"#
+                ),
+            )
+            .expect("write hook state");
+        }
+        let stale_index = RestorableAgentIndex::load_from_dir(stale_dir.path());
+        let fresh_index = RestorableAgentIndex::load_from_dir(fresh_dir.path());
+        let mut layout: LayoutNodeState = serde_json::from_value(serde_json::json!({
+            "kind": "pane",
+            "pane_id": 42,
+            "active_tab_id": "tab-a",
+            "tabs": [{
+                "id": "tab-a",
+                "tab_kind": "terminal",
+                "cwd": "/tmp/project",
+                "agent": {
+                    "kind": "codex",
+                    "session_id": "session-a",
+                    "cwd": "/tmp/project",
+                    "restore_on_startup": false,
+                    "suspension_reason": "unclean_restore"
+                }
+            }]
+        }))
+        .expect("decode legacy suspension");
+
+        seed_legacy_unclean_suspension_baseline(
+            &mut layout,
+            "workspace-a",
+            &stale_index,
+            Some(200.0),
+        );
+        attach_restorable_agents_to_layout(&mut layout, "workspace-a", &stale_index);
+        let LayoutNodeState::Pane(stale_pane) = &layout else {
+            panic!("expected pane");
+        };
+        let TabContentState::Terminal {
+            agent: Some(stale_agent),
+            ..
+        } = &stale_pane.tabs[0].content
+        else {
+            panic!("expected stale agent");
+        };
+        assert!(!stale_agent.restore_on_startup);
+        assert_eq!(stale_agent.resume_command(), None);
+        assert_eq!(stale_agent.hook_updated_at, Some(200.0));
+        assert!(stale_agent.hook_observation_initialized);
+
+        let migrated = serde_json::to_vec(&layout).expect("serialize legacy migration");
+        let mut layout: LayoutNodeState =
+            serde_json::from_slice(&migrated).expect("reload legacy migration");
+
+        attach_restorable_agents_to_layout(&mut layout, "workspace-a", &fresh_index);
+        let saved = serde_json::to_vec(&layout).expect("serialize migrated layout");
+        let reloaded: LayoutNodeState = serde_json::from_slice(&saved).expect("reload layout");
+        let LayoutNodeState::Pane(pane) = reloaded else {
+            panic!("expected pane");
+        };
+        let TabContentState::Terminal {
+            agent: Some(agent), ..
+        } = &pane.tabs[0].content
+        else {
+            panic!("expected migrated agent");
+        };
+        assert!(agent.restore_on_startup);
+        assert_eq!(agent.suspension_reason, None);
+        assert_eq!(agent.session_id, "session-a");
+        let command = agent
+            .resume_command()
+            .expect("migrated hcom resume command");
+        assert_eq!(command.matches("'hcom' 'r' 'lifo'").count(), 1);
+        assert!(command.contains("'--run-here' '--go'"));
+    }
+
+    #[test]
+    fn legacy_unclean_suspension_treats_first_hook_after_observed_absence_as_fresh() {
+        let absent_dir = tempdir().expect("absent tempdir");
+        let fresh_dir = tempdir().expect("fresh tempdir");
+        fs::write(
+            fresh_dir.path().join("codex-hook-sessions.json"),
+            r#"{
+                "version": 1,
+                "sessions": {
+                    "session-a": {
+                        "session_id": "session-a",
+                        "workspace_id": "workspace-a",
+                        "surface_id": "42:tab-a",
+                        "cwd": "/tmp/project",
+                        "launch_command": {
+                            "executable": "codex",
+                            "arguments": ["codex"],
+                            "cwd": "/tmp/project",
+                            "environment": {
+                                "HCOM_NAME": "lifo",
+                                "HCOM_PROCESS_ID": "hcom-process-1"
+                            },
+                            "captured_at": 140.0
+                        },
+                        "updated_at": 140.0
+                    }
+                }
+            }"#,
+        )
+        .expect("write fresh hook state");
+        let absent_index = RestorableAgentIndex::load_from_dir(absent_dir.path());
+        let fresh_index = RestorableAgentIndex::load_from_dir(fresh_dir.path());
+        let mut layout: LayoutNodeState = serde_json::from_value(serde_json::json!({
+            "kind": "pane",
+            "pane_id": 42,
+            "active_tab_id": "tab-a",
+            "tabs": [{
+                "id": "tab-a",
+                "tab_kind": "terminal",
+                "cwd": "/tmp/project",
+                "agent": {
+                    "kind": "codex",
+                    "session_id": "session-a",
+                    "cwd": "/tmp/project",
+                    "restore_on_startup": false,
+                    "suspension_reason": "unclean_restore"
+                }
+            }]
+        }))
+        .expect("decode legacy suspension");
+
+        seed_legacy_unclean_suspension_baseline(
+            &mut layout,
+            "workspace-a",
+            &absent_index,
+            Some(200.0),
+        );
+        attach_restorable_agents_to_layout(&mut layout, "workspace-a", &absent_index);
+        let migrated = serde_json::to_vec(&layout).expect("serialize absent observation");
+        let mut layout: LayoutNodeState =
+            serde_json::from_slice(&migrated).expect("reload absent observation");
+
+        attach_restorable_agents_to_layout(&mut layout, "workspace-a", &absent_index);
+        let LayoutNodeState::Pane(absent_pane) = &layout else {
+            panic!("expected pane");
+        };
+        let TabContentState::Terminal {
+            agent: Some(absent_agent),
+            ..
+        } = &absent_pane.tabs[0].content
+        else {
+            panic!("expected suspended agent");
+        };
+        assert!(!absent_agent.restore_on_startup);
+        assert_eq!(absent_agent.resume_command(), None);
+        assert_eq!(absent_agent.hook_updated_at, None);
+        assert!(absent_agent.hook_observation_initialized);
+
+        attach_restorable_agents_to_layout(&mut layout, "workspace-a", &fresh_index);
+        let saved = serde_json::to_vec(&layout).expect("serialize first fresh hook");
+        let reloaded: LayoutNodeState = serde_json::from_slice(&saved).expect("reload fresh hook");
+        let LayoutNodeState::Pane(pane) = reloaded else {
+            panic!("expected pane");
+        };
+        let TabContentState::Terminal {
+            agent: Some(agent), ..
+        } = &pane.tabs[0].content
+        else {
+            panic!("expected reactivated agent");
+        };
+        assert!(agent.restore_on_startup);
+        assert_eq!(agent.suspension_reason, None);
+        let command = agent
+            .resume_command()
+            .expect("reactivated hcom resume command");
+        assert_eq!(command.matches("'hcom' 'r' 'lifo'").count(), 1);
+        assert!(command.contains("'--run-here' '--go'"));
     }
 
     #[test]
@@ -2128,6 +2904,9 @@ mod tests {
                     }),
                     restore_on_startup: true,
                     suspension_reason: None,
+                    suspended_at: None,
+                    hook_updated_at: None,
+                    hook_observation_initialized: false,
                 }),
             },
         };
@@ -2168,6 +2947,9 @@ mod tests {
             }),
             restore_on_startup: true,
             suspension_reason: None,
+            suspended_at: None,
+            hook_updated_at: None,
+            hook_observation_initialized: false,
         };
 
         let command = agent.resume_command().expect("resume command");
@@ -2194,6 +2976,9 @@ mod tests {
             }),
             restore_on_startup: true,
             suspension_reason: None,
+            suspended_at: None,
+            hook_updated_at: None,
+            hook_observation_initialized: false,
         };
 
         let command = agent.resume_command().expect("resume command");
@@ -2219,6 +3004,9 @@ mod tests {
             }),
             restore_on_startup: true,
             suspension_reason: None,
+            suspended_at: None,
+            hook_updated_at: None,
+            hook_observation_initialized: false,
         };
 
         let command = agent.resume_command().expect("resume command");
@@ -2248,6 +3036,9 @@ mod tests {
             }),
             restore_on_startup: true,
             suspension_reason: None,
+            suspended_at: None,
+            hook_updated_at: None,
+            hook_observation_initialized: false,
         };
 
         let command = agent.resume_command().expect("resume command");
@@ -2280,6 +3071,9 @@ mod tests {
             }),
             restore_on_startup: true,
             suspension_reason: None,
+            suspended_at: None,
+            hook_updated_at: None,
+            hook_observation_initialized: false,
         };
 
         let command = agent.resume_command().expect("resume command");
@@ -2298,6 +3092,9 @@ mod tests {
             launch_command: None,
             restore_on_startup: false,
             suspension_reason: None,
+            suspended_at: None,
+            hook_updated_at: None,
+            hook_observation_initialized: false,
         };
 
         assert_eq!(agent.resume_command(), None);
