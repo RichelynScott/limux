@@ -24,6 +24,7 @@ legacy v0.2.2.
 | Stable install | `/home/riche/.local/limux-reviewed/stable/main-1a26bda0-v0.2.3-20260719` |
 | Stable launchers | `/home/riche/.local/bin/limux-stable`, `/home/riche/.local/bin/limux-stable-cli` |
 | Stable identity | `limux-cli 0.2.3 (1a26bda0bd1c, release) install-id=main-1a26bda0-v0.2.3-20260719 channel=stable` |
+| Stable runtime state | Installed and live-smoke verified, then intentionally stopped by isolated smoke cleanup; normal-channel `doctor` may report only the absent stable socket until an operator-directed launch |
 | Legacy runtime | v0.2.2 at install id `main-1005f58d-pane-timeout-clean-20260716`; left running and untouched |
 | TaskMaster | Master-tag tasks 27 and 28 are `done`; active tag restored to `limux-resource-crash-20260716` |
 | Boundary review | Dino GO #581117, `Boundary-Review: hcom` |
