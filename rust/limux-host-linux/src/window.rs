@@ -29,17 +29,23 @@ use crate::layout_state::{
     WorkspaceState,
 };
 use crate::pane::{self, PaneCallbacks};
+use crate::runtime_lifecycle::{
+    self, RuntimeLifecycle, StartupClassification, UncleanStartupReason,
+};
 use crate::shortcut_config::{
     self, EditableCapturePolicy, ResolvedShortcutConfig, ShortcutCommand, ShortcutId,
 };
 use crate::split_tree::{self, SplitTreeContainer};
 
-const PANE_CREATE_COMMAND_READY_INTERVAL_MS: u64 = 50;
-const PANE_CREATE_COMMAND_READY_ATTEMPTS: u32 = 80;
+pub(crate) const PANE_CREATE_COMMAND_READY_INTERVAL_MS: u64 = 50;
+pub(crate) const PANE_CREATE_COMMAND_READY_ATTEMPTS: u32 = 80;
 const PANE_CREATE_COMMAND_SETTLE_ATTEMPTS: u32 = 10;
-const PANE_CREATE_COMMAND_SUBMIT_DELAY_MS: u64 = 100;
+pub(crate) const PANE_CREATE_COMMAND_SUBMIT_DELAY_MS: u64 = 100;
 const ACTIVE_WORKSPACE_NOTIFICATION_MS: u64 = 3_000;
 const LIMUX_WINDOW_DECORATION_LAYOUT: &str = ":minimize,maximize,close";
+// GDK 4.12 added SUSPENDED without changing the underlying state bitset.
+// Keep Limux's GTK 4.10 build floor while honoring the bit on newer runtimes.
+const GDK_TOPLEVEL_STATE_SUSPENDED_BIT: u32 = 1 << 16;
 const HOST_LAUNCH_ENV_REMOVALS: &[&str] = &[
     "LIMUX_SOCKET",
     "LIMUX_SOCKET_PATH",
@@ -107,6 +113,9 @@ pub(crate) struct AppState {
     sidebar_expanded_width: i32,
     persistence_suspended: bool,
     save_queued: bool,
+    runtime_lifecycle: Option<RuntimeLifecycle>,
+    startup_classification: StartupClassification,
+    suspended_agent_count: usize,
     workspace_dragging: Option<String>,
     desktop_notification_routes: HashMap<u32, DesktopNotificationRoute>,
     _theme_portal_signal: Option<gio::SignalSubscription>,
@@ -131,6 +140,123 @@ fn window_chrome_policy(_compositor_provides_decorations: bool) -> WindowChromeP
         use_client_side_titlebar: true,
         decoration_layout: LIMUX_WINDOW_DECORATION_LAYOUT,
     }
+}
+
+fn toplevel_state_allows_rendering(state_bits: u32) -> bool {
+    let hidden_bits = gtk::gdk::ToplevelState::MINIMIZED.bits() | GDK_TOPLEVEL_STATE_SUSPENDED_BIT;
+    state_bits & hidden_bits == 0
+}
+
+fn window_visibility_allows_rendering(
+    widget_visible: bool,
+    widget_mapped: bool,
+    surface_mapped: bool,
+    toplevel_state_bits: u32,
+) -> bool {
+    widget_visible
+        && widget_mapped
+        && surface_mapped
+        && toplevel_state_allows_rendering(toplevel_state_bits)
+}
+
+fn window_allows_rendering(window: &adw::ApplicationWindow) -> bool {
+    let Some(surface) = window.surface() else {
+        return false;
+    };
+    let surface_mapped = surface.is_mapped();
+    let Ok(toplevel) = surface.dynamic_cast::<gtk::gdk::Toplevel>() else {
+        return false;
+    };
+    window_visibility_allows_rendering(
+        window.is_visible(),
+        window.is_mapped(),
+        surface_mapped,
+        toplevel.state().bits(),
+    )
+}
+
+fn sync_window_render_visibility(window: &adw::ApplicationWindow) {
+    crate::terminal::set_window_renderable(window_allows_rendering(window));
+}
+
+fn install_window_render_visibility_tracking(window: &adw::ApplicationWindow) {
+    sync_window_render_visibility(window);
+
+    window.connect_realize(|window| {
+        if let Some(surface) = window.surface() {
+            let mapped_window = window.downgrade();
+            surface.connect_mapped_notify(move |_| {
+                if let Some(window) = mapped_window.upgrade() {
+                    sync_window_render_visibility(&window);
+                }
+            });
+            if let Ok(toplevel) = surface.dynamic_cast::<gtk::gdk::Toplevel>() {
+                let window = window.downgrade();
+                toplevel.connect_state_notify(move |_| {
+                    if let Some(window) = window.upgrade() {
+                        sync_window_render_visibility(&window);
+                    }
+                });
+            }
+        }
+        sync_window_render_visibility(window);
+    });
+    window.connect_map(sync_window_render_visibility);
+    window.connect_unmap(|_| crate::terminal::set_window_renderable(false));
+    window.connect_unrealize(|_| crate::terminal::set_window_renderable(false));
+    window.connect_visible_notify(sync_window_render_visibility);
+}
+
+#[cfg(feature = "preview-test-hooks")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PreviewVisibilityCommand {
+    Minimize,
+    Restore,
+}
+
+#[cfg(feature = "preview-test-hooks")]
+fn parse_preview_visibility_command(value: &str) -> Option<PreviewVisibilityCommand> {
+    match value.trim() {
+        "minimize" => Some(PreviewVisibilityCommand::Minimize),
+        "restore" => Some(PreviewVisibilityCommand::Restore),
+        _ => None,
+    }
+}
+
+#[cfg(feature = "preview-test-hooks")]
+fn install_preview_visibility_control(window: &adw::ApplicationWindow) {
+    let Some(path) = std::env::var_os("LIMUX_PREVIEW_VISIBILITY_CONTROL") else {
+        return;
+    };
+    if path.is_empty() {
+        return;
+    }
+
+    let path = PathBuf::from(path);
+    let window = window.downgrade();
+    let mut last_value = String::new();
+    glib::timeout_add_local(Duration::from_millis(50), move || {
+        let Some(window) = window.upgrade() else {
+            return glib::ControlFlow::Break;
+        };
+        let Ok(value) = std::fs::read_to_string(&path) else {
+            return glib::ControlFlow::Continue;
+        };
+        if value == last_value {
+            return glib::ControlFlow::Continue;
+        }
+        last_value = value.clone();
+
+        match parse_preview_visibility_command(&value) {
+            Some(PreviewVisibilityCommand::Minimize) => window.minimize(),
+            Some(PreviewVisibilityCommand::Restore) => {
+                window.unminimize();
+                window.present();
+            }
+            None => {}
+        }
+        glib::ControlFlow::Continue
+    });
 }
 
 fn build_window_header(decoration_layout: &str) -> (adw::HeaderBar, gtk::Label) {
@@ -348,6 +474,53 @@ fn pane_create_response_payload(
     })
 }
 
+fn pane_create_partial_response_payload(workspace_id: &str, pane_id: u32) -> serde_json::Value {
+    serde_json::json!({
+        "workspace_id": workspace_id,
+        "workspace_ref": workspace_ref(workspace_id),
+        "pane_id": pane_id.to_string(),
+        "pane_ref": pane_ref(pane_id),
+    })
+}
+
+fn pane_create_command_failure_data(
+    response: &serde_json::Value,
+    phase: &str,
+) -> serde_json::Value {
+    let mut data = serde_json::Map::new();
+    data.insert(
+        "method".to_string(),
+        serde_json::Value::String("pane.create".to_string()),
+    );
+    data.insert(
+        "phase".to_string(),
+        serde_json::Value::String(phase.to_string()),
+    );
+    data.insert("outcome_unknown".to_string(), serde_json::Value::Bool(true));
+    data.insert("retry_safe".to_string(), serde_json::Value::Bool(false));
+    for key in [
+        "workspace_id",
+        "workspace_ref",
+        "pane_id",
+        "pane_ref",
+        "surface_id",
+        "surface_ref",
+    ] {
+        if let Some(value) = response.get(key) {
+            data.insert(key.to_string(), value.clone());
+        }
+    }
+    serde_json::Value::Object(data)
+}
+
+fn pane_create_command_failure(
+    response: &serde_json::Value,
+    phase: &str,
+    message: impl Into<String>,
+) -> BridgeError {
+    BridgeError::internal(message).with_data(pane_create_command_failure_data(response, phase))
+}
+
 fn pane_focus_response_payload(workspace_id: &str, pane_id: u32) -> serde_json::Value {
     let pane_ref = pane_ref(pane_id);
     serde_json::json!({
@@ -432,9 +605,13 @@ fn send_pane_create_response_after_command(
                                 if handle.send_key("enter") {
                                     let _ = reply.send(Ok(response));
                                 } else {
-                                    let _ = reply.send(Err(BridgeError::internal(format!(
-                                        "pane.create command target surface {surface_id} could not submit Enter"
-                                    ))));
+                                    let _ = reply.send(Err(pane_create_command_failure(
+                                        &response,
+                                        "submit-enter",
+                                        format!(
+                                            "pane.create command target surface {surface_id} could not submit Enter; the pane already exists, so inspect current state before retrying"
+                                        ),
+                                    )));
                                 }
                             },
                         );
@@ -445,9 +622,13 @@ fn send_pane_create_response_after_command(
 
             if attempts >= PANE_CREATE_COMMAND_READY_ATTEMPTS {
                 if let Some(reply) = reply.take() {
-                    let _ = reply.send(Err(BridgeError::internal(format!(
-                        "pane.create command target surface {surface_id} never became writable"
-                    ))));
+                    let _ = reply.send(Err(pane_create_command_failure(
+                        &response,
+                        "terminal-readiness",
+                        format!(
+                            "pane.create command target surface {surface_id} never became writable; the pane already exists, so inspect current state before retrying"
+                        ),
+                    )));
                 }
                 glib::ControlFlow::Break
             } else {
@@ -1059,6 +1240,15 @@ fn surface_summary_payload(
     workspace_name: String,
     surface: pane::SurfaceSummary,
 ) -> serde_json::Value {
+    let agent_payload = surface.agent_session_id.as_ref().map(|session_id| {
+        serde_json::json!({
+            "kind": surface.agent_kind.as_deref(),
+            "session_id": session_id,
+            "hcom_name": surface.agent_hcom_name.as_deref(),
+            "suspended": surface.agent_suspended,
+            "suspension_reason": surface.agent_suspension_reason.as_deref(),
+        })
+    });
     let nested_surface = serde_json::json!({
         "id": surface.surface_id.as_str(),
         "pane_id": surface.pane_id.to_string(),
@@ -1071,6 +1261,8 @@ fn surface_summary_payload(
         "unread": false,
         "flash_count": 0,
         "refresh_count": 0,
+        "agent_suspended": surface.agent_suspended,
+        "agent_suspension_reason": surface.agent_suspension_reason.as_deref(),
     });
 
     let mut payload = serde_json::Map::new();
@@ -1107,6 +1299,21 @@ fn surface_summary_payload(
         serde_json::Value::String(surface_ref(&surface.surface_id)),
     );
     payload.insert("surface".to_string(), nested_surface);
+    if let Some(agent_payload) = agent_payload {
+        payload.insert("agent".to_string(), agent_payload);
+    }
+    payload.insert(
+        "agent_suspended".to_string(),
+        serde_json::Value::Bool(surface.agent_suspended),
+    );
+    payload.insert(
+        "agent_suspension_reason".to_string(),
+        surface
+            .agent_suspension_reason
+            .clone()
+            .map(serde_json::Value::String)
+            .unwrap_or(serde_json::Value::Null),
+    );
     if !surface.title.is_empty() {
         payload.insert(
             "surface_title".to_string(),
@@ -1560,6 +1767,30 @@ fn surface_health_row(
     );
     row.insert("in_window".to_string(), serde_json::Value::Bool(true));
     row.insert("hidden".to_string(), serde_json::Value::Bool(false));
+    row.insert(
+        "agent_suspended".to_string(),
+        serde_json::Value::Bool(surface.agent_suspended),
+    );
+    row.insert(
+        "agent_suspension_reason".to_string(),
+        surface
+            .agent_suspension_reason
+            .clone()
+            .map(serde_json::Value::String)
+            .unwrap_or(serde_json::Value::Null),
+    );
+    if let Some(session_id) = surface.agent_session_id.as_ref() {
+        row.insert(
+            "agent".to_string(),
+            serde_json::json!({
+                "kind": surface.agent_kind.as_deref(),
+                "session_id": session_id,
+                "hcom_name": surface.agent_hcom_name.as_deref(),
+                "suspended": surface.agent_suspended,
+                "suspension_reason": surface.agent_suspension_reason.as_deref(),
+            }),
+        );
+    }
 
     if surface.kind == "terminal" {
         if let Some((_surface_id, handle)) =
@@ -1582,6 +1813,34 @@ fn surface_health_row(
             row.insert("rows".to_string(), serde_json::json!(health.rows));
             row.insert("width_px".to_string(), serde_json::json!(health.width_px));
             row.insert("height_px".to_string(), serde_json::json!(health.height_px));
+            row.insert(
+                "renderer_visible".to_string(),
+                serde_json::json!(health.renderer_visible),
+            );
+            row.insert(
+                "renderer_has_ever_mapped".to_string(),
+                serde_json::json!(health.renderer_has_ever_mapped),
+            );
+            row.insert(
+                "renderer_visibility_transitions".to_string(),
+                serde_json::json!(health.renderer_visibility_transitions),
+            );
+            row.insert(
+                "renderer_visible_surface_count".to_string(),
+                serde_json::json!(health.renderer_visible_surface_count),
+            );
+            row.insert(
+                "renderer_global_visibility_transitions".to_string(),
+                serde_json::json!(health.renderer_global_visibility_transitions),
+            );
+            row.insert(
+                "renderer_tick_invocations".to_string(),
+                serde_json::json!(health.renderer_tick_invocations),
+            );
+            row.insert(
+                "renderer_queued_actions".to_string(),
+                serde_json::json!(health.renderer_queued_actions),
+            );
         } else {
             row.insert("healthy".to_string(), serde_json::Value::Bool(false));
             row.insert("realized".to_string(), serde_json::Value::Bool(false));
@@ -1613,7 +1872,24 @@ fn surface_health_payload(
         return Err(BridgeError::not_found("surface not found"));
     }
 
-    Ok(serde_json::json!({ "surfaces": surfaces }))
+    let (startup_status, startup_reason, suspended_agent_count) = {
+        let app_state = state.borrow();
+        let (status, reason) = match &app_state.startup_classification {
+            StartupClassification::Bootstrap => ("bootstrap", None),
+            StartupClassification::Clean => ("clean", None),
+            StartupClassification::Unclean(reason) => ("unclean", Some(reason.name())),
+        };
+        (status, reason, app_state.suspended_agent_count)
+    };
+
+    Ok(serde_json::json!({
+        "surfaces": surfaces,
+        "runtime_startup": {
+            "status": startup_status,
+            "reason": startup_reason,
+            "suspended_agent_count": suspended_agent_count,
+        }
+    }))
 }
 
 #[derive(Clone)]
@@ -1764,10 +2040,36 @@ fn request_session_save(state: &State) {
     }
 }
 
-fn save_session_now(state: &State) {
+fn save_session_now(state: &State) -> bool {
     let session = snapshot_session_state(state);
-    if let Err(err) = layout_state::save_session_atomic(&session) {
-        eprintln!("limux: failed to save session state: {err}");
+    match layout_state::save_session_atomic(&session) {
+        Ok(_) => true,
+        Err(err) => {
+            eprintln!("limux: failed to save session state: {err}");
+            false
+        }
+    }
+}
+
+fn finalize_runtime_lifecycle(
+    lifecycle: Option<&RuntimeLifecycle>,
+    session_saved: bool,
+) -> std::io::Result<bool> {
+    match lifecycle {
+        Some(lifecycle) => lifecycle.mark_clean_if_session_saved(session_saved),
+        None => Ok(false),
+    }
+}
+
+fn finalize_clean_shutdown(state: &State) {
+    let session_saved = save_session_now(state);
+    let lifecycle = state.borrow().runtime_lifecycle.clone();
+    match finalize_runtime_lifecycle(lifecycle.as_ref(), session_saved) {
+        Ok(false) if session_saved && lifecycle.is_some() => {
+            eprintln!("limux: skipped clean marker for a stale runtime incarnation");
+        }
+        Err(err) => eprintln!("limux: failed to mark clean shutdown: {err}"),
+        Ok(_) => {}
     }
 }
 
@@ -1775,20 +2077,47 @@ fn suspend_persistence(state: &State, suspended: bool) {
     state.borrow_mut().persistence_suspended = suspended;
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StartupRestoreMode {
+    ResumeEligibleAgents,
+    LayoutOnlySuspended,
+}
+
+fn startup_restore_mode(classification: &StartupClassification) -> StartupRestoreMode {
+    if classification.is_unclean() {
+        StartupRestoreMode::LayoutOnlySuspended
+    } else {
+        StartupRestoreMode::ResumeEligibleAgents
+    }
+}
+
 fn apply_loaded_session(state: &State, mut loaded: LoadedSession) {
     suspend_persistence(state, true);
+    let restore_mode = startup_restore_mode(&state.borrow().startup_classification);
 
     apply_top_bar_state_immediately(state, loaded.state.top_bar_visible);
 
     let restored_any = !loaded.state.workspaces.is_empty();
+    let mut suspended_agent_count = 0;
     if restored_any {
         let restorable_agents = layout_state::RestorableAgentIndex::load();
         for workspace in &mut loaded.state.workspaces {
+            let workspace_id = workspace.id.as_deref().unwrap_or("");
+            layout_state::seed_legacy_unclean_suspension_baseline(
+                &mut workspace.layout,
+                workspace_id,
+                &restorable_agents,
+                loaded.persisted_at,
+            );
             layout_state::attach_restorable_agents_to_layout(
                 &mut workspace.layout,
-                workspace.id.as_deref().unwrap_or(""),
+                workspace_id,
                 &restorable_agents,
             );
+            if restore_mode == StartupRestoreMode::LayoutOnlySuspended {
+                suspended_agent_count +=
+                    layout_state::suspend_agents_for_unclean_restore(&mut workspace.layout);
+            }
         }
         for workspace in &loaded.state.workspaces {
             add_workspace_from_state(state, workspace);
@@ -1796,6 +2125,8 @@ fn apply_loaded_session(state: &State, mut loaded: LoadedSession) {
         restore_active_workspace(state, loaded.state.active_workspace_index);
         apply_sidebar_state_immediately(state, &loaded.state.sidebar);
     }
+
+    state.borrow_mut().suspended_agent_count = suspended_agent_count;
 
     suspend_persistence(state, false);
 
@@ -2522,6 +2853,9 @@ pub fn build_window(app: &adw::Application) {
         .default_height(900)
         .build();
     apply_window_background_class(&window, background_opacity);
+    install_window_render_visibility_tracking(&window);
+    #[cfg(feature = "preview-test-hooks")]
+    install_preview_visibility_control(&window);
 
     let compositor_provides_decorations = display
         .clone()
@@ -2651,6 +2985,24 @@ pub fn build_window(app: &adw::Application) {
         window.set_content(Some(&vbox));
     }
 
+    let runtime_lifecycle =
+        runtime_lifecycle::RuntimeMarkerSeed::current(crate::VERSION).and_then(|seed| {
+            runtime_lifecycle::begin_runtime_in(&layout_state::persistence_dir(), seed)
+        });
+    let (runtime_lifecycle, startup_classification) = match runtime_lifecycle {
+        Ok(lifecycle) => {
+            let classification = lifecycle.previous_shutdown().clone();
+            (Some(lifecycle), classification)
+        }
+        Err(err) => {
+            eprintln!("limux: runtime marker unavailable; using layout-only restore: {err}");
+            (
+                None,
+                StartupClassification::Unclean(UncleanStartupReason::MarkerReadFailed),
+            )
+        }
+    };
+
     let state: State = Rc::new(RefCell::new(AppState {
         app: app.clone(),
         window: window.clone(),
@@ -2672,6 +3024,9 @@ pub fn build_window(app: &adw::Application) {
         sidebar_expanded_width: SIDEBAR_WIDTH,
         persistence_suspended: false,
         save_queued: false,
+        runtime_lifecycle,
+        startup_classification,
+        suspended_agent_count: 0,
         workspace_dragging: None,
         desktop_notification_routes: HashMap::new(),
         _theme_portal_signal: None,
@@ -2831,7 +3186,7 @@ pub fn build_window(app: &adw::Application) {
     {
         let state = state.clone();
         window.connect_close_request(move |_| {
-            save_session_now(&state);
+            finalize_clean_shutdown(&state);
             CONTROL_STATE.with(|slot| {
                 slot.borrow_mut().take();
             });
@@ -5759,8 +6114,20 @@ fn handle_control_command(state: &State, command: ControlCommand) {
             };
 
             let Some(surface) = pane::active_surface_summary(&new_pane) else {
-                let _ = reply.send(Err(BridgeError::internal(
-                    "pane.create did not produce a terminal surface",
+                let partial_response = pane::pane_id_for_widget(&new_pane)
+                    .map(|pane_id| {
+                        pane_create_partial_response_payload(&resolved.workspace_id, pane_id)
+                    })
+                    .unwrap_or_else(|| {
+                        serde_json::json!({
+                            "workspace_id": resolved.workspace_id,
+                            "workspace_ref": workspace_ref(&resolved.workspace_id),
+                        })
+                    });
+                let _ = reply.send(Err(pane_create_command_failure(
+                    &partial_response,
+                    "surface-summary",
+                    "pane.create created a pane but did not produce a terminal surface; inspect current state before retrying",
                 )));
                 return;
             };
@@ -7060,7 +7427,7 @@ fn show_runtime_error(state: &State, title: &str, detail: &str) {
 }
 
 fn quit_app(state: &State) {
-    save_session_now(state);
+    finalize_clean_shutdown(state);
     state.borrow().app.quit();
 }
 
@@ -7811,24 +8178,27 @@ mod tests {
         desktop_notification_action_from_signal, desktop_notification_actions,
         desktop_notification_activation_token_from_signal,
         desktop_notification_closed_id_from_signal, desktop_notification_id_from_response,
-        directional_neighbor_score, favorites_prefix_len, font_size_after_delta,
-        ghostty_prefers_dark, gtk_system_prefers_dark_from_raw, new_instance_command,
-        next_active_workspace_index, pane_action_target_pane_id, pane_attention_target,
-        pane_create_source_cwd_override, pane_create_split_placement, queue_session_save_request,
-        resize_axis_and_delta, resized_split_position, resolve_pane_create_source_id,
-        resolved_system_prefers_dark, sanitize_background_opacity,
-        shortcut_allowed_while_browser_find_active, shortcut_blocked_by_editable,
-        shortcut_command_from_key_event, shortcut_dispatch_propagation,
-        should_auto_open_sidebar_for_notification, should_emit_desktop_notification,
-        should_restore_workspace_mapping, should_skip_workspace_mapping, sidebar_width_class,
-        snapshot_current_pane_id, snapshot_sidebar_width, surface_send_text_response,
+        directional_neighbor_score, favorites_prefix_len, finalize_runtime_lifecycle,
+        font_size_after_delta, ghostty_prefers_dark, gtk_system_prefers_dark_from_raw,
+        new_instance_command, next_active_workspace_index, pane_action_target_pane_id,
+        pane_attention_target, pane_create_command_failure_data,
+        pane_create_partial_response_payload, pane_create_source_cwd_override,
+        pane_create_split_placement, queue_session_save_request, resize_axis_and_delta,
+        resized_split_position, resolve_pane_create_source_id, resolved_system_prefers_dark,
+        sanitize_background_opacity, shortcut_allowed_while_browser_find_active,
+        shortcut_blocked_by_editable, shortcut_command_from_key_event,
+        shortcut_dispatch_propagation, should_auto_open_sidebar_for_notification,
+        should_emit_desktop_notification, should_restore_workspace_mapping,
+        should_skip_workspace_mapping, sidebar_width_class, snapshot_current_pane_id,
+        snapshot_sidebar_width, startup_restore_mode, surface_send_text_response,
         surface_summary_payload, surface_target_response_payload, tab_drag_workspace_seed,
-        use_opaque_window_background, validate_typed_terminal_text,
-        validate_workspace_folder_input_with_dirs, window_chrome_policy,
-        workspace_drop_layout_path, workspace_folder_path_from_input,
-        workspace_notification_message, DesktopNotificationTarget, Direction,
-        EditableCaptureContext, ManagerRefresh, NeighborScore, PaneBounds, PaneCreateDirection,
-        PaneCreateTargetError, PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest,
+        toplevel_state_allows_rendering, use_opaque_window_background,
+        validate_typed_terminal_text, validate_workspace_folder_input_with_dirs,
+        window_chrome_policy, window_visibility_allows_rendering, workspace_drop_layout_path,
+        workspace_folder_path_from_input, workspace_notification_message,
+        DesktopNotificationTarget, Direction, EditableCaptureContext, ManagerRefresh,
+        NeighborScore, PaneBounds, PaneCreateDirection, PaneCreateTargetError,
+        PortalColorSchemePreference, SessionSaveAccess, SessionSaveRequest, StartupRestoreMode,
         WorkspaceSeedSource, BASE_CSS, HOST_ENTRY_CSS_CLASS, HOST_LAUNCH_ENV_REMOVALS,
         LIMUX_WINDOW_DECORATION_LAYOUT, SIDEBAR_COMPACT_CSS_CLASS, SIDEBAR_COMPACT_WIDTH,
         SIDEBAR_MIN_WIDTH, SIDEBAR_TINY_CSS_CLASS, SIDEBAR_TINY_WIDTH,
@@ -7884,6 +8254,47 @@ mod tests {
         assert!(with_compositor_decorations
             .decoration_layout
             .contains("close"));
+    }
+
+    #[test]
+    fn minimized_or_suspended_toplevel_does_not_render() {
+        assert!(toplevel_state_allows_rendering(0));
+        assert!(!toplevel_state_allows_rendering(
+            gdk::ToplevelState::MINIMIZED.bits()
+        ));
+        assert!(!toplevel_state_allows_rendering(1 << 16));
+        assert!(toplevel_state_allows_rendering(
+            gdk::ToplevelState::MAXIMIZED.bits() | gdk::ToplevelState::FOCUSED.bits()
+        ));
+    }
+
+    #[test]
+    fn window_rendering_requires_widget_and_native_surface_mapping() {
+        assert!(window_visibility_allows_rendering(true, true, true, 0));
+        assert!(!window_visibility_allows_rendering(false, true, true, 0));
+        assert!(!window_visibility_allows_rendering(true, false, true, 0));
+        assert!(!window_visibility_allows_rendering(true, true, false, 0));
+        assert!(!window_visibility_allows_rendering(
+            true,
+            true,
+            true,
+            gdk::ToplevelState::MINIMIZED.bits()
+        ));
+    }
+
+    #[cfg(feature = "preview-test-hooks")]
+    #[test]
+    fn preview_visibility_command_parser_is_fail_closed() {
+        assert_eq!(
+            super::parse_preview_visibility_command("minimize\n"),
+            Some(super::PreviewVisibilityCommand::Minimize)
+        );
+        assert_eq!(
+            super::parse_preview_visibility_command("restore"),
+            Some(super::PreviewVisibilityCommand::Restore)
+        );
+        assert_eq!(super::parse_preview_visibility_command("hide"), None);
+        assert_eq!(super::parse_preview_visibility_command(""), None);
     }
 
     #[test]
@@ -7993,6 +8404,11 @@ mod tests {
                 selected: true,
                 cwd: Some("/tmp/project".to_string()),
                 uri: None,
+                agent_kind: Some("codex".to_string()),
+                agent_session_id: Some("native-session-123".to_string()),
+                agent_hcom_name: Some("lifo".to_string()),
+                agent_suspended: true,
+                agent_suspension_reason: Some("unclean_restore".to_string()),
             },
         );
 
@@ -8008,6 +8424,36 @@ mod tests {
         assert_eq!(payload["surface"]["unread"], false);
         assert_eq!(payload["surface"]["flash_count"], 0);
         assert_eq!(payload["surface"]["refresh_count"], 0);
+        assert_eq!(payload["agent"]["kind"], "codex");
+        assert_eq!(payload["agent"]["session_id"], "native-session-123");
+        assert_eq!(payload["agent"]["hcom_name"], "lifo");
+        assert_eq!(payload["agent"]["suspended"], true);
+        assert_eq!(payload["agent"]["suspension_reason"], "unclean_restore");
+        assert_eq!(payload["surface"]["agent_suspended"], true);
+        assert_eq!(
+            payload["surface"]["agent_suspension_reason"],
+            "unclean_restore"
+        );
+    }
+
+    #[test]
+    fn unclean_startup_selects_layout_only_agent_restore() {
+        use crate::runtime_lifecycle::{StartupClassification, UncleanStartupReason};
+
+        assert_eq!(
+            startup_restore_mode(&StartupClassification::Bootstrap),
+            StartupRestoreMode::ResumeEligibleAgents
+        );
+        assert_eq!(
+            startup_restore_mode(&StartupClassification::Clean),
+            StartupRestoreMode::ResumeEligibleAgents
+        );
+        assert_eq!(
+            startup_restore_mode(&StartupClassification::Unclean(
+                UncleanStartupReason::PreviousRunUnclean
+            )),
+            StartupRestoreMode::LayoutOnlySuspended
+        );
     }
 
     #[test]
@@ -8024,6 +8470,11 @@ mod tests {
                 selected: true,
                 cwd: None,
                 uri: None,
+                agent_kind: None,
+                agent_session_id: None,
+                agent_hcom_name: None,
+                agent_suspended: false,
+                agent_suspension_reason: None,
             },
         );
 
@@ -8318,6 +8769,41 @@ mod tests {
                 new_pane_first: false,
             }
         );
+    }
+
+    #[test]
+    fn pane_create_post_split_failures_report_partial_identity_and_unsafe_retry() {
+        let response = serde_json::json!({
+            "workspace_id": "workspace-a",
+            "workspace_ref": "workspace:workspace-a",
+            "pane_id": "17",
+            "pane_ref": "pane:17",
+            "surface_id": "17:tab-a",
+            "surface_ref": "surface:17:tab-a",
+            "ok": true
+        });
+
+        for phase in ["terminal-readiness", "submit-enter"] {
+            let data = pane_create_command_failure_data(&response, phase);
+            assert_eq!(data["method"], "pane.create");
+            assert_eq!(data["phase"], phase);
+            assert_eq!(data["outcome_unknown"], true);
+            assert_eq!(data["retry_safe"], false);
+            assert_eq!(data["pane_id"], "17");
+            assert_eq!(data["pane_ref"], "pane:17");
+            assert_eq!(data["surface_id"], "17:tab-a");
+            assert_eq!(data["surface_ref"], "surface:17:tab-a");
+        }
+
+        let partial_response = pane_create_partial_response_payload("workspace-a", 17);
+        let data = pane_create_command_failure_data(&partial_response, "surface-summary");
+        assert_eq!(data["method"], "pane.create");
+        assert_eq!(data["phase"], "surface-summary");
+        assert_eq!(data["outcome_unknown"], true);
+        assert_eq!(data["retry_safe"], false);
+        assert_eq!(data["workspace_id"], "workspace-a");
+        assert_eq!(data["pane_id"], "17");
+        assert!(data.get("surface_id").is_none());
     }
 
     #[test]
@@ -9148,5 +9634,42 @@ mod tests {
             .unwrap_err();
 
         assert!(error.ends_with(" is not a folder"));
+    }
+
+    #[test]
+    fn clean_finalization_requires_a_successful_session_save() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let seed = crate::runtime_lifecycle::RuntimeMarkerSeed {
+            pid: 4242,
+            started_at_unix_ms: 1000,
+            version: "0.2.2",
+        };
+        let failed = crate::runtime_lifecycle::begin_runtime_in(dir.path(), seed)
+            .expect("failed-save runtime");
+
+        assert!(!finalize_runtime_lifecycle(Some(&failed), false).expect("skip clean marker"));
+        let after_failed = crate::runtime_lifecycle::begin_runtime_in(
+            dir.path(),
+            crate::runtime_lifecycle::RuntimeMarkerSeed {
+                started_at_unix_ms: 2000,
+                ..seed
+            },
+        )
+        .expect("restart after failed save");
+        assert!(after_failed.previous_shutdown().is_unclean());
+
+        assert!(finalize_runtime_lifecycle(Some(&after_failed), true).expect("mark clean"));
+        let after_success = crate::runtime_lifecycle::begin_runtime_in(
+            dir.path(),
+            crate::runtime_lifecycle::RuntimeMarkerSeed {
+                started_at_unix_ms: 3000,
+                ..seed
+            },
+        )
+        .expect("restart after successful save");
+        assert_eq!(
+            after_success.previous_shutdown(),
+            &crate::runtime_lifecycle::StartupClassification::Clean
+        );
     }
 }

@@ -10,7 +10,7 @@ use std::os::raw::{c_char, c_int, c_void};
 use std::os::unix::ffi::OsStringExt;
 use std::ptr;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -35,8 +35,16 @@ static GHOSTTY: OnceLock<GhosttyState> = OnceLock::new();
 static CURRENT_COLOR_SCHEME: AtomicI32 = AtomicI32::new(GHOSTTY_COLOR_SCHEME_LIGHT);
 static CURRENT_SCROLLBAR_ENABLED: AtomicBool = AtomicBool::new(true);
 static WAKEUP_IDLE_QUEUED: AtomicBool = AtomicBool::new(false);
+static VISIBLE_TICK_ACTIVE: AtomicBool = AtomicBool::new(false);
+static VISIBLE_SURFACE_COUNT: AtomicUsize = AtomicUsize::new(0);
+static VISIBILITY_TRANSITION_COUNT: AtomicU64 = AtomicU64::new(0);
+static TICK_INVOCATION_COUNT: AtomicU64 = AtomicU64::new(0);
+static QUEUED_RENDER_ACTION_COUNT: AtomicU64 = AtomicU64::new(0);
 static KEY_DEBUG_ENABLED: OnceLock<bool> = OnceLock::new();
 static EMPTY_CLIPBOARD_TEXT: [u8; 1] = [0];
+
+const VISIBLE_TICK_INTERVAL_MS: u64 = 8;
+const HIDDEN_TICK_INTERVAL_MS: u64 = 100;
 
 type TitleChangedCallback = dyn Fn(&str);
 type PwdChangedCallback = dyn Fn(&str);
@@ -75,6 +83,123 @@ struct SurfaceEntry {
     open_url_external: Rc<Cell<bool>>,
     clipboard_context: *mut ClipboardContext,
     pending_selection_auto_copy: Option<String>,
+    visibility: SurfaceVisibilityState,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SurfaceVisibility {
+    Hidden,
+    Visible,
+}
+
+impl SurfaceVisibility {
+    fn is_visible(self) -> bool {
+        self == Self::Visible
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct SurfaceVisibilityState {
+    mapped: bool,
+    window_renderable: bool,
+    visible: bool,
+    has_ever_mapped: bool,
+    destroyed: bool,
+    transition_count: u64,
+}
+
+impl Default for SurfaceVisibilityState {
+    fn default() -> Self {
+        Self::new(true)
+    }
+}
+
+impl SurfaceVisibilityState {
+    fn new(window_renderable: bool) -> Self {
+        Self {
+            mapped: false,
+            window_renderable,
+            visible: false,
+            has_ever_mapped: false,
+            destroyed: false,
+            transition_count: 0,
+        }
+    }
+
+    fn visible(&self) -> bool {
+        self.visible
+    }
+
+    fn has_ever_mapped(&self) -> bool {
+        self.has_ever_mapped
+    }
+
+    fn transition_count(&self) -> u64 {
+        self.transition_count
+    }
+
+    fn set_mapped(&mut self, mapped: bool) -> Option<SurfaceVisibility> {
+        if self.destroyed {
+            return None;
+        }
+        self.mapped = mapped;
+        if mapped {
+            self.has_ever_mapped = true;
+        }
+        self.recompute_visibility()
+    }
+
+    fn set_window_renderable(&mut self, renderable: bool) -> Option<SurfaceVisibility> {
+        if self.destroyed {
+            return None;
+        }
+        self.window_renderable = renderable;
+        self.recompute_visibility()
+    }
+
+    fn recompute_visibility(&mut self) -> Option<SurfaceVisibility> {
+        let visible = self.mapped && self.window_renderable;
+        if self.visible == visible {
+            return None;
+        }
+
+        self.visible = visible;
+        self.transition_count += 1;
+        Some(if visible {
+            SurfaceVisibility::Visible
+        } else {
+            SurfaceVisibility::Hidden
+        })
+    }
+
+    fn mark_destroyed(&mut self) -> bool {
+        if self.destroyed {
+            return false;
+        }
+        self.destroyed = true;
+        if !self.visible {
+            return false;
+        }
+
+        self.visible = false;
+        self.transition_count += 1;
+        true
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GhosttyRenderDebugSnapshot {
+    pub visible_surfaces: usize,
+    pub visibility_transitions: u64,
+    pub tick_invocations: u64,
+    pub queued_render_actions: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SurfaceRenderDebugSnapshot {
+    pub visible: bool,
+    pub has_ever_mapped: bool,
+    pub visibility_transitions: u64,
 }
 
 struct ClipboardContext {
@@ -175,6 +300,16 @@ impl TerminalImeState {
 
 thread_local! {
     static SURFACE_MAP: RefCell<HashMap<usize, SurfaceEntry>> = RefCell::new(HashMap::new());
+    static WINDOW_RENDERABLE: Cell<bool> = const { Cell::new(true) };
+}
+
+pub fn ghostty_render_debug_snapshot() -> GhosttyRenderDebugSnapshot {
+    GhosttyRenderDebugSnapshot {
+        visible_surfaces: VISIBLE_SURFACE_COUNT.load(Ordering::Relaxed),
+        visibility_transitions: VISIBILITY_TRANSITION_COUNT.load(Ordering::Relaxed),
+        tick_invocations: TICK_INVOCATION_COUNT.load(Ordering::Relaxed),
+        queued_render_actions: QUEUED_RENDER_ACTION_COUNT.load(Ordering::Relaxed),
+    }
 }
 
 #[derive(Clone)]
@@ -194,11 +329,31 @@ pub struct TerminalHealth {
     pub rows: u16,
     pub width_px: u32,
     pub height_px: u32,
+    pub renderer_visible: bool,
+    pub renderer_has_ever_mapped: bool,
+    pub renderer_visibility_transitions: u64,
+    pub renderer_visible_surface_count: usize,
+    pub renderer_global_visibility_transitions: u64,
+    pub renderer_tick_invocations: u64,
+    pub renderer_queued_actions: u64,
 }
 
 impl TerminalHandle {
     pub fn replace_callbacks(&self, callbacks: TerminalCallbacks) {
         *self.callbacks.borrow_mut() = callbacks;
+    }
+
+    pub fn render_debug_snapshot(&self) -> Option<SurfaceRenderDebugSnapshot> {
+        let surface = (*self.surface_cell.borrow())?;
+        SURFACE_MAP.with(|map| {
+            map.borrow()
+                .get(&(surface as usize))
+                .map(|entry| SurfaceRenderDebugSnapshot {
+                    visible: entry.visibility.visible(),
+                    has_ever_mapped: entry.visibility.has_ever_mapped(),
+                    visibility_transitions: entry.visibility.transition_count(),
+                })
+        })
     }
 
     pub fn focus_surface(&self) -> bool {
@@ -274,6 +429,7 @@ impl TerminalHandle {
     }
 
     pub fn health(&self) -> TerminalHealth {
+        let global_debug = ghostty_render_debug_snapshot();
         let Some(surface) = *self.surface_cell.borrow() else {
             return TerminalHealth {
                 realized: false,
@@ -282,10 +438,18 @@ impl TerminalHandle {
                 rows: 0,
                 width_px: 0,
                 height_px: 0,
+                renderer_visible: false,
+                renderer_has_ever_mapped: false,
+                renderer_visibility_transitions: 0,
+                renderer_visible_surface_count: global_debug.visible_surfaces,
+                renderer_global_visibility_transitions: global_debug.visibility_transitions,
+                renderer_tick_invocations: global_debug.tick_invocations,
+                renderer_queued_actions: global_debug.queued_render_actions,
             };
         };
 
         let size = unsafe { ghostty_surface_size(surface) };
+        let surface_debug = self.render_debug_snapshot();
         TerminalHealth {
             realized: true,
             process_exited: unsafe { ghostty_surface_process_exited(surface) },
@@ -293,6 +457,14 @@ impl TerminalHandle {
             rows: size.rows,
             width_px: size.width_px,
             height_px: size.height_px,
+            renderer_visible: surface_debug.is_some_and(|debug| debug.visible),
+            renderer_has_ever_mapped: surface_debug.is_some_and(|debug| debug.has_ever_mapped),
+            renderer_visibility_transitions: surface_debug
+                .map_or(0, |debug| debug.visibility_transitions),
+            renderer_visible_surface_count: global_debug.visible_surfaces,
+            renderer_global_visibility_transitions: global_debug.visibility_transitions,
+            renderer_tick_invocations: global_debug.tick_invocations,
+            renderer_queued_actions: global_debug.queued_render_actions,
         }
     }
 
@@ -562,6 +734,77 @@ fn refresh_realized_surface_display(surface: ghostty_surface_t, gl_area: &gtk::G
     refresh_surface_display(surface, gl_area);
 }
 
+fn update_visible_surface_count(visibility: SurfaceVisibility) {
+    if visibility.is_visible() {
+        let previous = VISIBLE_SURFACE_COUNT.fetch_add(1, Ordering::AcqRel);
+        if previous == 0 {
+            ensure_visible_tick_running();
+        }
+        return;
+    }
+
+    let previous = VISIBLE_SURFACE_COUNT
+        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
+            count.checked_sub(1)
+        })
+        .unwrap_or(0);
+    debug_assert!(previous > 0, "visible Ghostty surface count underflow");
+}
+
+fn apply_surface_visibility_transition(surface: ghostty_surface_t, visibility: SurfaceVisibility) {
+    unsafe { ghostty_surface_set_occlusion(surface, visibility.is_visible()) };
+    VISIBILITY_TRANSITION_COUNT.fetch_add(1, Ordering::Relaxed);
+    update_visible_surface_count(visibility);
+}
+
+fn set_surface_mapped(surface: ghostty_surface_t, mapped: bool) {
+    let transition = SURFACE_MAP.with(|map| {
+        map.borrow_mut()
+            .get_mut(&(surface as usize))
+            .and_then(|entry| entry.visibility.set_mapped(mapped))
+    });
+    let Some(visibility) = transition else {
+        return;
+    };
+
+    apply_surface_visibility_transition(surface, visibility);
+}
+
+pub(crate) fn set_window_renderable(renderable: bool) {
+    let changed = WINDOW_RENDERABLE.with(|current| {
+        if current.get() == renderable {
+            return false;
+        }
+        current.set(renderable);
+        true
+    });
+    if !changed {
+        return;
+    }
+
+    let transitions = SURFACE_MAP.with(|map| {
+        map.borrow_mut()
+            .iter_mut()
+            .filter_map(|(surface, entry)| {
+                entry
+                    .visibility
+                    .set_window_renderable(renderable)
+                    .map(|visibility| (*surface as ghostty_surface_t, visibility))
+            })
+            .collect::<Vec<_>>()
+    });
+    for (surface, visibility) in transitions {
+        apply_surface_visibility_transition(surface, visibility);
+    }
+}
+
+fn mark_surface_destroyed(visibility: &mut SurfaceVisibilityState) {
+    if visibility.mark_destroyed() {
+        VISIBILITY_TRANSITION_COUNT.fetch_add(1, Ordering::Relaxed);
+        update_visible_surface_count(SurfaceVisibility::Hidden);
+    }
+}
+
 fn schedule_coalesced_surface_resize(
     coalescer: &Rc<SurfaceResizeCoalescer>,
     surface_cell: &Rc<RefCell<Option<ghostty_surface_t>>>,
@@ -678,6 +921,40 @@ fn load_ghostty_config() -> ghostty_config_t {
     }
 }
 
+fn tick_interval_for_visible_surfaces(visible_surfaces: usize) -> Duration {
+    Duration::from_millis(if visible_surfaces == 0 {
+        HIDDEN_TICK_INTERVAL_MS
+    } else {
+        VISIBLE_TICK_INTERVAL_MS
+    })
+}
+
+fn tick_ghostty_app(app: ghostty_app_t) {
+    TICK_INVOCATION_COUNT.fetch_add(1, Ordering::Relaxed);
+    unsafe { ghostty_app_tick(app) };
+}
+
+fn ensure_visible_tick_running() {
+    if VISIBLE_SURFACE_COUNT.load(Ordering::Acquire) == 0
+        || VISIBLE_TICK_ACTIVE
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+    {
+        return;
+    }
+
+    let app = ghostty_app();
+    glib::timeout_add_local(tick_interval_for_visible_surfaces(1), move || {
+        if VISIBLE_SURFACE_COUNT.load(Ordering::Acquire) == 0 {
+            VISIBLE_TICK_ACTIVE.store(false, Ordering::Release);
+            return glib::ControlFlow::Break;
+        }
+
+        tick_ghostty_app(app);
+        glib::ControlFlow::Continue
+    });
+}
+
 /// Initialize the global Ghostty app. Must be called once before creating surfaces.
 pub fn init_ghostty() {
     GHOSTTY.get_or_init(|| {
@@ -703,13 +980,11 @@ pub fn init_ghostty() {
 
         let app = unsafe { ghostty_app_new(&runtime_config, config) };
 
-        // Ghostty's GTK apprt calls core_app.tick() on every GLib main
-        // loop iteration to drain the app mailbox (which includes
-        // redraw_surface messages from the renderer thread). The renderer
-        // thread pushes these messages but doesn't wake the app.
-        // We replicate this with a high-frequency timer (~8ms ≈ 120Hz).
-        glib::timeout_add_local(std::time::Duration::from_millis(8), move || {
-            unsafe { ghostty_app_tick(app) };
+        // Renderer redraw messages do not wake the embedded app. Keep a slow
+        // fallback mailbox drain while every surface is hidden; mapping the
+        // first visible surface starts the separate frame-cadence timer.
+        glib::timeout_add_local(tick_interval_for_visible_surfaces(0), move || {
+            tick_ghostty_app(app);
             glib::ControlFlow::Continue
         });
 
@@ -831,7 +1106,7 @@ unsafe extern "C" fn ghostty_wakeup_cb(_userdata: *mut c_void) {
         glib::idle_add_once(|| {
             release_wakeup_idle_slot(&WAKEUP_IDLE_QUEUED);
             let app = ghostty_app();
-            unsafe { ghostty_app_tick(app) };
+            tick_ghostty_app(app);
         });
     }
     glib::MainContext::default().wakeup();
@@ -881,6 +1156,7 @@ unsafe extern "C" fn ghostty_action_cb(
         }
         GHOSTTY_ACTION_RENDER => {
             if target.tag == GHOSTTY_TARGET_SURFACE {
+                QUEUED_RENDER_ACTION_COUNT.fetch_add(1, Ordering::Relaxed);
                 let surface_key = unsafe { target.target.surface } as usize;
                 SURFACE_MAP.with(|map| {
                     if let Some(entry) = map.borrow().get(&surface_key) {
@@ -1498,9 +1774,28 @@ pub fn create_terminal(
         let surface_cell = surface_cell.clone();
         gl_area.connect_map(move |gl_area| {
             if let Some(surface) = *surface_cell.borrow() {
+                set_surface_mapped(surface, gl_area.is_mapped());
                 refresh_realized_surface_display(surface, gl_area);
             } else {
                 gl_area.queue_render();
+            }
+        });
+    }
+
+    {
+        let surface_cell = surface_cell.clone();
+        gl_area.connect_unmap(move |_| {
+            if let Some(surface) = *surface_cell.borrow() {
+                set_surface_mapped(surface, false);
+            }
+        });
+    }
+
+    {
+        let surface_cell = surface_cell.clone();
+        gl_area.connect_notify_local(Some("visible"), move |gl_area, _| {
+            if let Some(surface) = *surface_cell.borrow() {
+                set_surface_mapped(surface, gl_area.is_mapped());
             }
         });
     }
@@ -1592,6 +1887,7 @@ pub fn create_terminal(
             // reinitialize the GL renderer with the new GL context while
             // preserving the terminal/pty state.
             if let Some(surface) = *surface_cell.borrow() {
+                set_surface_mapped(surface, gl_area.is_mapped());
                 refresh_realized_surface_display(surface, gl_area);
                 let gl_area = gl_area.clone();
                 glib::idle_add_local_once(move || {
@@ -1667,6 +1963,7 @@ pub fn create_terminal(
             unsafe {
                 (*clipboard_context).surface.set(surface);
                 ghostty_surface_set_color_scheme(surface, current_ghostty_color_scheme());
+                ghostty_surface_set_occlusion(surface, false);
             }
             clipboard_context_cell.set(clipboard_context);
 
@@ -1746,11 +2043,13 @@ pub fn create_terminal(
                         open_url_external: open_url_external_for_map.clone(),
                         clipboard_context,
                         pending_selection_auto_copy: None,
+                        visibility: SurfaceVisibilityState::new(WINDOW_RENDERABLE.with(Cell::get)),
                     },
                 );
             });
 
             *surface_cell.borrow_mut() = Some(surface);
+            set_surface_mapped(surface, gl_area.is_mapped());
 
             unsafe {
                 ghostty_surface_set_focus(surface, true);
@@ -1802,6 +2101,8 @@ pub fn create_terminal(
         });
     }
 
+    let selection_copy_keycode = Rc::new(Cell::new(None));
+
     // Keyboard input
     //
     // Send key events with the text field populated. Ghostty uses the
@@ -1815,9 +2116,29 @@ pub fn create_terminal(
         let im_context_release = im_context.clone();
         let ime_state_press = ime_state.clone();
         let ime_state_release = ime_state.clone();
+        let selection_copy_keycode_press = selection_copy_keycode.clone();
+        let selection_copy_keycode_release = selection_copy_keycode.clone();
         let key_controller = gtk::EventControllerKey::new();
         key_controller.connect_key_pressed(move |ctrl, keyval, keycode, modifier| {
             if let Some(surface) = *sc_press.borrow() {
+                let has_selection = unsafe { ghostty_surface_has_selection(surface) };
+                match selection_copy_key_action(
+                    keyval,
+                    modifier,
+                    has_selection,
+                    selection_copy_keycode_press.get() == Some(keycode),
+                ) {
+                    SelectionCopyKeyAction::Copy => {
+                        selection_copy_keycode_press.set(Some(keycode));
+                        surface_action(Some(surface), "copy_to_clipboard");
+                        return glib::Propagation::Stop;
+                    }
+                    SelectionCopyKeyAction::Suppress => {
+                        return glib::Propagation::Stop;
+                    }
+                    SelectionCopyKeyAction::Forward => {}
+                }
+
                 let current_event = ctrl
                     .current_event()
                     .and_then(|event| event.downcast::<gtk::gdk::KeyEvent>().ok());
@@ -1870,6 +2191,15 @@ pub fn create_terminal(
         });
 
         key_controller.connect_key_released(move |ctrl, keyval, keycode, modifier| {
+            if should_suppress_selection_copy_release(
+                keyval,
+                keycode,
+                selection_copy_keycode_release.get(),
+            ) {
+                selection_copy_keycode_release.set(None);
+                return;
+            }
+
             if let Some(surface) = *sc_release.borrow() {
                 let current_event = ctrl
                     .current_event()
@@ -2041,6 +2371,7 @@ pub fn create_terminal(
         let had_focus_leave = had_focus.clone();
         let im_context_enter = im_context.clone();
         let im_context_leave = im_context.clone();
+        let selection_copy_keycode_leave = selection_copy_keycode.clone();
         let focus_ctrl = gtk::EventControllerFocus::new();
         let sc = surface_cell.clone();
         focus_ctrl.connect_enter(move |_| {
@@ -2051,6 +2382,7 @@ pub fn create_terminal(
             }
         });
         focus_ctrl.connect_leave(move |_| {
+            selection_copy_keycode_leave.set(None);
             had_focus_leave.set(false);
             im_context_leave.focus_out();
             if let Some(surface) = *surface_cell.borrow() {
@@ -2097,6 +2429,7 @@ pub fn create_terminal(
         gl_area.connect_unrealize(move |gl_area| {
             resize_coalescer.clear_pending();
             if let Some(surface) = *surface_cell.borrow() {
+                set_surface_mapped(surface, false);
                 gl_area.make_current();
                 unsafe { ghostty_surface_display_unrealized(surface) };
             }
@@ -2113,7 +2446,8 @@ pub fn create_terminal(
             if let Some(surface) = surface_cell.borrow_mut().take() {
                 let surface_key = surface as usize;
                 SURFACE_MAP.with(|map| {
-                    if let Some(entry) = map.borrow_mut().remove(&surface_key) {
+                    if let Some(mut entry) = map.borrow_mut().remove(&surface_key) {
+                        mark_surface_destroyed(&mut entry.visibility);
                         unsafe {
                             drop(Box::from_raw(entry.clipboard_context));
                         }
@@ -2603,6 +2937,53 @@ fn fallback_unshifted_codepoint(keyval: gtk::gdk::Key) -> u32 {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SelectionCopyKeyAction {
+    Copy,
+    Suppress,
+    Forward,
+}
+
+fn is_copy_key(keyval: gtk::gdk::Key) -> bool {
+    matches!(keyval, gtk::gdk::Key::c | gtk::gdk::Key::C)
+}
+
+fn selection_copy_key_action(
+    keyval: gtk::gdk::Key,
+    modifier: gtk::gdk::ModifierType,
+    has_selection: bool,
+    copy_active: bool,
+) -> SelectionCopyKeyAction {
+    if copy_active {
+        return SelectionCopyKeyAction::Suppress;
+    }
+
+    let blocked_modifiers = gtk::gdk::ModifierType::ALT_MASK
+        | gtk::gdk::ModifierType::HYPER_MASK
+        | gtk::gdk::ModifierType::META_MASK
+        | gtk::gdk::ModifierType::SUPER_MASK;
+    if !is_copy_key(keyval)
+        || !modifier.contains(gtk::gdk::ModifierType::CONTROL_MASK)
+        || modifier.intersects(blocked_modifiers)
+    {
+        return SelectionCopyKeyAction::Forward;
+    }
+
+    if has_selection {
+        SelectionCopyKeyAction::Copy
+    } else {
+        SelectionCopyKeyAction::Forward
+    }
+}
+
+fn should_suppress_selection_copy_release(
+    _keyval: gtk::gdk::Key,
+    keycode: u32,
+    copy_keycode: Option<u32>,
+) -> bool {
+    copy_keycode == Some(keycode)
+}
+
 fn fallback_native_keycode(keyval: gtk::gdk::Key) -> u32 {
     if keyval == gtk::gdk::Key::Return {
         return 0x24;
@@ -2799,6 +3180,169 @@ unsafe fn release_active_mouse_button(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ctrl_c_copies_only_when_terminal_has_selection() {
+        let ctrl = gtk::gdk::ModifierType::CONTROL_MASK;
+
+        assert_eq!(
+            selection_copy_key_action(gtk::gdk::Key::c, ctrl, true, false),
+            SelectionCopyKeyAction::Copy
+        );
+        assert_eq!(
+            selection_copy_key_action(gtk::gdk::Key::c, ctrl, false, false),
+            SelectionCopyKeyAction::Forward
+        );
+    }
+
+    #[test]
+    fn ctrl_c_copy_consumes_repeats_and_matching_release() {
+        let ctrl = gtk::gdk::ModifierType::CONTROL_MASK;
+
+        for (keyval, modifier) in [
+            (gtk::gdk::Key::c, ctrl),
+            (gtk::gdk::Key::c, gtk::gdk::ModifierType::empty()),
+            (gtk::gdk::Key::c, ctrl | gtk::gdk::ModifierType::ALT_MASK),
+            (gtk::gdk::Key::Control_L, gtk::gdk::ModifierType::empty()),
+        ] {
+            assert_eq!(
+                selection_copy_key_action(keyval, modifier, false, true),
+                SelectionCopyKeyAction::Suppress
+            );
+        }
+        assert!(should_suppress_selection_copy_release(
+            gtk::gdk::Key::c,
+            54,
+            Some(54)
+        ));
+        assert!(should_suppress_selection_copy_release(
+            gtk::gdk::Key::C,
+            54,
+            Some(54)
+        ));
+        assert!(should_suppress_selection_copy_release(
+            gtk::gdk::Key::Control_L,
+            54,
+            Some(54)
+        ));
+        assert!(!should_suppress_selection_copy_release(
+            gtk::gdk::Key::c,
+            55,
+            Some(54)
+        ));
+        assert!(!should_suppress_selection_copy_release(
+            gtk::gdk::Key::c,
+            54,
+            None
+        ));
+    }
+
+    #[test]
+    fn ctrl_c_copy_does_not_hijack_alt_or_super_chords() {
+        for extra in [
+            gtk::gdk::ModifierType::ALT_MASK,
+            gtk::gdk::ModifierType::SUPER_MASK,
+            gtk::gdk::ModifierType::META_MASK,
+            gtk::gdk::ModifierType::HYPER_MASK,
+        ] {
+            assert_eq!(
+                selection_copy_key_action(
+                    gtk::gdk::Key::c,
+                    gtk::gdk::ModifierType::CONTROL_MASK | extra,
+                    true,
+                    false,
+                ),
+                SelectionCopyKeyAction::Forward
+            );
+        }
+    }
+
+    #[test]
+    fn surface_visibility_state_starts_hidden_until_mapped() {
+        let state = SurfaceVisibilityState::default();
+
+        assert!(!state.visible());
+        assert!(!state.has_ever_mapped());
+        assert_eq!(state.transition_count(), 0);
+    }
+
+    #[test]
+    fn surface_visibility_state_coalesces_duplicate_map_and_unmap() {
+        let mut state = SurfaceVisibilityState::default();
+
+        assert_eq!(state.set_mapped(true), Some(SurfaceVisibility::Visible));
+        assert_eq!(state.set_mapped(true), None);
+        assert_eq!(state.set_mapped(false), Some(SurfaceVisibility::Hidden));
+        assert_eq!(state.set_mapped(false), None);
+        assert!(state.has_ever_mapped());
+        assert_eq!(state.transition_count(), 2);
+    }
+
+    #[test]
+    fn surface_visibility_state_reparent_sequence_rechecks_visibility() {
+        let mut state = SurfaceVisibilityState::default();
+
+        assert_eq!(state.set_mapped(true), Some(SurfaceVisibility::Visible));
+        assert_eq!(state.set_mapped(false), Some(SurfaceVisibility::Hidden));
+        assert_eq!(state.set_mapped(true), Some(SurfaceVisibility::Visible));
+        assert_eq!(state.transition_count(), 3);
+    }
+
+    #[test]
+    fn surface_visibility_requires_mapping_and_renderable_window() {
+        let mut state = SurfaceVisibilityState::default();
+
+        assert_eq!(state.set_mapped(true), Some(SurfaceVisibility::Visible));
+        assert_eq!(
+            state.set_window_renderable(false),
+            Some(SurfaceVisibility::Hidden)
+        );
+        assert_eq!(state.set_mapped(false), None);
+        assert_eq!(state.set_window_renderable(true), None);
+        assert_eq!(state.set_mapped(true), Some(SurfaceVisibility::Visible));
+        assert_eq!(state.transition_count(), 3);
+    }
+
+    #[test]
+    fn surface_visibility_can_start_with_a_hidden_window() {
+        let mut state = SurfaceVisibilityState::new(false);
+
+        assert_eq!(state.set_mapped(true), None);
+        assert!(!state.visible());
+        assert!(state.has_ever_mapped());
+        assert_eq!(
+            state.set_window_renderable(true),
+            Some(SurfaceVisibility::Visible)
+        );
+    }
+
+    #[test]
+    fn surface_visibility_state_ignores_callbacks_after_destroy() {
+        let mut state = SurfaceVisibilityState::default();
+        assert_eq!(state.set_mapped(true), Some(SurfaceVisibility::Visible));
+
+        assert!(state.mark_destroyed());
+        assert_eq!(state.set_mapped(false), None);
+        assert_eq!(state.set_mapped(true), None);
+        assert!(!state.visible());
+        assert_eq!(state.transition_count(), 2);
+    }
+
+    #[test]
+    fn surface_visibility_tick_interval_is_bounded_when_hidden() {
+        assert_eq!(
+            tick_interval_for_visible_surfaces(0),
+            Duration::from_millis(HIDDEN_TICK_INTERVAL_MS)
+        );
+        assert_eq!(
+            tick_interval_for_visible_surfaces(1),
+            Duration::from_millis(VISIBLE_TICK_INTERVAL_MS)
+        );
+        assert_eq!(
+            tick_interval_for_visible_surfaces(56),
+            Duration::from_millis(VISIBLE_TICK_INTERVAL_MS)
+        );
+    }
 
     #[test]
     fn terminal_identity_context_matches_human_and_cli_refs() {

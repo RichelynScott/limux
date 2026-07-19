@@ -12,3 +12,4 @@ __pycache__/
 *.deb
 *.AppImage
 save-sesh-plan.md
+.taskmaster/backups/locks/

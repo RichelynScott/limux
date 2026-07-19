@@ -390,6 +390,7 @@ pub struct PaneCallbacks {
 struct TerminalTabState {
     cwd: Rc<RefCell<Option<String>>>,
     handle: terminal::TerminalHandle,
+    agent: Option<RestorableAgentState>,
 }
 
 #[derive(Clone)]
@@ -1553,9 +1554,9 @@ fn add_terminal_tab_inner(
         extra_env.push(("LIMUX_SOCKET".to_string(), sock.to_string()));
     }
     append_hcom_identity_env_scrub(&mut extra_env);
-    let startup_command = options
+    let restored_agent = options.as_ref().and_then(|value| value.agent.clone());
+    let startup_command = restored_agent
         .as_ref()
-        .and_then(|value| value.agent.as_ref())
         .and_then(|agent| agent.resume_command())
         .map(|command| {
             let sequence = RESTORED_AGENT_START_SEQUENCE.fetch_add(1, Ordering::Relaxed);
@@ -1566,6 +1567,12 @@ fn add_terminal_tab_inner(
             "limux: restoring agent terminal surface={}:{} command={}",
             internals.pane_id, tab_id, command
         );
+    }
+    if let Some(tooltip) = restored_agent
+        .as_ref()
+        .and_then(RestorableAgentState::suspension_tooltip)
+    {
+        tab_btn.set_tooltip_text(Some(&tooltip));
     }
 
     let term = terminal::create_terminal(
@@ -1596,6 +1603,7 @@ fn add_terminal_tab_inner(
                 state: TerminalTabState {
                     cwd: term_cwd.clone(),
                     handle: term.handle.clone(),
+                    agent: restored_agent,
                 },
             },
         });
@@ -1926,7 +1934,7 @@ pub fn snapshot_pane_state(pane_widget: &gtk::Widget) -> Option<PaneState> {
             let content = match &entry.kind {
                 TabKind::Terminal { state } => TabContentState::Terminal {
                     cwd: state.cwd.borrow().clone(),
-                    agent: None,
+                    agent: state.agent.clone(),
                 },
                 TabKind::Browser { state } => TabContentState::Browser {
                     uri: state.uri.borrow().clone(),
@@ -2027,6 +2035,53 @@ pub struct SurfaceSummary {
     pub selected: bool,
     pub cwd: Option<String>,
     pub uri: Option<String>,
+    pub agent_kind: Option<String>,
+    pub agent_session_id: Option<String>,
+    pub agent_hcom_name: Option<String>,
+    pub agent_suspended: bool,
+    pub agent_suspension_reason: Option<String>,
+}
+
+fn surface_summary_for_entry(
+    pane_id: u32,
+    pane_flag_color: Option<PaneFlagColor>,
+    entry: &TabEntry,
+    selected: bool,
+) -> SurfaceSummary {
+    let (kind, cwd, uri, agent) = match &entry.kind {
+        TabKind::Terminal { state } => (
+            "terminal".to_string(),
+            state.cwd.borrow().clone(),
+            None,
+            state.agent.as_ref(),
+        ),
+        TabKind::Browser { state } => (
+            "browser".to_string(),
+            None,
+            state.uri.borrow().clone(),
+            None,
+        ),
+        TabKind::Keybinds => ("keybinds".to_string(), None, None, None),
+    };
+    SurfaceSummary {
+        pane_id,
+        surface_id: composite_surface_id(pane_id, &entry.id),
+        pane_flag_color,
+        title: entry.title_label.label().to_string(),
+        kind,
+        selected,
+        cwd,
+        uri,
+        agent_kind: agent.map(|agent| agent.kind.name().to_string()),
+        agent_session_id: agent.map(|agent| agent.session_id.clone()),
+        agent_hcom_name: agent
+            .and_then(RestorableAgentState::hcom_name)
+            .map(str::to_string),
+        agent_suspended: agent.is_some_and(RestorableAgentState::is_suspended),
+        agent_suspension_reason: agent
+            .and_then(|agent| agent.suspension_reason)
+            .map(|reason| reason.name().to_string()),
+    }
 }
 
 fn pane_internals_for_root(root: &gtk::Widget) -> Vec<Rc<PaneInternals>> {
@@ -2093,25 +2148,12 @@ pub fn surface_summaries_for_root(root: &gtk::Widget) -> Vec<SurfaceSummary> {
                         .first()
                         .is_some_and(|first| first.id == entry.id)
                 });
-            let (kind, cwd, uri) = match &entry.kind {
-                TabKind::Terminal { state } => {
-                    ("terminal".to_string(), state.cwd.borrow().clone(), None)
-                }
-                TabKind::Browser { state } => {
-                    ("browser".to_string(), None, state.uri.borrow().clone())
-                }
-                TabKind::Keybinds => ("keybinds".to_string(), None, None),
-            };
-            surfaces.push(SurfaceSummary {
+            surfaces.push(surface_summary_for_entry(
                 pane_id,
-                surface_id: composite_surface_id(pane_id, &entry.id),
                 pane_flag_color,
-                title: entry.title_label.label().to_string(),
-                kind,
+                entry,
                 selected,
-                cwd,
-                uri,
-            });
+            ));
         }
     }
 
@@ -2133,22 +2175,17 @@ pub fn active_surface_summary(pane_widget: &gtk::Widget) -> Option<SurfaceSummar
         .clone()
         .or_else(|| tab_state.tabs.first().map(|entry| entry.id.clone()))?;
     let entry = tab_state.tabs.iter().find(|entry| entry.id == active_id)?;
-    let (kind, cwd, uri) = match &entry.kind {
-        TabKind::Terminal { state } => ("terminal".to_string(), state.cwd.borrow().clone(), None),
-        TabKind::Browser { state } => ("browser".to_string(), None, state.uri.borrow().clone()),
-        TabKind::Keybinds => ("keybinds".to_string(), None, None),
-    };
     let pane_flag_color = *internals.flag_color.borrow();
-    Some(SurfaceSummary {
+    Some(surface_summary_for_entry(
         pane_id,
-        surface_id: composite_surface_id(pane_id, &entry.id),
         pane_flag_color,
-        title: entry.title_label.label().to_string(),
-        kind,
-        selected: true,
-        cwd,
-        uri,
-    })
+        entry,
+        true,
+    ))
+}
+
+pub(crate) fn pane_id_for_widget(pane_widget: &gtk::Widget) -> Option<u32> {
+    find_pane_internals(pane_widget).map(|internals| internals.pane_id)
 }
 
 pub fn close_tab_in_pane(pane_widget: &gtk::Widget, tab_id: &str) -> Option<SurfaceSummary> {
@@ -2168,23 +2205,7 @@ pub fn close_tab_in_pane(pane_widget: &gtk::Widget, tab_id: &str) -> Option<Surf
                     .first()
                     .is_some_and(|first| first.id == entry.id)
             });
-        let (kind, cwd, uri) = match &entry.kind {
-            TabKind::Terminal { state } => {
-                ("terminal".to_string(), state.cwd.borrow().clone(), None)
-            }
-            TabKind::Browser { state } => ("browser".to_string(), None, state.uri.borrow().clone()),
-            TabKind::Keybinds => ("keybinds".to_string(), None, None),
-        };
-        SurfaceSummary {
-            pane_id,
-            surface_id: composite_surface_id(pane_id, &entry.id),
-            pane_flag_color,
-            title: entry.title_label.label().to_string(),
-            kind,
-            selected,
-            cwd,
-            uri,
-        }
+        surface_summary_for_entry(pane_id, pane_flag_color, entry, selected)
     };
 
     remove_tab(
