@@ -28,6 +28,11 @@ All notable Limux changes should be recorded here when a PR merges.
 - #71 gives command-launching `pane.create` requests a method-specific response
   deadline and returns conservative retry-safety metadata when the outcome may
   be ambiguous, preventing blind duplicate-pane retries.
+- #72 coalesces Ghostty renderer wakeups so sustained terminal output cannot
+  flood the GTK main loop and make terminal input unresponsive.
+- #72 avoids redundant GTK scrollbar adjustment updates that fought user
+  dragging and could leave the terminal pinned at the bottom during streamed
+  output.
 - Runtime lifecycle commits are serialized and written atomically so concurrent
   shutdown paths cannot corrupt recovery state.
 - Native window mapping is tracked when deciding renderer visibility, including

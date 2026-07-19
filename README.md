@@ -232,8 +232,8 @@ Repository maintainability rules live in [`docs/maintainability.md`](docs/mainta
 
 When validating user-local installs, also check
 [`docs/terminal-input-regression-20260701.md`](docs/terminal-input-regression-20260701.md).
-It records the June 2026 Ghostty resource packaging regression and the rule
-that `ghostty/src` must not be installed or resolved as runtime resources.
+It records the Ghostty resource packaging regression, the runtime-resource
+shape contract, and the streamed-output GTK responsiveness guardrails.
 
 Ghostty runtime resource packaging has its own regression check:
 
