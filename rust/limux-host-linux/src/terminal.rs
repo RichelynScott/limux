@@ -809,6 +809,21 @@ fn release_wakeup_idle_slot(flag: &AtomicBool) {
     flag.store(false, Ordering::Release);
 }
 
+const SCROLLBAR_ADJUSTMENT_EPSILON: f64 = 0.001;
+
+fn scrollbar_adjustment_needs_update(
+    current_value: f64,
+    current_upper: f64,
+    current_page_size: f64,
+    value: f64,
+    upper: f64,
+    page_size: f64,
+) -> bool {
+    (current_value - value).abs() > SCROLLBAR_ADJUSTMENT_EPSILON
+        || (current_upper - upper).abs() > SCROLLBAR_ADJUSTMENT_EPSILON
+        || (current_page_size - page_size).abs() > SCROLLBAR_ADJUSTMENT_EPSILON
+}
+
 unsafe extern "C" fn ghostty_wakeup_cb(_userdata: *mut c_void) {
     // Collapse renderer wakeups to a single pending idle source so text floods
     // do not enqueue unbounded GTK callbacks on the main thread.
@@ -836,16 +851,25 @@ unsafe extern "C" fn ghostty_action_cb(
                 let scrollbar = unsafe { action.action.scrollbar };
                 SURFACE_MAP.with(|map| {
                     if let Some(entry) = map.borrow().get(&surface_key) {
-                        entry.scrollbar_syncing.set(true);
-                        entry.scrollbar_adjustment.configure(
-                            scrollbar.offset as f64,
-                            0.0,
-                            scrollbar.total as f64,
-                            1.0,
-                            scrollbar.len as f64,
-                            scrollbar.len as f64,
-                        );
-                        entry.scrollbar_syncing.set(false);
+                        let value = scrollbar.offset as f64;
+                        let upper = scrollbar.total as f64;
+                        let page_size = scrollbar.len as f64;
+                        let adjustment = &entry.scrollbar_adjustment;
+                        // Ghostty may emit identical state every renderer tick.
+                        // Reconfiguring GTK while the user drags re-emits
+                        // `value-changed` and fights the input path.
+                        if scrollbar_adjustment_needs_update(
+                            adjustment.value(),
+                            adjustment.upper(),
+                            adjustment.page_size(),
+                            value,
+                            upper,
+                            page_size,
+                        ) {
+                            entry.scrollbar_syncing.set(true);
+                            adjustment.configure(value, 0.0, upper, 1.0, page_size, page_size);
+                            entry.scrollbar_syncing.set(false);
+                        }
                         entry.scrollbar.set_visible(
                             CURRENT_SCROLLBAR_ENABLED.load(Ordering::Relaxed)
                                 && scrollbar.total > scrollbar.len,
@@ -3297,5 +3321,28 @@ mod tests {
         release_wakeup_idle_slot(&flag);
 
         assert!(claim_wakeup_idle_slot(&flag));
+    }
+
+    #[test]
+    fn scrollbar_adjustment_skips_redundant_updates() {
+        assert!(!scrollbar_adjustment_needs_update(
+            12.0, 120.0, 24.0, 12.0, 120.0, 24.0,
+        ));
+        assert!(!scrollbar_adjustment_needs_update(
+            12.0005, 120.0005, 24.0005, 12.0, 120.0, 24.0,
+        ));
+    }
+
+    #[test]
+    fn scrollbar_adjustment_detects_changed_scroll_state() {
+        assert!(scrollbar_adjustment_needs_update(
+            13.0, 120.0, 24.0, 12.0, 120.0, 24.0,
+        ));
+        assert!(scrollbar_adjustment_needs_update(
+            12.0, 121.0, 24.0, 12.0, 120.0, 24.0,
+        ));
+        assert!(scrollbar_adjustment_needs_update(
+            12.0, 120.0, 25.0, 12.0, 120.0, 24.0,
+        ));
     }
 }
