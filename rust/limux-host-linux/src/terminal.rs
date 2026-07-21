@@ -3570,6 +3570,70 @@ mod tests {
     }
 
     #[test]
+    fn interactive_resize_coalesces_same_grid_pixel_churn() {
+        assert!(!surface_resize_should_apply_during_interaction(
+            80,
+            24,
+            800,
+            480,
+            10,
+            20,
+            SurfaceResizeSnapshot {
+                width_px: 805,
+                height_px: 485,
+                scale_factor: 1,
+            },
+        ));
+    }
+
+    #[test]
+    fn interactive_resize_applies_possible_grid_changes() {
+        assert!(surface_resize_should_apply_during_interaction(
+            80,
+            24,
+            805,
+            485,
+            10,
+            20,
+            SurfaceResizeSnapshot {
+                width_px: 810,
+                height_px: 485,
+                scale_factor: 1,
+            },
+        ));
+        assert!(surface_resize_should_apply_during_interaction(
+            80,
+            24,
+            805,
+            485,
+            10,
+            20,
+            SurfaceResizeSnapshot {
+                width_px: 804,
+                height_px: 485,
+                scale_factor: 1,
+            },
+        ));
+    }
+
+    #[test]
+    fn interactive_resize_fails_open_without_grid_metrics() {
+        assert!(surface_resize_should_apply_during_interaction(
+            0,
+            0,
+            800,
+            480,
+            0,
+            0,
+            SurfaceResizeSnapshot {
+                width_px: 805,
+                height_px: 485,
+                scale_factor: 1,
+            },
+        ));
+    }
+
+    #[test]
     fn open_url_action_uses_explicit_byte_len() {
         let url = b"https://example.com/path?x=1";
         let action = ghostty_action_open_url_s {

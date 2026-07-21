@@ -608,10 +608,11 @@
         "description": "Operator-reported HIGH-priority UX defect (2026-07-19): terminal/session text word-wrapping behaves erratically when a pane/surface width changes (split, resize, workspace layout change). Extremely aggravating in daily use. Investigate the reflow path on width/column change in the Ghostty surface + GTK pane resize handling (rust/limux-host-linux/src/window.rs, pane.rs, terminal.rs). Repro: change a pane width and observe mis-wrapped/stale-column output. Deliver a root-cause + fix + regression test. No existing task covered this specifically.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "high",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-07-21T10:35:14.976Z"
       },
       {
         "id": 30,
@@ -628,7 +629,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-21T10:23:21.536Z",
+      "lastModified": "2026-07-21T10:35:14.976Z",
       "taskCount": 30,
       "completedCount": 15,
       "tags": [
