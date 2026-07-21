@@ -12,8 +12,8 @@ runtime and preview/test runtimes side by side.
 
 | Channel | Selector | Purpose |
 |---|---|---|
-| Legacy default | no channel | Preserves existing behavior for current installs and scripts. |
-| Stable | `stable` | Named daily-driver runtime. |
+| Legacy rollback | no channel | Preserves the original socket/state behavior behind explicit rollback launchers. |
+| Stable | `stable` | Named daily-driver runtime and target of the plain installed aliases. |
 | Preview | `preview[:id]` | Isolated test runtime. `id` must be ASCII alphanumeric, `_`, or `-`. |
 
 `preview` without an id resolves to `preview:default`.
@@ -70,8 +70,9 @@ With `LIMUX_CHANNEL` set and no explicit `LIMUX_SESSION_DIR`:
 ## Host Launch
 
 `limux --channel <channel>` with no subcommand launches the host with
-`LIMUX_CHANNEL=<channel>` in its environment. Existing `limux` with no channel
-continues to launch the legacy default runtime.
+`LIMUX_CHANNEL=<channel>` in its environment. A raw CLI invocation with no
+channel still resolves the legacy socket contract, but the installed plain
+`limux` wrapper passes `--channel stable` after stable promotion.
 
 ## User-Local Install Wrappers
 
@@ -80,15 +81,17 @@ channel-specific install roots and launchers:
 
 | Install channel | Install root shape | User launchers |
 |---|---|---|
-| `legacy` | `$prefix/limux-reviewed/<install-id>` | `limux`, `limux-cli` |
-| `stable` | `$prefix/limux-reviewed/stable/<install-id>` | `limux-stable`, `limux-stable-cli` |
+| `legacy` | `$prefix/limux-reviewed/<install-id>` | `limux-legacy`, `limux-legacy-cli` |
+| `stable` | `$prefix/limux-reviewed/stable/<install-id>` | `limux-stable`, `limux-stable-cli`, plus promoted `limux`, `limux-cli` aliases |
 | `preview` | `$prefix/limux-reviewed/preview/default/<install-id>` | `limux-preview`, `limux-preview-cli` |
 | `preview:<id>` | `$prefix/limux-reviewed/preview/<id>/<install-id>` | `limux-preview-<id>`, `limux-preview-<id>-cli` |
 
 Preview and stable wrappers invoke `limux-cli --channel <channel>` and export
 `LIMUX_CHANNEL=<channel>`. The explicit CLI flag is intentional: it prevents a
 preview wrapper launched from inside a stable pane from honoring that pane's
-inherited `LIMUX_SOCKET`.
+inherited `LIMUX_SOCKET`. Stable installation also archives and replaces the
+plain aliases. A later legacy installation updates only the explicit rollback
+aliases, so it cannot silently downgrade the daily driver.
 
 Desktop entries are also channel-specific when requested, for example
 `dev.limux.linux.preview.desktop` with display name `Limux Preview`. Existing

@@ -19,7 +19,8 @@ Options:
   --prefix <path>          User prefix (default: ~/.local)
   --install-id <id>        Install id under limux-reviewed (default: git sha)
   --channel <channel>      Install launcher lane: legacy, stable, preview, preview:<id>
-                           (default: legacy)
+                           (default: legacy). Stable also promotes the plain
+                           limux/limux-cli aliases; legacy remains explicit.
   --desktop-entry          Install a user desktop entry under ~/.local/share/applications
   --no-desktop-entry       Do not install a desktop entry (default)
   --ghostty-share <path>   Ghostty runtime share dir containing shell-integration
@@ -213,9 +214,14 @@ cli_launcher_name="limux-cli"
 desktop_file_name="dev.limux.linux.desktop"
 desktop_display_name="Limux"
 wrapper_cli_args=()
+promote_default_aliases="false"
 
 case "$runtime_channel" in
     legacy)
+        launcher_name="limux-legacy"
+        cli_launcher_name="limux-legacy-cli"
+        desktop_file_name="dev.limux.linux.legacy.desktop"
+        desktop_display_name="Limux Legacy"
         ;;
     stable)
         install_subdir="stable/${install_id}"
@@ -224,6 +230,7 @@ case "$runtime_channel" in
         desktop_file_name="dev.limux.linux.stable.desktop"
         desktop_display_name="Limux Stable"
         wrapper_cli_args=("--channel" "stable")
+        promote_default_aliases="true"
         ;;
     preview:*)
         channel_kind="preview"
@@ -567,6 +574,10 @@ fi
 run mkdir -p "$bin_link_dir"
 install_symlink "${install_root}/bin/${launcher_name}" "${bin_link_dir}/${launcher_name}"
 install_symlink "${install_root}/bin/${cli_launcher_name}" "${bin_link_dir}/${cli_launcher_name}"
+if [[ "$promote_default_aliases" == "true" ]]; then
+    install_symlink "${install_root}/bin/${launcher_name}" "${bin_link_dir}/limux"
+    install_symlink "${install_root}/bin/${cli_launcher_name}" "${bin_link_dir}/limux-cli"
+fi
 
 if [[ "$desktop_entry" == "true" ]]; then
     run mkdir -p "$app_dir"
@@ -616,6 +627,7 @@ Profile: ${profile}
 Desktop entry: ${desktop_entry}
 Launcher: ${bin_link_dir}/${launcher_name}
 CLI launcher: ${bin_link_dir}/${cli_launcher_name}
+Default aliases promoted: ${promote_default_aliases}
 
 ## Source Artifacts
 
@@ -631,6 +643,11 @@ CLI launcher: ${bin_link_dir}/${cli_launcher_name}
 
 - ${bin_link_dir}/${launcher_name} -> ${install_root}/bin/${launcher_name}
 - ${bin_link_dir}/${cli_launcher_name} -> ${install_root}/bin/${cli_launcher_name}
+$(if [[ "$promote_default_aliases" == "true" ]]; then
+    printf '%s\n' \
+        "- ${bin_link_dir}/limux -> ${install_root}/bin/${launcher_name}" \
+        "- ${bin_link_dir}/limux-cli -> ${install_root}/bin/${cli_launcher_name}"
+fi)
 
 ## Archive Directory For Replaced Links
 

@@ -46,15 +46,23 @@ printf 'runtime-isolation-smoke: installing stable lane into %s\n' "$prefix"
 printf 'runtime-isolation-smoke: installing preview lane into %s\n' "$prefix"
 "$installer" --apply --profile "$profile" --prefix "$prefix" --install-id preview-smoke --channel preview --no-desktop-entry >/dev/null
 
-for launcher in limux limux-cli limux-stable limux-stable-cli limux-preview limux-preview-cli; do
+for launcher in \
+    limux limux-cli \
+    limux-legacy limux-legacy-cli \
+    limux-stable limux-stable-cli \
+    limux-preview limux-preview-cli
+do
     [[ -L "${prefix}/bin/${launcher}" ]] || fail "missing launcher symlink: ${prefix}/bin/${launcher}"
 done
 
-legacy_target="$(readlink "${prefix}/bin/limux")"
+default_target="$(readlink "${prefix}/bin/limux")"
+legacy_target="$(readlink "${prefix}/bin/limux-legacy")"
 stable_target="$(readlink "${prefix}/bin/limux-stable")"
 preview_target="$(readlink "${prefix}/bin/limux-preview")"
 
-[[ "$legacy_target" == *"/limux-reviewed/legacy-smoke/bin/limux" ]] \
+[[ "$default_target" == *"/limux-reviewed/stable/stable-smoke/bin/limux-stable" ]] \
+    || fail "default launcher target is not latest stable install: ${default_target}"
+[[ "$legacy_target" == *"/limux-reviewed/legacy-smoke/bin/limux-legacy" ]] \
     || fail "legacy launcher target is not legacy install: ${legacy_target}"
 [[ "$stable_target" == *"/limux-reviewed/stable/stable-smoke/bin/limux-stable" ]] \
     || fail "stable launcher target is not stable install: ${stable_target}"
@@ -74,7 +82,13 @@ grep -q '"channel": "stable"' "$stable_install_info" \
 grep -q '"channel": "preview:default"' "$preview_install_info" \
     || fail "preview install-info channel mismatch"
 
-legacy_version="$("${prefix}/bin/limux" --version)"
+default_version="$("${prefix}/bin/limux" --version)"
+[[ "$default_version" == *"install-id=stable-smoke"* ]] \
+    || fail "default --version missing stable install id: ${default_version}"
+[[ "$default_version" == *"channel=stable"* ]] \
+    || fail "default --version missing stable channel: ${default_version}"
+
+legacy_version="$("${prefix}/bin/limux-legacy" --version)"
 [[ "$legacy_version" == *"install-id=legacy-smoke"* ]] \
     || fail "legacy --version missing install id: ${legacy_version}"
 [[ "$legacy_version" == *"channel=legacy"* ]] \
@@ -82,7 +96,8 @@ legacy_version="$("${prefix}/bin/limux" --version)"
 
 preview_info="$(LIMUX_SOCKET="$inherited_socket" "${prefix}/bin/limux-preview" target-info)"
 stable_info="$("${prefix}/bin/limux-stable" target-info)"
-legacy_info="$("${prefix}/bin/limux" target-info)"
+default_info="$("${prefix}/bin/limux" target-info)"
+legacy_info="$("${prefix}/bin/limux-legacy" target-info)"
 
 [[ "$preview_info" == *"explicit_channel=preview:default"* ]] \
     || fail "preview target-info did not report preview channel: ${preview_info}"
@@ -95,8 +110,20 @@ legacy_info="$("${prefix}/bin/limux" target-info)"
 
 [[ "$stable_info" == *"explicit_channel=stable"* ]] \
     || fail "stable target-info did not report stable channel: ${stable_info}"
+[[ "$default_info" == *"explicit_channel=stable"* ]] \
+    || fail "default target-info did not report stable channel: ${default_info}"
 [[ "$legacy_info" == *"explicit_channel=none"* ]] \
     || fail "legacy target-info should not report explicit channel: ${legacy_info}"
+
+printf 'runtime-isolation-smoke: reinstalling legacy rollback lane\n'
+"$installer" --apply --profile "$profile" --prefix "$prefix" --install-id legacy-second-smoke --channel legacy --no-desktop-entry >/dev/null
+
+default_target_after_legacy="$(readlink "${prefix}/bin/limux")"
+legacy_target_after_legacy="$(readlink "${prefix}/bin/limux-legacy")"
+[[ "$default_target_after_legacy" == "$default_target" ]] \
+    || fail "legacy reinstall replaced stable default: ${default_target_after_legacy}"
+[[ "$legacy_target_after_legacy" == *"/limux-reviewed/legacy-second-smoke/bin/limux-legacy" ]] \
+    || fail "legacy rollback launcher did not advance: ${legacy_target_after_legacy}"
 
 printf 'runtime-isolation-smoke: PASS\n'
 printf 'runtime-isolation-smoke: retained prefix %s\n' "$prefix"

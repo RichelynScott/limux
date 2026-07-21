@@ -26,7 +26,7 @@ Use these repo sources for Limux command and workflow behavior:
   status, verification notes.
 - `skills/limux-use-guide/` - staged global-skill candidate.
 - `docs/cmux-parity-plan.md` - upstream cmux parity policy and idea feed.
-- `docs/verification/post-install-checklist-v1.md` - operator smoke checklist.
+- `docs/verification/post-install-checklist-v2.md` - current operator smoke checklist.
 - `docs/verification/run-template.md` - verification run record template.
 - `docs/verification/wave1-morning-summary-20260707.md` - merged Wave 1 status.
 - `docs/future-improvements/limux-runtime-channel-contract-20260702.md` -
