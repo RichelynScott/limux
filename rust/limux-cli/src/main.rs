@@ -19,6 +19,7 @@ use tokio::net::UnixStream;
 
 mod agent_hooks;
 mod doctor;
+mod doctor_log;
 
 const CLI_STATE_LOCK_TIMEOUT: Duration = Duration::from_secs(2);
 const CLI_STATE_LOCK_RETRY: Duration = Duration::from_millis(25);
