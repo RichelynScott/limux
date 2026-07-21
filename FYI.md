@@ -2016,3 +2016,27 @@ Current work now has PR-backed public sources and a no-loss cleanup path. The
 remaining explicit-targeting source patch is isolated for a separate current-
 main port, and runtime installation remains held for an explicit restart
 window.
+
+## 2026-07-21 - Stable Becomes The Default Installed Launcher
+### What:
+Changed the user-local channel contract so a verified stable install owns the
+plain `limux` / `limux-cli` aliases, while legacy remains available through
+explicit `limux-legacy` / `limux-legacy-cli` rollback launchers.
+
+### Why:
+The operator's running stable host was v0.2.3, but plain `limux` still resolved
+to legacy v0.2.2. That mismatch made normal launches and diagnostics target a
+different runtime than the daily driver.
+
+### How:
+PR #79 updates the installer, adds a fail-closed doctor congruence check,
+extends the runtime-isolation smoke to prove a later legacy reinstall cannot
+replace stable defaults, creates post-install checklist v2, and updates the
+runtime channel documentation. The live aliases were repaired without
+restarting the active stable host.
+
+### Impact:
+Plain `limux` now consistently means the promoted stable daily driver, while
+rollback remains explicit and independently addressable. Merge and a
+source-based promotion from merged `main` remain required before TaskMaster
+master task 30 can be marked done.

@@ -2,6 +2,42 @@
 
 Author/runtime/date: lifo / Codex gpt-5.5 (xhigh) / 2026-06-29 09:15 EDT.
 
+## 2026-07-21 Stable-Default Launcher And Hcom Recovery Wedge
+
+- Active branch: `lifo/default-stable-launcher-20260721`.
+- Implementation commit: `de444b42b427bf3930c111ae053338728276d157`.
+- Open PR: <https://github.com/RichelynScott/limux/pull/79>.
+- Stable installs now promote the plain `limux` / `limux-cli` aliases;
+  legacy installs update only explicit `limux-legacy` / `limux-legacy-cli`
+  rollback aliases. `limux doctor` fails when default launchers drift from the
+  named stable install.
+- Verification is green: focused doctor tests passed 8/8, release runtime
+  isolation smoke passed, `./scripts/check.sh` exited 0, and `git diff
+  --check` passed.
+- The live operator aliases were corrected without restarting the stable host:
+  plain `limux` identifies stable v0.2.3 at source `1a26bda0`; `limux-legacy`
+  retains v0.2.2 at source `1005f58d`; plain `limux doctor --json` reports
+  `ok=true` with CLI/host congruence.
+- TaskMaster master task 30 is `in-progress` pending PR merge and source-based
+  promotion. Master task 29 tracks terminal reflow corruption. Resource-crash
+  tasks 2 and 3 are `review`; their PRs #67 and #68 remain open/conflicting and
+  need clean current-main replacement branches.
+- PR #58 remains open/conflicting. Its current-main TaskMaster additions were
+  recreated through reviewed CLI in PR #79; close #58 as superseded after PR
+  #79 is safely established.
+- Ctrl+C selection-copy and pane-create timeout fixes shipped in v0.2.3 with
+  automated coverage, but no durable human live selection/no-selection smoke
+  record was found. Do not claim that manual smoke complete.
+- Current hcom delivery is degraded by recovery transaction
+  `a35d2f40-dc23-4745-bfe7-d255420107a8`, expired but stuck in `launching`.
+  The live Codex process remains visible, while authenticated `lifo` list/send
+  commands fail with ambiguous control authority. Exact evidence is owner-routed
+  at `/home/riche/MCPs/hcom/HCOM_MGR_INBOX/DEFECT_FROM_lifo_20260721_expired-recovery-blocks-live-binding.md`.
+- Immediate next action: request exact-head Codex bot review on PR #79 through
+  the temporary gh fallback watcher, address findings, merge only after the
+  review gate, then install/promote from merged main. Keep #67/#68 remediation
+  separate and preserve the peer-owned Reve incident file.
+
 ## 2026-07-13 Reconciliation And PR State
 
 - Active branch: `lifo/restart-checkpoint-20260711`; Option A planning commit
