@@ -12,7 +12,18 @@ use std::ptr;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+/// How long after a user-driven scroll we refuse to overwrite the adjustment's
+/// `value` from a renderer update. Streaming output grows `total` every tick;
+/// without this the reconfigure fights an in-progress drag and the viewport
+/// snaps away from where the user put it.
+const SCROLLBAR_USER_INTERACTION_GRACE: Duration = Duration::from_millis(300);
+
+/// How long the scrollbar stays visible after `total` collapses to `len`.
+/// A scrollback wipe (`ESC[3J`) collapses `total` to the screen height; hiding
+/// instantly makes the scrollbar flash out and back in on the replay.
+const SCROLLBAR_HIDE_GRACE: Duration = Duration::from_millis(400);
 
 use limux_ghostty_sys::*;
 
@@ -74,6 +85,15 @@ struct SurfaceEntry {
     scrollbar: gtk::Scrollbar,
     scrollbar_adjustment: gtk::Adjustment,
     scrollbar_syncing: Rc<Cell<bool>>,
+    /// When the user last moved the scrollbar themselves (drag/wheel), as
+    /// opposed to a program-driven `configure()`. Used to avoid yanking the
+    /// viewport out from under an in-progress interaction while `total` grows
+    /// during streaming output.
+    scrollbar_user_active_at: Rc<Cell<Option<Instant>>>,
+    /// When the scrollbar last had something to scroll (`total > len`). Used to
+    /// debounce hiding, so a transient scrollback wipe (e.g. `ESC[3J`) does not
+    /// flash the scrollbar out and back in.
+    scrollbar_nonempty_at: Rc<Cell<Option<Instant>>>,
     on_title_changed: Option<Box<TitleChangedCallback>>,
     on_pwd_changed: Option<Box<PwdChangedCallback>>,
     on_desktop_notification: Option<Box<DesktopNotificationCallback>>,
@@ -1099,6 +1119,31 @@ fn scrollbar_adjustment_needs_update(
         || (current_page_size - page_size).abs() > SCROLLBAR_ADJUSTMENT_EPSILON
 }
 
+/// True when a deferred hide should now be applied: the scrollbar has had
+/// nothing to scroll for longer than the grace window.
+fn scrollbar_hide_grace_expired(nonempty_at: Option<Instant>, now: Instant) -> bool {
+    match nonempty_at {
+        Some(at) => now.duration_since(at) >= SCROLLBAR_HIDE_GRACE,
+        None => true,
+    }
+}
+
+/// Re-evaluate a deferred scrollbar hide once the grace window has passed, so a
+/// genuinely-empty scrollback still hides rather than leaving a dead scrollbar.
+///
+/// Re-entrant by design: the check is idempotent, so overlapping timeouts during
+/// a transient are harmless.
+fn schedule_scrollbar_hide_recheck(
+    scrollbar: gtk::Scrollbar,
+    nonempty_at: Rc<Cell<Option<Instant>>>,
+) {
+    glib::timeout_add_local_once(SCROLLBAR_HIDE_GRACE, move || {
+        if scrollbar_hide_grace_expired(nonempty_at.get(), Instant::now()) {
+            scrollbar.set_visible(false);
+        }
+    });
+}
+
 unsafe extern "C" fn ghostty_wakeup_cb(_userdata: *mut c_void) {
     // Collapse renderer wakeups to a single pending idle source so text floods
     // do not enqueue unbounded GTK callbacks on the main thread.
@@ -1141,14 +1186,61 @@ unsafe extern "C" fn ghostty_action_cb(
                             upper,
                             page_size,
                         ) {
+                            // Suppressing identical states is not enough on its
+                            // own: during streaming `total` grows every tick, so
+                            // the reconfigure still fires and drags the viewport
+                            // back to the emitted offset. While the user is
+                            // actively scrolling, take the new bounds but keep
+                            // the position they chose.
+                            let user_active = entry
+                                .scrollbar_user_active_at
+                                .get()
+                                .is_some_and(|at| at.elapsed() < SCROLLBAR_USER_INTERACTION_GRACE);
+                            let applied_value = if user_active {
+                                adjustment.value().clamp(0.0, (upper - page_size).max(0.0))
+                            } else {
+                                value
+                            };
                             entry.scrollbar_syncing.set(true);
-                            adjustment.configure(value, 0.0, upper, 1.0, page_size, page_size);
+                            adjustment.configure(
+                                applied_value,
+                                0.0,
+                                upper,
+                                1.0,
+                                page_size,
+                                page_size,
+                            );
                             entry.scrollbar_syncing.set(false);
                         }
-                        entry.scrollbar.set_visible(
-                            CURRENT_SCROLLBAR_ENABLED.load(Ordering::Relaxed)
-                                && scrollbar.total > scrollbar.len,
-                        );
+
+                        // Show immediately, hide on a delay. A scrollback wipe
+                        // collapses `total` to `len`; hiding instantly flashes
+                        // the scrollbar out and back in during the replay, and
+                        // destroys any scrolled-up position the user had.
+                        let enabled = CURRENT_SCROLLBAR_ENABLED.load(Ordering::Relaxed);
+                        let has_scrollback = scrollbar.total > scrollbar.len;
+                        if enabled && has_scrollback {
+                            entry.scrollbar_nonempty_at.set(Some(Instant::now()));
+                            entry.scrollbar.set_visible(true);
+                        } else if !enabled {
+                            entry.scrollbar.set_visible(false);
+                        } else {
+                            let recently_nonempty = entry
+                                .scrollbar_nonempty_at
+                                .get()
+                                .is_some_and(|at| at.elapsed() < SCROLLBAR_HIDE_GRACE);
+                            if recently_nonempty {
+                                // Keep it visible through the transient, and
+                                // schedule the authoritative re-check so a
+                                // genuinely empty scrollback still hides.
+                                schedule_scrollbar_hide_recheck(
+                                    entry.scrollbar.clone(),
+                                    entry.scrollbar_nonempty_at.clone(),
+                                );
+                            } else {
+                                entry.scrollbar.set_visible(false);
+                            }
+                        }
                     }
                 });
             }
@@ -1721,6 +1813,8 @@ pub fn create_terminal(
     let resize_coalescer = Rc::new(SurfaceResizeCoalescer::default());
     let had_focus = Rc::new(Cell::new(false));
     let scrollbar_syncing = Rc::new(Cell::new(false));
+    let scrollbar_user_active_at: Rc<Cell<Option<Instant>>> = Rc::new(Cell::new(None));
+    let scrollbar_nonempty_at: Rc<Cell<Option<Instant>>> = Rc::new(Cell::new(None));
     let open_url_external = Rc::new(Cell::new(false));
     let clipboard_context_cell: Rc<Cell<*mut ClipboardContext>> =
         Rc::new(Cell::new(ptr::null_mut()));
@@ -1853,10 +1947,16 @@ pub fn create_terminal(
     {
         let surface_cell = surface_cell.clone();
         let scrollbar_syncing = scrollbar_syncing.clone();
+        let scrollbar_user_active_at_for_value = scrollbar_user_active_at.clone();
         scrollbar_adjustment.connect_value_changed(move |adj| {
             if scrollbar_syncing.get() {
                 return;
             }
+
+            // Reaching here means the change came from the user (drag/wheel/keys),
+            // not from a renderer-driven `configure()`. Record it so streaming
+            // output does not reconfigure the position out from under them.
+            scrollbar_user_active_at_for_value.set(Some(Instant::now()));
 
             let row = adj.value().round() as usize;
             surface_action(*surface_cell.borrow(), &format!("scroll_to_row:{row}"));
@@ -1869,6 +1969,8 @@ pub fn create_terminal(
         let overlay_for_map = overlay.clone();
         let scrollbar_for_map = scrollbar.clone();
         let scrollbar_adjustment_for_map = scrollbar_adjustment.clone();
+        let scrollbar_user_active_at_for_map = scrollbar_user_active_at.clone();
+        let scrollbar_nonempty_at_for_map = scrollbar_nonempty_at.clone();
         let surface_cell = surface_cell.clone();
         let callbacks = callbacks.clone();
         let had_focus = had_focus.clone();
@@ -1998,6 +2100,8 @@ pub fn create_terminal(
                         scrollbar: scrollbar_for_map.clone(),
                         scrollbar_adjustment: scrollbar_adjustment_for_map.clone(),
                         scrollbar_syncing: scrollbar_syncing.clone(),
+                        scrollbar_user_active_at: scrollbar_user_active_at_for_map.clone(),
+                        scrollbar_nonempty_at: scrollbar_nonempty_at_for_map.clone(),
                         on_title_changed: Some(Box::new({
                             let cb = callbacks.clone();
                             move |title| {
@@ -3875,6 +3979,33 @@ mod tests {
         assert!(!scrollbar_adjustment_needs_update(
             12.0005, 120.0005, 24.0005, 12.0, 120.0, 24.0,
         ));
+    }
+
+    #[test]
+    fn scrollbar_hide_is_deferred_through_a_transient_scrollback_wipe() {
+        // ESC[3J collapses `total` to the screen height. Hiding the instant
+        // total<=len flashes the scrollbar out and back in during the replay,
+        // so a hide inside the grace window must be deferred.
+        let now = Instant::now();
+        let just_had_scrollback = now.checked_sub(Duration::from_millis(50)).unwrap();
+        assert!(
+            !scrollbar_hide_grace_expired(Some(just_had_scrollback), now),
+            "a scrollbar that had content 50ms ago must not hide yet"
+        );
+    }
+
+    #[test]
+    fn scrollbar_hide_applies_once_the_grace_window_passes() {
+        let now = Instant::now();
+        let long_empty = now.checked_sub(SCROLLBAR_HIDE_GRACE * 2).unwrap();
+        assert!(
+            scrollbar_hide_grace_expired(Some(long_empty), now),
+            "a genuinely empty scrollback must still hide after the grace window"
+        );
+        assert!(
+            scrollbar_hide_grace_expired(None, now),
+            "a scrollbar that never had content hides immediately"
+        );
     }
 
     #[test]
