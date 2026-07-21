@@ -114,7 +114,7 @@ bash scripts/tests/validate-ghostty-resources.sh
 ```
 
 Before promoting a preview runtime to the daily-driver lane, complete the
-verification workflow in `docs/verification/post-install-checklist-v1.md` and
+verification workflow in `docs/verification/post-install-checklist-v2.md` and
 record the run with `docs/verification/run-template.md`.
 
 ## Runtime Control Path
@@ -143,8 +143,10 @@ open work until the PRD-E task is closed.
 `scripts/user-local-install/install-user-local.sh` supports isolated user-local
 runtime lanes:
 
-- `--channel legacy` writes the traditional `limux` / `limux-cli` launchers.
-- `--channel stable` writes `limux-stable` / `limux-stable-cli`.
+- `--channel legacy` writes explicit rollback launchers `limux-legacy` /
+  `limux-legacy-cli` and does not replace the daily-driver aliases.
+- `--channel stable` writes `limux-stable` / `limux-stable-cli` and promotes
+  the plain `limux` / `limux-cli` aliases to that same verified install.
 - `--channel preview` writes `limux-preview` / `limux-preview-cli`.
 - `--channel preview:<id>` writes `limux-preview-<id>` /
   `limux-preview-<id>-cli`.

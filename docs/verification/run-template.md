@@ -9,8 +9,8 @@ clearly dated correction note.
 | Field | Value |
 |---|---|
 | Run file | `docs/verification/runs/<YYYYMMDD>-<install-id>.md` |
-| Checklist version | `v1` |
-| Checklist git SHA | `<git rev-parse HEAD:docs/verification/post-install-checklist-v1.md>` |
+| Checklist version | `v2` |
+| Checklist git SHA | `<git rev-parse HEAD:docs/verification/post-install-checklist-v2.md>` |
 | Source SHA under test | `<git rev-parse HEAD>` |
 | Install id | `<install-id>` |
 | Channel | `preview:default` / `stable` |
@@ -81,13 +81,17 @@ If promoted, record:
 
 ```bash
 scripts/user-local-install/install-user-local.sh --apply --profile release --channel stable --install-id <verified-sha-id>
-~/.local/bin/limux-stable --version
+~/.local/bin/limux --version
+~/.local/bin/limux doctor --json
+~/.local/bin/limux-legacy --version
 ```
 
 Stable relaunch confirmation:
 
 - Operator closed preview or left it isolated.
-- Operator launched `~/.local/bin/limux-stable` or `Limux Stable`.
-- `limux-stable --version` matches the verified source SHA and install id.
+- Operator launched `~/.local/bin/limux` or `Limux Stable`.
+- `limux --version` and `limux doctor --json` match the verified stable source
+  SHA and install id.
+- `limux-legacy --version` still identifies the explicit rollback lane.
 
 If blocked, record the blocking item numbers, evidence paths, and task IDs.

@@ -315,6 +315,39 @@ fn known_install_roots(launchers: &[LauncherInfo]) -> Vec<PathBuf> {
     roots
 }
 
+fn launcher_channel(launcher: &LauncherInfo) -> Option<&str> {
+    launcher
+        .install_info
+        .as_ref()
+        .and_then(|info| info.channel.as_deref())
+        .or(launcher.channel.as_deref())
+}
+
+fn default_launcher_drift(launchers: &[LauncherInfo]) -> Vec<String> {
+    let mut drift = Vec::new();
+    for (default_name, stable_name) in
+        [("limux", "limux-stable"), ("limux-cli", "limux-stable-cli")]
+    {
+        let Some(stable) = launchers.iter().find(|item| item.name == stable_name) else {
+            continue;
+        };
+        let Some(default) = launchers.iter().find(|item| item.name == default_name) else {
+            drift.push(format!(
+                "{default_name} is missing while {stable_name} is installed"
+            ));
+            continue;
+        };
+        if default.install_root != stable.install_root
+            || launcher_channel(default) != Some("stable")
+        {
+            drift.push(format!(
+                "{default_name} does not target the installed stable launcher {stable_name}"
+            ));
+        }
+    }
+    drift
+}
+
 fn check_launchers(prefix: &Path, launchers: &[LauncherInfo]) -> Check {
     if launchers.is_empty() {
         return Check::new(
@@ -340,17 +373,20 @@ fn check_launchers(prefix: &Path, launchers: &[LauncherInfo]) -> Check {
         .iter()
         .filter(|launcher| launcher.install_root.is_none())
         .count();
-    let status = if malformed > 0 || broken_targets > 0 || missing_roots > 0 {
+    let default_drift = default_launcher_drift(launchers);
+    let status = if !default_drift.is_empty() {
+        CheckStatus::Fail
+    } else if malformed > 0 || broken_targets > 0 || missing_roots > 0 {
         CheckStatus::Warn
     } else {
         CheckStatus::Ok
     };
-    Check::new(
-        "launchers",
-        status,
-        format!("found {} limux launcher symlink(s)", launchers.len()),
-    )
-    .with_data(launchers_json(launchers))
+    let message = if default_drift.is_empty() {
+        format!("found {} limux launcher symlink(s)", launchers.len())
+    } else {
+        format!("default launcher drift: {}", default_drift.join("; "))
+    };
+    Check::new("launchers", status, message).with_data(launchers_json(launchers))
 }
 
 fn launchers_json(launchers: &[LauncherInfo]) -> Value {
@@ -790,6 +826,19 @@ fn render_text_report(payload: &Value) -> String {
 mod tests {
     use super::*;
 
+    fn launcher(name: &str, install_root: &str, channel: &str) -> LauncherInfo {
+        LauncherInfo {
+            name: name.to_string(),
+            link_path: PathBuf::from(format!("/prefix/bin/{name}")),
+            target_path: PathBuf::from(format!("{install_root}/bin/{name}")),
+            target_error: None,
+            install_root: Some(PathBuf::from(install_root)),
+            channel: Some(channel.to_string()),
+            install_info: None,
+            install_info_error: None,
+        }
+    }
+
     #[test]
     fn classify_real_log_fixtures() {
         assert_eq!(
@@ -832,6 +881,38 @@ exec "${INSTALL_ROOT}/libexec/limux-cli" "$@"
             parse_wrapper_channel(wrapper).as_deref(),
             Some("preview:test")
         );
+    }
+
+    #[test]
+    fn launcher_check_fails_when_default_does_not_match_stable() {
+        let launchers = vec![
+            launcher("limux", "/prefix/limux-reviewed/legacy", "legacy"),
+            launcher(
+                "limux-stable",
+                "/prefix/limux-reviewed/stable/current",
+                "stable",
+            ),
+        ];
+
+        let check = check_launchers(Path::new("/prefix"), &launchers);
+
+        assert_eq!(check.status, CheckStatus::Fail);
+        assert!(check.message.contains("limux does not target"));
+    }
+
+    #[test]
+    fn launcher_check_accepts_default_alias_for_stable() {
+        let root = "/prefix/limux-reviewed/stable/current";
+        let launchers = vec![
+            launcher("limux", root, "stable"),
+            launcher("limux-stable", root, "stable"),
+            launcher("limux-cli", root, "stable"),
+            launcher("limux-stable-cli", root, "stable"),
+        ];
+
+        let check = check_launchers(Path::new("/prefix"), &launchers);
+
+        assert_eq!(check.status, CheckStatus::Ok);
     }
 
     #[test]

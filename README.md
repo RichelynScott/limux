@@ -193,10 +193,11 @@ you are actively using for work. The installer can create isolated launcher
 lanes:
 
 ```bash
-# Traditional launcher names: ~/.local/bin/limux and ~/.local/bin/limux-cli
+# Explicit rollback lane: ~/.local/bin/limux-legacy and limux-legacy-cli
 scripts/user-local-install/install-user-local.sh --apply --channel legacy --profile release
 
-# Daily-driver candidate: ~/.local/bin/limux-stable and limux-stable-cli
+# Daily driver: writes limux-stable/limux-stable-cli and promotes the plain
+# limux/limux-cli aliases to this verified stable install.
 scripts/user-local-install/install-user-local.sh --apply --channel stable --profile release
 
 # Test runtime: ~/.local/bin/limux-preview and limux-preview-cli
@@ -209,7 +210,8 @@ scripts/user-local-install/install-user-local.sh --apply --channel preview:lab -
 Each install records `install-info.json` with the install id, channel, source
 SHA, and creation time. Channel-aware launchers pass the selected lane to the
 CLI so preview runtimes can be launched and tested without disturbing the
-stable/daily-driver socket and state.
+stable/daily-driver socket and state. A later legacy install advances only the
+explicit rollback aliases; it cannot silently replace the stable default.
 
 ### Package a release tarball
 
@@ -242,7 +244,7 @@ bash scripts/tests/validate-ghostty-resources.sh
 ```
 
 For preview-to-stable promotion, use the checklist workflow in
-[`docs/verification/post-install-checklist-v1.md`](docs/verification/post-install-checklist-v1.md)
+[`docs/verification/post-install-checklist-v2.md`](docs/verification/post-install-checklist-v2.md)
 and record each verification run with
 [`docs/verification/run-template.md`](docs/verification/run-template.md).
 Stable promotion should wait for a full PASS on the preview runtime.

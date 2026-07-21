@@ -466,6 +466,8 @@ mod tests {
         let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
         let _socket = EnvGuard::set(LIMUX_SOCKET_ENV, None);
         let _socket_path = EnvGuard::set(LIMUX_SOCKET_PATH_ENV, None);
+        let _channel = EnvGuard::set(LIMUX_CHANNEL_ENV, None);
+        let _preview_id = EnvGuard::set(LIMUX_PREVIEW_ID_ENV, None);
         let xdg = TempDir::new().expect("xdg runtime dir temp path");
         let _xdg = EnvGuard::set("XDG_RUNTIME_DIR", Some(xdg.path().to_str().expect("utf8")));
 
@@ -503,6 +505,8 @@ mod tests {
         let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
         let _socket = EnvGuard::set(LIMUX_SOCKET_ENV, None);
         let _socket_path = EnvGuard::set(LIMUX_SOCKET_PATH_ENV, None);
+        let _channel = EnvGuard::set(LIMUX_CHANNEL_ENV, None);
+        let _preview_id = EnvGuard::set(LIMUX_PREVIEW_ID_ENV, None);
         let xdg = TempDir::new().expect("xdg runtime dir temp path");
         let _xdg = EnvGuard::set("XDG_RUNTIME_DIR", Some(xdg.path().to_str().expect("utf8")));
 

@@ -10,7 +10,8 @@ is installed, launched, tested, and replaced from the Limux source tree.
 
 ## Current Contract
 
-- `limux` remains the legacy/default launcher.
+- `limux` and `limux-cli` target the latest promoted stable install.
+- `limux-legacy` and `limux-legacy-cli` are explicit rollback launchers.
 - `limux-stable` targets the named stable channel.
 - `limux-preview` targets `preview:default`.
 - `limux-preview-<id>` targets `preview:<id>`.
@@ -82,7 +83,7 @@ The preview host will use:
 LIMUX_CHANNEL=preview:default
 ```
 
-and will keep its socket/session namespace separate from the legacy/default
+and will keep its socket/session namespace separate from the stable
 daily-driver runtime.
 
 ## Smoke Test
@@ -101,8 +102,8 @@ Set `LIMUX_SMOKE_PROFILE=release` to smoke release artifacts.
 
 ## Operator Safety Notes
 
-- Do not run the preview install with `--channel legacy` unless intentionally
-  replacing the current default `limux` launcher.
+- A legacy install updates only `limux-legacy` / `limux-legacy-cli`; it does
+  not replace the stable default aliases.
 - Test preview with `limux-preview` first; install over the daily-driver lane
   only after PR review and operator approval.
 - Keep the daily-driver Limux running while preview is tested. The preview
