@@ -6545,11 +6545,33 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 return;
             };
 
-            if !handle.send_key(&key) {
-                let _ = reply.send(Err(crate::control_bridge::BridgeError::invalid_params(
-                    "unsupported key",
-                )));
-                return;
+            match handle.send_key_outcome(&key) {
+                crate::terminal::SendKeyOutcome::Sent => {}
+                crate::terminal::SendKeyOutcome::SurfaceNotReady => {
+                    // Report readiness honestly instead of blaming the key.
+                    // `send_text` already reports this state as a conflict; a
+                    // caller that saw "unsupported key" here would go hunting
+                    // for a key name that was never the problem.
+                    let surface_id = payload
+                        .get("surface_id")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("unknown");
+                    let _ = reply.send(Err(crate::control_bridge::BridgeError::conflict(format!(
+                        "terminal surface {surface_id} is not ready for text input"
+                    ))));
+                    return;
+                }
+                crate::terminal::SendKeyOutcome::UnsupportedKey => {
+                    let _ = reply.send(Err(crate::control_bridge::BridgeError::invalid_params(
+                        format!(
+                            "unsupported key {key:?}; expected an optional \
+                             <ctrl>/<shift>/<alt>/<super> prefix followed by a key name \
+                             such as enter, escape, tab, space, up, down, left, right, \
+                             page_up, page_down, f1-f12, or a single character"
+                        ),
+                    )));
+                    return;
+                }
             }
             if let Some(map) = payload.as_object_mut() {
                 map.insert("ok".to_string(), serde_json::Value::Bool(true));
