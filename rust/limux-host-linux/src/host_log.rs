@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::ffi::CString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
-use std::os::fd::{AsRawFd, FromRawFd};
+use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::thread;
@@ -557,6 +557,81 @@ fn drain_complete_lines(
     Ok(())
 }
 
+/// Guarantee that fds 0, 1 and 2 are all open before any pipe is created.
+///
+/// `pipe(2)` hands out the lowest free descriptors. If the host is started
+/// with stderr already closed, the pipe's *read* end lands on fd 2, and the
+/// `dup2(write_fd, STDERR_FILENO)` that installs the pipe then destroys it.
+/// The drain thread's reader dies, the thread exits and drops its `File`,
+/// which closes fd 2 outright — so the next `open(2)` anywhere in the process
+/// claims fd 2 and every later stderr write silently corrupts an unrelated
+/// file. Holding /dev/null on any closed standard descriptor removes the
+/// precondition entirely.
+#[cfg(unix)]
+fn reserve_standard_fds() -> io::Result<()> {
+    let dev_null = CString::new("/dev/null").map_err(io::Error::other)?;
+    for target in [libc::STDIN_FILENO, libc::STDOUT_FILENO, libc::STDERR_FILENO] {
+        if unsafe { libc::fcntl(target, libc::F_GETFD) } >= 0 {
+            continue;
+        }
+        if io::Error::last_os_error().raw_os_error() != Some(libc::EBADF) {
+            continue;
+        }
+        // `target` is closed, so it is the lowest free descriptor and open(2)
+        // returns it. dup2 is kept as a defensive fallback.
+        let opened = unsafe { libc::open(dev_null.as_ptr(), libc::O_RDWR) };
+        if opened < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        if opened != target {
+            let duped = unsafe { libc::dup2(opened, target) };
+            let error = io::Error::last_os_error();
+            unsafe { libc::close(opened) };
+            if duped < 0 {
+                return Err(error);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Move a descriptor above stderr so the `dup2(write_fd, STDERR_FILENO)` that
+/// installs the pipe cannot clobber it. Takes ownership: on failure the
+/// original descriptor is closed.
+#[cfg(unix)]
+fn relocate_above_stderr(fd: RawFd) -> io::Result<RawFd> {
+    if fd > libc::STDERR_FILENO {
+        return Ok(fd);
+    }
+    let moved = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, libc::STDERR_FILENO + 1) };
+    let error = io::Error::last_os_error();
+    unsafe { libc::close(fd) };
+    if moved < 0 {
+        return Err(error);
+    }
+    Ok(moved)
+}
+
+/// Same guarantee as [`relocate_above_stderr`], for an owned `File`.
+#[cfg(unix)]
+fn relocate_file_above_stderr(file: File) -> io::Result<File> {
+    if file.as_raw_fd() > libc::STDERR_FILENO {
+        return Ok(file);
+    }
+    let moved = unsafe {
+        libc::fcntl(
+            file.as_raw_fd(),
+            libc::F_DUPFD_CLOEXEC,
+            libc::STDERR_FILENO + 1,
+        )
+    };
+    if moved < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    drop(file);
+    Ok(unsafe { File::from_raw_fd(moved) })
+}
+
 fn set_nonblocking(file: &File) -> io::Result<()> {
     let flags = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETFL) };
     if flags < 0 {
@@ -700,6 +775,13 @@ pub(crate) fn install_bounded_stderr(
     config: &HostLogConfig,
     sequence: u128,
 ) -> Result<Option<PathBuf>, String> {
+    // MUST run before anything is opened. Descriptors are handed out lowest
+    // free first, so with stderr closed the very first open(2) — the managed
+    // log file itself — lands on fd 2, and the dup2 below then clobbers the
+    // log file instead of installing the pipe.
+    reserve_standard_fds()
+        .map_err(|error| format!("could not reserve standard descriptors: {error}"))?;
+
     let (path, file, warnings) = match prepare_host_logging(config, sequence) {
         HostLogSetup::Active {
             path,
@@ -708,16 +790,39 @@ pub(crate) fn install_bounded_stderr(
         } => (path, file, warnings),
         HostLogSetup::StderrFallback { reason } => return Err(reason),
     };
+    // Belt and braces: keep the sink itself out of the 0/1/2 range too.
+    let file = relocate_file_above_stderr(file)
+        .map_err(|error| format!("could not relocate managed log descriptor: {error}"))?;
 
-    let mut pipe_fds = [0; 2];
-    if unsafe { libc::pipe(pipe_fds.as_mut_ptr()) } < 0 {
+    let mut pipe_fds = [0 as RawFd; 2];
+    // O_CLOEXEC: without it every spawned child inherits both pipe ends, which
+    // keeps the pipe from ever reaching EOF and leaks host stderr into shells.
+    if unsafe { libc::pipe2(pipe_fds.as_mut_ptr(), libc::O_CLOEXEC) } < 0 {
         return Err(format!(
             "could not create bounded stderr pipe: {}",
             io::Error::last_os_error()
         ));
     }
-    let read_file = unsafe { File::from_raw_fd(pipe_fds[0]) };
-    let write_fd = pipe_fds[1];
+    // Neither end may sit on 0/1/2 — see relocate_above_stderr.
+    let read_fd = match relocate_above_stderr(pipe_fds[0]) {
+        Ok(fd) => fd,
+        Err(error) => {
+            unsafe {
+                libc::close(pipe_fds[1]);
+            }
+            return Err(format!("could not relocate bounded log read end: {error}"));
+        }
+    };
+    let write_fd = match relocate_above_stderr(pipe_fds[1]) {
+        Ok(fd) => fd,
+        Err(error) => {
+            unsafe {
+                libc::close(read_fd);
+            }
+            return Err(format!("could not relocate bounded log write end: {error}"));
+        }
+    };
+    let read_file = unsafe { File::from_raw_fd(read_fd) };
     if let Err(error) = set_nonblocking(&read_file) {
         unsafe {
             libc::close(write_fd);
@@ -909,6 +1014,167 @@ mod tests {
         let state = drain.join().expect("drain thread");
         assert!(state.is_degraded());
         assert!(state.discarded_bytes() >= 64 * 1024);
+    }
+
+    /// Serializes the tests that temporarily replace process-wide descriptors.
+    static FD_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Restores stderr on drop, so a panicking test can never leave fd 2
+    /// closed for the rest of the (shared, multi-threaded) test binary.
+    #[cfg(unix)]
+    struct StderrGuard {
+        saved: RawFd,
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+
+    #[cfg(unix)]
+    impl StderrGuard {
+        fn close_stderr() -> Self {
+            let lock = FD_TEST_LOCK
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let saved = unsafe { libc::dup(libc::STDERR_FILENO) };
+            assert!(saved >= 0, "must be able to save stderr");
+            unsafe {
+                libc::close(libc::STDERR_FILENO);
+            }
+            Self { saved, _lock: lock }
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for StderrGuard {
+        fn drop(&mut self) {
+            unsafe {
+                libc::dup2(self.saved, libc::STDERR_FILENO);
+                libc::close(self.saved);
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reserve_standard_fds_reopens_a_closed_stderr() {
+        let guard = StderrGuard::close_stderr();
+        let result = reserve_standard_fds();
+        let reopened = unsafe { libc::fcntl(libc::STDERR_FILENO, libc::F_GETFD) } >= 0;
+        drop(guard);
+
+        assert!(result.is_ok(), "reserve_standard_fds failed: {result:?}");
+        assert!(reopened, "fd 2 must be open again after reservation");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn relocate_above_stderr_moves_low_descriptors_up_and_sets_cloexec() {
+        let mut fds = [0 as RawFd; 2];
+        assert_eq!(unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) }, 0);
+
+        let guard = StderrGuard::close_stderr();
+        // dup2 targets an exact descriptor, so placing a pipe end on fd 2 is
+        // deterministic even while the rest of the suite runs in parallel.
+        let placed = unsafe { libc::dup2(fds[0], libc::STDERR_FILENO) };
+        let relocated = if placed == libc::STDERR_FILENO {
+            relocate_above_stderr(libc::STDERR_FILENO)
+        } else {
+            Err(io::Error::other("could not place a descriptor on fd 2"))
+        };
+        let flags = relocated
+            .as_ref()
+            .ok()
+            .map(|fd| unsafe { libc::fcntl(*fd, libc::F_GETFD) });
+        if let Ok(fd) = &relocated {
+            unsafe {
+                libc::close(*fd);
+            }
+        }
+        drop(guard);
+        unsafe {
+            libc::close(fds[0]);
+            libc::close(fds[1]);
+        }
+
+        let moved = relocated.expect("relocation must succeed");
+        assert!(
+            moved > libc::STDERR_FILENO,
+            "descriptor must move above stderr, got {moved}"
+        );
+        assert!(
+            flags.unwrap_or(0) & libc::FD_CLOEXEC != 0,
+            "relocated descriptor must be close-on-exec"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn relocate_above_stderr_leaves_high_descriptors_untouched() {
+        let mut fds = [0 as RawFd; 2];
+        assert_eq!(unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) }, 0);
+        let same = relocate_above_stderr(fds[0]).expect("no relocation needed");
+        assert_eq!(same, fds[0]);
+        unsafe {
+            libc::close(fds[0]);
+            libc::close(fds[1]);
+        }
+    }
+
+    /// P2 regression, end-to-end through the real installer.
+    ///
+    /// Ignored by default because it hijacks process-wide stderr via
+    /// `dup2(write_fd, 2)`, which would corrupt descriptors owned by other
+    /// tests running in parallel. It also only reproduces the original defect
+    /// when fd 2 is genuinely the lowest free descriptor, which is only
+    /// guaranteed single-threaded. Run it deliberately:
+    ///
+    /// ```text
+    /// cargo test -p limux-host-linux install_survives -- --ignored --test-threads=1
+    /// ```
+    #[cfg(unix)]
+    #[test]
+    #[ignore = "hijacks process-wide stderr; run with --ignored --test-threads=1"]
+    fn install_survives_a_closed_stderr_and_keeps_logging() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut config = config(tmp.path());
+        config.max_active_bytes = 64 * 1024;
+        config.max_total_bytes = 512 * 1024;
+        fs::create_dir_all(config.active_path.parent().expect("parent")).expect("active dir");
+        fs::create_dir_all(&config.retained_dir).expect("retained dir");
+        let probe_path = config.active_path.clone();
+
+        let guard = StderrGuard::close_stderr();
+        let installed = install_bounded_stderr(&config, 7);
+        if installed.is_ok() {
+            // fd 2 must now be the pipe WRITE end feeding the drain thread.
+            let probe = b"limux-p2-probe\n";
+            unsafe {
+                libc::write(
+                    libc::STDERR_FILENO,
+                    probe.as_ptr() as *const libc::c_void,
+                    probe.len(),
+                );
+            }
+            for _ in 0..100 {
+                thread::sleep(Duration::from_millis(50));
+                if fs::read_to_string(&probe_path)
+                    .map(|body| body.contains("limux-p2-probe"))
+                    .unwrap_or(false)
+                {
+                    break;
+                }
+            }
+        }
+        drop(guard);
+
+        let path = installed
+            .expect("install_bounded_stderr must succeed with stderr closed")
+            .expect("managed log path");
+        let contents = fs::read_to_string(&path).expect("read managed log");
+        assert!(
+            contents.contains("limux-p2-probe"),
+            "stderr written after install never reached the managed log — the \
+             managed log descriptor was clobbered by dup2 (fd-hijack regression). \
+             Log: {contents:?}"
+        );
     }
 
     fn config(root: &std::path::Path) -> HostLogConfig {
