@@ -277,6 +277,11 @@ not restart the Limux host merely to complete it.
    launch context, an `/init` ancestry that bypasses `limux-host`, or multiple
    `codex resume <uuid>` clients as a placement failure.
 
+   For a formal evidence run, follow
+   `docs/verification/host-owned-surface-process-attestation.md`. It separates
+   observer PID visibility, read-only Surface/Pane ancestry attestation, and
+   pane-preserving teardown into independently authorized fail-closed gates.
+
 ### Wrong-Session Guard
 
 If `hcom r <name>` resumes a different session, inject `/exit` into that exact

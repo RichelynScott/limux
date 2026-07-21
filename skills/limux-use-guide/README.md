@@ -20,6 +20,7 @@ The canonical sources for this staged skill are:
 - `AGENTS.md`
 - `./target/debug/limux-cli --help` or the matching built CLI help
 - `docs/verification/post-install-checklist-v1.md`
+- `docs/verification/host-owned-surface-process-attestation.md`
 - `docs/verification/run-template.md`
 - `docs/cmux-parity-plan.md`
 - `rust/limux-cli/src/main.rs`
