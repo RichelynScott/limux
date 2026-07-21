@@ -6,9 +6,11 @@
 what is going on in this directory. Read this first. Per-session detail lives in
 the per-session handoffs listed in §7.
 
-> Supersedes the halo/Codex handoff of 2026-06-20, archived verbatim at
-> `archive/HANDOFF_halo_2026-06-20.superseded.md`. Halo is retired under the
-> fleet-wide Codex close-out.
+> Supersedes the halo/Codex handoff of 2026-06-20. Halo is retired under the
+> fleet-wide Codex close-out. The original is preserved in git history —
+> `git show f3c95a5:HANDOFF.md` — which is its durable record; a convenience
+> copy also sits at `archive/HANDOFF_halo_2026-06-20.superseded.md`, but note
+> `archive/` is gitignored, so that copy is local-only.
 
 ---
 
@@ -171,7 +173,7 @@ about such an agent is then not evidence of death.
 | `TUTU_HANDOFF.md` | tutu (current LIMUX_MGR) | this session's detail |
 | `LIMU_HANDOFF.md` | limu (retired) | prior-lane history |
 | `LIFO_HANDOFF.md` | lifo (retired) | earlier lane; peer-owned, do not edit |
-| `archive/HANDOFF_halo_2026-06-20.superseded.md` | halo (retired) | the 2026-06-20 state, verbatim |
+| `git show f3c95a5:HANDOFF.md` | halo (retired) | the 2026-06-20 state, verbatim (git history is the durable copy; `archive/` is gitignored) |
 
 Lineage: lifo → limu → **tutu** (all 2026-07-21). Related lanes: `karo` =
 OMP_MGR (`~/Proj/oh-my-pi`), `nava`/`dino` = hcom, `reve` = fleet.
