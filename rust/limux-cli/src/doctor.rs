@@ -12,6 +12,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 
 const DEFAULT_LOG_LINES: usize = 200;
+const DEFAULT_LOG_TAIL_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CheckStatus {
@@ -699,11 +700,12 @@ fn check_ghostty_resources(install_roots: &[PathBuf]) -> Check {
 fn run_log_triage(lines: usize) -> Value {
     let path = env::var_os("LIMUX_HOST_LOG_PATH")
         .map(PathBuf::from)
-        .or_else(|| dirs::state_dir().map(|dir| dir.join("limux/logs/limux-host.log")));
+        .or_else(|| dirs::state_dir().map(|dir| default_host_log_path(&dir)));
     let Some(path) = path else {
         return json!({"status": "warn", "message": "could not resolve host log path"});
     };
-    let Ok(text) = fs::read_to_string(&path) else {
+    let Ok(tail) = crate::doctor_log::read_backward_tail(&path, lines, DEFAULT_LOG_TAIL_BYTES)
+    else {
         return json!({
             "status": "warn",
             "path": path.to_string_lossy(),
@@ -711,13 +713,10 @@ fn run_log_triage(lines: usize) -> Value {
         });
     };
     let mut summary: BTreeMap<&'static str, usize> = BTreeMap::new();
-    let triaged = text
-        .lines()
-        .rev()
-        .take(lines)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
+    let lines_scanned = tail.lines.len();
+    let triaged = tail
+        .lines
+        .iter()
         .filter_map(|line| {
             let cleaned = strip_terminal_controls(line);
             let class = classify_log_line(&cleaned)?;
@@ -728,10 +727,18 @@ fn run_log_triage(lines: usize) -> Value {
     json!({
         "status": "ok",
         "path": path.to_string_lossy(),
-        "lines_scanned": lines,
+        "lines_scanned": lines_scanned,
+        "bytes_read": tail.bytes_read,
+        "truncated": tail.truncated,
         "summary": summary,
         "matches": triaged,
     })
+}
+
+fn default_host_log_path(state_dir: &Path) -> PathBuf {
+    state_dir
+        .join("limux/logs")
+        .join(limux_control::DEFAULT_HOST_LOG_FILE_NAME)
 }
 
 fn classify_log_line(line: &str) -> Option<&'static str> {
@@ -928,6 +935,16 @@ exec "${INSTALL_ROOT}/libexec/limux-cli" "$@"
         assert_eq!(
             user_prefix_from_installed_exe(Path::new("/repo/target/debug/limux-cli")),
             None
+        );
+    }
+
+    #[test]
+    fn default_log_triage_path_targets_bounded_active_log() {
+        let state_dir = Path::new("/isolated/state");
+
+        assert_eq!(
+            default_host_log_path(state_dir),
+            state_dir.join("limux/logs/limux-host.current.log")
         );
     }
 
