@@ -189,6 +189,27 @@ mod tests {
     }
 
     #[test]
+    fn explicit_local_user_mode_overrides_legacy_cmux_alias() {
+        // The renderer-backend preview runner forces LIMUX_SOCKET_MODE=localUser
+        // and clears CMUX_SOCKET_MODE, because its probe CLIs are children of the
+        // runner rather than of the preview host: under a descendant-only mode
+        // is_descendant would reject every probe and healthy backends would be
+        // misreported as unhealthy. This pins that the explicit value wins over
+        // a hostile inherited legacy alias.
+        let _lock = ENV_TEST_LOCK.lock().expect("env lock");
+        let _limux = EnvGuard::set("LIMUX_SOCKET_MODE", Some("localUser"));
+        let _cmux = EnvGuard::set("CMUX_SOCKET_MODE", Some("cmuxOnly"));
+        assert_eq!(SocketControlMode::from_env(), SocketControlMode::LocalUser);
+    }
+
+    #[test]
+    fn local_user_mode_still_requires_owner_only_socket() {
+        // Forcing localUser must not weaken socket permissions: the same-uid
+        // check and the 0600 socket both remain.
+        assert!(SocketControlMode::LocalUser.requires_owner_only_socket());
+    }
+
+    #[test]
     fn allow_all_accepts_any_uid() {
         let peer = PeerInfo {
             pid: 42,
