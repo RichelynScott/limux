@@ -617,20 +617,20 @@
         "id": 30,
         "title": "Default limux launcher must run latest stable + enforce CLI/host version congruence",
         "description": "Operator directive (2026-07-19). Repoint the default limux/limux-cli launchers to the latest stable install as part of the reviewed install/channel scheme, keep legacy as explicit rollback rather than default, and enforce CLI/host version congruence. Acceptance: plain limux --version and limux doctor agree with the running host; launching limux fresh yields the latest stable host. Current reproduced mismatch: plain launcher is legacy v0.2.2 at 1005f58d while live stable host is v0.2.3 at 1a26bda0.",
-        "details": "<info added on 2026-07-21T09:53:58.105Z>\n2026-07-21 implementation evidence: live default aliases now point to stable v0.2.3 source 1a26bda0 while explicit limux-legacy aliases retain v0.2.2 rollback; plain limux doctor reports ok=true with matching stable CLI/host. Source branch lifo/default-stable-launcher-20260721 changes installer semantics, adds doctor congruence checks, updates runtime isolation smoke and docs, and isolates LIMUX_CHANNEL in socket permission tests. RED: runtime isolation smoke initially failed because limux-legacy was absent. GREEN: focused doctor tests passed 8/8; release runtime-isolation-smoke passed; canonical ./scripts/check.sh exited 0. PR/merge and source-based live promotion remain before task completion.\n</info added on 2026-07-21T09:53:58.105Z>\n<info added on 2026-07-21T09:58:08.068Z>\n2026-07-21 PR opened: https://github.com/RichelynScott/limux/pull/79 at implementation commit de444b42b427bf3930c111ae053338728276d157. Await exact-head Codex bot review, merge, and source-based stable promotion before done.\n</info added on 2026-07-21T09:58:08.068Z>",
+        "details": "<info added on 2026-07-21T09:53:58.105Z>\n2026-07-21 implementation evidence: live default aliases now point to stable v0.2.3 source 1a26bda0 while explicit limux-legacy aliases retain v0.2.2 rollback; plain limux doctor reports ok=true with matching stable CLI/host. Source branch lifo/default-stable-launcher-20260721 changes installer semantics, adds doctor congruence checks, updates runtime isolation smoke and docs, and isolates LIMUX_CHANNEL in socket permission tests. RED: runtime isolation smoke initially failed because limux-legacy was absent. GREEN: focused doctor tests passed 8/8; release runtime-isolation-smoke passed; canonical ./scripts/check.sh exited 0. PR/merge and source-based live promotion remain before task completion.\n</info added on 2026-07-21T09:53:58.105Z>\n<info added on 2026-07-21T09:58:08.068Z>\n2026-07-21 PR opened: https://github.com/RichelynScott/limux/pull/79 at implementation commit de444b42b427bf3930c111ae053338728276d157. Await exact-head Codex bot review, merge, and source-based stable promotion before done.\n</info added on 2026-07-21T09:58:08.068Z>\n<info added on 2026-07-21T10:21:51.579Z>\n2026-07-21 COMPLETE: PR 79 merged to main as 28e3a815ada2a4f87ca3dc2451ed6f0eb4290d3a after exact-head Codex bot greenlight on 78a3b3237132. Live acceptance is green on the latest released stable: plain limux and running host both identify v0.2.3 source 1a26bda0, limux doctor returns ok=true, and explicit limux-legacy retains v0.2.2 rollback. No unreleased main build was promoted into the stable channel.\n</info added on 2026-07-21T10:21:51.579Z>",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "high",
         "subtasks": [],
-        "updatedAt": "2026-07-21T09:38:06.003Z"
+        "updatedAt": "2026-07-21T10:23:21.536Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-21T09:38:06.003Z",
+      "lastModified": "2026-07-21T10:23:21.536Z",
       "taskCount": 30,
-      "completedCount": 14,
+      "completedCount": 15,
       "tags": [
         "master"
       ],
