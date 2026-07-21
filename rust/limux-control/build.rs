@@ -13,6 +13,35 @@ fn command_stdout(args: &[&str]) -> Option<String> {
     (!value.is_empty()).then_some(value)
 }
 
+/// Reports whether *tracked* files are modified, for build provenance.
+///
+/// `-uno` keeps untracked files (peer-owned docs, scratch files, editor
+/// droppings) from marking an otherwise-clean release build as dirty. Staged
+/// changes to tracked files still count as dirty.
+///
+/// This deliberately does not reuse `command_stdout`, which folds empty output
+/// into `None`: here an empty-but-successful result is the *verified clean*
+/// signal and must stay distinguishable from "git failed, we cannot tell".
+fn git_tracked_dirty() -> &'static str {
+    let Ok(output) = Command::new("git")
+        .args(["status", "--porcelain", "-uno"])
+        .output()
+    else {
+        return "unknown";
+    };
+    if !output.status.success() {
+        return "unknown";
+    }
+    let Ok(status) = String::from_utf8(output.stdout) else {
+        return "unknown";
+    };
+    if status.trim().is_empty() {
+        "false"
+    } else {
+        "true"
+    }
+}
+
 fn emit_if_exists(path: impl AsRef<Path>) {
     let path = path.as_ref();
     if path.exists() {
@@ -78,11 +107,7 @@ fn main() {
 
     let sha = command_stdout(&["rev-parse", "--short=12", "HEAD"])
         .unwrap_or_else(|| "unknown".to_string());
-    let dirty = match command_stdout(&["status", "--porcelain"]) {
-        Some(status) if !status.trim().is_empty() => "true",
-        Some(_) => "false",
-        None => "unknown",
-    };
+    let dirty = git_tracked_dirty();
     let profile = env::var("PROFILE").unwrap_or_else(|_| "unknown".to_string());
 
     println!("cargo:rustc-env=LIMUX_BUILD_SHA={sha}");
