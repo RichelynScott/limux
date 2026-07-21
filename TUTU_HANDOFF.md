@@ -5,9 +5,25 @@
 **Scope:** `/home/riche/MCPs/limux`
 **Lineage:** lifo → limu → **tutu** (all 2026-07-21; limu closed out under the fleet-wide Codex close-out directive)
 
-> **Read this first, then `LIMU_HANDOFF.md` for prior-lane history.** Root
-> `HANDOFF.md` on main is still the **stale** Halo file (2026-06-20) — do not
-> trust it. Consolidating it is an open item (§7).
+> ## ⚠️ PARTIALLY SUPERSEDED — read root `HANDOFF.md` FIRST
+>
+> Root `HANDOFF.md` was consolidated on 2026-07-21 into the session-agnostic
+> directory-state doc and is now the **authoritative current state**. The
+> earlier instruction here to distrust it is obsolete.
+>
+> Stale in THIS file, corrected in root `HANDOFF.md`:
+> - **PR #84 is MERGED** (`f2b0a79`), not open. **PR #85 also merged**
+>   (`3bf819f`, TaskMaster #33 build dirty-marker).
+> - **Gate is 620 passed / 0 failed**, not 613.
+> - **Installed is now `3bf819f6a949`** (`main-3bf819f6a949-all5fixes-20260721`),
+>   containing all five fixes — not the `a5c0f987` three-fix build named below.
+> - **The host is DOWN**; the operator restarts it by typing `limux` in a
+>   Windows terminal. The restart's usual cost (killing every hosted pane
+>   process) is already paid, so restarting now costs nothing.
+> - The **standing adversarial review never ran** — commissioned 3×, died each
+>   time. PRs #82–#85 are self-reviewed only.
+>
+> Everything below is retained as this session's detail and reasoning.
 
 ---
 
