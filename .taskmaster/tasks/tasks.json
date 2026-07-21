@@ -584,18 +584,41 @@
         "dependencies": [],
         "priority": "high",
         "subtasks": []
+      },
+      {
+        "id": 26,
+        "title": "Fix finicky session word-wrap/reflow on pane/surface width changes",
+        "description": "Operator-reported HIGH-priority UX defect (2026-07-19): terminal/session text word-wrapping behaves erratically when a pane/surface width changes (split, resize, workspace layout change). Extremely aggravating in daily use. Investigate the reflow path on width/column change in the Ghostty surface + GTK pane resize handling (rust/limux-host-linux/src/window.rs, pane.rs, terminal.rs). Repro: change a pane's width and observe mis-wrapped/stale-column output. Deliver a root-cause + fix + regression test. No existing task covered this specifically.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 27,
+        "title": "Default limux launcher must run latest stable + enforce CLI/host version congruence",
+        "description": "Operator directive (2026-07-19). Two coupled problems: (1) ~/.local/bin/limux and ~/.local/bin/limux-cli still symlink to the LEGACY v0.2.2 install (main-1005f58d) after the v0.2.3 stable release; the everyday 'limux' command the operator uses to spawn Limux is therefore v0.2.2, and if it ever launches a fresh host it would silently downgrade the operator to v0.2.2. The live v0.2.3 host is only reachable via limux-stable/limux-stable-cli. FIX: repoint the default limux/limux-cli launchers to the latest stable install (currently .../stable/main-1a26bda0-v0.2.3) as part of the reviewed install/channel scheme (lifo owns this design; keep legacy as explicit rollback, not as the default). (2) VERSION-CONGRUENCE GUARD: 'limux doctor' currently reports [fail] socket build SHA differs and 'limux --version' says 0.2.2 while the connected host is 0.2.3. The running GUI title correctly shows 0.2.3, but a stale CLI shim vs live host is a latent incongruence. Add a guard/warning so the CLI version and the connected host version can never silently diverge, and so a release install repoints the default launcher atomically. Acceptance: plain 'limux --version' and 'limux doctor' agree with the running host; launching 'limux' fresh yields the latest stable host.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": []
       }
     ],
     "metadata": {
       "version": "1.0.0",
       "lastModified": "2026-07-13T05:46:57.126Z",
-      "taskCount": 25,
+      "taskCount": 27,
       "completedCount": 12,
       "tags": [
         "master"
       ],
       "created": "2026-07-15T19:34:21.446Z",
-      "description": "Tasks for master context"
+      "description": "Tasks for master context",
+      "updated": "2026-07-21T09:29:23.044Z"
     }
   },
   "cmux-parity-20260707": {
