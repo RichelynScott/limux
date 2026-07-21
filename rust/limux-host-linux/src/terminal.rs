@@ -332,6 +332,22 @@ pub struct TerminalHandle {
     callbacks: Rc<RefCell<TerminalCallbacks>>,
 }
 
+/// Outcome of a `send_key` attempt.
+///
+/// Distinguishing these two failures matters: they were previously both `false`
+/// and both surfaced to the operator as "unsupported key", which is the wrong
+/// diagnosis for an unrealized surface and sends people chasing key names that
+/// were never wrong.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SendKeyOutcome {
+    Sent,
+    /// The terminal surface is not realized yet, so no key can be delivered.
+    /// Mirrors what `send_text` reports as "not ready for text input".
+    SurfaceNotReady,
+    /// The key string could not be parsed into a usable accelerator.
+    UnsupportedKey,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TerminalHealth {
     pub realized: bool,
@@ -402,16 +418,25 @@ impl TerminalHandle {
         true
     }
 
-    pub fn send_key(&self, key: &str) -> bool {
+    /// Why a `send_key` attempt did not deliver.
+    ///
+    /// `send_key` used to collapse both failure modes into `false`, and the
+    /// control path reported every `false` as "unsupported key". That gave a
+    /// flatly wrong diagnosis whenever the real cause was an unrealized
+    /// surface: operators went hunting for the right key name when the key was
+    /// already correct and the terminal simply was not up yet. `send_text` has
+    /// the identical readiness check and reports it honestly as "not ready for
+    /// text input"; this makes `send_key` agree with it.
+    pub fn send_key_outcome(&self, key: &str) -> SendKeyOutcome {
         let Some(surface) = *self.surface_cell.borrow() else {
-            return false;
+            return SendKeyOutcome::SurfaceNotReady;
         };
 
         let Ok(binding) = NormalizedShortcut::parse(key) else {
-            return false;
+            return SendKeyOutcome::UnsupportedKey;
         };
         let Some((keyval, modifier)) = gtk::accelerator_parse(binding.to_config_accel()) else {
-            return false;
+            return SendKeyOutcome::UnsupportedKey;
         };
         let keycode = fallback_native_keycode(keyval);
 
@@ -436,7 +461,12 @@ impl TerminalHandle {
             ghostty_surface_key(surface, press);
             ghostty_surface_key(surface, release);
         }
-        true
+        SendKeyOutcome::Sent
+    }
+
+    /// Boolean form retained for internal callers that only branch on success.
+    pub fn send_key(&self, key: &str) -> bool {
+        self.send_key_outcome(key) == SendKeyOutcome::Sent
     }
 
     pub fn health(&self) -> TerminalHealth {

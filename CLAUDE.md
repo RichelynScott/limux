@@ -19,10 +19,17 @@ Run the quality gate before *and* after your changes:
 ./scripts/check.sh   # fmt --check, clippy -D warnings, test --workspace
 ```
 
-> **Heads-up:** as of this writing one test is failing
-> (`cli_arg_tests::hook_session_id_falls_back_to_transcript_stem`,
-> assertion at `rust/limux-cli/src/main.rs:3893`). Don't assume a clean
-> baseline — run the gate first to see the current state.
+The gate is **green** on `main` — run it anyway before *and* after, and don't
+assume a clean baseline just because this says so.
+
+> **Resolved 2026-07-21:** this file used to warn that
+> `cli_arg_tests::hook_session_id_falls_back_to_transcript_stem` was failing.
+> It was failing *non-deterministically* — it depended on ambient environment,
+> and `limux_env_value` walks **ancestor process** environments, so the same
+> commit passed under one runtime and failed under another. That is why an audit
+> recorded a green suite while this file recorded a failure: **both were
+> correct.** PR #82 reordered `hook_session_id` to prefer the payload's own
+> `transcript_path` over ambient env, which fixed the flake as a side effect.
 
 ## The two-binary gotcha
 

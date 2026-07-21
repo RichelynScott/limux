@@ -2040,3 +2040,59 @@ Plain `limux` now consistently means the promoted stable daily driver, while
 rollback remains explicit and independently addressable. Merge and a
 source-based promotion from merged `main` remain required before TaskMaster
 master task 30 can be marked done.
+
+## 2026-07-21 - Limux directory consolidation + build-provenance fix (tutu)
+
+### What
+- Merged PR #85 (TaskMaster #33): `build.rs` no longer counts untracked files
+  when computing `LIMUX_BUILD_DIRTY`, and a clean tree now reports verified-clean
+  (`false`) instead of `unknown`. Applied to all three crates sharing an
+  identical `build.rs`.
+- Installed all five merged fixes (#81-#85) to the stable channel as
+  `main-3bf819f6a949-all5fixes-20260721`.
+- Replaced the stale root `HANDOFF.md` (halo, 2026-06-20) with a
+  session-agnostic directory-state document. Original archived verbatim at
+  `archive/HANDOFF_halo_2026-06-20.superseded.md`.
+- Ratified the design shape for nava's hcom-TUI x Limux question, and corrected
+  an earlier claim of mine in that thread.
+
+### Why
+- The installed release was stamped `-dirty` because of ONE untracked
+  peer-owned docs HTML while `git diff --stat HEAD` was empty. Fleet policy
+  requires citing binary provenance before version-dependent claims; a build
+  that reports dirty when it is clean destroys that signal.
+- The operator asked that any session - not just the current manager - be able
+  to know what is going on in this directory. Root HANDOFF.md was a month stale
+  and owned by a retired Codex session.
+- The Limux host was already down, making it the zero-cost window to install:
+  a restart normally kills every hosted pane process, but that cost was already
+  paid.
+
+### How
+- `git status --porcelain -uno` plus a dedicated `git_tracked_dirty()` that
+  keeps empty-but-successful ("false") distinct from command-failure
+  ("unknown") - deliberately not reusing `command_stdout`, which folds empty
+  output into `None` and made the "false" arm unreachable.
+- Verified by execution in three tree states with the untracked HTML present
+  throughout: untracked-only -> clean; tracked-modified -> `-dirty`; staged ->
+  `-dirty`. The last two are the counter-test - a fix that simply broke the flag
+  to always-clean would have passed the first case too.
+
+### Impact
+- Build provenance is trustworthy again; a clean release build reports clean.
+- Any session can now read one file to understand the directory.
+- The operator's next `limux` launch picks up five fixes rather than three.
+
+### Honest gaps
+- No live GUI verification of any fix. The OMP scroll fix and #84 have not been
+  observed in a running terminal.
+- The standing adversarial review of PRs #82-#85 was commissioned three times
+  and never ran (2x process exit, 1x session quota). Those PRs are
+  self-reviewed only.
+
+### Attribution
+Acted under the 2026-07-21 operator directive suspending lane boundaries, on
+behalf of the absent build/release owner and the retired root-HANDOFF owner
+(halo). All prior launchers archived via mv, never rm.
+
+### Related: PR #85 | main 3bf819f

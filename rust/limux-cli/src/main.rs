@@ -5009,13 +5009,35 @@ fn read_screen_help_text() -> String {
 }
 
 fn build_read_screen_params(args: &[String]) -> Result<Value> {
+    build_read_screen_params_with_env(args, |name| env::var(name).ok())
+}
+
+/// Env lookup is injected so the defaulting behaviour is directly testable —
+/// the same pattern `hook_session_id_with_env` uses. Without it, a test can
+/// only assert that an explicit flag wins (which was already true before any
+/// scoping existed) and the fallback itself goes uncovered.
+fn build_read_screen_params_with_env<F>(args: &[String], env_lookup: F) -> Result<Value>
+where
+    F: Fn(&str) -> Option<String>,
+{
     // Scope to the caller's own workspace by default, matching `send`/`send-key`.
     // Without this the request carries no workspace_id and the server falls back to
     // the globally focused surface, which can belong to an unrelated agent lane.
     let workspace = parse_opt(args, "--workspace")
-        .or_else(|| env::var("LIMUX_WORKSPACE_ID").ok())
+        .or_else(|| env_lookup("LIMUX_WORKSPACE_ID"))
         .filter(|s| !s.is_empty());
-    let surface = parse_opt(args, "--surface").filter(|s| !s.is_empty());
+    // Workspace scoping alone is NOT sufficient for the topology `agent-team`
+    // actually builds: it puts every agent in ONE workspace as sibling panes, so
+    // every lane exports an identical LIMUX_WORKSPACE_ID. A workspace-scoped read
+    // with no surface still resolves server-side to the lowest pane_id in that
+    // workspace (pane.rs sorts by pane_id and does not prefer the focused pane),
+    // which is typically the orchestrator's pane — i.e. still a cross-lane read.
+    // Defaulting the surface to the caller's own LIMUX_SURFACE_ID closes that,
+    // and matches how the agent-hook path already targets. Reading a peer pane
+    // remains possible, but now requires saying so explicitly with --surface.
+    let surface = parse_opt(args, "--surface")
+        .or_else(|| env_lookup("LIMUX_SURFACE_ID"))
+        .filter(|s| !s.is_empty());
     let mut params = Map::new();
     if let Some(workspace) = workspace {
         params.insert("workspace_id".to_string(), Value::String(workspace));
@@ -5749,6 +5771,14 @@ async fn run_tmux_compat(client: &mut Client, command: &str, args: &[String]) ->
         "capture-pane" => run_read_screen(client, args).await,
         "pipe-pane" => {
             let capture = run_read_screen(client, args).await?;
+            // `run_read_screen` returns {"help": ...} for --help/-h rather than
+            // performing a read. Falling through would silently feed an EMPTY
+            // stream into the user's --command pipeline, which looks like "the
+            // pane was blank" rather than "you asked for help". Surface the help
+            // text instead of piping nothing.
+            if let Some(help) = get_string(&capture, &["help"]) {
+                return Ok(json!({"help": help}));
+            }
             let text = get_string(&capture, &["text"]).unwrap_or_default();
             let shell_cmd = parse_opt(args, "--command")
                 .ok_or_else(|| anyhow!("pipe-pane requires --command"))?;
@@ -6578,6 +6608,58 @@ mod cli_arg_tests {
             Some("workspace:explicit"),
             "explicit --workspace must win over any ambient LIMUX_WORKSPACE_ID"
         );
+    }
+
+    /// The previous scoping tests all passed with the scoping fix DELETED,
+    /// because they only asserted that an explicit flag wins — which was
+    /// already true beforehand. These exercise the fallback itself via the
+    /// injected env lookup, so reverting the fallback fails them.
+    #[test]
+    fn read_screen_defaults_to_callers_own_workspace_and_surface() {
+        let params = build_read_screen_params_with_env(&args(&[]), |name| match name {
+            "LIMUX_WORKSPACE_ID" => Some("workspace:mine".to_string()),
+            "LIMUX_SURFACE_ID" => Some("surface:9:tab-mine".to_string()),
+            _ => None,
+        })
+        .expect("valid read-screen request");
+
+        assert_eq!(
+            params.get("workspace_id").and_then(Value::as_str),
+            Some("workspace:mine"),
+            "a bare read-screen must scope to the caller's own workspace"
+        );
+        assert_eq!(
+            params.get("surface_id").and_then(Value::as_str),
+            Some("surface:9:tab-mine"),
+            "a bare read-screen must target the caller's OWN surface: agent-team puts \
+             every agent in one workspace, so workspace scoping alone still resolves \
+             server-side to the lowest pane_id (typically the orchestrator's pane)"
+        );
+    }
+
+    #[test]
+    fn read_screen_explicit_surface_overrides_env_default() {
+        // Reading a peer pane stays possible - it just has to be explicit.
+        let params =
+            build_read_screen_params_with_env(&args(&["--surface", "surface:2:tab-peer"]), |_| {
+                Some("surface:9:tab-mine".to_string())
+            })
+            .expect("valid read-screen request");
+        assert_eq!(
+            params.get("surface_id").and_then(Value::as_str),
+            Some("surface:2:tab-peer")
+        );
+    }
+
+    #[test]
+    fn read_screen_outside_a_limux_pane_sends_no_target() {
+        // With no env and no flags there is nothing to scope to. The request must
+        // stay empty rather than inventing a target; the help text warns that the
+        // server's focused-surface fallback applies in that case.
+        let params =
+            build_read_screen_params_with_env(&args(&[]), |_| None).expect("valid request");
+        assert!(params.get("workspace_id").is_none());
+        assert!(params.get("surface_id").is_none());
     }
 
     #[test]

@@ -1,185 +1,241 @@
-# Limux Session Handoff
+# Limux — Directory State (session-agnostic)
 
-Last updated: 2026-06-20 EDT
-Owner/session: halo / Codex GPT-5
+**Updated:** 2026-07-21 ~6:35 PM EDT by `tutu` (LIMUX_MGR)
+**Scope:** `/home/riche/MCPs/limux`
+**Purpose:** ONE file that tells ANY session — not just the current manager —
+what is going on in this directory. Read this first. Per-session detail lives in
+the per-session handoffs listed in §7.
 
-## Active Goal - Limux Improvement
+> Supersedes the halo/Codex handoff of 2026-06-20. Halo is retired under the
+> fleet-wide Codex close-out. The original is preserved in git history —
+> `git show f3c95a5:HANDOFF.md` — which is its durable record; a convenience
+> copy also sits at `archive/HANDOFF_halo_2026-06-20.superseded.md`, but note
+> `archive/` is gitignored, so that copy is local-only.
 
-The active goal for this repo is **improving Limux as the tool the operator is
-using**. The previous Project Isolation Lab / VM goal is not the Limux repo's
-active workstream anymore. That work is handled by the SCS team in
-`/home/riche/Proj/SUPPLY_CHAIN_SECURITY`.
+---
 
-Do not restart the old VM/isolation planning loop from this handoff. Limux work
-should be product/runtime improvement work: keeping the installed user-local
-Limux usable, fixing observed UI/runtime defects, and adding scoped features
-that help the operator run multiple terminal/agent sessions.
+## 1. 🔴 THE ONE THING THAT NEEDS THE OPERATOR
 
-## Immediate Next Actions
+**The Limux host is DOWN. The operator restarts it by typing `limux` in a
+Windows terminal.** Nothing shipped is live until then.
 
-1. Preserve peer dirt: do not edit or stage `LIFO_HANDOFF.md` or `archive/`
-   unless lifo explicitly hands them over.
-2. Keep `origin/lifo/workspaces-sidebar-notifications-20260620` at
-   `299a8fc762dc5f4a168d7d37c8148c58d0aedb08` as the recommended integration
-   lane. This includes the workspace/sidebar work plus the G0 stability merge.
-3. If the operator wants the G0 stability fixes in the live app, do a separate
-   reviewed user-local install from
-   `/home/riche/MCPs/limux-workspaces-sidebar-notifications`; the current
-   `/home/riche/.local/bin/limux` symlink still points at the earlier
-   `workspaces-sidebar-notifications-20260620` install.
-4. If the old reported crash recurs, capture the exact click/action and rerun
-   the crash evidence commands below before rollback or cleanup.
-5. Keep the old Project Isolation Lab / VM goal out of this repo unless the
-   operator explicitly redirects back to it.
+Verified 2026-07-21 ~18:2x EDT: no host process, and
+`/run/user/1000/limux/stable/limux.sock` does not exist.
 
-## Current State
+**The usual restart cost is already paid.** A host restart normally kills every
+hosted pane process (pane shells are direct children of the host; layout and cwd
+restore, process state does not). The host is already down, so there is nothing
+left to lose — restarting now costs nothing.
 
-| Area | State |
+After restart: expect `limux doctor` to go green, then re-check the OMP
+scrollbar behavior with `karo` (OMP_MGR).
+
+---
+
+## 2. WHAT IS INSTALLED RIGHT NOW
+
+| | Value |
 |---|---|
-| Repo | `/home/riche/MCPs/limux` |
-| Current checkout | `halo/limux-ui-improvements-20260620`, tracking `origin/halo/limux-ui-improvements-20260620` |
-| Current checkout HEAD | `65cb302 docs(handoff): record limux crash triage` |
-| Recommended integration lane | `origin/lifo/workspaces-sidebar-notifications-20260620` at `299a8fc762dc5f4a168d7d37c8148c58d0aedb08` |
-| Installed Limux | `/home/riche/.local/limux-reviewed/workspaces-sidebar-notifications-20260620/bin/limux` |
-| PR closeout | PR #1 merged into the integration lane at `299a8fc762dc5f4a168d7d37c8148c58d0aedb08` after Codex rereview cleared `8798eaa839`. |
-| Dirty peer files | `LIFO_HANDOFF.md` modified, `archive/` untracked |
-| Runtime classification | Earlier crash was not proven to be a Limux code crash; evidence pointed first to display/compositor/session reset plus duplicate live hosts. |
-| Compact/close state | Halo goal loop is complete; no active blocker in this session. |
+| **Installed** | `limux-cli 0.2.3 (c757056d2539, release)` — clean, no `-dirty` |
+| **install-id** | `main-c757056d2539-adv-remediated-20260721`, channel `stable` |
+| **Contains** | ALL SEVEN merged PRs (#81–#87), including the adversarial-review remediation |
+| **Previous launchers** | archived via `mv` (not `rm`) at `~/.local/limux-reviewed/archive/20260721T223224Z/` |
 
-## Crash Triage - 2026-06-20
+`limux doctor` currently shows two `[warn]`s — "no running Limux host process"
+and "socket not connectable". **Both are correct and expected while the host is
+down.** They clear on restart. Do not "fix" them.
 
-Operator reported a Limux crash after the user-local integration build was
-installed. Halo coordinated with lifo on hcom thread `limux-crash-20260620`.
+---
 
-Evidence:
+## 3. WHAT IS MERGED ON MAIN
 
-- `~/.local/state/limux/logs/limux-host.log` shows:
-  `Gdk-Message: Error reading events from display: Connection reset by peer` at
-  `01:31:21`.
-- There is no observed Rust panic, segfault, fatal GLib stack, or matching
-  `journalctl --user` crash entry.
-- `coredumpctl` is unavailable in this environment.
-- Lifo confirmed his integration worktree
-  `/home/riche/MCPs/limux-workspaces-sidebar-notifications` is clean at
-  `49fb4cf3a15262fd4d09532c0f8fdc38ab8fdc45` and matches origin.
-- Host-namespace process/socket checks showed two live installed-lane hosts:
-  - PID `23541` on `/run/user/1000/limux/limux-23541.sock`
-  - PID `24840` on `/run/user/1000/limux/limux.sock`
-- Explicit selected-workspace `surface-health` checks were healthy on both
-  sockets. Some non-selected/tab surfaces reported unrealized, which is not by
-  itself crash evidence.
-- `/run/user/1000/limux/limux-25211.sock` was stale and failed to connect.
+main @ `3bf819f` — gate green: `./scripts/check.sh` exit 0, **620 passed / 0
+failed**, clippy `-D warnings` + fmt clean.
 
-Current hypothesis:
+| PR | Content |
+|---|---|
+| #81 `70689b4` | limu's stranded audit + `LIMU_INBOX` + TaskMaster reconciliation |
+| #82 `08abec1` | H1 cross-lane disclosure · `hook_session_id` misattribution · **OMP scrollbar peg/flash root cause** · PR #58 attestation salvage |
+| #83 `a5c0f98` | PR #67 renderer backend diagnostics rebuilt + socket-mode P2 |
+| #84 `f2b0a79` | TaskMaster #29 sub-cell resize deferral (word-wrap on width change) |
+| #85 `3bf819f` | TaskMaster #33 build dirty-marker — untracked files no longer mark builds dirty |
 
-The best-supported explanation is a WSLg/display/compositor/session reset or a
-window/session restart that left duplicate Limux hosts/sockets. This is
-watch-worthy but not enough evidence to rollback or patch the integration
-branch.
+### The five defects, with mechanism (not just names)
 
-## Completed This Session
+1. **H1 — cross-lane information disclosure.** `read-screen --help` fell through
+   to `surface.read_text` with no target; the server's global-focus fallback
+   returned *another agent's pane content, including in-flight command text*.
+   `read-screen` was also the only one of read-screen/send/send-key with **no
+   `LIMUX_WORKSPACE_ID` fallback**, so it defaulted to global focus
+   unconditionally. Corroborated by reve's 2026-07-19 incident.
+2. **`hook_session_id` misattribution.** Preferred ambient `CLAUDE_SESSION_ID`
+   over the payload's own `transcript_path`, and `limux_env_value` walks
+   **ancestor process env** — so hook events for session A were attributed to
+   whoever invoked the CLI. Decision recorded: **payload-first**. This also
+   repaired a **non-deterministic quality gate** (the test passed under Codex,
+   failed under Claude — which is why limu's audit recorded 597 passing while
+   `CLAUDE.md` warned the same test failed; *both were correct*).
+3. **OMP scrollbar peg/flash.** The scrollbar is a **layout sibling** of the
+   terminal (`root.append(&overlay); root.append(&scrollbar)` in a horizontal
+   Box). In GTK4 an invisible box child gets **zero allocation**, so every
+   `total > len` flip changed GLArea width by ~13px → `connect_resize` →
+   `ghostty_surface_set_size` → **column change** → reflow — and reflow moves a
+   scrolled-back viewport to the active area. Ghostty's own comment on that
+   path: *"this effectively pulls down scrollback"* — the operator's verbatim
+   symptom. **limux-specific**: upstream ghostty uses `GtkScrolledWindow`
+   overlay scrolling, which is layout-neutral by construction. Fix: layout
+   participation is decided by config only; scroll state varies opacity and
+   hit-testing only.
+4. **PR #67 socket-mode P2.** The preview runner passed an inherited
+   `LIMUX_SOCKET_MODE`/`CMUX_SOCKET_MODE` into the host, but its probe CLIs are
+   children of the **runner**, so `is_descendant` rejected every probe and
+   healthy backends were misreported unhealthy. Now cleared + forced
+   `localUser`.
+5. **#33 build dirty-marker.** `build.rs` computed dirtiness from
+   `git status --porcelain`, which counts **untracked** files — so a clean
+   release build was stamped `-dirty` because of one untracked peer-owned docs
+   HTML. A second, latent defect in the same code: `command_stdout` folds empty
+   output into `None`, making the `"false"` arm unreachable, so a clean tree
+   reported `unknown` rather than *verified clean*. Both fixed; verified by
+   execution in three tree states.
 
-| Time | Item | Evidence |
+---
+
+## 4. OPEN WORK
+
+| Item | State |
+|---|---|
+| **Restart** | 🔴 operator — §1 |
+| **Live verification** | Nothing below has been seen working in a running GUI. After restart, verify the OMP scroll fix and #84's resize behavior. For #84, `strace -e ioctl` `TIOCSWINSZ` counts on a slow split-drag (before/after) settles its one unverified claim. |
+| **Standing adversarial review** | ✅ **RAN** (4th attempt). Found 3 HIGH / 5 MED / 4 LOW. Full record: **`docs/ADVERSARIAL_REVIEW_FINDINGS_2026-07-21.md`**. H-1/H-2/M-2/M-4/L-1 fixed in PR #86; M-1, M-3, M-5, L-2/L-3/L-4 **still open**. |
+| **⚠ Test theater (highest-value remediation)** | The reviewer **reverted each fix and re-ran the suite**: **4 of the 5 behavioural fixes in the installed build survive a full revert with a green suite.** Pure-logic helpers are tested; the wiring that uses them is not. Only `hook_session_id` ordering and #84's grid predicate fail on revert. |
+| **M-1 — scrollbar fix has a live residual path** | The fix's own test comment claims *"config is constant for the surface lifetime"*. **False** — `GHOSTTY_ACTION_RELOAD_CONFIG` stores `CURRENT_SCROLLBAR_ENABLED` at runtime. A config reload while scrolled back still drops the scrollbar out of layout → GLArea widens → column change → viewport reset. **This is the operator's own scroll-yank symptom, via the one remaining path.** |
+| **PR #86** | ✅ **MERGED** `c757056`. DP-7 boundary review was **granted by two independent reviewers** (`gire` + `nava`), both of whom reproduced the false positive rather than taking my word; `boundary-reviewed` label applied. NOT self-certified even though HCOM_MGR was stale and the operator directive would have permitted it. |
+| **Boundary-lint narrowing** | Tracked by the hcom lane, deliberately **not** shipped. Note for whoever picks it up: the obvious `grep -Ew` fix is a **trap** — `_` is a word constituent, so `-w` would break the `HCOM_` prefix token and silently disable most of the gate. Prefix / identifier / bare-word tokens each need different treatment. |
+| **PR #68 rebuild** (bounded logging) | Branch `tutu/bounded-logging-pr68-20260721` (pushed) = main + a completed merge of the bounded-logging work, tasks.json resolved to main's version. The **three fixes on top are NOT implemented** — see §5. |
+| **reve new-pane incident** | Needs a **v0.2.3 retest**; filed against legacy 0.2.2. `LIFO_INBOX/INCIDENT_FROM_reve_2026-07-19_*.md` |
+| **nava design question** | hcom-TUI × Limux symbiosis. Design owner = the Limux manager. §6 has the ratified shape + a correction. |
+| **ghostty wheel/mouse-reporting** | Wheel events eaten with **no alt-screen gate** (`Surface.zig:3601-3621`). Vendored ghostty is **read-only — do NOT patch**. karo advised checking the shift+wheel escape hatch first. An upstream issue must **not** be filed externally without operator approval. |
+
+---
+
+## 5. PR #68 — merge done, three fixes NOT implemented
+
+A prior agent completed the *merge* onto main. The three fixes below were
+verified by direct execution in an earlier session but are **not written**:
+
+- **P2 — stderr fd hijack (data integrity).** With fd 2 closed, `pipe()` returns
+  `(2,3)` — the read end lands on fd 2. `dup2` then destroys the drain thread's
+  reader; the thread exits, drops its `File`, and closes fd 2 entirely. The next
+  `open()` claims fd 2, so later stderr writes **silently corrupt an unrelated
+  file**. Fix: `reserve_standard_fds()` + `relocate_above_stderr()` +
+  `pipe2(O_CLOEXEC)`.
+- **A1 — GUI hang (highest severity).** If the log sink fails, the drain loop
+  `break`s and nobody drains the pipe. Once the 64KiB buffer fills, a write from
+  the GTK main thread blocks **forever** = full GUI freeze. Fix: never stop
+  draining while the write end is open; discard on sink failure, mark degraded.
+- **A2 — silent permanent log death.** At the byte cap `write_bounded` returns
+  `Ok(false)` silently and rotation is startup-only, so the log dies permanently
+  and silently. Fix: make the cap observable.
+
+Not implemented because it involves `unsafe` fd manipulation that should not
+ship unverified.
+
+---
+
+## 6. nava's hcom-TUI × Limux design question — owner findings
+
+Full input: `LIMU_INBOX/DESIGN_QUESTION_FROM_nava_2026-07-21_*.md`.
+
+**CORRECTION to an earlier claim in that file** (verified 2026-07-21): it stated
+"the focus primitive exists", citing `control_bridge.rs`. That is only half
+true. `pane.focus` and `surface.focus` exist at the **protocol** layer, but
+there is **no CLI verb** exposing them — `limux --help` has no focus command. So
+nava's seam B (hcom ranks, Limux focuses) is **not** as thin as she was told: it
+needs either a new CLI verb or a direct socket client. Seam A is unaffected.
+
+**Still true and verified:** `limux pane-action --action set_flag_color --color
+<...>` and `clear_flag_color` ARE shipped CLI verbs, so seam A (attention → pane
+chrome) needs no new rendering work from Limux.
+
+**Ratified shape — thin contract, no cross-imports; the agent self-reports the
+mapping.** Limux already injects `LIMUX_SURFACE_ID` and `LIMUX_WORKSPACE_ID`
+into pane env (verified — the CLI reads them for workspace scoping), so an agent
+inside a Limux pane already knows its own ids and can register them with hcom.
+hcom then ranks urgency and shells the public CLI. Neither system imports the
+other, and neither takes a runtime dependency on the other. It also degrades
+correctly: an agent with no `LIMUX_SURFACE_ID` is simply not Limux-hosted —
+which structurally resolves seam C's scoping caveat, because Limux's silence
+about such an agent is then not evidence of death.
+
+---
+
+## 7. PER-SESSION HANDOFFS AND OWNERSHIP
+
+| File | Whose | Contains |
 |---|---|---|
-| 2026-06-20 | Re-anchored repo goal from VM/isolation work back to Limux improvement. | Operator directive in chat; this handoff. |
-| 2026-06-20 | Coordinated with lifo on integration ownership. | hcom `#115022`, `#115918`: option A chosen, lifo branch is integration lane, halo docs separate. |
-| 2026-06-20 | Verified lifo integration branch. | `./scripts/check.sh` passed; `LIMUX_SMOKE_PROFILE=debug ./scripts/xvfb-smoke-test.sh` passed after one transient first-run stage-2 failure and successful replay/rerun. |
-| 2026-06-20 | Installed integration build user-local. | `scripts/user-local-install/install-user-local.sh --apply --profile release --install-id workspaces-sidebar-notifications-20260620`; install hash check passed. |
-| 2026-06-20 | Coordinated with lifo on reported crash. | hcom `limux-crash-20260620`; lifo found matching evidence and no branch-specific panic/segfault. |
-| 2026-06-20 | Classified crash evidence. | Host log, socket, process, selected-workspace health, and journal checks. |
-| 2026-06-20 | Reviewed lifo's clipboard paste fix. | `origin/lifo/fix-clipboard-paste-20260620` at `b05af68`; no blocking findings; host tests/check passed in exported review tree. Not installed into live Limux by halo. |
-| 2026-06-20 | Reviewed and closed G0 stability PR bot loop. | PR #1: Codex bot P2 fixed at `8798eaa839`, bot rereview said no major issues, PR merged at `299a8fc762dc5f4a168d7d37c8148c58d0aedb08`. |
+| `TUTU_HANDOFF.md` | tutu (current LIMUX_MGR) | this session's detail |
+| `LIMU_HANDOFF.md` | limu (retired) | prior-lane history |
+| `LIFO_HANDOFF.md` | lifo (retired) | earlier lane; peer-owned, do not edit |
+| `git show f3c95a5:HANDOFF.md` | halo (retired) | the 2026-06-20 state, verbatim (git history is the durable copy; `archive/` is gitignored) |
 
-## Key Files For Context
+Lineage: lifo → limu → **tutu** (all 2026-07-21). Related lanes: `karo` =
+OMP_MGR (`~/Proj/oh-my-pi`), `nava`/`dino` = hcom, `reve` = fleet.
 
-| Path | Purpose |
-|---|---|
-| `/home/riche/MCPs/limux/LIFO_HANDOFF.md` | Lifo-owned handoff; currently dirty. Do not edit unless lifo hands it over. |
-| `/home/riche/MCPs/limux/HALO_HANDOFF.md` | Halo-owned successor state for Limux improvement work. |
-| `/home/riche/MCPs/limux/FYI.md` | Append-only decision journal; currently large and should be condensed later under a separate approved cleanup. |
-| `/home/riche/MCPs/limux/rust/limux-host-linux/src/window.rs` | Workspace/sidebar UI, notification activation, pane/tab focus, and several likely GTK-critical code paths. |
-| `/home/riche/MCPs/limux/rust/limux-host-linux/src/pane.rs` | Pane registry, pane CSS, tab UI, and pane attention outline/hover-clear behavior. |
-| `/home/riche/MCPs/limux/rust/limux-cli/src/main.rs` | Installed CLI entrypoint, hook commands, agent-team, and host-launch behavior. |
-| `/home/riche/.local/state/limux/logs/limux-host.log` | Current automatic host stderr log. |
-| `/home/riche/MCPs/limux-workspaces-sidebar-notifications` | Lifo sibling worktree for the recommended integration lane. |
-| `/home/riche/MCPs/limux/docs/project-isolation-lab-goal.md` | Historical Limux-local VM/isolation alignment note; superseded for active Limux work. |
+**Active goal (unchanged from halo, still correct):** improving Limux as the
+tool the operator actually uses. The old Project Isolation Lab / VM goal is NOT
+this repo's workstream.
 
-## PR #1 / G0 Stability Closeout - 2026-06-20
+---
 
-PR #1 (`https://github.com/RichelynScott/limux/pull/1`) was a stacked PR from
-`lifo/g0-stability-20260620` into
-`lifo/workspaces-sidebar-notifications-20260620`.
+## 8. TRAPS — learned the hard way, do not relearn
 
-Closeout facts:
+- **Task state is PER-BRANCH.** A TaskMaster tag that looks "missing" is usually
+  a branch-view difference, not data loss. This caused a false alarm.
+- **Work strands on branches.** Three separate efforts were stranded on unmerged
+  branches this session, and a background agent died with unpushed work.
+  **Push immediately after every commit** — do not batch.
+- **`git stash -u` sweeps the peer-owned untracked file.** It is untracked, so
+  `-u` takes it. I did this and had to `git stash pop` to put it back. Prefer
+  committing to a branch over stashing, or stash without `-u`.
+- **Subagents die.** Of five background agents this session, three died to a
+  session quota limit and one to process exit — losing unpushed work each time.
+  Brief them to push after every commit, and check their worktrees for salvage
+  before assuming a task never ran.
+- **Never hand-edit `.taskmaster/tasks/tasks.json`** — use
+  `task-master-reviewed` (`--title`/`--description` = manual, no LLM cost).
+  Note `task-master-ai-reviewed` refuses non-AI subcommands like `list`.
+- **`docs/LIMUX_RUNTIME_CLOSEOUT_DECISION_PACKET_2026-07-16_LIFO.html` is
+  peer-owned untracked dirt** — do NOT stage, modify, or remove it.
+- **`/tmp/limux-release-0.2.3-20260719`** — hamo's no-loss hold; do not remove
+  without explicit operator release.
+- **Vendored `ghostty/` is READ-ONLY.** Work through the C API.
+- **Clippy `-D warnings` is a hard gate** and it *will* catch things. Fix, never
+  suppress.
+- **rtk rewrites some commands.** `grep`/`rg` output gets compacted ("N matches
+  in M files") and `cargo test` collapses to a single summary line. If you need
+  raw output use `awk`/`sed`/`tail`, and note `--type`/`--include` may not reach
+  the real binary.
+- **papa-git**: `export CLAUDE_SESSION_NAME=TUTU_LIMUX_MGR CLAUDE_AGENT=claude`
+  in *every* bash call that commits — it does not persist between tool calls,
+  and lowercase names are REFUSED (`^[A-Z0-9_-]{1,50}$`).
+- **Beware `cmd | tail -N` in a background job** — only the tail is saved, so
+  the full log is lost. Redirect to a file instead if you need the whole thing.
+- **The Codex PR bot is not reviewing** (fleet-wide Codex close-out), so PRs
+  merge with 0 reviews / 0 checks. Weigh that when merging.
 
-- Head before merge: `8798eaa83963ecbe411cda7cc7d3c6345bd0f90d`
-  (`test(host): skip gtk traversal test without display`).
-- Merge commit: `299a8fc762dc5f4a168d7d37c8148c58d0aedb08`
-  (`fix(host): harden G0 runtime stability`).
-- GitHub state: `MERGED` at `2026-06-20T07:08:13Z`.
-- Codex rereview on current head reported:
-  `Codex Review: Didn't find any major issues.`
-- Local sibling worktree
-  `/home/riche/MCPs/limux-workspaces-sidebar-notifications` is clean on
-  `lifo/workspaces-sidebar-notifications-20260620` and matches origin at
-  `299a8fc`.
+---
 
-What the merge added:
+## 9. WHAT IS NOT CLAIMED
 
-- Runtime/debug socket environment isolation.
-- Hook `resolved_socket` diagnostics.
-- Ghostty HiDPI physical sizing.
-- Wrapped pane traversal for focus/attention paths.
-- Split SVG validation before package/user-local install.
-- Display-independent GTK traversal test behavior for plain `cargo test`.
-
-Halo verification before merge closeout:
-
-```bash
-gh pr view 1 --repo RichelynScott/limux --json headRefOid,reviews,comments,mergeStateStatus,state
-gh api repos/RichelynScott/limux/pulls/1/comments
-env -u DISPLAY -u WAYLAND_DISPLAY CARGO_TARGET_DIR=/tmp/limux-g0-no-display-target cargo test -p limux-host-linux find_leaf_pane_descends_wrapped_workspace_root_to_pane -- --nocapture
-env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=invalid CARGO_TARGET_DIR=/tmp/limux-g0-no-display-target cargo test -p limux-host-linux find_leaf_pane_descends_wrapped_workspace_root_to_pane -- --nocapture
-cargo fmt --check
-git diff --check
-```
-
-## Crash Evidence Commands
-
-```bash
-git status --short --branch
-readlink -f /home/riche/.local/bin/limux
-tail -n 240 /home/riche/.local/state/limux/logs/limux-host.log
-/home/riche/.local/bin/limux --json surface-health
-/home/riche/.local/bin/limux --socket /run/user/1000/limux/limux.sock --json list-workspaces
-/home/riche/.local/bin/limux --socket /run/user/1000/limux/limux.sock --json identify
-/home/riche/.local/bin/limux --socket /run/user/1000/limux/limux-23541.sock --json list-workspaces
-/home/riche/.local/bin/limux --socket /run/user/1000/limux/limux-23541.sock --json identify
-ps -eo pid,ppid,stat,lstart,comm,args | rg -i 'limux|ghostty'
-ss -xlpn | rg 'limux|ghostty|/run/user/1000/limux'
-journalctl --user --since '2026-06-20 01:20:00' --no-pager | rg -i 'limux|ghostty|gtk|gdk|segfault|crash|killed|connection reset'
-```
-
-Run the `ps`, `ss`, and `journalctl` commands outside the Codex PID sandbox or
-with approved escalation when exact host-process evidence is needed.
-
-## Critical Behavior Rules
-
-- Focus on Limux product/runtime improvement unless the operator explicitly
-  redirects back to VM/isolation work.
-- Preserve existing repo patterns and run verification before claiming fixes.
-- Do not touch `LIFO_HANDOFF.md` or `archive/` while lifo owns that local dirt.
-- Do not mutate the integration branch during crash triage without fresh
-  evidence or operator approval.
-- Treat package installs, global runtime changes, host OS mutation, sudo, and
-  generated installers as gated work.
-- Keep vendored `ghostty/` read-only from the Limux layer.
-- For user-visible CLI/control behavior, verify the production GTK bridge path
-  when feasible, not only the standalone core dispatcher.
-
-## Out Of Scope / Historical
-
-The old Project Isolation Lab material formerly in this root handoff was
-removed from the active resume path on 2026-06-20 by operator direction. SCS
-still owns that lane. Limux may later be used as an acceptance case if the
-operator explicitly asks, but that is not the current Limux repo goal.
+- **No live GUI verification of anything.** All five fixes are gate-verified
+  (tests/clippy/fmt) and source-traced. Only #33 was additionally verified
+  end-to-end by execution (building and reading `--version` across three tree
+  states). The OMP scroll fix and #84 have **not** been observed working in a
+  running terminal.
+- #84's premise that a changed `ws_xpixel` raises `SIGWINCH` is reasoned from
+  ghostty source, **not** confirmed against the kernel.
+- The 2026-07-16 renderer evidence carried into #83 was produced by different
+  binaries and is **not re-attested**.
+- PRs #82–#85 merged with **no external review**, and the standing adversarial
+  review never ran (see §4). Treat them as self-reviewed only.
