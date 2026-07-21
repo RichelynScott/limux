@@ -107,7 +107,10 @@ failed**, clippy `-D warnings` + fmt clean.
 |---|---|
 | **Restart** | 🔴 operator — §1 |
 | **Live verification** | Nothing below has been seen working in a running GUI. After restart, verify the OMP scroll fix and #84's resize behavior. For #84, `strace -e ioctl` `TIOCSWINSZ` counts on a slow split-drag (before/after) settles its one unverified claim. |
-| **Standing adversarial review** | **NEVER RAN** — commissioned 3× against `31a9431..f2b0a79`, died each time (2× process exit, 1× session quota at 4:50pm ET). PRs #82–#85 are self-reviewed only. Re-commission this. |
+| **Standing adversarial review** | ✅ **RAN** (4th attempt). Found 3 HIGH / 5 MED / 4 LOW. Full record: **`docs/ADVERSARIAL_REVIEW_FINDINGS_2026-07-21.md`**. H-1/H-2/M-2/M-4/L-1 fixed in PR #86; M-1, M-3, M-5, L-2/L-3/L-4 **still open**. |
+| **⚠ Test theater (highest-value remediation)** | The reviewer **reverted each fix and re-ran the suite**: **4 of the 5 behavioural fixes in the installed build survive a full revert with a green suite.** Pure-logic helpers are tested; the wiring that uses them is not. Only `hook_session_id` ordering and #84's grid predicate fail on revert. |
+| **M-1 — scrollbar fix has a live residual path** | The fix's own test comment claims *"config is constant for the surface lifetime"*. **False** — `GHOSTTY_ACTION_RELOAD_CONFIG` stores `CURRENT_SCROLLBAR_ENABLED` at runtime. A config reload while scrolled back still drops the scrollbar out of layout → GLArea widens → column change → viewport reset. **This is the operator's own scroll-yank symptom, via the one remaining path.** |
+| **PR #86** | Open, gate-green (627/0), **merge held pending a real DP-7 boundary review** — requested from the live hcom lane (`gire` claimed it), NOT self-granted. The lint trigger is a false positive: one doc comment naming `hook_session_id_with_env`. |
 | **PR #68 rebuild** (bounded logging) | Branch `tutu/bounded-logging-pr68-20260721` (pushed) = main + a completed merge of the bounded-logging work, tasks.json resolved to main's version. The **three fixes on top are NOT implemented** — see §5. |
 | **reve new-pane incident** | Needs a **v0.2.3 retest**; filed against legacy 0.2.2. `LIFO_INBOX/INCIDENT_FROM_reve_2026-07-19_*.md` |
 | **nava design question** | hcom-TUI × Limux symbiosis. Design owner = the Limux manager. §6 has the ratified shape + a correction. |
@@ -191,6 +194,13 @@ this repo's workstream.
 - **Work strands on branches.** Three separate efforts were stranded on unmerged
   branches this session, and a background agent died with unpushed work.
   **Push immediately after every commit** — do not batch.
+- **`git stash -u` sweeps the peer-owned untracked file.** It is untracked, so
+  `-u` takes it. I did this and had to `git stash pop` to put it back. Prefer
+  committing to a branch over stashing, or stash without `-u`.
+- **Subagents die.** Of five background agents this session, three died to a
+  session quota limit and one to process exit — losing unpushed work each time.
+  Brief them to push after every commit, and check their worktrees for salvage
+  before assuming a task never ran.
 - **Never hand-edit `.taskmaster/tasks/tasks.json`** — use
   `task-master-reviewed` (`--title`/`--description` = manual, no LLM cost).
   Note `task-master-ai-reviewed` refuses non-AI subcommands like `list`.
