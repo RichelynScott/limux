@@ -349,6 +349,11 @@ may replace a sandbox-blocked session in its same verified Surface/Pane:
    bindings, correct `LIMUX_*` context, a nonce ACK, and the original blocker.
    Run Codex `/status`; sandbox selection does not itself disable approvals.
 
+For a formal evidence run, use
+`docs/verification/host-owned-surface-process-attestation.md`. It requires a
+frozen phase-specific authorization before any observer, ancestry, or teardown
+check and treats missing visibility or ambiguous identity as non-PASS.
+
 Never auto-escalate, never use focus fallback, and never make
 `danger-full-access` the global/default launch policy. Installed hcom `0.7.66`
 may retain per-target launch policy, so record and explicitly restore the exact

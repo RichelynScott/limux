@@ -1470,12 +1470,31 @@ fn persist_agent_hook_session(
 }
 
 fn hook_session_id(payload: &Value) -> Option<String> {
+    hook_session_id_with_env(payload, limux_env_value)
+}
+
+/// Resolve the session a hook payload describes.
+///
+/// Precedence is deliberate: **every explicit identity carried by the payload is
+/// consulted before any ambient environment value.** A hook payload describes an
+/// event belonging to one specific session; the environment describes whichever
+/// session happened to invoke the CLI. In a multi-agent workspace those are
+/// routinely different processes, and `limux_env_value` additionally walks
+/// ancestor process environments, so preferring ambient values attributed events
+/// to the wrong agent lane.
+///
+/// The env lookup is injected so the ordering is testable without depending on
+/// the ambient environment of whoever runs the suite.
+fn hook_session_id_with_env<F>(payload: &Value, env_lookup: F) -> Option<String>
+where
+    F: Fn(&str) -> Option<String>,
+{
     hook_str(payload, &["session_id", "sessionId", "sessionID"])
         .map(str::to_string)
-        .or_else(|| limux_env_value("CLAUDE_CODE_SESSION_ID"))
-        .or_else(|| limux_env_value("CLAUDE_SESSION_ID"))
-        .or_else(|| limux_env_value("HERMES_SESSION_ID"))
         .or_else(|| hook_session_id_from_transcript(payload))
+        .or_else(|| env_lookup("CLAUDE_CODE_SESSION_ID"))
+        .or_else(|| env_lookup("CLAUDE_SESSION_ID"))
+        .or_else(|| env_lookup("HERMES_SESSION_ID"))
         .filter(|value| !value.trim().is_empty())
 }
 
@@ -4981,9 +5000,21 @@ async fn run_close_surface(client: &mut Client, args: &[String]) -> Result<Value
     call_in_workspace_scope(client, Some(workspace), "surface.close", params).await
 }
 
+const READ_SCREEN_VALUE_OPTIONS: &[&str] = &["--workspace", "--surface", "--lines"];
+
+fn read_screen_help_text() -> String {
+    "Usage: limux read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n       limux capture-pane (alias of read-screen)\n\nReads visible text from a terminal surface.\n\nTargeting: inside a Limux pane, LIMUX_WORKSPACE_ID scopes the read to the caller's own\nworkspace. Outside Limux, pass an explicit --workspace/--surface; otherwise the server's\nfocused-surface fallback can return a surface owned by a different lane."
+        .to_string()
+}
+
 fn build_read_screen_params(args: &[String]) -> Result<Value> {
-    let workspace = parse_opt(args, "--workspace");
-    let surface = parse_opt(args, "--surface");
+    // Scope to the caller's own workspace by default, matching `send`/`send-key`.
+    // Without this the request carries no workspace_id and the server falls back to
+    // the globally focused surface, which can belong to an unrelated agent lane.
+    let workspace = parse_opt(args, "--workspace")
+        .or_else(|| env::var("LIMUX_WORKSPACE_ID").ok())
+        .filter(|s| !s.is_empty());
+    let surface = parse_opt(args, "--surface").filter(|s| !s.is_empty());
     let mut params = Map::new();
     if let Some(workspace) = workspace {
         params.insert("workspace_id".to_string(), Value::String(workspace));
@@ -5009,6 +5040,14 @@ fn build_read_screen_params(args: &[String]) -> Result<Value> {
 }
 
 async fn run_read_screen(client: &mut Client, args: &[String]) -> Result<Value> {
+    // `--help` must never fall through to a live read: an unconsumed help flag
+    // previously produced a `surface.read_text` call with no explicit target,
+    // disclosing the globally focused surface (another lane's pane content).
+    if has_unconsumed_flag(args, "--help", READ_SCREEN_VALUE_OPTIONS)
+        || has_unconsumed_flag(args, "-h", READ_SCREEN_VALUE_OPTIONS)
+    {
+        return Ok(json!({"help": read_screen_help_text()}));
+    }
     client
         .call("surface.read_text", build_read_screen_params(args)?)
         .await
@@ -6305,6 +6344,8 @@ async fn execute_command(client: &mut Client, opts: &GlobalOptions) -> Result<Co
             let payload = run_read_screen(client, args).await?;
             if opts.json_output {
                 CommandOutput::Json(payload)
+            } else if let Some(help) = get_string(&payload, &["help"]) {
+                CommandOutput::Text(help)
             } else {
                 CommandOutput::Text(get_string(&payload, &["text"]).unwrap_or_default())
             }
@@ -6491,6 +6532,50 @@ mod cli_arg_tests {
                 "scrollback": true,
                 "lines": 120
             })
+        );
+    }
+
+    #[test]
+    fn read_screen_help_flag_is_intercepted_before_any_read() {
+        // Regression: `read-screen --help` previously fell through to
+        // surface.read_text with no explicit target, disclosing the globally
+        // focused surface (another lane's pane). See reve incident 2026-07-19.
+        assert!(has_unconsumed_flag(
+            &args(&["--help"]),
+            "--help",
+            READ_SCREEN_VALUE_OPTIONS
+        ));
+        assert!(has_unconsumed_flag(
+            &args(&["-h"]),
+            "-h",
+            READ_SCREEN_VALUE_OPTIONS
+        ));
+        assert!(!read_screen_help_text().is_empty());
+    }
+
+    #[test]
+    fn read_screen_help_as_option_value_is_not_treated_as_help() {
+        // A surface literally named "--help" must still be read, not intercepted.
+        assert!(!has_unconsumed_flag(
+            &args(&["--surface", "--help"]),
+            "--help",
+            READ_SCREEN_VALUE_OPTIONS
+        ));
+        assert!(!has_unconsumed_flag(
+            &args(&["--lines", "--help"]),
+            "--help",
+            READ_SCREEN_VALUE_OPTIONS
+        ));
+    }
+
+    #[test]
+    fn read_screen_explicit_workspace_overrides_env_scope() {
+        let params = build_read_screen_params(&args(&["--workspace", "workspace:explicit"]))
+            .expect("valid read-screen request");
+        assert_eq!(
+            params.get("workspace_id").and_then(Value::as_str),
+            Some("workspace:explicit"),
+            "explicit --workspace must win over any ambient LIMUX_WORKSPACE_ID"
         );
     }
 
@@ -7156,6 +7241,42 @@ mod cli_arg_tests {
             hook_session_id(&payload).as_deref(),
             Some("268746f1-5a8f-471c-85db-dc50649c2f9c")
         );
+    }
+
+    #[test]
+    fn hook_session_id_prefers_payload_transcript_over_ambient_env() {
+        // Regression: ambient CLAUDE_SESSION_ID/CLAUDE_CODE_SESSION_ID used to win
+        // over the payload's own transcript_path, attributing a hook event for
+        // session A to whichever session invoked the CLI. In a multi-agent
+        // workspace that is cross-lane misattribution.
+        let payload = json!({
+            "transcript_path": "/home/u/.claude/projects/p/268746f1-5a8f-471c-85db-dc50649c2f9c.jsonl"
+        });
+
+        let resolved = hook_session_id_with_env(&payload, |name| match name {
+            "CLAUDE_CODE_SESSION_ID" | "CLAUDE_SESSION_ID" => {
+                Some("ambient-invoking-session".to_string())
+            }
+            _ => None,
+        });
+
+        assert_eq!(
+            resolved.as_deref(),
+            Some("268746f1-5a8f-471c-85db-dc50649c2f9c"),
+            "explicit payload transcript must beat ambient environment"
+        );
+    }
+
+    #[test]
+    fn hook_session_id_uses_ambient_env_only_when_payload_has_no_identity() {
+        let payload = json!({ "cwd": "/tmp/project" });
+
+        let resolved = hook_session_id_with_env(&payload, |name| match name {
+            "CLAUDE_SESSION_ID" => Some("ambient-fallback".to_string()),
+            _ => None,
+        });
+
+        assert_eq!(resolved.as_deref(), Some("ambient-fallback"));
     }
 
     #[test]

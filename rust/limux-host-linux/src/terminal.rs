@@ -12,7 +12,13 @@ use std::ptr;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+/// How long after a user-driven scroll we refuse to overwrite the adjustment's
+/// `value` from a renderer update. Streaming output grows `total` every tick;
+/// without this the reconfigure fights an in-progress drag and the viewport
+/// snaps away from where the user put it.
+const SCROLLBAR_USER_INTERACTION_GRACE: Duration = Duration::from_millis(300);
 
 use limux_ghostty_sys::*;
 
@@ -74,6 +80,11 @@ struct SurfaceEntry {
     scrollbar: gtk::Scrollbar,
     scrollbar_adjustment: gtk::Adjustment,
     scrollbar_syncing: Rc<Cell<bool>>,
+    /// When the user last moved the scrollbar themselves (drag/wheel), as
+    /// opposed to a program-driven `configure()`. Used to avoid yanking the
+    /// viewport out from under an in-progress interaction while `total` grows
+    /// during streaming output.
+    scrollbar_user_active_at: Rc<Cell<Option<Instant>>>,
     on_title_changed: Option<Box<TitleChangedCallback>>,
     on_pwd_changed: Option<Box<PwdChangedCallback>>,
     on_desktop_notification: Option<Box<DesktopNotificationCallback>>,
@@ -1099,6 +1110,40 @@ fn scrollbar_adjustment_needs_update(
         || (current_page_size - page_size).abs() > SCROLLBAR_ADJUSTMENT_EPSILON
 }
 
+/// How the scrollbar should be presented. `Hidden` is the only variant that
+/// removes the widget from layout, and it is selected purely from
+/// configuration -- which does not change while output streams -- never from
+/// scroll state. This is what keeps `total > len` flips layout-neutral.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ScrollbarPresentation {
+    Hidden,
+    ReservedInvisible,
+    Shown,
+}
+
+impl ScrollbarPresentation {
+    fn reserves_space(self) -> bool {
+        !matches!(self, Self::Hidden)
+    }
+}
+
+fn scrollbar_presentation(enabled: bool, total: u64, len: u64) -> ScrollbarPresentation {
+    if !enabled {
+        ScrollbarPresentation::Hidden
+    } else if total > len {
+        ScrollbarPresentation::Shown
+    } else {
+        ScrollbarPresentation::ReservedInvisible
+    }
+}
+
+fn apply_scrollbar_presentation(scrollbar: &gtk::Scrollbar, presentation: ScrollbarPresentation) {
+    scrollbar.set_visible(presentation.reserves_space());
+    let shown = presentation == ScrollbarPresentation::Shown;
+    scrollbar.set_opacity(if shown { 1.0 } else { 0.0 });
+    scrollbar.set_can_target(shown);
+}
+
 unsafe extern "C" fn ghostty_wakeup_cb(_userdata: *mut c_void) {
     // Collapse renderer wakeups to a single pending idle source so text floods
     // do not enqueue unbounded GTK callbacks on the main thread.
@@ -1141,13 +1186,51 @@ unsafe extern "C" fn ghostty_action_cb(
                             upper,
                             page_size,
                         ) {
+                            // Suppressing identical states is not enough on its
+                            // own: during streaming `total` grows every tick, so
+                            // the reconfigure still fires and drags the viewport
+                            // back to the emitted offset. While the user is
+                            // actively scrolling, take the new bounds but keep
+                            // the position they chose.
+                            let user_active = entry
+                                .scrollbar_user_active_at
+                                .get()
+                                .is_some_and(|at| at.elapsed() < SCROLLBAR_USER_INTERACTION_GRACE);
+                            let applied_value = if user_active {
+                                adjustment.value().clamp(0.0, (upper - page_size).max(0.0))
+                            } else {
+                                value
+                            };
                             entry.scrollbar_syncing.set(true);
-                            adjustment.configure(value, 0.0, upper, 1.0, page_size, page_size);
+                            adjustment.configure(
+                                applied_value,
+                                0.0,
+                                upper,
+                                1.0,
+                                page_size,
+                                page_size,
+                            );
                             entry.scrollbar_syncing.set(false);
                         }
-                        entry.scrollbar.set_visible(
-                            CURRENT_SCROLLBAR_ENABLED.load(Ordering::Relaxed)
-                                && scrollbar.total > scrollbar.len,
+
+                        // Show immediately, hide on a delay. A scrollback wipe
+                        // collapses `total` to `len`; hiding instantly flashes
+                        // the scrollbar out and back in during the replay, and
+                        // destroys any scrolled-up position the user had.
+                        // Layout participation is decided by CONFIG ONLY, never
+                        // by scroll state. A `total > len` flip (an ESC[3J
+                        // scrollback wipe collapses `total` to `len`) must not
+                        // change the terminal's allocation: that would resize
+                        // Ghostty's columns, and a column change is a reflow
+                        // that pulls a scrolled-back viewport to the bottom.
+                        // Only paint and hit-testing vary here.
+                        apply_scrollbar_presentation(
+                            &entry.scrollbar,
+                            scrollbar_presentation(
+                                CURRENT_SCROLLBAR_ENABLED.load(Ordering::Relaxed),
+                                scrollbar.total,
+                                scrollbar.len,
+                            ),
                         );
                     }
                 });
@@ -1721,6 +1804,7 @@ pub fn create_terminal(
     let resize_coalescer = Rc::new(SurfaceResizeCoalescer::default());
     let had_focus = Rc::new(Cell::new(false));
     let scrollbar_syncing = Rc::new(Cell::new(false));
+    let scrollbar_user_active_at: Rc<Cell<Option<Instant>>> = Rc::new(Cell::new(None));
     let open_url_external = Rc::new(Cell::new(false));
     let clipboard_context_cell: Rc<Cell<*mut ClipboardContext>> =
         Rc::new(Cell::new(ptr::null_mut()));
@@ -1733,7 +1817,19 @@ pub fn create_terminal(
 
     let scrollbar_adjustment = gtk::Adjustment::new(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     let scrollbar = gtk::Scrollbar::new(gtk::Orientation::Vertical, Some(&scrollbar_adjustment));
-    scrollbar.set_visible(false);
+    // The scrollbar is a LAYOUT SIBLING of the terminal (see `root` below:
+    // a horizontal Box containing the overlay and then the scrollbar), not an
+    // overlay. In GTK4 an invisible box child gets zero allocation, so toggling
+    // `visible` would add/remove its width from the GLArea, resize Ghostty's
+    // column count, and a column change is a reflow -- and reflow moves a
+    // scrolled-back viewport into the active area (PageList `resize`:
+    // `.pin => if (pinIsActive(..)) viewport = .active`, whose own comment reads
+    // "this effectively pulls down scrollback"). Reserve the space for the
+    // surface lifetime and vary only paint/hit-testing.
+    apply_scrollbar_presentation(
+        &scrollbar,
+        scrollbar_presentation(CURRENT_SCROLLBAR_ENABLED.load(Ordering::Relaxed), 0, 0),
+    );
     scrollbar.set_vexpand(true);
 
     let root = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -1853,10 +1949,16 @@ pub fn create_terminal(
     {
         let surface_cell = surface_cell.clone();
         let scrollbar_syncing = scrollbar_syncing.clone();
+        let scrollbar_user_active_at_for_value = scrollbar_user_active_at.clone();
         scrollbar_adjustment.connect_value_changed(move |adj| {
             if scrollbar_syncing.get() {
                 return;
             }
+
+            // Reaching here means the change came from the user (drag/wheel/keys),
+            // not from a renderer-driven `configure()`. Record it so streaming
+            // output does not reconfigure the position out from under them.
+            scrollbar_user_active_at_for_value.set(Some(Instant::now()));
 
             let row = adj.value().round() as usize;
             surface_action(*surface_cell.borrow(), &format!("scroll_to_row:{row}"));
@@ -1869,6 +1971,7 @@ pub fn create_terminal(
         let overlay_for_map = overlay.clone();
         let scrollbar_for_map = scrollbar.clone();
         let scrollbar_adjustment_for_map = scrollbar_adjustment.clone();
+        let scrollbar_user_active_at_for_map = scrollbar_user_active_at.clone();
         let surface_cell = surface_cell.clone();
         let callbacks = callbacks.clone();
         let had_focus = had_focus.clone();
@@ -1998,6 +2101,7 @@ pub fn create_terminal(
                         scrollbar: scrollbar_for_map.clone(),
                         scrollbar_adjustment: scrollbar_adjustment_for_map.clone(),
                         scrollbar_syncing: scrollbar_syncing.clone(),
+                        scrollbar_user_active_at: scrollbar_user_active_at_for_map.clone(),
                         on_title_changed: Some(Box::new({
                             let cb = callbacks.clone();
                             move |title| {
@@ -3875,6 +3979,39 @@ mod tests {
         assert!(!scrollbar_adjustment_needs_update(
             12.0005, 120.0005, 24.0005, 12.0, 120.0, 24.0,
         ));
+    }
+
+    #[test]
+    fn scrollbar_presentation_never_changes_layout_while_enabled() {
+        // THE ROOT CAUSE GUARD. The scrollbar is a layout sibling of the
+        // terminal in a horizontal Box, and in GTK4 an invisible box child gets
+        // zero allocation. So if a `total > len` flip changed layout
+        // participation, the GLArea would change width, Ghostty would resize
+        // its column count, and a column change is a reflow -- which pulls a
+        // scrolled-back viewport to the bottom. ESC[3J (emitted by agent TUIs
+        // on repaint) collapses `total` to `len`, so this flip is frequent.
+        let with_scrollback = scrollbar_presentation(true, 120, 24);
+        let without_scrollback = scrollbar_presentation(true, 24, 24);
+
+        assert_eq!(with_scrollback, ScrollbarPresentation::Shown);
+        assert_eq!(without_scrollback, ScrollbarPresentation::ReservedInvisible);
+        assert_eq!(
+            with_scrollback.reserves_space(),
+            without_scrollback.reserves_space(),
+            "scroll-state flips must not change layout participation"
+        );
+    }
+
+    #[test]
+    fn scrollbar_presentation_hides_only_on_configuration() {
+        // Config is constant for the surface lifetime, so it cannot oscillate;
+        // this is the one case where dropping out of layout is safe.
+        assert_eq!(
+            scrollbar_presentation(false, 120, 24),
+            ScrollbarPresentation::Hidden
+        );
+        assert!(!scrollbar_presentation(false, 120, 24).reserves_space());
+        assert!(scrollbar_presentation(true, 24, 24).reserves_space());
     }
 
     #[test]
