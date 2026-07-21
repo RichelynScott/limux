@@ -57,10 +57,12 @@ been promoted:
 ```bash
 if [[ -x ~/.local/bin/limux-stable ]]; then
   daily_driver="$HOME/.local/bin/limux-stable"
+elif [[ -x ~/.local/bin/limux-legacy ]]; then
+  daily_driver="$HOME/.local/bin/limux-legacy"
 elif [[ -x ~/.local/bin/limux ]]; then
   daily_driver="$HOME/.local/bin/limux"
 else
-  echo "No daily-driver Limux launcher found at ~/.local/bin/limux-stable or ~/.local/bin/limux" >&2
+  echo "No daily-driver Limux launcher found at ~/.local/bin/limux-stable, ~/.local/bin/limux-legacy, or ~/.local/bin/limux" >&2
   exit 1
 fi
 nohup "$daily_driver" >/tmp/limux-daily-driver-checklist.log 2>&1 &

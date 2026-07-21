@@ -39,6 +39,10 @@ installer="scripts/user-local-install/install-user-local.sh"
 
 printf 'runtime-isolation-smoke: installing legacy lane into %s\n' "$prefix"
 "$installer" --apply --profile "$profile" --prefix "$prefix" --install-id legacy-smoke --channel legacy --no-desktop-entry >/dev/null
+[[ -L "${prefix}/bin/limux-legacy" ]] \
+    || fail "rollback-only install did not create limux-legacy"
+[[ ! -e "${prefix}/bin/limux" ]] \
+    || fail "rollback-only install unexpectedly promoted the plain limux alias"
 
 printf 'runtime-isolation-smoke: installing stable lane into %s\n' "$prefix"
 "$installer" --apply --profile "$profile" --prefix "$prefix" --install-id stable-smoke --channel stable --no-desktop-entry >/dev/null
