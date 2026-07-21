@@ -624,18 +624,41 @@
         "priority": "high",
         "subtasks": [],
         "updatedAt": "2026-07-21T10:23:21.536Z"
+      },
+      {
+        "id": 31,
+        "title": "Reconcile Limux manager succession and repository hygiene",
+        "description": "Complete the no-loss manager succession from lifo to limu, consolidate active handoff and inbox surfaces, reconcile TaskMaster/open PR/worktree/branch state, and publish an evidence-cited repository audit.",
+        "details": "Preserve inherited Task 29 RED-state work on pushed limu branch 7e0eb07. Build exact owner and disposition maps before cleanup. Do not delete or rewrite historical artifacts; archive or preserve them. Keep PR close/merge, retained worktree removal, and destructive build-artifact cleanup operator-gated. Acceptance: LIMU_HANDOFF and LIMU_INBOX are durable, repo audit names grades and priorities with file-line evidence, every open PR/worktree/dirty artifact has an owner/disposition, and main canonical verification remains green.",
+        "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-07-21T15:58:34.968Z"
+      },
+      {
+        "id": 32,
+        "title": "Fix OMP terminal scroll yank and periodic flash",
+        "description": "Operator-reported HIGH defect: while OMP runs inside a Limux pane, the viewport repeatedly jumps to the bottom and flashes, preventing scrollback reading.",
+        "details": "Evidence is in LIMU_INBOX/BUG_FROM_tutu_2026-07-21_omp-pane-scroll-yank-flash.md after inbox adoption. Treat the header-refresh-to-scrollbar-feedback theory as unproven: local PR #59 added the header, while scrollbar commit fc23ac2 is an older 2026-05-10 ancestor whose subject references a different #59. Reproduce first, measure cadence against terminal output/header refresh, trace GTK Adjustment value-changed and Ghostty scroll state, and add a RED regression test before implementation. Consider a bounded header gate only if the causal check supports it. Acceptance: operator can scroll up during active OMP output without yank/flash, no regression to follow-output behavior, targeted terminal tests and canonical gate pass, and live Limux smoke is recorded.",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": []
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-21T10:23:21.536Z",
-      "taskCount": 30,
+      "lastModified": "2026-07-21T15:58:34.968Z",
+      "taskCount": 32,
       "completedCount": 15,
       "tags": [
         "master"
       ],
       "created": "2026-07-16T00:27:19.811Z",
-      "updated": "2026-07-21T09:37:12.881Z",
+      "updated": "2026-07-21T16:05:26.735Z",
       "description": "Tasks for master context"
     }
   },
