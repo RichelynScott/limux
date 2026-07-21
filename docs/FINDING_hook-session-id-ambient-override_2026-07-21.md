@@ -2,8 +2,31 @@
 
 **Found by:** tutu (`LIMUX_MGR`) · 2026-07-21
 **Found while:** verifying the H1 `read-screen` fix (PR #82) against the full test suite
-**Status:** filed, not fixed. Needs a manager/owner decision on precedence semantics.
+**Status:** **RESOLVED** in PR #82 (commit `38f5254`). Precedence decision recorded below.
 **Severity:** Medium-High (correctness + gate integrity). **Size:** S–M.
+
+## RESOLUTION (2026-07-21, tutu as `LIMUX_MGR`)
+
+**Decision: payload-first.** Every explicit identity carried by the payload
+(`session_id`, then the `transcript_path` stem) is consulted **before** any
+ambient environment value.
+
+Rationale: a hook payload describes an event belonging to one specific session;
+the environment describes whichever session invoked the CLI. In a multi-agent
+workspace — this product's core use case — those are routinely different
+processes, and `limux_env_value` walks ancestor process environments as well.
+Ambient-first therefore misattributes across lanes. Explicit request data must
+beat ambient inference, which is the same principle the H1 fix applied.
+
+Also extracted `hook_session_id_with_env(payload, env_lookup)` so the ordering is
+tested through an injected lookup rather than inheriting the ambient environment
+of whoever runs the suite. The single production call site is unchanged.
+
+**Gate impact:** the full workspace suite now reports **602 passed / 0 failed**
+from inside a Claude session. Previously the outcome depended on the runtime.
+
+**Remaining follow-up (not done here):** sweep other `limux_env_value` call sites
+for the same explicit-vs-ambient inversion.
 
 ## Two symptoms, one root cause
 
