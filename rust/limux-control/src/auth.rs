@@ -35,9 +35,13 @@ impl SocketControlMode {
         match value.trim() {
             "allowAll" | "allow-all" | "allow_all" => Self::AllowAll,
             "localUser" | "local-user" | "local_user" => Self::LocalUser,
-            "cmuxOnly" | "limuxOnly" | "descendantOnly" | "descendant-only" | "descendant_only" => {
-                Self::LimuxOnly
-            }
+            // Every other mode accepts camel/hyphen/underscore spellings, so the
+            // strict mode must too. It previously did not, and the `_` arm below
+            // silently downgrades an unrecognized value to LocalUser — meaning a
+            // typo like `limux-only` FAILS OPEN, dropping same-uid-descendant
+            // enforcement to same-uid-anyone with no warning.
+            "cmuxOnly" | "cmux-only" | "cmux_only" | "limuxOnly" | "limux-only" | "limux_only"
+            | "descendantOnly" | "descendant-only" | "descendant_only" => Self::LimuxOnly,
             _ => Self::LocalUser,
         }
     }
@@ -186,6 +190,34 @@ mod tests {
         let _limux = EnvGuard::set("LIMUX_SOCKET_MODE", Some("cmuxOnly"));
         let _cmux = EnvGuard::set("CMUX_SOCKET_MODE", None);
         assert_eq!(SocketControlMode::from_env(), SocketControlMode::LimuxOnly);
+    }
+
+    /// The strict mode must accept the same camel/hyphen/underscore spellings
+    /// every other mode does. It did not, and the catch-all arm downgrades an
+    /// unrecognized value to LocalUser — so `limux-only` silently FAILED OPEN,
+    /// turning same-uid-descendant enforcement into same-uid-anyone.
+    #[test]
+    fn strict_mode_accepts_all_spellings_and_never_fails_open() {
+        let _lock = ENV_TEST_LOCK.lock().expect("env lock");
+        let _cmux = EnvGuard::set("CMUX_SOCKET_MODE", None);
+        for spelling in [
+            "limuxOnly",
+            "limux-only",
+            "limux_only",
+            "cmuxOnly",
+            "cmux-only",
+            "cmux_only",
+            "descendantOnly",
+            "descendant-only",
+            "descendant_only",
+        ] {
+            let _limux = EnvGuard::set("LIMUX_SOCKET_MODE", Some(spelling));
+            assert_eq!(
+                SocketControlMode::from_env(),
+                SocketControlMode::LimuxOnly,
+                "{spelling:?} must select the strict mode, not silently fall back to LocalUser"
+            );
+        }
     }
 
     #[test]

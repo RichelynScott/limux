@@ -13,6 +13,25 @@ fn command_stdout(args: &[&str]) -> Option<String> {
     (!value.is_empty()).then_some(value)
 }
 
+/// True when `git` here resolves to the SAME repository as the crate source.
+///
+/// If the source tree has been copied/extracted underneath an unrelated git
+/// repo, `git` answers about that outer repo instead. Before `-uno` that
+/// misattribution at least surfaced as `dirty=true` (the copied tree showed up
+/// as untracked); with `-uno` it would report a confident, wrong "verified
+/// clean" against a foreign HEAD. Fail to "unknown" instead of attesting a
+/// provenance we cannot stand behind.
+fn git_matches_source_tree(root: &Path) -> bool {
+    let Some(toplevel) = command_stdout(&["rev-parse", "--show-toplevel"]).map(PathBuf::from)
+    else {
+        return false;
+    };
+    match (toplevel.canonicalize(), root.canonicalize()) {
+        (Ok(toplevel), Ok(root)) => toplevel == root,
+        _ => false,
+    }
+}
+
 /// Reports whether *tracked* files are modified, for build provenance.
 ///
 /// `-uno` keeps untracked files (peer-owned docs, scratch files, editor
@@ -22,7 +41,10 @@ fn command_stdout(args: &[&str]) -> Option<String> {
 /// This deliberately does not reuse `command_stdout`, which folds empty output
 /// into `None`: here an empty-but-successful result is the *verified clean*
 /// signal and must stay distinguishable from "git failed, we cannot tell".
-fn git_tracked_dirty() -> &'static str {
+fn git_tracked_dirty(root: &Path) -> &'static str {
+    if !git_matches_source_tree(root) {
+        return "unknown";
+    }
     let Ok(output) = Command::new("git")
         .args(["status", "--porcelain", "-uno"])
         .output()
@@ -107,7 +129,7 @@ fn main() {
 
     let sha = command_stdout(&["rev-parse", "--short=12", "HEAD"])
         .unwrap_or_else(|| "unknown".to_string());
-    let dirty = git_tracked_dirty();
+    let dirty = git_tracked_dirty(&root);
     let profile = env::var("PROFILE").unwrap_or_else(|_| "unknown".to_string());
 
     println!("cargo:rustc-env=LIMUX_BUILD_SHA={sha}");

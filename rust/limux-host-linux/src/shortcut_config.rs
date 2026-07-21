@@ -1705,6 +1705,69 @@ mod tests {
         assert_eq!(definitions().len(), 48);
     }
 
+    /// Binds the `send-key` "unsupported key" error message to reality.
+    ///
+    /// reve's 2026-07-19 incident reported that every `send-key` key name was
+    /// rejected, and recommended documenting the vocabulary. The vocabulary was
+    /// never the problem — an unrealized surface was being reported as
+    /// "unsupported key". The error message now *advertises* this vocabulary, so
+    /// if any of these ever stops parsing the message becomes a lie. This test
+    /// fails in that case.
+    #[test]
+    fn send_key_vocabulary_named_in_error_message_actually_parses() {
+        for key in [
+            "enter",
+            "escape",
+            "tab",
+            "space",
+            "up",
+            "down",
+            "left",
+            "right",
+            "page_up",
+            "page_down",
+            "f1",
+            "f12",
+            "a",
+        ] {
+            assert!(
+                NormalizedShortcut::parse(key).is_ok(),
+                "send-key error message advertises {key:?} but it does not parse"
+            );
+        }
+    }
+
+    /// reve tried `enter` first and was told it was unsupported. It is not —
+    /// `return` and `enter` both normalize to the same key, which then maps to
+    /// GTK's `Return`. Pins the alias so the accepted spellings cannot silently
+    /// diverge.
+    #[test]
+    fn enter_and_return_are_the_same_supported_key() {
+        let from_enter = NormalizedShortcut::parse("enter").expect("enter parses");
+        let from_return = NormalizedShortcut::parse("return").expect("return parses");
+        assert_eq!(from_enter, from_return);
+        assert_eq!(runtime_key_to_gtk_key(&from_enter.key), "Return");
+
+        // Same for the esc/escape alias pair.
+        let from_esc = NormalizedShortcut::parse("esc").expect("esc parses");
+        let from_escape = NormalizedShortcut::parse("escape").expect("escape parses");
+        assert_eq!(from_esc, from_escape);
+        assert_eq!(runtime_key_to_gtk_key(&from_esc.key), "Escape");
+    }
+
+    /// A genuinely malformed key must still be rejected — otherwise the fix
+    /// that stopped over-reporting "unsupported key" would have gone too far and
+    /// stopped reporting it at all.
+    #[test]
+    fn genuinely_malformed_keys_are_still_rejected() {
+        for key in ["", "   ", "<notamodifier>x", "<ctrl", "a>b"] {
+            assert!(
+                NormalizedShortcut::parse(key).is_err(),
+                "expected {key:?} to be rejected"
+            );
+        }
+    }
+
     #[test]
     fn definitions_have_unique_ids_and_action_names_and_accels() {
         let defs = definitions();
