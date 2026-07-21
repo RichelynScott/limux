@@ -235,6 +235,27 @@ impl BoundedLogWriter {
         self.write_bounded(bytes)
     }
 
+    /// One-shot notice that the sink failed and stderr is now being discarded.
+    ///
+    /// Best-effort by construction: it is written through the same file that
+    /// just failed, so it only lands when the failure was transient.
+    pub(crate) fn write_degraded_marker(&mut self) -> io::Result<bool> {
+        self.write_bounded(b"limux-log-degraded sink write failed; stderr is being discarded\n")
+    }
+
+    /// Closing tally of what a degraded sink cost, written when the drain
+    /// loop stops. Also best-effort, for the same reason.
+    pub(crate) fn write_degraded_summary(
+        &mut self,
+        failures: u64,
+        discarded_bytes: u64,
+    ) -> io::Result<bool> {
+        let summary = format!(
+            "limux-log-degraded-summary sink_failures={failures} discarded_bytes={discarded_bytes}\n"
+        );
+        self.write_bounded(summary.as_bytes())
+    }
+
     fn flush_summaries(&mut self) -> io::Result<()> {
         for (category, total) in self.warnings.take_summaries() {
             let repeated = total.saturating_sub(1);
@@ -547,36 +568,131 @@ fn set_nonblocking(file: &File) -> io::Result<()> {
     Ok(())
 }
 
-fn drain_stderr(mut reader: File, mut writer: BoundedLogWriter) {
+/// What the drain loop should do with the outcome of one `read` call.
+///
+/// Split out from the loop so the control-flow decision is unit-testable
+/// without spawning a GUI or a real pipe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DrainAction {
+    /// `n` bytes are readable in the chunk buffer.
+    Process(usize),
+    /// Nothing readable right now; idle briefly, then retry.
+    Idle,
+    /// Interrupted by a signal; retry immediately.
+    Retry,
+    /// Every write end is closed; finish up and stop.
+    Eof,
+    /// The read end itself is unusable; nothing is left to drain.
+    ReaderFailed,
+}
+
+pub(crate) fn classify_read(result: &io::Result<usize>) -> DrainAction {
+    match result {
+        Ok(0) => DrainAction::Eof,
+        Ok(read) => DrainAction::Process(*read),
+        Err(error) if error.kind() == io::ErrorKind::WouldBlock => DrainAction::Idle,
+        Err(error) if error.kind() == io::ErrorKind::Interrupted => DrainAction::Retry,
+        Err(_) => DrainAction::ReaderFailed,
+    }
+}
+
+/// Health of the bounded-log sink as observed by the drain thread.
+///
+/// A failing sink must never stop the drain loop: the write end of the pipe
+/// is `STDERR_FILENO` for the whole process, including the GTK main thread.
+/// If nobody reads the pipe, the 64 KiB kernel buffer fills and the next
+/// `write(2)` from the main thread blocks forever, freezing the GUI. So a
+/// sink failure degrades to read-and-discard, and is recorded here instead.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DrainState {
+    degraded: bool,
+    discarded_bytes: u64,
+    sink_failures: u64,
+}
+
+impl DrainState {
+    pub(crate) fn is_degraded(&self) -> bool {
+        self.degraded
+    }
+
+    pub(crate) fn discarded_bytes(&self) -> u64 {
+        self.discarded_bytes
+    }
+
+    pub(crate) fn sink_failures(&self) -> u64 {
+        self.sink_failures
+    }
+
+    /// Record that the log sink failed. Returns `true` the first time, so the
+    /// caller can emit a one-shot marker.
+    pub(crate) fn note_sink_failure(&mut self) -> bool {
+        self.sink_failures = self.sink_failures.saturating_add(1);
+        let first = !self.degraded;
+        self.degraded = true;
+        first
+    }
+
+    pub(crate) fn note_discarded(&mut self, bytes: usize) {
+        self.discarded_bytes = self
+            .discarded_bytes
+            .saturating_add(u64::try_from(bytes).unwrap_or(u64::MAX));
+    }
+}
+
+fn drain_stderr(mut reader: File, mut writer: BoundedLogWriter) -> DrainState {
     let started = Instant::now();
     let mut pending = Vec::with_capacity(MAX_WARNING_LINE_BYTES as usize);
     let mut chunk = [0u8; STDERR_READ_CHUNK_BYTES];
+    let mut state = DrainState::default();
     loop {
         let elapsed = started.elapsed();
-        if writer.flush_due(elapsed).is_err() {
-            break;
+        if !state.is_degraded() && writer.flush_due(elapsed).is_err() {
+            note_sink_failure(&mut state, &mut writer, &mut pending);
         }
-        match reader.read(&mut chunk) {
-            Ok(0) => {
-                if !pending.is_empty() {
+        let result = reader.read(&mut chunk);
+        match classify_read(&result) {
+            DrainAction::Eof => {
+                if !state.is_degraded() && !pending.is_empty() {
                     let _ = process_stderr_line(&mut writer, &pending, elapsed);
                 }
                 break;
             }
-            Ok(read) => {
-                pending.extend_from_slice(&chunk[..read]);
-                if drain_complete_lines(&mut writer, &mut pending, elapsed).is_err() {
-                    break;
+            DrainAction::Process(read) => {
+                if state.is_degraded() {
+                    // Sink is dead, but the pipe MUST keep being drained or
+                    // the GTK main thread blocks on write forever.
+                    state.note_discarded(read);
+                } else {
+                    pending.extend_from_slice(&chunk[..read]);
+                    if drain_complete_lines(&mut writer, &mut pending, elapsed).is_err() {
+                        note_sink_failure(&mut state, &mut writer, &mut pending);
+                    }
                 }
             }
-            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                thread::sleep(STDERR_IDLE_TICK);
-            }
-            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
-            Err(_) => break,
+            DrainAction::Idle => thread::sleep(STDERR_IDLE_TICK),
+            DrainAction::Retry => {}
+            // The read end is gone; there is nothing left to drain and the
+            // loop would otherwise spin at 100% CPU.
+            DrainAction::ReaderFailed => break,
         }
     }
+    if state.is_degraded() {
+        let _ = writer.write_degraded_summary(state.sink_failures(), state.discarded_bytes());
+    }
     let _ = writer.finish();
+    state
+}
+
+/// Mark the sink degraded and make that fact observable, best-effort.
+fn note_sink_failure(state: &mut DrainState, writer: &mut BoundedLogWriter, pending: &mut Vec<u8>) {
+    let first = state.note_sink_failure();
+    state.note_discarded(pending.len());
+    pending.clear();
+    if first {
+        // Best-effort: the sink just failed, so this may well fail too. It
+        // lands when the failure was transient (e.g. one bad line).
+        let _ = writer.write_degraded_marker();
+    }
 }
 
 #[cfg(unix)]
@@ -638,6 +754,162 @@ mod tests {
     use super::*;
     use std::fs;
     use std::time::Duration;
+
+    /// A sink whose every write fails: an existing file opened read-only.
+    fn failing_sink(root: &std::path::Path) -> File {
+        let path = root.join("readonly-sink.log");
+        fs::write(&path, b"").expect("sink fixture");
+        File::open(&path).expect("open read-only sink")
+    }
+
+    #[test]
+    fn classify_read_maps_outcomes_to_drain_actions() {
+        assert_eq!(classify_read(&Ok(0)), DrainAction::Eof);
+        assert_eq!(classify_read(&Ok(17)), DrainAction::Process(17));
+        assert_eq!(
+            classify_read(&Err(io::Error::from(io::ErrorKind::WouldBlock))),
+            DrainAction::Idle
+        );
+        assert_eq!(
+            classify_read(&Err(io::Error::from(io::ErrorKind::Interrupted))),
+            DrainAction::Retry
+        );
+        assert_eq!(
+            classify_read(&Err(io::Error::from(io::ErrorKind::BrokenPipe))),
+            DrainAction::ReaderFailed
+        );
+    }
+
+    #[test]
+    fn drain_state_reports_first_failure_once_and_accumulates_discards() {
+        let mut state = DrainState::default();
+        assert!(!state.is_degraded());
+
+        assert!(state.note_sink_failure(), "first failure must be reported");
+        assert!(
+            !state.note_sink_failure(),
+            "subsequent failures must not re-report"
+        );
+        assert!(state.is_degraded());
+        assert_eq!(state.sink_failures(), 2);
+
+        state.note_discarded(100);
+        state.note_discarded(23);
+        assert_eq!(state.discarded_bytes(), 123);
+    }
+
+    /// A1 regression: the drain loop must never stop draining while a write
+    /// end is open. The write end is process-wide stderr, so if the loop
+    /// stops, the 64 KiB pipe buffer fills and the next write from the GTK
+    /// main thread blocks forever — a full GUI freeze.
+    #[cfg(unix)]
+    #[test]
+    fn sink_failure_never_stops_draining_the_pipe() {
+        use std::sync::mpsc;
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut fds = [0i32; 2];
+        assert_eq!(
+            unsafe { libc::pipe(fds.as_mut_ptr()) },
+            0,
+            "pipe() must succeed"
+        );
+        let reader = unsafe { File::from_raw_fd(fds[0]) };
+        let mut write_end = unsafe { File::from_raw_fd(fds[1]) };
+        set_nonblocking(&reader).expect("nonblocking reader");
+
+        let writer = BoundedLogWriter::new(failing_sink(tmp.path()), u64::MAX, {
+            WarningAggregator::new(4)
+        });
+        let drain = thread::spawn(move || drain_stderr(reader, writer));
+
+        // Push far more than one pipe buffer (64 KiB on Linux) through the
+        // write end, exactly as the GTK main thread would.
+        let (tx, rx) = mpsc::channel();
+        let feeder = thread::spawn(move || {
+            let line = vec![b'x'; 4096];
+            for _ in 0..64 {
+                if write_end.write_all(&line).is_err() || write_end.write_all(b"\n").is_err() {
+                    break;
+                }
+            }
+            drop(write_end);
+            let _ = tx.send(());
+        });
+
+        assert!(
+            rx.recv_timeout(Duration::from_secs(15)).is_ok(),
+            "writes to stderr blocked: the drain loop stopped draining after a sink \
+             failure, which freezes the GTK main thread (GUI-hang regression)"
+        );
+
+        feeder.join().expect("feeder thread");
+        let state = drain.join().expect("drain thread");
+        assert!(state.is_degraded(), "sink failure must be recorded");
+        assert!(state.sink_failures() >= 1);
+        assert!(
+            state.discarded_bytes() >= 64 * 1024,
+            "drain must have kept consuming past one pipe buffer, discarded {}",
+            state.discarded_bytes()
+        );
+    }
+
+    /// A1 regression, production shape: in the real host the pipe fds are
+    /// inherited by every spawned child (they are created without
+    /// `O_CLOEXEC`), so the read end stays open even after the drain thread
+    /// stops. Nobody is left draining, the 64 KiB buffer fills, and the next
+    /// stderr write from the GTK main thread blocks forever.
+    ///
+    /// Holding a duplicate of the read end reproduces exactly that shape.
+    #[cfg(unix)]
+    #[test]
+    fn sink_failure_does_not_block_stderr_writers_while_read_end_stays_open() {
+        use std::sync::mpsc;
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut fds = [0i32; 2];
+        assert_eq!(
+            unsafe { libc::pipe(fds.as_mut_ptr()) },
+            0,
+            "pipe() must succeed"
+        );
+        let reader = unsafe { File::from_raw_fd(fds[0]) };
+        let mut write_end = unsafe { File::from_raw_fd(fds[1]) };
+        set_nonblocking(&reader).expect("nonblocking reader");
+
+        // Stand in for a forked child that inherited the read end: the pipe
+        // now never reaches EOF just because the drain thread went away.
+        let inherited = unsafe { libc::dup(fds[0]) };
+        assert!(inherited >= 0, "dup of read end must succeed");
+        let _inherited_read_end = unsafe { File::from_raw_fd(inherited) };
+
+        let writer = BoundedLogWriter::new(failing_sink(tmp.path()), u64::MAX, {
+            WarningAggregator::new(4)
+        });
+        let drain = thread::spawn(move || drain_stderr(reader, writer));
+
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let line = vec![b'x'; 4096];
+            for _ in 0..64 {
+                if write_end.write_all(&line).is_err() || write_end.write_all(b"\n").is_err() {
+                    break;
+                }
+            }
+            drop(write_end);
+            let _ = tx.send(());
+        });
+
+        assert!(
+            rx.recv_timeout(Duration::from_secs(15)).is_ok(),
+            "stderr writes blocked with the pipe read end still open: this is the \
+             GUI freeze — the GTK main thread would be stuck in write(2) forever"
+        );
+
+        let state = drain.join().expect("drain thread");
+        assert!(state.is_degraded());
+        assert!(state.discarded_bytes() >= 64 * 1024);
+    }
 
     fn config(root: &std::path::Path) -> HostLogConfig {
         HostLogConfig {
