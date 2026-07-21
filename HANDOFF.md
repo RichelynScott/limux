@@ -36,9 +36,9 @@ scrollbar behavior with `karo` (OMP_MGR).
 
 | | Value |
 |---|---|
-| **Installed** | `limux-cli 0.2.3 (3bf819f6a949, release)` |
-| **install-id** | `main-3bf819f6a949-all5fixes-20260721`, channel `stable` |
-| **Contains** | ALL FIVE merged fixes (PRs #81–#85) |
+| **Installed** | `limux-cli 0.2.3 (c757056d2539, release)` — clean, no `-dirty` |
+| **install-id** | `main-c757056d2539-adv-remediated-20260721`, channel `stable` |
+| **Contains** | ALL SEVEN merged PRs (#81–#87), including the adversarial-review remediation |
 | **Previous launchers** | archived via `mv` (not `rm`) at `~/.local/limux-reviewed/archive/20260721T223224Z/` |
 
 `limux doctor` currently shows two `[warn]`s — "no running Limux host process"
@@ -110,7 +110,8 @@ failed**, clippy `-D warnings` + fmt clean.
 | **Standing adversarial review** | ✅ **RAN** (4th attempt). Found 3 HIGH / 5 MED / 4 LOW. Full record: **`docs/ADVERSARIAL_REVIEW_FINDINGS_2026-07-21.md`**. H-1/H-2/M-2/M-4/L-1 fixed in PR #86; M-1, M-3, M-5, L-2/L-3/L-4 **still open**. |
 | **⚠ Test theater (highest-value remediation)** | The reviewer **reverted each fix and re-ran the suite**: **4 of the 5 behavioural fixes in the installed build survive a full revert with a green suite.** Pure-logic helpers are tested; the wiring that uses them is not. Only `hook_session_id` ordering and #84's grid predicate fail on revert. |
 | **M-1 — scrollbar fix has a live residual path** | The fix's own test comment claims *"config is constant for the surface lifetime"*. **False** — `GHOSTTY_ACTION_RELOAD_CONFIG` stores `CURRENT_SCROLLBAR_ENABLED` at runtime. A config reload while scrolled back still drops the scrollbar out of layout → GLArea widens → column change → viewport reset. **This is the operator's own scroll-yank symptom, via the one remaining path.** |
-| **PR #86** | Open, gate-green (627/0), **merge held pending a real DP-7 boundary review** — requested from the live hcom lane (`gire` claimed it), NOT self-granted. The lint trigger is a false positive: one doc comment naming `hook_session_id_with_env`. |
+| **PR #86** | ✅ **MERGED** `c757056`. DP-7 boundary review was **granted by two independent reviewers** (`gire` + `nava`), both of whom reproduced the false positive rather than taking my word; `boundary-reviewed` label applied. NOT self-certified even though HCOM_MGR was stale and the operator directive would have permitted it. |
+| **Boundary-lint narrowing** | Tracked by the hcom lane, deliberately **not** shipped. Note for whoever picks it up: the obvious `grep -Ew` fix is a **trap** — `_` is a word constituent, so `-w` would break the `HCOM_` prefix token and silently disable most of the gate. Prefix / identifier / bare-word tokens each need different treatment. |
 | **PR #68 rebuild** (bounded logging) | Branch `tutu/bounded-logging-pr68-20260721` (pushed) = main + a completed merge of the bounded-logging work, tasks.json resolved to main's version. The **three fixes on top are NOT implemented** — see §5. |
 | **reve new-pane incident** | Needs a **v0.2.3 retest**; filed against legacy 0.2.2. `LIFO_INBOX/INCIDENT_FROM_reve_2026-07-19_*.md` |
 | **nava design question** | hcom-TUI × Limux symbiosis. Design owner = the Limux manager. §6 has the ratified shape + a correction. |
