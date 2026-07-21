@@ -1470,12 +1470,31 @@ fn persist_agent_hook_session(
 }
 
 fn hook_session_id(payload: &Value) -> Option<String> {
+    hook_session_id_with_env(payload, limux_env_value)
+}
+
+/// Resolve the session a hook payload describes.
+///
+/// Precedence is deliberate: **every explicit identity carried by the payload is
+/// consulted before any ambient environment value.** A hook payload describes an
+/// event belonging to one specific session; the environment describes whichever
+/// session happened to invoke the CLI. In a multi-agent workspace those are
+/// routinely different processes, and `limux_env_value` additionally walks
+/// ancestor process environments, so preferring ambient values attributed events
+/// to the wrong agent lane.
+///
+/// The env lookup is injected so the ordering is testable without depending on
+/// the ambient environment of whoever runs the suite.
+fn hook_session_id_with_env<F>(payload: &Value, env_lookup: F) -> Option<String>
+where
+    F: Fn(&str) -> Option<String>,
+{
     hook_str(payload, &["session_id", "sessionId", "sessionID"])
         .map(str::to_string)
-        .or_else(|| limux_env_value("CLAUDE_CODE_SESSION_ID"))
-        .or_else(|| limux_env_value("CLAUDE_SESSION_ID"))
-        .or_else(|| limux_env_value("HERMES_SESSION_ID"))
         .or_else(|| hook_session_id_from_transcript(payload))
+        .or_else(|| env_lookup("CLAUDE_CODE_SESSION_ID"))
+        .or_else(|| env_lookup("CLAUDE_SESSION_ID"))
+        .or_else(|| env_lookup("HERMES_SESSION_ID"))
         .filter(|value| !value.trim().is_empty())
 }
 
@@ -7222,6 +7241,42 @@ mod cli_arg_tests {
             hook_session_id(&payload).as_deref(),
             Some("268746f1-5a8f-471c-85db-dc50649c2f9c")
         );
+    }
+
+    #[test]
+    fn hook_session_id_prefers_payload_transcript_over_ambient_env() {
+        // Regression: ambient CLAUDE_SESSION_ID/CLAUDE_CODE_SESSION_ID used to win
+        // over the payload's own transcript_path, attributing a hook event for
+        // session A to whichever session invoked the CLI. In a multi-agent
+        // workspace that is cross-lane misattribution.
+        let payload = json!({
+            "transcript_path": "/home/u/.claude/projects/p/268746f1-5a8f-471c-85db-dc50649c2f9c.jsonl"
+        });
+
+        let resolved = hook_session_id_with_env(&payload, |name| match name {
+            "CLAUDE_CODE_SESSION_ID" | "CLAUDE_SESSION_ID" => {
+                Some("ambient-invoking-session".to_string())
+            }
+            _ => None,
+        });
+
+        assert_eq!(
+            resolved.as_deref(),
+            Some("268746f1-5a8f-471c-85db-dc50649c2f9c"),
+            "explicit payload transcript must beat ambient environment"
+        );
+    }
+
+    #[test]
+    fn hook_session_id_uses_ambient_env_only_when_payload_has_no_identity() {
+        let payload = json!({ "cwd": "/tmp/project" });
+
+        let resolved = hook_session_id_with_env(&payload, |name| match name {
+            "CLAUDE_SESSION_ID" => Some("ambient-fallback".to_string()),
+            _ => None,
+        });
+
+        assert_eq!(resolved.as_deref(), Some("ambient-fallback"));
     }
 
     #[test]
