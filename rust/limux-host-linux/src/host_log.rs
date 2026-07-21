@@ -11,6 +11,9 @@ use std::time::{Duration, Instant};
 const MAX_WARNING_LINE_BYTES: u64 = 16 * 1024;
 const STDERR_READ_CHUNK_BYTES: usize = 8 * 1024;
 const STDERR_IDLE_TICK: Duration = Duration::from_millis(25);
+/// Written once when the byte cap first drops output. Its length is held
+/// back from the usable budget so it always fits inside the cap.
+const CAP_MARKER: &[u8] = b"limux-log-cap-reached\n";
 
 #[derive(Debug, Clone)]
 pub(crate) struct HostLogConfig {
@@ -143,6 +146,7 @@ pub(crate) struct BoundedLogWriter {
     summary_interval: Duration,
     last_summary_flush: Duration,
     finished: bool,
+    cap_reached: bool,
 }
 
 impl BoundedLogWriter {
@@ -165,17 +169,53 @@ impl BoundedLogWriter {
             summary_interval,
             last_summary_flush: Duration::ZERO,
             finished: false,
+            cap_reached: false,
         }
+    }
+
+    /// Content budget, i.e. the cap minus the headroom reserved so the
+    /// cap marker is always writable without breaching `max_bytes`.
+    fn content_budget(&self) -> u64 {
+        self.max_bytes
+            .saturating_sub(u64::try_from(CAP_MARKER.len()).unwrap_or(u64::MAX))
     }
 
     fn write_bounded(&mut self, bytes: &[u8]) -> io::Result<bool> {
         let incoming = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
-        if self.bytes_written.saturating_add(incoming) > self.max_bytes {
+        if self.bytes_written.saturating_add(incoming) > self.content_budget() {
+            self.note_cap_reached()?;
             return Ok(false);
         }
         self.file.write_all(bytes)?;
         self.bytes_written = self.bytes_written.saturating_add(incoming);
         Ok(true)
+    }
+
+    /// True once the byte cap has rejected a write.
+    pub(crate) fn cap_reached(&self) -> bool {
+        self.cap_reached
+    }
+
+    /// A2: the cap used to be silent. Rotation only happens at startup, so a
+    /// log that fills up simply stops recording for the rest of the process
+    /// lifetime with nothing to say why. Leave exactly one short marker
+    /// behind the first time output is dropped.
+    ///
+    /// Headroom for this one line is reserved up front by
+    /// [`Self::content_budget`], so "bounded" keeps meaning bounded: the
+    /// marker never pushes the file past `max_bytes`.
+    fn note_cap_reached(&mut self) -> io::Result<()> {
+        if self.cap_reached {
+            return Ok(());
+        }
+        self.cap_reached = true;
+        let len = u64::try_from(CAP_MARKER.len()).unwrap_or(u64::MAX);
+        if self.bytes_written.saturating_add(len) > self.max_bytes {
+            return Ok(());
+        }
+        self.file.write_all(CAP_MARKER)?;
+        self.bytes_written = self.bytes_written.saturating_add(len);
+        Ok(())
     }
 
     #[cfg(test)]
@@ -683,6 +723,7 @@ pub(crate) struct DrainState {
     degraded: bool,
     discarded_bytes: u64,
     sink_failures: u64,
+    cap_reached: bool,
 }
 
 impl DrainState {
@@ -705,6 +746,15 @@ impl DrainState {
         let first = !self.degraded;
         self.degraded = true;
         first
+    }
+
+    /// True when the byte cap silently started dropping output.
+    pub(crate) fn cap_reached(&self) -> bool {
+        self.cap_reached
+    }
+
+    pub(crate) fn note_cap_reached(&mut self) {
+        self.cap_reached = true;
     }
 
     pub(crate) fn note_discarded(&mut self, bytes: usize) {
@@ -751,7 +801,10 @@ fn drain_stderr(mut reader: File, mut writer: BoundedLogWriter) -> DrainState {
             DrainAction::ReaderFailed => break,
         }
     }
-    if state.is_degraded() {
+    if writer.cap_reached() {
+        state.note_cap_reached();
+    }
+    if state.is_degraded() || state.cap_reached() {
         let _ = writer.write_degraded_summary(state.sink_failures(), state.discarded_bytes());
     }
     let _ = writer.finish();
@@ -1014,6 +1067,81 @@ mod tests {
         let state = drain.join().expect("drain thread");
         assert!(state.is_degraded());
         assert!(state.discarded_bytes() >= 64 * 1024);
+    }
+
+    /// A2 regression: hitting the byte cap used to be completely silent, so a
+    /// full log just stopped recording for the rest of the process lifetime.
+    #[test]
+    fn cap_reached_leaves_exactly_one_marker_and_stays_within_the_cap() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("capped.log");
+        let file = OpenOptions::new()
+            .create_new(true)
+            .append(true)
+            .open(&path)
+            .expect("active fixture");
+        let mut writer = BoundedLogWriter::new(file, 128, WarningAggregator::new(4));
+
+        assert!(!writer.cap_reached(), "cap must start unreached");
+
+        let line = vec![b'y'; 40];
+        let mut rejected = 0;
+        for _ in 0..20 {
+            if !writer.write_raw(&line).expect("bounded write") {
+                rejected += 1;
+            }
+        }
+
+        assert!(rejected > 0, "the cap must actually reject writes");
+        assert!(writer.cap_reached(), "cap state must be observable");
+
+        let contents = fs::read_to_string(&path).expect("capped contents");
+        assert_eq!(
+            contents.matches("limux-log-cap-reached").count(),
+            1,
+            "exactly one marker, not one per dropped write: {contents:?}"
+        );
+        assert!(
+            fs::metadata(&path).expect("capped metadata").len() <= 128,
+            "the marker must not push the log past its cap"
+        );
+    }
+
+    #[test]
+    fn drain_reports_a_capped_sink() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut fds = [0 as RawFd; 2];
+        assert_eq!(unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) }, 0);
+        let reader = unsafe { File::from_raw_fd(fds[0]) };
+        let mut write_end = unsafe { File::from_raw_fd(fds[1]) };
+        set_nonblocking(&reader).expect("nonblocking reader");
+
+        let path = tmp.path().join("drain-capped.log");
+        let file = OpenOptions::new()
+            .create_new(true)
+            .append(true)
+            .open(&path)
+            .expect("active fixture");
+        let writer = BoundedLogWriter::new(file, 96, WarningAggregator::new(4));
+        let drain = thread::spawn(move || drain_stderr(reader, writer));
+
+        for _ in 0..40 {
+            write_end.write_all(&[b'z'; 32]).expect("feed");
+            write_end.write_all(b"\n").expect("feed newline");
+        }
+        drop(write_end);
+
+        let state = drain.join().expect("drain thread");
+        assert!(
+            state.cap_reached(),
+            "the drain thread must report that the sink hit its cap"
+        );
+        assert!(
+            fs::read_to_string(&path)
+                .expect("capped contents")
+                .contains("limux-log-cap-reached"),
+            "the cap marker must reach the log"
+        );
     }
 
     /// Serializes the tests that temporarily replace process-wide descriptors.
