@@ -608,6 +608,10 @@ pub struct TerminalWidget {
 }
 
 const TERMINAL_RESIZE_COALESCE_MS: u64 = 16;
+/// Trailing-edge delay. Must exceed the longest programmatic split-position
+/// settle phase (split_tree schedules its last enforcement at +80ms) so a split
+/// lands as one grid change instead of several.
+const TERMINAL_RESIZE_SETTLE_MS: u64 = 100;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct SurfaceResizeSnapshot {
@@ -621,12 +625,18 @@ struct SurfaceResizeCoalescer {
     last_applied: Cell<Option<SurfaceResizeSnapshot>>,
     pending: Cell<Option<SurfaceResizeSnapshot>>,
     timeout: RefCell<Option<glib::SourceId>>,
+    /// Trailing-edge timer, re-armed on every resize event, so a size deferred
+    /// as sub-cell churn still lands once interaction stops.
+    settle: RefCell<Option<glib::SourceId>>,
 }
 
 impl SurfaceResizeCoalescer {
     fn clear_pending(&self) {
         self.pending.set(None);
         if let Some(source) = self.timeout.borrow_mut().take() {
+            source.remove();
+        }
+        if let Some(source) = self.settle.borrow_mut().take() {
             source.remove();
         }
     }
@@ -674,6 +684,64 @@ fn surface_resize_needs_apply(
     next: SurfaceResizeSnapshot,
 ) -> bool {
     last_applied != Some(next)
+}
+
+/// Decide whether a snapshot must be pushed to Ghostty while an interactive
+/// resize is still settling (split drags, the multi-phase paned position
+/// enforcement in `split_tree`, window drags).
+///
+/// Ghostty derives its grid as `(screen_px - padding) / cell_px`, but
+/// `ghostty_surface_size` reports the *unpadded* pixel size, so limux cannot
+/// observe `padding` and cannot compute the next grid exactly. What it can
+/// bound is the remainder: the pixels past the last whole cell lie somewhere in
+/// `0..=min(slack, cell_px - 1)`. A resize may be deferred only when *every*
+/// feasible remainder keeps the same cell count. Everything else fails open.
+///
+/// The caller owns the scale-factor check: a DPI change rescales both the cell
+/// metrics and Ghostty's padding, so a differing `scale_factor` must force an
+/// apply before this predicate is consulted.
+fn surface_resize_should_apply_during_interaction(
+    columns: u16,
+    rows: u16,
+    width_px: u32,
+    height_px: u32,
+    cell_width_px: u32,
+    cell_height_px: u32,
+    next: SurfaceResizeSnapshot,
+) -> bool {
+    surface_grid_axis_can_change(columns, width_px, cell_width_px, next.width_px)
+        || surface_grid_axis_can_change(rows, height_px, cell_height_px, next.height_px)
+}
+
+fn surface_grid_axis_can_change(cells: u16, current_px: u32, cell_px: u32, next_px: u32) -> bool {
+    // No usable metrics yet (surface not sized, zero-size cell): fail open.
+    if cells == 0 || cell_px == 0 {
+        return true;
+    }
+    let Some(used_px) = u32::from(cells).checked_mul(cell_px) else {
+        return true;
+    };
+    // Ghostty claims more cells than its own pixel size allows: the metrics are
+    // stale mid-transition, so do not trust them.
+    let Some(slack_px) = current_px.checked_sub(used_px) else {
+        return true;
+    };
+    // Shrinking can always drop a cell: the unobservable padding may account for
+    // the whole slack, leaving zero spare pixels past the last cell.
+    if next_px < current_px {
+        return true;
+    }
+    // Growing is safe to defer only while the largest feasible remainder fits.
+    let remainder_px = slack_px.min(cell_px - 1);
+    next_px - current_px > (cell_px - 1) - remainder_px
+}
+
+/// True when a DPI change invalidates the grid comparison entirely.
+fn surface_resize_scale_changed(
+    last_applied: Option<SurfaceResizeSnapshot>,
+    next: SurfaceResizeSnapshot,
+) -> bool {
+    last_applied.is_none_or(|applied| applied.scale_factor != next.scale_factor)
 }
 
 fn surface_size_matches_snapshot(
@@ -833,10 +901,24 @@ fn schedule_coalesced_surface_resize(
         return;
     }
 
+    // Park the newest size first: every path below either applies it now or
+    // leaves it to the settle timer, so the final size can never be lost.
+    coalescer.pending.set(Some(snapshot));
+    arm_surface_resize_settle(coalescer, surface_cell, gl_area);
+
+    // Sub-cell pixel churn cannot move Ghostty's grid, but Ghostty still
+    // forwards every pixel change down to the pty, so it costs a resize
+    // round-trip (and a SIGWINCH to the foreground process group) for nothing.
+    // Defer it to the settle timer instead of spending a reflow on it.
+    if !surface_resize_moves_grid(surface_cell, coalescer.last_applied.get(), snapshot) {
+        gl_area.queue_render();
+        return;
+    }
+
     if coalescer.timeout.borrow().is_none() {
+        coalescer.pending.set(None);
         apply_surface_resize_from_cell(coalescer, surface_cell, gl_area, snapshot);
     } else {
-        coalescer.pending.set(Some(snapshot));
         return;
     }
 
@@ -847,9 +929,19 @@ fn schedule_coalesced_surface_resize(
         Duration::from_millis(TERMINAL_RESIZE_COALESCE_MS),
         move || {
             coalescer_for_timeout.timeout.borrow_mut().take();
-            let Some(snapshot) = coalescer_for_timeout.pending.take() else {
+            let Some(snapshot) = coalescer_for_timeout.pending.get() else {
                 return;
             };
+            // The rate limiter must not drain a deferred sub-cell snapshot;
+            // that is the settle timer's job.
+            if !surface_resize_moves_grid(
+                &surface_cell_for_timeout,
+                coalescer_for_timeout.last_applied.get(),
+                snapshot,
+            ) {
+                return;
+            }
+            coalescer_for_timeout.pending.set(None);
             apply_surface_resize_from_cell(
                 &coalescer_for_timeout,
                 &surface_cell_for_timeout,
@@ -859,6 +951,63 @@ fn schedule_coalesced_surface_resize(
         },
     );
     *coalescer.timeout.borrow_mut() = Some(source);
+}
+
+/// Consult the live surface metrics to decide whether `next` can move Ghostty's
+/// grid. Fails open whenever the surface or its metrics are unavailable.
+fn surface_resize_moves_grid(
+    surface_cell: &Rc<RefCell<Option<ghostty_surface_t>>>,
+    last_applied: Option<SurfaceResizeSnapshot>,
+    next: SurfaceResizeSnapshot,
+) -> bool {
+    if surface_resize_scale_changed(last_applied, next) {
+        return true;
+    }
+    let Some(surface) = *surface_cell.borrow() else {
+        return true;
+    };
+    let current = unsafe { ghostty_surface_size(surface) };
+    surface_resize_should_apply_during_interaction(
+        current.columns,
+        current.rows,
+        current.width_px,
+        current.height_px,
+        current.cell_width_px,
+        current.cell_height_px,
+        next,
+    )
+}
+
+/// Trailing-edge timer, re-armed on every resize event. Guarantees the exact
+/// final pixel size lands once an interactive resize stops, even when every
+/// intermediate step was deferred as sub-cell churn.
+fn arm_surface_resize_settle(
+    coalescer: &Rc<SurfaceResizeCoalescer>,
+    surface_cell: &Rc<RefCell<Option<ghostty_surface_t>>>,
+    gl_area: &gtk::GLArea,
+) {
+    if let Some(source) = coalescer.settle.borrow_mut().take() {
+        source.remove();
+    }
+    let coalescer_for_settle = coalescer.clone();
+    let surface_cell_for_settle = surface_cell.clone();
+    let gl_area_for_settle = gl_area.clone();
+    let source = glib::timeout_add_local_once(
+        Duration::from_millis(TERMINAL_RESIZE_SETTLE_MS),
+        move || {
+            coalescer_for_settle.settle.borrow_mut().take();
+            let Some(snapshot) = coalescer_for_settle.pending.take() else {
+                return;
+            };
+            apply_surface_resize_from_cell(
+                &coalescer_for_settle,
+                &surface_cell_for_settle,
+                &gl_area_for_settle,
+                snapshot,
+            );
+        },
+    );
+    *coalescer.settle.borrow_mut() = Some(source);
 }
 
 fn clear_ghostty_preedit(surface: ghostty_surface_t) {
@@ -3979,6 +4128,194 @@ mod tests {
         assert!(!scrollbar_adjustment_needs_update(
             12.0005, 120.0005, 24.0005, 12.0, 120.0, 24.0,
         ));
+    }
+
+    #[test]
+    fn interactive_resize_coalesces_same_grid_pixel_churn() {
+        // lifo's inherited RED test (7e0eb07). Sub-cell growth with zero slack
+        // cannot move the grid, so it must not spend a reflow.
+        assert!(!surface_resize_should_apply_during_interaction(
+            80,
+            24,
+            800,
+            480,
+            10,
+            20,
+            SurfaceResizeSnapshot {
+                width_px: 805,
+                height_px: 485,
+                scale_factor: 1
+            },
+        ));
+    }
+
+    #[test]
+    fn interactive_resize_applies_possible_grid_changes() {
+        // lifo's inherited RED test. Growth past the feasible remainder, and any
+        // shrink (padding may consume the whole slack), can both move the grid.
+        assert!(surface_resize_should_apply_during_interaction(
+            80,
+            24,
+            805,
+            485,
+            10,
+            20,
+            SurfaceResizeSnapshot {
+                width_px: 810,
+                height_px: 485,
+                scale_factor: 1
+            },
+        ));
+        assert!(surface_resize_should_apply_during_interaction(
+            80,
+            24,
+            805,
+            485,
+            10,
+            20,
+            SurfaceResizeSnapshot {
+                width_px: 804,
+                height_px: 485,
+                scale_factor: 1
+            },
+        ));
+    }
+
+    #[test]
+    fn interactive_resize_fails_open_without_grid_metrics() {
+        // lifo's inherited RED test.
+        assert!(surface_resize_should_apply_during_interaction(
+            0,
+            0,
+            800,
+            480,
+            0,
+            0,
+            SurfaceResizeSnapshot {
+                width_px: 805,
+                height_px: 485,
+                scale_factor: 1
+            },
+        ));
+    }
+
+    #[test]
+    fn interactive_resize_evaluates_each_axis_independently() {
+        // Gap in lifo's set: every case varied width only, so a transposed or
+        // &&-instead-of-|| implementation would pass all three.
+        assert!(surface_resize_should_apply_during_interaction(
+            80,
+            24,
+            800,
+            480,
+            10,
+            20,
+            SurfaceResizeSnapshot {
+                width_px: 800,
+                height_px: 500,
+                scale_factor: 1
+            },
+        ));
+        assert!(!surface_resize_should_apply_during_interaction(
+            80,
+            24,
+            800,
+            480,
+            10,
+            20,
+            SurfaceResizeSnapshot {
+                width_px: 800,
+                height_px: 485,
+                scale_factor: 1
+            },
+        ));
+    }
+
+    #[test]
+    fn interactive_resize_fails_open_on_stale_or_overflowing_metrics() {
+        // Ghostty reports more cells than its own pixel size allows: metrics are
+        // mid-transition and must not be trusted.
+        assert!(surface_resize_should_apply_during_interaction(
+            80,
+            24,
+            700,
+            480,
+            10,
+            20,
+            SurfaceResizeSnapshot {
+                width_px: 705,
+                height_px: 485,
+                scale_factor: 1
+            },
+        ));
+        // cells * cell_px overflows u32.
+        assert!(surface_resize_should_apply_during_interaction(
+            u16::MAX,
+            24,
+            800,
+            480,
+            u32::MAX,
+            20,
+            SurfaceResizeSnapshot {
+                width_px: 805,
+                height_px: 485,
+                scale_factor: 1
+            },
+        ));
+    }
+
+    #[test]
+    fn interactive_resize_boundary_is_strictly_greater_than_headroom() {
+        // slack 5, cell 10 => remainder 5, headroom 4. Pins > vs >=.
+        assert!(!surface_resize_should_apply_during_interaction(
+            80,
+            24,
+            805,
+            485,
+            10,
+            20,
+            SurfaceResizeSnapshot {
+                width_px: 809,
+                height_px: 485,
+                scale_factor: 1
+            },
+        ));
+        assert!(surface_resize_should_apply_during_interaction(
+            80,
+            24,
+            805,
+            485,
+            10,
+            20,
+            SurfaceResizeSnapshot {
+                width_px: 810,
+                height_px: 485,
+                scale_factor: 1
+            },
+        ));
+    }
+
+    #[test]
+    fn interactive_resize_always_applies_when_scale_factor_changes() {
+        // A DPI change rescales cell metrics AND Ghostty's padding, so the
+        // current grid says nothing about the next one. lifo's tests all passed
+        // scale_factor: 1 and could never have caught this.
+        let applied = SurfaceResizeSnapshot {
+            width_px: 800,
+            height_px: 480,
+            scale_factor: 1,
+        };
+        let same_px_new_scale = SurfaceResizeSnapshot {
+            width_px: 800,
+            height_px: 480,
+            scale_factor: 2,
+        };
+        assert!(surface_resize_scale_changed(
+            Some(applied),
+            same_px_new_scale
+        ));
+        assert!(!surface_resize_scale_changed(Some(applied), applied));
+        assert!(surface_resize_scale_changed(None, applied));
     }
 
     #[test]
