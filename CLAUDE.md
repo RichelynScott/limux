@@ -31,6 +31,41 @@ assume a clean baseline just because this says so.
 > correct.** PR #82 reordered `hook_session_id` to prefer the payload's own
 > `transcript_path` over ambient env, which fixed the flake as a side effect.
 
+## Review checklist — revert the CALL SITE before merging
+
+**Before merging any fix: revert the call site (not the helper), re-run the
+suite, and confirm something fails. If nothing fails, the test is decorative.**
+
+Any fix where the **test and the production path reach the same code by
+different routes** has this hole by default — the helper test proves the helper
+works, nothing proves it is *reached*.
+
+Evidence this is not theoretical (2026-07-21, three lanes, one evening): an
+adversarial pass reverted each of five merged limux fixes and **four survived
+with a green suite**. The hcom lane then ran the same check on a release it had
+already shipped and announced, and found the identical shape. Two decorative
+fixes caught across the two repos.
+
+Verified load-bearing in this repo by mutation: H-1 read-screen scoping · M-4
+socket fail-open · A1 GUI-hang · send-key `enter`→`Return` · #84 grid predicate ·
+`hook_session_id` ordering · #33 build-provenance.
+
+**Escape hatch — do NOT force a timing test.** If a deterministic wiring test
+would require a multi-second timing dependency or a runtime refactor with no
+injection seam, **file the gap with mutation evidence instead**. A flaky gate
+eventually gets used to justify shipping a real failure.
+
+The distinction that matters: a **timeout ceiling** is fine, a **timing
+assertion** is not. `sink_failure_does_not_block_stderr_writers_while_read_end_stays_open`
+uses `recv_timeout(15s)`, but it returns the instant the writer finishes —
+measured at **0.05s across 5 consecutive runs**, a ~300× margin. The 15s elapses
+only when the write genuinely blocks forever, which *is* the bug. That is a
+bounded failure detector, not a performance claim.
+
+Origin: a standing adversarial subagent — which **died three times and was
+nearly abandoned** before the run that found this. The value showed up on the
+pass that was hardest to justify continuing.
+
 ## The two-binary gotcha
 
 - `target/debug/limux` — the **GTK app** (`limux-host-linux`). Only
