@@ -49,8 +49,13 @@ down.** They clear on restart. Do not "fix" them.
 
 ## 3. WHAT IS MERGED ON MAIN
 
-main @ `3bf819f` — gate green: `./scripts/check.sh` exit 0, **620 passed / 0
-failed**, clippy `-D warnings` + fmt clean.
+main @ `9f469c1` — gate green: `./scripts/check.sh` exit 0, **656 passed / 0
+failed / 1 ignored**, clippy `-D warnings` + fmt clean.
+
+> The `1 ignored` is deliberate: `install_survives_a_closed_stderr_and_keeps_logging`
+> hijacks process-wide stderr via `dup2` and would corrupt descriptors owned by
+> parallel tests. Run it on purpose:
+> `cargo test -p limux-host-linux install_survives -- --ignored --test-threads=1`
 
 | PR | Content |
 |---|---|
@@ -59,6 +64,10 @@ failed**, clippy `-D warnings` + fmt clean.
 | #83 `a5c0f98` | PR #67 renderer backend diagnostics rebuilt + socket-mode P2 |
 | #84 `f2b0a79` | TaskMaster #29 sub-cell resize deferral (word-wrap on width change) |
 | #85 `3bf819f` | TaskMaster #33 build dirty-marker — untracked files no longer mark builds dirty |
+| #86 `c757056` | Adversarial remediation: H-1 read-screen surface scoping · M-2 foreign-repo provenance guard · M-4 socket-mode fail-open · L-1 pipe-pane empty stream · send-key honest diagnosis |
+| #87 `149e283` | Durable record of the adversarial findings |
+| #88 `d8e7648` | Bounded host logging: **A1 GUI-hang** · **P2 stderr-fd hijack** · A2 silent cap. ⚠️ merged but **NOT installed** — `unsafe` fd code under review |
+| #89 `9f469c1` | Three-state build-provenance test (closes the #33 gap) |
 
 ### The five defects, with mechanism (not just names)
 
@@ -111,7 +120,7 @@ failed**, clippy `-D warnings` + fmt clean.
 | **⚠ Test theater (highest-value remediation)** | The reviewer **reverted each fix and re-ran the suite**: **4 of the 5 behavioural fixes in the installed build survive a full revert with a green suite.** Pure-logic helpers are tested; the wiring that uses them is not. Only `hook_session_id` ordering and #84's grid predicate fail on revert. |
 | **✅ STANDING CHECK — adopt this** | **Revert the call site (not the helper), re-run the suite, confirm something fails. If nothing does, the test is decorative.** Any fix shaped "extract a helper, call it from one site" has this hole by default — the helper test proves the helper works, nothing proves it is *reached*. Generalized with the hcom lane, which found the identical shape in a release it had already shipped. |
 | **Mutation-verified as load-bearing** | H-1 read-screen scoping (revert → 1 fail) · M-4 socket fail-open (revert → 1 fail) · A1 GUI-hang (revert → 2 fail + a real **15.00s** writer hang) · send-key `enter`→`Return` (revert → 1 fail) · #84 grid predicate · `hook_session_id` ordering. |
-| **⬜ KNOWN GAP — #33 has NO test** | Revert the `-uno` change and the suite stays green at 655: nothing covers it. Verified end-to-end by execution across three tree states (recorded in PR #85), which is arguably the right evidence for `build.rs` since it runs at build time and its output *is* the version string — but by the standing check above it is indistinguishable from decorative, and "verified manually once" does not survive the verifier leaving. Extract `git_tracked_dirty`/`git_matches_source_tree` behind a testable seam. |
+| **✅ CLOSED — #33 test gap** | Found by running the standing check on my *own* work: #33 shipped with **no test**, so reverting `-uno` left the suite green. Closed by PR #89 (`9f469c1`), which pins the three-state semantics — `"false"` → `Some(false)` *verified clean*, `"unknown"`/absent → `None` *cannot attest*, `-dirty` only for `Some(true)`. Mutation-verified. Deliberately avoids `from_compile_env` (it calls `install_info_near_current_exe()`, which would make a provenance test depend on what sits beside the test binary — the same flake class as the old `hook_session_id` test). |
 | **M-1 — scrollbar fix has a live residual path** | The fix's own test comment claims *"config is constant for the surface lifetime"*. **False** — `GHOSTTY_ACTION_RELOAD_CONFIG` stores `CURRENT_SCROLLBAR_ENABLED` at runtime. A config reload while scrolled back still drops the scrollbar out of layout → GLArea widens → column change → viewport reset. **This is the operator's own scroll-yank symptom, via the one remaining path.** |
 | **PR #86** | ✅ **MERGED** `c757056`. DP-7 boundary review was **granted by two independent reviewers** (`gire` + `nava`), both of whom reproduced the false positive rather than taking my word; `boundary-reviewed` label applied. NOT self-certified even though HCOM_MGR was stale and the operator directive would have permitted it. |
 | **Boundary-lint narrowing** | Tracked by the hcom lane, deliberately **not** shipped. Note for whoever picks it up: the obvious `grep -Ew` fix is a **trap** — `_` is a word constituent, so `-w` would break the `HCOM_` prefix token and silently disable most of the gate. Prefix / identifier / bare-word tokens each need different treatment. |
