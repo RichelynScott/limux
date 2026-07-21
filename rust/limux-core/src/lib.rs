@@ -7090,6 +7090,60 @@ mod tests {
         );
     }
 
+    /// Pins the THREE-state build-provenance semantics that `build.rs` emits.
+    ///
+    /// TaskMaster #33 fixed two defects here. The visible one: untracked files
+    /// marked clean builds dirty. The latent one: `command_stdout` folds empty
+    /// output into `None`, so the `"false"` arm was unreachable and a clean tree
+    /// reported `"unknown"` — silently degrading *verified clean* into *cannot
+    /// tell*. That distinction is invisible in `display_sha` (both omit
+    /// `-dirty`) but load-bearing for anything consuming `BuildInfo` as JSON,
+    /// which is exactly what fleet policy leans on when citing provenance.
+    ///
+    /// The change itself was verified end-to-end by building in three tree
+    /// states, but that was evidence for the change, not for the invariant
+    /// holding later. This is the part that outlives the person who ran it.
+    ///
+    /// Deliberately exercises `parse_dirty_value` + `display_sha` rather than
+    /// `from_compile_env`: the latter calls `install_info_near_current_exe()`,
+    /// so its result depends on what sits next to the test binary. Making a
+    /// provenance test environment-dependent would reproduce the exact flake
+    /// class that made `hook_session_id_falls_back_to_transcript_stem` pass
+    /// under one runtime and fail under another.
+    #[test]
+    fn build_dirty_marker_distinguishes_verified_clean_from_unknown() {
+        assert_eq!(parse_dirty_value(Some("true")), Some(true));
+        assert_eq!(
+            parse_dirty_value(Some("false")),
+            Some(false),
+            "a clean tree must report VERIFIED clean, not unknown - build.rs \
+             emits \"false\" for empty-but-successful git output"
+        );
+        assert_eq!(
+            parse_dirty_value(Some("unknown")),
+            None,
+            "git failed or resolved a foreign repo: we cannot attest"
+        );
+        assert_eq!(parse_dirty_value(None), None);
+
+        // Only a positive dirty reading may append the suffix. A clean build and
+        // an unattestable one both render without it, which is why the JSON
+        // distinction above is the only place they differ.
+        let render = |dirty| {
+            BuildInfo {
+                sha: "abcdef123456".to_string(),
+                dirty,
+                profile: "release".to_string(),
+                install_id: None,
+                channel: None,
+            }
+            .display_sha()
+        };
+        assert_eq!(render(Some(true)), "abcdef123456-dirty");
+        assert_eq!(render(Some(false)), "abcdef123456");
+        assert_eq!(render(None), "abcdef123456");
+    }
+
     #[tokio::test]
     async fn dispatcher_handles_workspace_and_window_flow() {
         let dispatcher = Dispatcher::new();
