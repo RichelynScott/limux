@@ -112,7 +112,7 @@ failed**, clippy `-D warnings` + fmt clean.
 | **M-1 — scrollbar fix has a live residual path** | The fix's own test comment claims *"config is constant for the surface lifetime"*. **False** — `GHOSTTY_ACTION_RELOAD_CONFIG` stores `CURRENT_SCROLLBAR_ENABLED` at runtime. A config reload while scrolled back still drops the scrollbar out of layout → GLArea widens → column change → viewport reset. **This is the operator's own scroll-yank symptom, via the one remaining path.** |
 | **PR #86** | ✅ **MERGED** `c757056`. DP-7 boundary review was **granted by two independent reviewers** (`gire` + `nava`), both of whom reproduced the false positive rather than taking my word; `boundary-reviewed` label applied. NOT self-certified even though HCOM_MGR was stale and the operator directive would have permitted it. |
 | **Boundary-lint narrowing** | Tracked by the hcom lane, deliberately **not** shipped. Note for whoever picks it up: the obvious `grep -Ew` fix is a **trap** — `_` is a word constituent, so `-w` would break the `HCOM_` prefix token and silently disable most of the gate. Prefix / identifier / bare-word tokens each need different treatment. |
-| **PR #68 rebuild** (bounded logging) | Branch `tutu/bounded-logging-pr68-20260721` (pushed) = main + a completed merge of the bounded-logging work, tasks.json resolved to main's version. The **three fixes on top are NOT implemented** — see §5. |
+| **PR #68 / #88 bounded logging** | ✅ **MERGED** `d8e7648` — all three fixes (A1 GUI-hang, P2 fd hijack, A2 silent cap). Gate green, **655 passed / 1 ignored**. ⚠️ **NOT INSTALLED**: it is `unsafe` fd manipulation with no adversarial review, so a review is running before it reaches the daily driver. See §5. |
 | **reve new-pane incident** | Needs a **v0.2.3 retest**; filed against legacy 0.2.2. `LIFO_INBOX/INCIDENT_FROM_reve_2026-07-19_*.md` |
 | **nava design question** | hcom-TUI × Limux symbiosis. Design owner = the Limux manager. §6 has the ratified shape + a correction. |
 | **ghostty wheel/mouse-reporting** | Wheel events eaten with **no alt-screen gate** (`Surface.zig:3601-3621`). Vendored ghostty is **read-only — do NOT patch**. karo advised checking the shift+wheel escape hatch first. An upstream issue must **not** be filed externally without operator approval. |
@@ -138,8 +138,33 @@ verified by direct execution in an earlier session but are **not written**:
   `Ok(false)` silently and rotation is startup-only, so the log dies permanently
   and silently. Fix: make the cap observable.
 
-Not implemented because it involves `unsafe` fd manipulation that should not
-ship unverified.
+### ✅ IMPLEMENTED AND MERGED — `d8e7648` (PR #88)
+
+All three landed. Gate green, **655 passed / 1 ignored**.
+
+**The stated P2 mechanism above was WRONG, and the implementer caught it.** The
+pipe read end is *not* the first victim: `prepare_host_logging()` opens the
+managed **log file** before any pipe exists, so with fd 2 closed the *log file*
+takes it and `dup2` clobbers the sink. The first fix attempt — following the
+mechanism as written above — was a **silent no-op**, caught only empirically
+(a probe `write` returned 15 bytes while the log stayed 0 bytes). Reservation
+now runs before that open. *This was the fourth wrong root cause of the day; it
+came from this handoff and was passed down unverified.*
+
+**A1's hang is coupled to P2.** In an isolated pipe, stopping the drain yields
+`EPIPE`, not a hang (Rust ignores `SIGPIPE`). The freeze requires another holder
+of the read end — which existed only because the pipe lacked `O_CLOEXEC` and
+children inherit it.
+
+**Tests are load-bearing, independently verified.** I reverted the A1 fix myself:
+both `sink_failure_*` tests fail and the run blocks the full **15.00s** — a real
+writer hang, not a assertion tweak. Restored cleanly, 0.05s.
+
+⚠️ **NOT INSTALLED into the operator's build.** This is `unsafe` fd manipulation
+in a live GUI app with no adversarial review and no GUI run. An adversarial pass
+is running; install only after it clears. `install_survives_a_closed_stderr_and_keeps_logging`
+is `#[ignore]`d (it hijacks process-wide stderr) — run deliberately with
+`cargo test -p limux-host-linux install_survives -- --ignored --test-threads=1`.
 
 ---
 
