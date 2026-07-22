@@ -5,7 +5,7 @@ use std::io::{self, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -779,9 +779,17 @@ struct StderrDetachGuard;
 #[cfg(unix)]
 impl Drop for StderrDetachGuard {
     fn drop(&mut self) {
+        // Publish before detaching, so a flush racing this can only ever be
+        // too pessimistic (give up early), never too optimistic.
+        DRAIN_RUNNING.store(false, Ordering::Release);
         detach_stderr_to_null();
     }
 }
+
+/// Cleared when the drain thread stops. Without it an exit-time flush would
+/// wait out its entire timeout for an ack that can no longer come — a 2s stall
+/// on every exit after the drain has died (measured).
+static DRAIN_RUNNING: AtomicBool = AtomicBool::new(true);
 
 fn drain_stderr(mut reader: File, mut writer: BoundedLogWriter, acks: &AtomicU64) -> DrainState {
     let started = Instant::now();
@@ -989,6 +997,10 @@ pub(crate) fn flush_bounded_stderr(timeout: Duration) -> bool {
     // A drain-thread panic runs the panic hook on the drain thread itself;
     // waiting there would be waiting on ourselves for the whole timeout.
     if thread::current().name() == Some(DRAIN_THREAD_NAME) {
+        return false;
+    }
+    // Nothing will ever ack once the drain has stopped.
+    if !DRAIN_RUNNING.load(Ordering::Acquire) {
         return false;
     }
     let start = acks.load(Ordering::Acquire);
