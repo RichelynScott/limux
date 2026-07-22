@@ -5,12 +5,30 @@ use std::io::{self, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
 const MAX_WARNING_LINE_BYTES: u64 = 16 * 1024;
 const STDERR_READ_CHUNK_BYTES: usize = 8 * 1024;
 const STDERR_IDLE_TICK: Duration = Duration::from_millis(25);
+/// Written to stderr by [`flush_bounded_stderr`] and recognised (never logged)
+/// by the drain loop. The leading newline terminates any partial line already
+/// in flight, so the barrier is always parsed as a line of its own.
+const FLUSH_BARRIER: &[u8] = b"\nlimux-log-flush-barrier\n";
+/// Body of [`FLUSH_BARRIER`], i.e. what one drained line has to equal.
+const FLUSH_BARRIER_BODY: &[u8] = b"limux-log-flush-barrier";
+/// How often [`flush_bounded_stderr`] re-checks for the drain thread's ack.
+const FLUSH_POLL_TICK: Duration = Duration::from_millis(1);
+/// Ceiling on the exit-time flush. A healthy drain acks in well under one
+/// `STDERR_IDLE_TICK`; this only bounds a dead or wedged drain thread so the
+/// process can still exit.
+const EXIT_FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
+/// Last line the drain writes when it gives up on an unusable read end, so the
+/// log explains why it stops rather than just ending mid-stream.
+const DRAIN_STOPPED_MARKER: &[u8] =
+    b"limux-log-drain-stopped read end unusable; stderr is now discarded\n";
 /// Written once when the byte cap first drops output. Its length is held
 /// back from the usable budget so it always fits inside the cap.
 const CAP_MARKER: &[u8] = b"limux-log-cap-reached\n";
@@ -316,6 +334,15 @@ impl BoundedLogWriter {
         Ok(true)
     }
 
+    /// Push anything held in user space out to the log descriptor.
+    ///
+    /// `File` is unbuffered, so this is a no-op today; it is called on the
+    /// flush-barrier path so the durability guarantee survives someone later
+    /// wrapping the sink in a `BufWriter`.
+    pub(crate) fn flush_sink(&mut self) -> io::Result<()> {
+        self.file.flush()
+    }
+
     pub(crate) fn finish(&mut self) -> io::Result<()> {
         if self.finished {
             return Ok(());
@@ -577,10 +604,21 @@ fn process_stderr_line(
     Ok(())
 }
 
+/// True for the one line [`flush_bounded_stderr`] injects as a barrier.
+fn is_flush_barrier(line: &[u8]) -> bool {
+    let trimmed = line
+        .iter()
+        .rposition(|byte| *byte != b'\n' && *byte != b'\r')
+        .map(|end| &line[..=end])
+        .unwrap_or_default();
+    trimmed == FLUSH_BARRIER_BODY
+}
+
 fn drain_complete_lines(
     writer: &mut BoundedLogWriter,
     pending: &mut Vec<u8>,
     elapsed: Duration,
+    acks: &AtomicU64,
 ) -> io::Result<()> {
     loop {
         let newline = pending.iter().position(|byte| *byte == b'\n');
@@ -592,84 +630,18 @@ fn drain_complete_lines(
             break;
         };
         let line = pending.drain(..take).collect::<Vec<_>>();
+        if is_flush_barrier(&line) {
+            // Reaching this line means every earlier byte has already been
+            // handed to `write(2)` on the log fd, so publishing the ack tells
+            // the waiter its output is durable. The barrier itself is never
+            // logged.
+            writer.flush_sink()?;
+            acks.fetch_add(1, Ordering::Release);
+            continue;
+        }
         process_stderr_line(writer, &line, elapsed)?;
     }
     Ok(())
-}
-
-/// Guarantee that fds 0, 1 and 2 are all open before any pipe is created.
-///
-/// `pipe(2)` hands out the lowest free descriptors. If the host is started
-/// with stderr already closed, the pipe's *read* end lands on fd 2, and the
-/// `dup2(write_fd, STDERR_FILENO)` that installs the pipe then destroys it.
-/// The drain thread's reader dies, the thread exits and drops its `File`,
-/// which closes fd 2 outright — so the next `open(2)` anywhere in the process
-/// claims fd 2 and every later stderr write silently corrupts an unrelated
-/// file. Holding /dev/null on any closed standard descriptor removes the
-/// precondition entirely.
-#[cfg(unix)]
-fn reserve_standard_fds() -> io::Result<()> {
-    let dev_null = CString::new("/dev/null").map_err(io::Error::other)?;
-    for target in [libc::STDIN_FILENO, libc::STDOUT_FILENO, libc::STDERR_FILENO] {
-        if unsafe { libc::fcntl(target, libc::F_GETFD) } >= 0 {
-            continue;
-        }
-        if io::Error::last_os_error().raw_os_error() != Some(libc::EBADF) {
-            continue;
-        }
-        // `target` is closed, so it is the lowest free descriptor and open(2)
-        // returns it. dup2 is kept as a defensive fallback.
-        let opened = unsafe { libc::open(dev_null.as_ptr(), libc::O_RDWR) };
-        if opened < 0 {
-            return Err(io::Error::last_os_error());
-        }
-        if opened != target {
-            let duped = unsafe { libc::dup2(opened, target) };
-            let error = io::Error::last_os_error();
-            unsafe { libc::close(opened) };
-            if duped < 0 {
-                return Err(error);
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Move a descriptor above stderr so the `dup2(write_fd, STDERR_FILENO)` that
-/// installs the pipe cannot clobber it. Takes ownership: on failure the
-/// original descriptor is closed.
-#[cfg(unix)]
-fn relocate_above_stderr(fd: RawFd) -> io::Result<RawFd> {
-    if fd > libc::STDERR_FILENO {
-        return Ok(fd);
-    }
-    let moved = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, libc::STDERR_FILENO + 1) };
-    let error = io::Error::last_os_error();
-    unsafe { libc::close(fd) };
-    if moved < 0 {
-        return Err(error);
-    }
-    Ok(moved)
-}
-
-/// Same guarantee as [`relocate_above_stderr`], for an owned `File`.
-#[cfg(unix)]
-fn relocate_file_above_stderr(file: File) -> io::Result<File> {
-    if file.as_raw_fd() > libc::STDERR_FILENO {
-        return Ok(file);
-    }
-    let moved = unsafe {
-        libc::fcntl(
-            file.as_raw_fd(),
-            libc::F_DUPFD_CLOEXEC,
-            libc::STDERR_FILENO + 1,
-        )
-    };
-    if moved < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    drop(file);
-    Ok(unsafe { File::from_raw_fd(moved) })
 }
 
 fn set_nonblocking(file: &File) -> io::Result<()> {
@@ -764,7 +736,62 @@ impl DrainState {
     }
 }
 
-fn drain_stderr(mut reader: File, mut writer: BoundedLogWriter) -> DrainState {
+/// Point stderr at /dev/null, discarding whatever it referred to before.
+///
+/// Used when the drain thread stops: from that moment fd 2 is the write end of
+/// a pipe nobody will ever read again.
+#[cfg(unix)]
+fn detach_stderr_to_null() {
+    let Ok(dev_null) = CString::new("/dev/null") else {
+        return;
+    };
+    let opened = unsafe { libc::open(dev_null.as_ptr(), libc::O_WRONLY | libc::O_CLOEXEC) };
+    if opened < 0 {
+        return;
+    }
+    unsafe {
+        libc::dup2(opened, libc::STDERR_FILENO);
+        libc::close(opened);
+    }
+}
+
+/// M2: before PR #88 a broken log sink could not take the host down, because
+/// stderr *was* the log file. Now stderr is a pipe, so the moment the drain
+/// thread stops — `DrainAction::ReaderFailed`, or a panic inside the thread —
+/// the read end closes and the very next `eprintln!` from the GTK main thread
+/// hits EPIPE. `eprintln!` panics on a failed write (verified: a probe whose
+/// reader is gone dies with rc=101), and that panic's own message goes to the
+/// same dead pipe, so the host dies with no diagnostic at all. Children that
+/// inherited fd 2 get SIGPIPE.
+///
+/// Repointing stderr at /dev/null on the way out turns all of that into
+/// "stderr is silently discarded", which is survivable. Written as a guard so
+/// it also runs when the drain thread unwinds.
+///
+/// Residual, deliberately not fixed here: diagnostics stop. Redirecting to the
+/// log file instead would keep them, but that bypasses the byte cap this
+/// module exists to enforce, and in the sink-failure case it would be writing
+/// to the descriptor that just failed. `DRAIN_STOPPED_MARKER` records the
+/// transition in the log so the silence is explained.
+#[cfg(unix)]
+struct StderrDetachGuard;
+
+#[cfg(unix)]
+impl Drop for StderrDetachGuard {
+    fn drop(&mut self) {
+        // Publish before detaching, so a flush racing this can only ever be
+        // too pessimistic (give up early), never too optimistic.
+        DRAIN_RUNNING.store(false, Ordering::Release);
+        detach_stderr_to_null();
+    }
+}
+
+/// Cleared when the drain thread stops. Without it an exit-time flush would
+/// wait out its entire timeout for an ack that can no longer come — a 2s stall
+/// on every exit after the drain has died (measured).
+static DRAIN_RUNNING: AtomicBool = AtomicBool::new(true);
+
+fn drain_stderr(mut reader: File, mut writer: BoundedLogWriter, acks: &AtomicU64) -> DrainState {
     let started = Instant::now();
     let mut pending = Vec::with_capacity(MAX_WARNING_LINE_BYTES as usize);
     let mut chunk = [0u8; STDERR_READ_CHUNK_BYTES];
@@ -789,7 +816,7 @@ fn drain_stderr(mut reader: File, mut writer: BoundedLogWriter) -> DrainState {
                     state.note_discarded(read);
                 } else {
                     pending.extend_from_slice(&chunk[..read]);
-                    if drain_complete_lines(&mut writer, &mut pending, elapsed).is_err() {
+                    if drain_complete_lines(&mut writer, &mut pending, elapsed, acks).is_err() {
                         note_sink_failure(&mut state, &mut writer, &mut pending);
                     }
                 }
@@ -797,8 +824,15 @@ fn drain_stderr(mut reader: File, mut writer: BoundedLogWriter) -> DrainState {
             DrainAction::Idle => thread::sleep(STDERR_IDLE_TICK),
             DrainAction::Retry => {}
             // The read end is gone; there is nothing left to drain and the
-            // loop would otherwise spin at 100% CPU.
-            DrainAction::ReaderFailed => break,
+            // loop would otherwise spin at 100% CPU. Leave a note, because
+            // from here on stderr is discarded and the log would otherwise
+            // just stop mid-sentence with no explanation.
+            DrainAction::ReaderFailed => {
+                if !state.is_degraded() {
+                    let _ = writer.write_raw(DRAIN_STOPPED_MARKER);
+                }
+                break;
+            }
         }
     }
     if writer.cap_reached() {
@@ -828,13 +862,21 @@ pub(crate) fn install_bounded_stderr(
     config: &HostLogConfig,
     sequence: u128,
 ) -> Result<Option<PathBuf>, String> {
-    // MUST run before anything is opened. Descriptors are handed out lowest
-    // free first, so with stderr closed the very first open(2) — the managed
-    // log file itself — lands on fd 2, and the dup2 below then clobbers the
-    // log file instead of installing the pipe.
-    reserve_standard_fds()
-        .map_err(|error| format!("could not reserve standard descriptors: {error}"))?;
-
+    // No descriptor reservation or relocation happens here, deliberately.
+    //
+    // Both used to exist to defend against "the host was started with stderr
+    // closed, so the first open(2) lands on fd 2 and the dup2 below clobbers
+    // it". That precondition cannot occur in a Rust binary: the standard
+    // library runs `sanitize_standard_fds()` before `main`, so 0/1/2 are
+    // always open (on /dev/null) no matter how the process was launched, and
+    // the first open(2) therefore lands on fd 3 or above. Verified by
+    // launching a probe with `2>&-` and with `0<&- 1>&- 2>&-`: fd 2 was
+    // /dev/null (ino 4, mode 020666) in both cases and the first open returned
+    // fd 3. `standard_descriptors_are_open_before_main_even_when_launched_closed`
+    // pins that invariant.
+    //
+    // Roughly 90 lines of unsafe fd surgery guarding an unreachable branch is
+    // a liability, not insurance — it can only ever misfire.
     let (path, file, warnings) = match prepare_host_logging(config, sequence) {
         HostLogSetup::Active {
             path,
@@ -843,38 +885,19 @@ pub(crate) fn install_bounded_stderr(
         } => (path, file, warnings),
         HostLogSetup::StderrFallback { reason } => return Err(reason),
     };
-    // Belt and braces: keep the sink itself out of the 0/1/2 range too.
-    let file = relocate_file_above_stderr(file)
-        .map_err(|error| format!("could not relocate managed log descriptor: {error}"))?;
 
     let mut pipe_fds = [0 as RawFd; 2];
-    // O_CLOEXEC: without it every spawned child inherits both pipe ends, which
-    // keeps the pipe from ever reaching EOF and leaks host stderr into shells.
+    // O_CLOEXEC is load-bearing and stays: without it every spawned child
+    // inherits the read end, which keeps the pipe from ever reaching EOF and
+    // leaks host stderr into shells. Covered by
+    // `spawned_children_do_not_inherit_the_stderr_pipe_read_end`.
     if unsafe { libc::pipe2(pipe_fds.as_mut_ptr(), libc::O_CLOEXEC) } < 0 {
         return Err(format!(
             "could not create bounded stderr pipe: {}",
             io::Error::last_os_error()
         ));
     }
-    // Neither end may sit on 0/1/2 — see relocate_above_stderr.
-    let read_fd = match relocate_above_stderr(pipe_fds[0]) {
-        Ok(fd) => fd,
-        Err(error) => {
-            unsafe {
-                libc::close(pipe_fds[1]);
-            }
-            return Err(format!("could not relocate bounded log read end: {error}"));
-        }
-    };
-    let write_fd = match relocate_above_stderr(pipe_fds[1]) {
-        Ok(fd) => fd,
-        Err(error) => {
-            unsafe {
-                libc::close(read_fd);
-            }
-            return Err(format!("could not relocate bounded log write end: {error}"));
-        }
-    };
+    let (read_fd, write_fd) = (pipe_fds[0], pipe_fds[1]);
     let read_file = unsafe { File::from_raw_fd(read_fd) };
     if let Err(error) = set_nonblocking(&read_file) {
         unsafe {
@@ -885,15 +908,33 @@ pub(crate) fn install_bounded_stderr(
         ));
     }
     let writer = BoundedLogWriter::new(file, config.max_active_bytes, warnings);
+    let acks = Arc::new(AtomicU64::new(0));
+    let drain_acks = Arc::clone(&acks);
     let drain = thread::Builder::new()
-        .name("limux-bounded-log".to_string())
-        .spawn(move || drain_stderr(read_file, writer));
-    if let Err(error) = drain {
-        unsafe {
-            libc::close(write_fd);
+        .name(DRAIN_THREAD_NAME.to_string())
+        // The guard lives in the installed thread only, never in
+        // `drain_stderr` itself: unit tests drive that function directly and
+        // must not have the test binary's stderr yanked out from under them.
+        .spawn(move || {
+            let _detach_stderr = StderrDetachGuard;
+            drain_stderr(read_file, writer, &drain_acks)
+        });
+    // The drain thread outlives this function by design: fd 2 is process-wide
+    // and every spawned child inherits it, so the pipe cannot reach EOF while
+    // the app is running and `join()` here would block forever. Detaching is
+    // therefore correct — but detaching alone loses everything still in the
+    // 64 KiB pipe buffer when `exit(2)` kills the thread, which is why
+    // `flush_bounded_stderr` exists. Bind the handle explicitly so the
+    // detachment stays a decision rather than a dropped `Result` variant.
+    let _detached_drain = match drain {
+        Ok(handle) => handle,
+        Err(error) => {
+            unsafe {
+                libc::close(write_fd);
+            }
+            return Err(format!("could not start bounded log drain: {error}"));
         }
-        return Err(format!("could not start bounded log drain: {error}"));
-    }
+    };
     if unsafe { libc::dup2(write_fd, libc::STDERR_FILENO) } < 0 {
         let error = io::Error::last_os_error();
         unsafe {
@@ -904,13 +945,96 @@ pub(crate) fn install_bounded_stderr(
     unsafe {
         libc::close(write_fd);
     }
+    // Publish only once fd 2 really is the pipe, so a flush can never write a
+    // barrier nobody will read and then wait out the whole timeout.
+    let _ = DRAIN_ACKS.set(acks);
+    // Flush from `atexit` rather than from a call after `app.run()` returns.
+    // Measured: run headless, GTK fails to open a display and terminates the
+    // process from inside `app.run()`, which never returns — so a call sited
+    // after it is dead code on that path. `atexit` covers every `exit(3)`,
+    // including GTK's internal one and any `std::process::exit`, and the drain
+    // thread is still alive while handlers run.
+    unsafe {
+        libc::atexit(flush_bounded_stderr_at_exit);
+    }
     Ok(Some(path))
+}
+
+/// `atexit` hook. `extern "C"`, so it must not unwind across the boundary.
+#[cfg(unix)]
+extern "C" fn flush_bounded_stderr_at_exit() {
+    let _ = std::panic::catch_unwind(|| flush_bounded_stderr(EXIT_FLUSH_TIMEOUT));
+}
+
+/// Ack counter of the installed drain thread, published by
+/// [`install_bounded_stderr`] once stderr is actually wired to the pipe.
+static DRAIN_ACKS: OnceLock<Arc<AtomicU64>> = OnceLock::new();
+
+const DRAIN_THREAD_NAME: &str = "limux-bounded-log";
+
+/// Block (up to `timeout`) until everything already written to stderr has
+/// reached the managed log file.
+///
+/// Before PR #88 stderr *was* the log file: `dup2(log_fd, 2)` made every write
+/// synchronous, so `exit(2)` could not lose anything. The pipe + drain-thread
+/// design broke that — `std::process::exit` kills the drain thread wherever it
+/// happens to be, typically mid `STDERR_IDLE_TICK` sleep, and the pipe buffer
+/// plus the thread's `pending` buffer die with it. Shutdown and panic paths
+/// call this to restore the old guarantee.
+///
+/// Implemented as a barrier rather than "close the write end and join": fd 2
+/// is inherited by every child, so closing the parent's copy does not produce
+/// EOF and a join would stall for the full timeout on every clean exit. The
+/// ack instead proves positively that the drain consumed past this point.
+///
+/// Returns `true` when the drain acknowledged, or when no bounded stderr is
+/// installed (nothing to flush). Costs one blank line in the log per call.
+#[cfg(unix)]
+pub(crate) fn flush_bounded_stderr(timeout: Duration) -> bool {
+    let Some(acks) = DRAIN_ACKS.get() else {
+        return true;
+    };
+    // A drain-thread panic runs the panic hook on the drain thread itself;
+    // waiting there would be waiting on ourselves for the whole timeout.
+    if thread::current().name() == Some(DRAIN_THREAD_NAME) {
+        return false;
+    }
+    // Nothing will ever ack once the drain has stopped.
+    if !DRAIN_RUNNING.load(Ordering::Acquire) {
+        return false;
+    }
+    let start = acks.load(Ordering::Acquire);
+    // Raw `write(2)`: `eprintln!` panics on EPIPE, and this runs on the
+    // shutdown and panic paths where a fresh panic would be fatal. The barrier
+    // is far below PIPE_BUF, so the write is atomic — no interleaving with
+    // another thread's stderr.
+    let written = unsafe {
+        libc::write(
+            libc::STDERR_FILENO,
+            FLUSH_BARRIER.as_ptr().cast::<libc::c_void>(),
+            FLUSH_BARRIER.len(),
+        )
+    };
+    if written != isize::try_from(FLUSH_BARRIER.len()).unwrap_or(isize::MAX) {
+        return false;
+    }
+    let deadline = Instant::now() + timeout;
+    loop {
+        if acks.load(Ordering::Acquire) > start {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        thread::sleep(FLUSH_POLL_TICK);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+    use std::process::Command;
     use std::time::Duration;
 
     /// A sink whose every write fails: an existing file opened read-only.
@@ -918,6 +1042,370 @@ mod tests {
         let path = root.join("readonly-sink.log");
         fs::write(&path, b"").expect("sink fixture");
         File::open(&path).expect("open read-only sink")
+    }
+
+    // ---------------------------------------------------------------------
+    // Subprocess probe harness.
+    //
+    // `install_bounded_stderr` takes over fd 2 for the whole process, so any
+    // test that drives the *real* installer in-process corrupts descriptors
+    // owned by the ~650 tests running alongside it — which is why the earlier
+    // end-to-end test had to be `#[ignore]`d. Running the installer in a child
+    // process instead gives each probe its own descriptor table, so these
+    // tests are parallel-safe and run by default.
+    // ---------------------------------------------------------------------
+
+    const PROBE_MODE_ENV: &str = "LIMUX_HOST_LOG_PROBE_MODE";
+    const PROBE_DIR_ENV: &str = "LIMUX_HOST_LOG_PROBE_DIR";
+    /// Lines the loss probe emits before it exits. Large enough that far more
+    /// than one 64 KiB pipe buffer is still unread at exit, so "the drain got
+    /// lucky and had already consumed everything" is not a realistic outcome.
+    const PROBE_LOSS_LINES: usize = 20_000;
+    const PROBE_TAIL_MARKER: &str = "limux-loss-probe-tail";
+    const PROBE_EXIT_CODE: i32 = 3;
+    const PROBE_FD_LISTING: &str = "child-fds.txt";
+    const PROBE_STD_FDS: &str = "std-fds.txt";
+    const PROBE_SURVIVED: &str = "survived.txt";
+    /// Dumps `fd<TAB>target` for every descriptor the shell inherited. Parsed
+    /// rather than `ls -l` so the format is not locale-dependent.
+    const FD_LISTING_SCRIPT: &str =
+        r#"for f in /proc/self/fd/*; do printf '%s\t%s\n' "${f##*/}" "$(readlink "$f")"; done"#;
+
+    fn probe_config(root: &Path) -> HostLogConfig {
+        HostLogConfig {
+            active_path: root.join("managed/limux-host.current.log"),
+            retained_dir: root.join("managed/retained"),
+            max_active_bytes: 16 * 1024 * 1024,
+            max_retained_count: 4,
+            max_total_bytes: 64 * 1024 * 1024,
+            max_warning_categories: 16,
+        }
+    }
+
+    fn probe_command(mode: &str, dir: &Path) -> Command {
+        let exe = std::env::current_exe().expect("test binary path");
+        let mut command = Command::new(exe);
+        command
+            .args([
+                "--exact",
+                "host_log::tests::probe_child",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(PROBE_MODE_ENV, mode)
+            .env(PROBE_DIR_ENV, dir);
+        command
+    }
+
+    /// Re-invoke this test binary, running only [`probe_child`], in `mode`.
+    fn run_probe(mode: &str, dir: &Path) -> std::process::Output {
+        probe_command(mode, dir)
+            .output()
+            .expect("probe child must spawn")
+    }
+
+    /// As [`run_probe`], but the child is exec'd with fds 0, 1 and 2 genuinely
+    /// closed — the launch condition the deleted fd-reservation layer claimed
+    /// to defend against.
+    #[cfg(unix)]
+    fn run_probe_with_closed_std_fds(mode: &str, dir: &Path) -> std::process::Output {
+        use std::os::unix::process::CommandExt;
+
+        let mut command = probe_command(mode, dir);
+        // SAFETY: between fork and exec only async-signal-safe calls are made.
+        unsafe {
+            command.pre_exec(|| {
+                for fd in [libc::STDIN_FILENO, libc::STDOUT_FILENO, libc::STDERR_FILENO] {
+                    libc::close(fd);
+                }
+                Ok(())
+            });
+        }
+        command.output().expect("probe child must spawn")
+    }
+
+    /// `0=open 1=open 2=open` for whichever standard descriptors are live.
+    #[cfg(unix)]
+    fn standard_fd_state() -> String {
+        [libc::STDIN_FILENO, libc::STDOUT_FILENO, libc::STDERR_FILENO]
+            .iter()
+            .map(|fd| {
+                let open = unsafe { libc::fcntl(*fd, libc::F_GETFD) } >= 0;
+                format!("{fd}={}", if open { "open" } else { "closed" })
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// The child half of the probe harness. Inert (and trivially passing)
+    /// unless [`PROBE_MODE_ENV`] is set, so a normal test run ignores it.
+    #[test]
+    fn probe_child() {
+        let Ok(mode) = std::env::var(PROBE_MODE_ENV) else {
+            return;
+        };
+        let dir = PathBuf::from(std::env::var_os(PROBE_DIR_ENV).expect("probe dir"));
+        // Sampled before this process opens anything of its own.
+        let inherited_std_fds = standard_fd_state();
+        let config = probe_config(&dir);
+        fs::create_dir_all(config.active_path.parent().expect("parent")).expect("active dir");
+        fs::create_dir_all(&config.retained_dir).expect("retained dir");
+        install_bounded_stderr(&config, 1).expect("probe install must succeed");
+
+        match mode.as_str() {
+            // H1: everything written before the flush must survive exit(2).
+            "loss" => {
+                for index in 0..PROBE_LOSS_LINES {
+                    eprintln!("limux-loss-probe {index:05}");
+                }
+                eprintln!("{PROBE_TAIL_MARKER}");
+                // No explicit flush: exiting must be enough, exactly as it
+                // is for the host. The atexit hook registered by
+                // `install_bounded_stderr` is the call site under test.
+                std::process::exit(PROBE_EXIT_CODE);
+            }
+            // H2: a spawned child must inherit the write end (fd 2, so its
+            // stderr is logged) and nothing else belonging to the pipe.
+            "cloexec" => {
+                let listing = Command::new("/bin/sh")
+                    .arg("-c")
+                    .arg(FD_LISTING_SCRIPT)
+                    .stderr(std::process::Stdio::inherit())
+                    .output()
+                    .expect("fd listing child must spawn");
+                fs::write(dir.join(PROBE_FD_LISTING), listing.stdout).expect("fd listing");
+                std::process::exit(PROBE_EXIT_CODE);
+            }
+            // M2: kill the drain thread's read end and check the host lives.
+            "deaddrain" => {
+                let pipe = fs::read_link("/proc/self/fd/2").expect("stderr link");
+                let read_fd = fs::read_dir("/proc/self/fd")
+                    .expect("fd dir")
+                    .filter_map(|entry| entry.ok())
+                    .filter_map(|entry| {
+                        let fd = entry.file_name().to_string_lossy().parse::<RawFd>().ok()?;
+                        (fd != libc::STDERR_FILENO && fs::read_link(entry.path()).ok()? == pipe)
+                            .then_some(fd)
+                    })
+                    .next()
+                    .expect("the drain thread's read end must be findable");
+                // Fault injection: atomically replace the pipe's only read end
+                // with /dev/null. `dup2` closes the target as part of the same
+                // call, so unlike a bare `close` there is no window in which
+                // the descriptor number can be recycled under the drain
+                // thread. The drain's next read(2) returns 0 (EOF) and the
+                // thread stops — with a live write end still on fd 2, which is
+                // precisely the M2 hazard.
+                let dev_null = CString::new("/dev/null").expect("path");
+                let opened = unsafe { libc::open(dev_null.as_ptr(), libc::O_RDONLY) };
+                assert!(opened >= 0, "open /dev/null");
+                assert!(unsafe { libc::dup2(opened, read_fd) } >= 0, "dup2");
+                unsafe { libc::close(opened) };
+
+                // Wait (ceiling only — no timing assertion) for the drain to
+                // notice and for its guard to repoint stderr.
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while Instant::now() < deadline
+                    && fs::read_link("/proc/self/fd/2").ok().as_deref() == Some(pipe.as_path())
+                {
+                    thread::sleep(Duration::from_millis(5));
+                }
+
+                // The load-bearing line: before the guard existed this
+                // panicked on EPIPE and took the whole host down.
+                eprintln!("limux-deaddrain-probe");
+                fs::write(dir.join(PROBE_SURVIVED), b"survived").expect("survival report");
+                std::process::exit(PROBE_EXIT_CODE);
+            }
+            // H3: report the standard descriptors this process was exec'd
+            // with, and prove the installer works without reserving them.
+            "stdfds" => {
+                eprintln!("{PROBE_TAIL_MARKER}");
+                fs::write(dir.join(PROBE_STD_FDS), inherited_std_fds).expect("std fd report");
+                std::process::exit(PROBE_EXIT_CODE);
+            }
+            other => panic!("unknown probe mode {other:?}"),
+        }
+    }
+
+    /// H1 regression: PR #88 replaced `dup2(log_fd, 2)` — where every stderr
+    /// write was synchronous and loss was impossible — with a pipe drained by
+    /// a detached thread. `std::process::exit` kills that thread wherever it
+    /// is (usually mid `STDERR_IDLE_TICK` sleep), and the 64 KiB pipe buffer
+    /// plus the thread's pending line die with it. Measured before the fix:
+    /// runs that captured 0 of 200 emitted lines.
+    #[cfg(unix)]
+    #[test]
+    fn stderr_written_before_shutdown_survives_process_exit() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let output = run_probe("loss", tmp.path());
+
+        assert_eq!(
+            output.status.code(),
+            Some(PROBE_EXIT_CODE),
+            "probe child must reach its exit: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let log = fs::read_to_string(probe_config(tmp.path()).active_path).expect("probe log");
+        assert!(
+            log.contains(PROBE_TAIL_MARKER),
+            "the last line written before exit never reached the log — stderr is \
+             being lost at shutdown (PR #88 regression)"
+        );
+        let captured = log.matches("limux-loss-probe ").count();
+        assert_eq!(
+            captured,
+            PROBE_LOSS_LINES,
+            "lost {} of {PROBE_LOSS_LINES} lines at shutdown",
+            PROBE_LOSS_LINES.saturating_sub(captured)
+        );
+    }
+
+    /// H2 regression: the `O_CLOEXEC` on the installer's `pipe2` had no test
+    /// defence — removing it left the suite fully green, because the two
+    /// pre-existing pipe tests build their own `libc::pipe` and never touch
+    /// `install_bounded_stderr`. Without it, every spawned child inherits the
+    /// pipe's READ end, so the pipe can never reach EOF and host stderr leaks
+    /// into shells.
+    ///
+    /// Asserts against a real child of the real installer: fd 2 must be the
+    /// pipe (that inheritance is deliberate — child stderr belongs in the log)
+    /// and no descriptor above 2 may be one.
+    #[cfg(unix)]
+    #[test]
+    fn spawned_children_do_not_inherit_the_stderr_pipe_read_end() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let output = run_probe("cloexec", tmp.path());
+        assert_eq!(
+            output.status.code(),
+            Some(PROBE_EXIT_CODE),
+            "probe child must reach its exit: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let listing =
+            fs::read_to_string(tmp.path().join(PROBE_FD_LISTING)).expect("child fd listing");
+        let descriptors = listing
+            .lines()
+            .filter_map(|line| line.split_once('\t'))
+            .filter_map(|(fd, target)| fd.parse::<i32>().ok().map(|fd| (fd, target)))
+            .collect::<Vec<_>>();
+        assert!(
+            !descriptors.is_empty(),
+            "fd listing must not be empty: {listing:?}"
+        );
+
+        // Both ends of one pipe share an inode, so `pipe:[N]` identifies the
+        // bounded-log pipe specifically. Matching on that rather than on "any
+        // pipe" keeps the test immune to unrelated descriptors the harness
+        // leaks in from tests running in parallel.
+        let (_, log_pipe) = descriptors
+            .iter()
+            .find(|(fd, target)| *fd == libc::STDERR_FILENO && target.starts_with("pipe:"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "the child's stderr must still be the log pipe, otherwise this \
+                     test is not observing the installed pipe at all: {listing:?}"
+                )
+            });
+
+        let leaked = descriptors
+            .iter()
+            .filter(|(fd, target)| *fd > libc::STDERR_FILENO && target == log_pipe)
+            .collect::<Vec<_>>();
+        assert!(
+            leaked.is_empty(),
+            "a spawned child inherited the bounded-log pipe at {leaked:?} as well as \
+             stderr — the installer's pipe is missing O_CLOEXEC, so the pipe can \
+             never reach EOF and host stderr leaks into children: {listing:?}"
+        );
+    }
+
+    /// M2 regression: before PR #88 a broken log sink could not kill the host,
+    /// because stderr *was* the log file. Now stderr is a pipe, so when the
+    /// drain thread stops the read end closes and the next `eprintln!` from
+    /// the GTK main thread hits EPIPE — which `eprintln!` turns into a panic
+    /// (verified independently: a probe whose reader is gone exits rc=101),
+    /// with the panic message going to the same dead pipe. The host would die
+    /// silently.
+    ///
+    /// Fault-injects exactly that (close the drain's read end so its next
+    /// `read(2)` returns EBADF) and asserts the process survives a subsequent
+    /// `eprintln!` and still exits normally.
+    #[cfg(unix)]
+    #[test]
+    fn a_dead_drain_thread_does_not_kill_the_host() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let output = run_probe("deaddrain", tmp.path());
+
+        assert_ne!(
+            output.status.code(),
+            Some(101),
+            "the probe panicked after the drain thread died — writing to stderr \
+             with no reader is fatal again: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            output.status.code(),
+            Some(PROBE_EXIT_CODE),
+            "probe child must reach its exit: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            fs::read_to_string(tmp.path().join(PROBE_SURVIVED)).unwrap_or_default(),
+            "survived",
+            "the probe never got past the eprintln that follows a dead drain"
+        );
+    }
+
+    #[test]
+    fn flush_barrier_is_recognised_only_as_a_whole_line() {
+        assert!(is_flush_barrier(b"limux-log-flush-barrier\n"));
+        assert!(is_flush_barrier(b"limux-log-flush-barrier\r\n"));
+        assert!(is_flush_barrier(b"limux-log-flush-barrier"));
+        assert!(!is_flush_barrier(b"prefix limux-log-flush-barrier\n"));
+        assert!(!is_flush_barrier(b"limux-log-flush-barrier suffix\n"));
+        assert!(!is_flush_barrier(b"\n"));
+        assert!(!is_flush_barrier(b""));
+    }
+
+    #[test]
+    fn drain_acks_a_flush_barrier_without_logging_it() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut fds = [0 as RawFd; 2];
+        assert_eq!(unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) }, 0);
+        let reader = unsafe { File::from_raw_fd(fds[0]) };
+        let mut write_end = unsafe { File::from_raw_fd(fds[1]) };
+        set_nonblocking(&reader).expect("nonblocking reader");
+
+        let path = tmp.path().join("barrier.log");
+        let file = OpenOptions::new()
+            .create_new(true)
+            .append(true)
+            .open(&path)
+            .expect("active fixture");
+        let writer = BoundedLogWriter::new(file, u64::MAX, WarningAggregator::new(4));
+        let acks = Arc::new(AtomicU64::new(0));
+        let drain_acks = Arc::clone(&acks);
+        let drain = thread::spawn(move || drain_stderr(reader, writer, &drain_acks));
+
+        write_end.write_all(b"before-barrier\n").expect("feed");
+        write_end.write_all(FLUSH_BARRIER).expect("feed barrier");
+        drop(write_end);
+        drain.join().expect("drain thread");
+
+        assert_eq!(
+            acks.load(Ordering::Acquire),
+            1,
+            "barrier must be acked once"
+        );
+        let body = fs::read_to_string(&path).expect("barrier log");
+        assert!(body.contains("before-barrier"), "log: {body:?}");
+        assert!(
+            !body.contains("limux-log-flush-barrier"),
+            "the barrier is a control line and must never be logged: {body:?}"
+        );
     }
 
     #[test]
@@ -979,7 +1467,8 @@ mod tests {
         let writer = BoundedLogWriter::new(failing_sink(tmp.path()), u64::MAX, {
             WarningAggregator::new(4)
         });
-        let drain = thread::spawn(move || drain_stderr(reader, writer));
+        let acks = Arc::new(AtomicU64::new(0));
+        let drain = thread::spawn(move || drain_stderr(reader, writer, &acks));
 
         // Push far more than one pipe buffer (64 KiB on Linux) through the
         // write end, exactly as the GTK main thread would.
@@ -1044,7 +1533,8 @@ mod tests {
         let writer = BoundedLogWriter::new(failing_sink(tmp.path()), u64::MAX, {
             WarningAggregator::new(4)
         });
-        let drain = thread::spawn(move || drain_stderr(reader, writer));
+        let acks = Arc::new(AtomicU64::new(0));
+        let drain = thread::spawn(move || drain_stderr(reader, writer, &acks));
 
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
@@ -1123,7 +1613,8 @@ mod tests {
             .open(&path)
             .expect("active fixture");
         let writer = BoundedLogWriter::new(file, 96, WarningAggregator::new(4));
-        let drain = thread::spawn(move || drain_stderr(reader, writer));
+        let acks = Arc::new(AtomicU64::new(0));
+        let drain = thread::spawn(move || drain_stderr(reader, writer, &acks));
 
         for _ in 0..40 {
             write_end.write_all(&[b'z'; 32]).expect("feed");
@@ -1144,164 +1635,46 @@ mod tests {
         );
     }
 
-    /// Serializes the tests that temporarily replace process-wide descriptors.
-    static FD_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    /// Restores stderr on drop, so a panicking test can never leave fd 2
-    /// closed for the rest of the (shared, multi-threaded) test binary.
-    #[cfg(unix)]
-    struct StderrGuard {
-        saved: RawFd,
-        _lock: std::sync::MutexGuard<'static, ()>,
-    }
-
-    #[cfg(unix)]
-    impl StderrGuard {
-        fn close_stderr() -> Self {
-            let lock = FD_TEST_LOCK
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            let saved = unsafe { libc::dup(libc::STDERR_FILENO) };
-            assert!(saved >= 0, "must be able to save stderr");
-            unsafe {
-                libc::close(libc::STDERR_FILENO);
-            }
-            Self { saved, _lock: lock }
-        }
-    }
-
-    #[cfg(unix)]
-    impl Drop for StderrGuard {
-        fn drop(&mut self) {
-            unsafe {
-                libc::dup2(self.saved, libc::STDERR_FILENO);
-                libc::close(self.saved);
-            }
-        }
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn reserve_standard_fds_reopens_a_closed_stderr() {
-        let guard = StderrGuard::close_stderr();
-        let result = reserve_standard_fds();
-        let reopened = unsafe { libc::fcntl(libc::STDERR_FILENO, libc::F_GETFD) } >= 0;
-        drop(guard);
-
-        assert!(result.is_ok(), "reserve_standard_fds failed: {result:?}");
-        assert!(reopened, "fd 2 must be open again after reservation");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn relocate_above_stderr_moves_low_descriptors_up_and_sets_cloexec() {
-        let mut fds = [0 as RawFd; 2];
-        assert_eq!(unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) }, 0);
-
-        let guard = StderrGuard::close_stderr();
-        // dup2 targets an exact descriptor, so placing a pipe end on fd 2 is
-        // deterministic even while the rest of the suite runs in parallel.
-        let placed = unsafe { libc::dup2(fds[0], libc::STDERR_FILENO) };
-        let relocated = if placed == libc::STDERR_FILENO {
-            relocate_above_stderr(libc::STDERR_FILENO)
-        } else {
-            Err(io::Error::other("could not place a descriptor on fd 2"))
-        };
-        let flags = relocated
-            .as_ref()
-            .ok()
-            .map(|fd| unsafe { libc::fcntl(*fd, libc::F_GETFD) });
-        if let Ok(fd) = &relocated {
-            unsafe {
-                libc::close(*fd);
-            }
-        }
-        drop(guard);
-        unsafe {
-            libc::close(fds[0]);
-            libc::close(fds[1]);
-        }
-
-        let moved = relocated.expect("relocation must succeed");
-        assert!(
-            moved > libc::STDERR_FILENO,
-            "descriptor must move above stderr, got {moved}"
-        );
-        assert!(
-            flags.unwrap_or(0) & libc::FD_CLOEXEC != 0,
-            "relocated descriptor must be close-on-exec"
-        );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn relocate_above_stderr_leaves_high_descriptors_untouched() {
-        let mut fds = [0 as RawFd; 2];
-        assert_eq!(unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) }, 0);
-        let same = relocate_above_stderr(fds[0]).expect("no relocation needed");
-        assert_eq!(same, fds[0]);
-        unsafe {
-            libc::close(fds[0]);
-            libc::close(fds[1]);
-        }
-    }
-
-    /// P2 regression, end-to-end through the real installer.
+    /// Replaces the deleted fd-reservation layer's tests.
     ///
-    /// Ignored by default because it hijacks process-wide stderr via
-    /// `dup2(write_fd, 2)`, which would corrupt descriptors owned by other
-    /// tests running in parallel. It also only reproduces the original defect
-    /// when fd 2 is genuinely the lowest free descriptor, which is only
-    /// guaranteed single-threaded. Run it deliberately:
+    /// That layer (`reserve_standard_fds`, `relocate_above_stderr`,
+    /// `relocate_file_above_stderr` — ~90 lines of unsafe fd surgery) existed
+    /// for one documented scenario: the host started with stderr closed, so
+    /// the pipe's read end lands on fd 2 and the installing `dup2` destroys
+    /// it. That scenario is unreachable in a Rust binary, because the standard
+    /// library reopens 0/1/2 on /dev/null before `main` runs. Its tests only
+    /// passed because they manufactured the condition mid-process with
+    /// `close(2)`, which nothing in this binary does.
     ///
-    /// ```text
-    /// cargo test -p limux-host-linux install_survives -- --ignored --test-threads=1
-    /// ```
+    /// This pins the real invariant instead, on the real launch path: exec the
+    /// probe with 0, 1 and 2 genuinely closed, and assert the child still finds
+    /// them open — and that the installer logs correctly with no reservation.
     #[cfg(unix)]
     #[test]
-    #[ignore = "hijacks process-wide stderr; run with --ignored --test-threads=1"]
-    fn install_survives_a_closed_stderr_and_keeps_logging() {
+    fn standard_descriptors_are_open_before_main_even_when_launched_closed() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let mut config = config(tmp.path());
-        config.max_active_bytes = 64 * 1024;
-        config.max_total_bytes = 512 * 1024;
-        fs::create_dir_all(config.active_path.parent().expect("parent")).expect("active dir");
-        fs::create_dir_all(&config.retained_dir).expect("retained dir");
-        let probe_path = config.active_path.clone();
+        let output = run_probe_with_closed_std_fds("stdfds", tmp.path());
+        assert_eq!(
+            output.status.code(),
+            Some(PROBE_EXIT_CODE),
+            "probe child must reach its exit"
+        );
 
-        let guard = StderrGuard::close_stderr();
-        let installed = install_bounded_stderr(&config, 7);
-        if installed.is_ok() {
-            // fd 2 must now be the pipe WRITE end feeding the drain thread.
-            let probe = b"limux-p2-probe\n";
-            unsafe {
-                libc::write(
-                    libc::STDERR_FILENO,
-                    probe.as_ptr() as *const libc::c_void,
-                    probe.len(),
-                );
-            }
-            for _ in 0..100 {
-                thread::sleep(Duration::from_millis(50));
-                if fs::read_to_string(&probe_path)
-                    .map(|body| body.contains("limux-p2-probe"))
-                    .unwrap_or(false)
-                {
-                    break;
-                }
-            }
-        }
-        drop(guard);
+        let observed =
+            fs::read_to_string(tmp.path().join(PROBE_STD_FDS)).expect("std fd observation");
+        assert_eq!(
+            observed.trim(),
+            "0=open 1=open 2=open",
+            "the Rust runtime is expected to reopen every standard descriptor \
+             before main, which is what makes the fd-reservation layer dead code. \
+             If this ever fails, that layer has to come back."
+        );
 
-        let path = installed
-            .expect("install_bounded_stderr must succeed with stderr closed")
-            .expect("managed log path");
-        let contents = fs::read_to_string(&path).expect("read managed log");
+        let log = fs::read_to_string(probe_config(tmp.path()).active_path).expect("probe log");
         assert!(
-            contents.contains("limux-p2-probe"),
-            "stderr written after install never reached the managed log — the \
-             managed log descriptor was clobbered by dup2 (fd-hijack regression). \
-             Log: {contents:?}"
+            log.contains(PROBE_TAIL_MARKER),
+            "installing bounded stderr in a process launched with closed standard \
+             descriptors must still log: {log:?}"
         );
     }
 
