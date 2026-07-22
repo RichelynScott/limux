@@ -21,6 +21,10 @@ const FLUSH_BARRIER: &[u8] = b"\nlimux-log-flush-barrier\n";
 const FLUSH_BARRIER_BODY: &[u8] = b"limux-log-flush-barrier";
 /// How often [`flush_bounded_stderr`] re-checks for the drain thread's ack.
 const FLUSH_POLL_TICK: Duration = Duration::from_millis(1);
+/// Last line the drain writes when it gives up on an unusable read end, so the
+/// log explains why it stops rather than just ending mid-stream.
+const DRAIN_STOPPED_MARKER: &[u8] =
+    b"limux-log-drain-stopped read end unusable; stderr is now discarded\n";
 /// Written once when the byte cap first drops output. Its length is held
 /// back from the usable budget so it always fits inside the cap.
 const CAP_MARKER: &[u8] = b"limux-log-cap-reached\n";
@@ -728,6 +732,53 @@ impl DrainState {
     }
 }
 
+/// Point stderr at /dev/null, discarding whatever it referred to before.
+///
+/// Used when the drain thread stops: from that moment fd 2 is the write end of
+/// a pipe nobody will ever read again.
+#[cfg(unix)]
+fn detach_stderr_to_null() {
+    let Ok(dev_null) = CString::new("/dev/null") else {
+        return;
+    };
+    let opened = unsafe { libc::open(dev_null.as_ptr(), libc::O_WRONLY | libc::O_CLOEXEC) };
+    if opened < 0 {
+        return;
+    }
+    unsafe {
+        libc::dup2(opened, libc::STDERR_FILENO);
+        libc::close(opened);
+    }
+}
+
+/// M2: before PR #88 a broken log sink could not take the host down, because
+/// stderr *was* the log file. Now stderr is a pipe, so the moment the drain
+/// thread stops — `DrainAction::ReaderFailed`, or a panic inside the thread —
+/// the read end closes and the very next `eprintln!` from the GTK main thread
+/// hits EPIPE. `eprintln!` panics on a failed write (verified: a probe whose
+/// reader is gone dies with rc=101), and that panic's own message goes to the
+/// same dead pipe, so the host dies with no diagnostic at all. Children that
+/// inherited fd 2 get SIGPIPE.
+///
+/// Repointing stderr at /dev/null on the way out turns all of that into
+/// "stderr is silently discarded", which is survivable. Written as a guard so
+/// it also runs when the drain thread unwinds.
+///
+/// Residual, deliberately not fixed here: diagnostics stop. Redirecting to the
+/// log file instead would keep them, but that bypasses the byte cap this
+/// module exists to enforce, and in the sink-failure case it would be writing
+/// to the descriptor that just failed. `DRAIN_STOPPED_MARKER` records the
+/// transition in the log so the silence is explained.
+#[cfg(unix)]
+struct StderrDetachGuard;
+
+#[cfg(unix)]
+impl Drop for StderrDetachGuard {
+    fn drop(&mut self) {
+        detach_stderr_to_null();
+    }
+}
+
 fn drain_stderr(mut reader: File, mut writer: BoundedLogWriter, acks: &AtomicU64) -> DrainState {
     let started = Instant::now();
     let mut pending = Vec::with_capacity(MAX_WARNING_LINE_BYTES as usize);
@@ -761,8 +812,15 @@ fn drain_stderr(mut reader: File, mut writer: BoundedLogWriter, acks: &AtomicU64
             DrainAction::Idle => thread::sleep(STDERR_IDLE_TICK),
             DrainAction::Retry => {}
             // The read end is gone; there is nothing left to drain and the
-            // loop would otherwise spin at 100% CPU.
-            DrainAction::ReaderFailed => break,
+            // loop would otherwise spin at 100% CPU. Leave a note, because
+            // from here on stderr is discarded and the log would otherwise
+            // just stop mid-sentence with no explanation.
+            DrainAction::ReaderFailed => {
+                if !state.is_degraded() {
+                    let _ = writer.write_raw(DRAIN_STOPPED_MARKER);
+                }
+                break;
+            }
         }
     }
     if writer.cap_reached() {
@@ -842,7 +900,13 @@ pub(crate) fn install_bounded_stderr(
     let drain_acks = Arc::clone(&acks);
     let drain = thread::Builder::new()
         .name(DRAIN_THREAD_NAME.to_string())
-        .spawn(move || drain_stderr(read_file, writer, &drain_acks));
+        // The guard lives in the installed thread only, never in
+        // `drain_stderr` itself: unit tests drive that function directly and
+        // must not have the test binary's stderr yanked out from under them.
+        .spawn(move || {
+            let _detach_stderr = StderrDetachGuard;
+            drain_stderr(read_file, writer, &drain_acks)
+        });
     // The drain thread outlives this function by design: fd 2 is process-wide
     // and every spawned child inherits it, so the pipe cannot reach EOF while
     // the app is running and `join()` here would block forever. Detaching is
@@ -970,6 +1034,7 @@ mod tests {
     const PROBE_EXIT_CODE: i32 = 3;
     const PROBE_FD_LISTING: &str = "child-fds.txt";
     const PROBE_STD_FDS: &str = "std-fds.txt";
+    const PROBE_SURVIVED: &str = "survived.txt";
     /// Dumps `fd<TAB>target` for every descriptor the shell inherited. Parsed
     /// rather than `ls -l` so the format is not locale-dependent.
     const FD_LISTING_SCRIPT: &str =
@@ -1081,6 +1146,47 @@ mod tests {
                 flush_bounded_stderr(Duration::from_secs(10));
                 std::process::exit(PROBE_EXIT_CODE);
             }
+            // M2: kill the drain thread's read end and check the host lives.
+            "deaddrain" => {
+                let pipe = fs::read_link("/proc/self/fd/2").expect("stderr link");
+                let read_fd = fs::read_dir("/proc/self/fd")
+                    .expect("fd dir")
+                    .filter_map(|entry| entry.ok())
+                    .filter_map(|entry| {
+                        let fd = entry.file_name().to_string_lossy().parse::<RawFd>().ok()?;
+                        (fd != libc::STDERR_FILENO && fs::read_link(entry.path()).ok()? == pipe)
+                            .then_some(fd)
+                    })
+                    .next()
+                    .expect("the drain thread's read end must be findable");
+                // Fault injection: atomically replace the pipe's only read end
+                // with /dev/null. `dup2` closes the target as part of the same
+                // call, so unlike a bare `close` there is no window in which
+                // the descriptor number can be recycled under the drain
+                // thread. The drain's next read(2) returns 0 (EOF) and the
+                // thread stops — with a live write end still on fd 2, which is
+                // precisely the M2 hazard.
+                let dev_null = CString::new("/dev/null").expect("path");
+                let opened = unsafe { libc::open(dev_null.as_ptr(), libc::O_RDONLY) };
+                assert!(opened >= 0, "open /dev/null");
+                assert!(unsafe { libc::dup2(opened, read_fd) } >= 0, "dup2");
+                unsafe { libc::close(opened) };
+
+                // Wait (ceiling only — no timing assertion) for the drain to
+                // notice and for its guard to repoint stderr.
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while Instant::now() < deadline
+                    && fs::read_link("/proc/self/fd/2").ok().as_deref() == Some(pipe.as_path())
+                {
+                    thread::sleep(Duration::from_millis(5));
+                }
+
+                // The load-bearing line: before the guard existed this
+                // panicked on EPIPE and took the whole host down.
+                eprintln!("limux-deaddrain-probe");
+                fs::write(dir.join(PROBE_SURVIVED), b"survived").expect("survival report");
+                std::process::exit(PROBE_EXIT_CODE);
+            }
             // H3: report the standard descriptors this process was exec'd
             // with, and prove the installer works without reserving them.
             "stdfds" => {
@@ -1184,6 +1290,43 @@ mod tests {
             "a spawned child inherited the bounded-log pipe at {leaked:?} as well as \
              stderr — the installer's pipe is missing O_CLOEXEC, so the pipe can \
              never reach EOF and host stderr leaks into children: {listing:?}"
+        );
+    }
+
+    /// M2 regression: before PR #88 a broken log sink could not kill the host,
+    /// because stderr *was* the log file. Now stderr is a pipe, so when the
+    /// drain thread stops the read end closes and the next `eprintln!` from
+    /// the GTK main thread hits EPIPE — which `eprintln!` turns into a panic
+    /// (verified independently: a probe whose reader is gone exits rc=101),
+    /// with the panic message going to the same dead pipe. The host would die
+    /// silently.
+    ///
+    /// Fault-injects exactly that (close the drain's read end so its next
+    /// `read(2)` returns EBADF) and asserts the process survives a subsequent
+    /// `eprintln!` and still exits normally.
+    #[cfg(unix)]
+    #[test]
+    fn a_dead_drain_thread_does_not_kill_the_host() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let output = run_probe("deaddrain", tmp.path());
+
+        assert_ne!(
+            output.status.code(),
+            Some(101),
+            "the probe panicked after the drain thread died — writing to stderr \
+             with no reader is fatal again: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            output.status.code(),
+            Some(PROBE_EXIT_CODE),
+            "probe child must reach its exit: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            fs::read_to_string(tmp.path().join(PROBE_SURVIVED)).unwrap_or_default(),
+            "survived",
+            "the probe never got past the eprintln that follows a dead drain"
         );
     }
 
