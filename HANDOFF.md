@@ -66,7 +66,8 @@ failed / 1 ignored**, clippy `-D warnings` + fmt clean.
 | #85 `3bf819f` | TaskMaster #33 build dirty-marker — untracked files no longer mark builds dirty |
 | #86 `c757056` | Adversarial remediation: H-1 read-screen surface scoping · M-2 foreign-repo provenance guard · M-4 socket-mode fail-open · L-1 pipe-pane empty stream · send-key honest diagnosis |
 | #87 `149e283` | Durable record of the adversarial findings |
-| #88 `d8e7648` | Bounded host logging: **A1 GUI-hang** · P2 stderr-fd · A2 silent cap. 🔴 **MERGED BUT REGRESSIVE — DO NOT INSTALL.** Adversarial review says NO: it silently loses the last stderr before exit. Fix in flight. See §5. |
+| #88 `d8e7648` | Bounded host logging: **A1 GUI-hang** · P2 stderr-fd · A2 silent cap. Shipped a shutdown data-loss regression — **fixed by #90**. |
+| #90 `51e8144` | **Fixes #88's regression.** H1 stderr-loss-at-exit (flush barrier + `atexit`) · H2 installer `O_CLOEXEC` test · **H3 deleted ~90 lines of unreachable `unsafe` fd code** · M2 detach guard. 660/0/**0** |
 | #89 `9f469c1` | Three-state build-provenance test (closes the #33 gap) |
 
 ### The five defects, with mechanism (not just names)
@@ -115,6 +116,8 @@ failed / 1 ignored**, clippy `-D warnings` + fmt clean.
 | Item | State |
 |---|---|
 | **Restart** | 🔴 operator — §1 |
+| **🔴 26 GB of logs — operator decision** | `~/.local/state/limux/logs/limux-host.log` was **26 GB** — the legacy *unbounded* log (pre-bounded-logging; current code writes `limux-host.current.log`, and the codebase references that old name only as a test fixture called `legacy_incident`). Verified stale + unheld, then **archived via `mv`** to `logs/archive/limux-host.log.legacy-unbounded-superseded-20260721`. Live logs are now **112 KB**. **It still occupies 26 GB — deleting it is the operator's call** (archive-not-delete floor). Relevant to the C-drive-space lane. |
+| **M1 — retained logs never pruned** | Real but **not yet triggered**: production is 64 MiB active / **10** retained / 640 MiB total, and the `retained/` dir does not exist yet (count 0). At the limit `rotate_managed_active` returns `StderrFallback`, so host logging degrades rather than erroring — and `doctor` does not check the retained budget. Needs ~640 MiB of host stderr to bite. |
 | **Live verification** | Nothing below has been seen working in a running GUI. After restart, verify the OMP scroll fix and #84's resize behavior. For #84, `strace -e ioctl` `TIOCSWINSZ` counts on a slow split-drag (before/after) settles its one unverified claim. |
 | **Standing adversarial review** | ✅ **RAN** (4th attempt). Found 3 HIGH / 5 MED / 4 LOW. Full record: **`docs/ADVERSARIAL_REVIEW_FINDINGS_2026-07-21.md`**. H-1/H-2/M-2/M-4/L-1 fixed in PR #86; M-1, M-3, M-5, L-2/L-3/L-4 **still open**. |
 | **⚠ Test theater (highest-value remediation)** | The reviewer **reverted each fix and re-ran the suite**: **4 of the 5 behavioural fixes in the installed build survive a full revert with a green suite.** Pure-logic helpers are tested; the wiring that uses them is not. Only `hook_session_id` ordering and #84's grid predicate fail on revert. |

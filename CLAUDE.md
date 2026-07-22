@@ -22,14 +22,10 @@ Run the quality gate before *and* after your changes:
 The gate is **green** on `main` — run it anyway before *and* after, and don't
 assume a clean baseline just because this says so.
 
-> **Resolved 2026-07-21:** this file used to warn that
-> `cli_arg_tests::hook_session_id_falls_back_to_transcript_stem` was failing.
-> It was failing *non-deterministically* — it depended on ambient environment,
-> and `limux_env_value` walks **ancestor process** environments, so the same
-> commit passed under one runtime and failed under another. That is why an audit
-> recorded a green suite while this file recorded a failure: **both were
-> correct.** PR #82 reordered `hook_session_id` to prefer the payload's own
-> `transcript_path` over ambient env, which fixed the flake as a side effect.
+> **No known-failing tests.** (An earlier flaky-test warning here was resolved by
+> PR #82 and removed — full explanation in `HANDOFF.md`. It is deliberately not
+> restated here: two separate agents pattern-matched the old test name in this
+> paragraph and reported the *resolution note itself* as a live warning.)
 
 ## Review checklist — revert the CALL SITE before merging
 
