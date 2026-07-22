@@ -434,14 +434,13 @@ fn main() {
     app.connect_activate(move |app| {
         window::build_window(app);
     });
+    // No flush call here on purpose. Exiting kills the bounded-log drain
+    // thread and discards the pipe buffer, but a call sited after `app.run()`
+    // does not reliably cover that: measured headless, GTK terminates the
+    // process from inside `app.run()`, which never returns. The flush is
+    // registered with `atexit` inside `install_bounded_stderr` instead, so it
+    // covers this path, GTK's internal exit, and any `std::process::exit`.
     app.run();
-
-    // GTK has returned, so the process is about to exit — and exiting kills the
-    // bounded-log drain thread wherever it happens to be, discarding the pipe
-    // buffer and its pending line. Everything logged during shutdown would be
-    // lost without this.
-    #[cfg(unix)]
-    host_log::flush_bounded_stderr(HOST_LOG_FLUSH_TIMEOUT);
 }
 
 #[cfg(test)]

@@ -21,6 +21,10 @@ const FLUSH_BARRIER: &[u8] = b"\nlimux-log-flush-barrier\n";
 const FLUSH_BARRIER_BODY: &[u8] = b"limux-log-flush-barrier";
 /// How often [`flush_bounded_stderr`] re-checks for the drain thread's ack.
 const FLUSH_POLL_TICK: Duration = Duration::from_millis(1);
+/// Ceiling on the exit-time flush. A healthy drain acks in well under one
+/// `STDERR_IDLE_TICK`; this only bounds a dead or wedged drain thread so the
+/// process can still exit.
+const EXIT_FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
 /// Last line the drain writes when it gives up on an unusable read end, so the
 /// log explains why it stops rather than just ending mid-stream.
 const DRAIN_STOPPED_MARKER: &[u8] =
@@ -936,7 +940,22 @@ pub(crate) fn install_bounded_stderr(
     // Publish only once fd 2 really is the pipe, so a flush can never write a
     // barrier nobody will read and then wait out the whole timeout.
     let _ = DRAIN_ACKS.set(acks);
+    // Flush from `atexit` rather than from a call after `app.run()` returns.
+    // Measured: run headless, GTK fails to open a display and terminates the
+    // process from inside `app.run()`, which never returns — so a call sited
+    // after it is dead code on that path. `atexit` covers every `exit(3)`,
+    // including GTK's internal one and any `std::process::exit`, and the drain
+    // thread is still alive while handlers run.
+    unsafe {
+        libc::atexit(flush_bounded_stderr_at_exit);
+    }
     Ok(Some(path))
+}
+
+/// `atexit` hook. `extern "C"`, so it must not unwind across the boundary.
+#[cfg(unix)]
+extern "C" fn flush_bounded_stderr_at_exit() {
+    let _ = std::panic::catch_unwind(|| flush_bounded_stderr(EXIT_FLUSH_TIMEOUT));
 }
 
 /// Ack counter of the installed drain thread, published by
@@ -1128,9 +1147,9 @@ mod tests {
                     eprintln!("limux-loss-probe {index:05}");
                 }
                 eprintln!("{PROBE_TAIL_MARKER}");
-                // The call site under test. Reverting *this line* is what the
-                // regression check reverts.
-                flush_bounded_stderr(Duration::from_secs(10));
+                // No explicit flush: exiting must be enough, exactly as it
+                // is for the host. The atexit hook registered by
+                // `install_bounded_stderr` is the call site under test.
                 std::process::exit(PROBE_EXIT_CODE);
             }
             // H2: a spawned child must inherit the write end (fd 2, so its
@@ -1143,7 +1162,6 @@ mod tests {
                     .output()
                     .expect("fd listing child must spawn");
                 fs::write(dir.join(PROBE_FD_LISTING), listing.stdout).expect("fd listing");
-                flush_bounded_stderr(Duration::from_secs(10));
                 std::process::exit(PROBE_EXIT_CODE);
             }
             // M2: kill the drain thread's read end and check the host lives.
@@ -1191,7 +1209,6 @@ mod tests {
             // with, and prove the installer works without reserving them.
             "stdfds" => {
                 eprintln!("{PROBE_TAIL_MARKER}");
-                flush_bounded_stderr(Duration::from_secs(10));
                 fs::write(dir.join(PROBE_STD_FDS), inherited_std_fds).expect("std fd report");
                 std::process::exit(PROBE_EXIT_CODE);
             }
