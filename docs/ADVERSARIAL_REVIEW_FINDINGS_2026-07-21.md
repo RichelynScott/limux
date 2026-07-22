@@ -152,3 +152,85 @@ There is **no connection→workspace binding anywhere**; socket auth is uid-only
 can target any workspace, `--scrollback` included. The H-1 fix removes an *accidental*
 default; **it is not an access control**, and neither code comments nor the limux skill
 should imply otherwise.
+
+---
+
+# SECOND REVIEW — PR #88 `unsafe` fd logging (`d8e7648`)
+
+**Verdict: NO — NOT SAFE TO INSTALL.** Commissioned because the implementing
+agent flagged its own gap (*"unsafe fd code is unit-tested but had no
+cross-family adversarial review"*, *"No GUI run"*). It found **no fd-corruption
+defect** — the `unsafe` code is correctly paired and leak-free — but the change
+**regresses** the thing a crash log exists for.
+
+## H1 (HIGH) — stderr written shortly before exit is silently discarded
+
+`install_bounded_stderr` **detaches** the drain thread: `if let Err(error) =
+drain` (~`host_log.rs:891`) moves the `io::Result<JoinHandle>` and drops the `Ok`
+variant. Nothing joins or flushes it. `std::process::exit()` kills the thread
+wherever it sits in its 25 ms `STDERR_IDLE_TICK` sleep; the 64 KiB pipe buffer
+and `pending` die with it.
+
+**Confirmed a REGRESSION, not a pre-existing gap.** Pre-#88 `main.rs` did
+`libc::dup2(file.as_raw_fd(), libc::STDERR_FILENO)` — fd 2 *was* the log file,
+writes were synchronous, loss was impossible. Verified independently against
+`1254072`.
+
+Measured (probe calling the real `install_host_stderr_log()`): 200 `eprintln!`
+then `exit(3)`, 20 runs → **3 lossy, one captured 0 of 200 lines**. Panic path,
+15 runs → panic message **absent in 2**.
+
+**Failure:** GTK fatal/assert/panic writes the diagnostic, process exits, drain
+thread dies mid-sleep → the log ends *before* the crash. Truncated log, no cause.
+
+## H3 (HIGH) — the entire P2 fd-reservation layer is unreachable
+
+Rust std runs `sanitize_standard_fds()` before `main`, so fds 0/1/2 are always
+open even when launched `2>&-` or `0<&- 1>&- 2>&-` — probed: all three report
+ino 4, mode `020666` (`/dev/null`), and the first `open` lands on **fd 4**. So
+`pipe2` can never return fd ≤ 2 in this binary and the documented mechanism
+**cannot occur**.
+
+**This is the THIRD wrong mechanism in this one story** — the handoff's original
+version, the implementer's correction, and now the premise itself. Each
+explained the evidence available at the time.
+
+Also unwired: neutering all four production call sites → **448 passed, 0
+failed**. ~90 lines of `unsafe` fd surgery, dead in production, wiring untested.
+
+## H2 — the `O_CLOEXEC` fix is test theater
+
+Removing `O_CLOEXEC` from the installer's pipe → **448 passed, 0 failed**. Both
+A1 tests build their *own* pipes and never call `install_bounded_stderr`. The fix
+is genuinely correct (proved by dumping a real child's `/proc/self/fd`: without
+it the child inherits `4 -> pipe:[...]` read-side) — correct fix, zero defence.
+
+## M1–M2
+
+- **M1** Retained logs are never pruned. With production constants, ≥10 retained
+  files → `install failed: retained logs leave no budget for a new bounded active
+  log`, permanently. Doctor does not check the retained budget.
+- **M2** A dead drain thread now silently **kills** the host rather than hanging
+  it: `eprintln!` panics on EPIPE (probe rc=101), and the panic message goes to
+  the same dead pipe, so the host dies with no diagnostic. Impossible pre-#88.
+
+## Verified correct (evidence given)
+
+A1 and A2 are **load-bearing** (reverting A1 → 2 failures + a full 15.01 s block,
+independently reproducing my own result). **No data race** — writer/state move
+wholly into the drain thread; the only shared object is the kernel-synchronised
+pipe. **EINTR** handled. **No fd leaks or double-closes** across all five error
+paths. `O_CLOEXEC` completeness verified via child `/proc/self/fd`.
+
+**Hypotheses it killed:** cap marker overrunning the cap (headroom correct);
+double-close in `reserve_standard_fds` (unreachable *and* paired); fd-test
+suite flakiness (30 clean runs).
+
+## One FALSE POSITIVE — worth recording
+
+**L5 claimed `CLAUDE.md` still warns about a failing
+`hook_session_id_falls_back_to_transcript_stem`.** It does not — that was fixed
+in PR #86, and the file says "**Resolved**" and explains it. The reviewer matched
+the test name without reading the surrounding text. **Even a rigorous adversary
+produces false positives; verify its claims too.** Its HIGH findings came with
+probe data (20-run trials, `/proc/self/fd` dumps, hunk reversions) and held up.

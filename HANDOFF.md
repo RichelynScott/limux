@@ -66,7 +66,7 @@ failed / 1 ignored**, clippy `-D warnings` + fmt clean.
 | #85 `3bf819f` | TaskMaster #33 build dirty-marker — untracked files no longer mark builds dirty |
 | #86 `c757056` | Adversarial remediation: H-1 read-screen surface scoping · M-2 foreign-repo provenance guard · M-4 socket-mode fail-open · L-1 pipe-pane empty stream · send-key honest diagnosis |
 | #87 `149e283` | Durable record of the adversarial findings |
-| #88 `d8e7648` | Bounded host logging: **A1 GUI-hang** · **P2 stderr-fd hijack** · A2 silent cap. ⚠️ merged but **NOT installed** — `unsafe` fd code under review |
+| #88 `d8e7648` | Bounded host logging: **A1 GUI-hang** · P2 stderr-fd · A2 silent cap. 🔴 **MERGED BUT REGRESSIVE — DO NOT INSTALL.** Adversarial review says NO: it silently loses the last stderr before exit. Fix in flight. See §5. |
 | #89 `9f469c1` | Three-state build-provenance test (closes the #33 gap) |
 
 ### The five defects, with mechanism (not just names)
