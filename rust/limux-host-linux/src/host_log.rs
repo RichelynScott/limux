@@ -1054,6 +1054,11 @@ mod tests {
     const PROBE_LOSS_LINES: usize = 20_000;
     const PROBE_TAIL_MARKER: &str = "limux-loss-probe-tail";
     const PROBE_EXIT_CODE: i32 = 3;
+    const PROBE_FD_LISTING: &str = "child-fds.txt";
+    /// Dumps `fd<TAB>target` for every descriptor the shell inherited. Parsed
+    /// rather than `ls -l` so the format is not locale-dependent.
+    const FD_LISTING_SCRIPT: &str =
+        r#"for f in /proc/self/fd/*; do printf '%s\t%s\n' "${f##*/}" "$(readlink "$f")"; done"#;
 
     fn probe_config(root: &Path) -> HostLogConfig {
         HostLogConfig {
@@ -1107,6 +1112,19 @@ mod tests {
                 flush_bounded_stderr(Duration::from_secs(10));
                 std::process::exit(PROBE_EXIT_CODE);
             }
+            // H2: a spawned child must inherit the write end (fd 2, so its
+            // stderr is logged) and nothing else belonging to the pipe.
+            "cloexec" => {
+                let listing = Command::new("/bin/sh")
+                    .arg("-c")
+                    .arg(FD_LISTING_SCRIPT)
+                    .stderr(std::process::Stdio::inherit())
+                    .output()
+                    .expect("fd listing child must spawn");
+                fs::write(dir.join(PROBE_FD_LISTING), listing.stdout).expect("fd listing");
+                flush_bounded_stderr(Duration::from_secs(10));
+                std::process::exit(PROBE_EXIT_CODE);
+            }
             other => panic!("unknown probe mode {other:?}"),
         }
     }
@@ -1142,6 +1160,66 @@ mod tests {
             PROBE_LOSS_LINES,
             "lost {} of {PROBE_LOSS_LINES} lines at shutdown",
             PROBE_LOSS_LINES.saturating_sub(captured)
+        );
+    }
+
+    /// H2 regression: the `O_CLOEXEC` on the installer's `pipe2` had no test
+    /// defence — removing it left the suite fully green, because the two
+    /// pre-existing pipe tests build their own `libc::pipe` and never touch
+    /// `install_bounded_stderr`. Without it, every spawned child inherits the
+    /// pipe's READ end, so the pipe can never reach EOF and host stderr leaks
+    /// into shells.
+    ///
+    /// Asserts against a real child of the real installer: fd 2 must be the
+    /// pipe (that inheritance is deliberate — child stderr belongs in the log)
+    /// and no descriptor above 2 may be one.
+    #[cfg(unix)]
+    #[test]
+    fn spawned_children_do_not_inherit_the_stderr_pipe_read_end() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let output = run_probe("cloexec", tmp.path());
+        assert_eq!(
+            output.status.code(),
+            Some(PROBE_EXIT_CODE),
+            "probe child must reach its exit: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let listing =
+            fs::read_to_string(tmp.path().join(PROBE_FD_LISTING)).expect("child fd listing");
+        let descriptors = listing
+            .lines()
+            .filter_map(|line| line.split_once('\t'))
+            .filter_map(|(fd, target)| fd.parse::<i32>().ok().map(|fd| (fd, target)))
+            .collect::<Vec<_>>();
+        assert!(
+            !descriptors.is_empty(),
+            "fd listing must not be empty: {listing:?}"
+        );
+
+        // Both ends of one pipe share an inode, so `pipe:[N]` identifies the
+        // bounded-log pipe specifically. Matching on that rather than on "any
+        // pipe" keeps the test immune to unrelated descriptors the harness
+        // leaks in from tests running in parallel.
+        let (_, log_pipe) = descriptors
+            .iter()
+            .find(|(fd, target)| *fd == libc::STDERR_FILENO && target.starts_with("pipe:"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "the child's stderr must still be the log pipe, otherwise this \
+                     test is not observing the installed pipe at all: {listing:?}"
+                )
+            });
+
+        let leaked = descriptors
+            .iter()
+            .filter(|(fd, target)| *fd > libc::STDERR_FILENO && target == log_pipe)
+            .collect::<Vec<_>>();
+        assert!(
+            leaked.is_empty(),
+            "a spawned child inherited the bounded-log pipe at {leaked:?} as well as \
+             stderr — the installer's pipe is missing O_CLOEXEC, so the pipe can \
+             never reach EOF and host stderr leaks into children: {listing:?}"
         );
     }
 
