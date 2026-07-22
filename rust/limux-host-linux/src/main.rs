@@ -53,6 +53,12 @@ const HOST_LOG_MAX_ACTIVE_BYTES: u64 = 64 * 1024 * 1024;
 const HOST_LOG_MAX_RETAINED_COUNT: usize = 10;
 const HOST_LOG_MAX_TOTAL_BYTES: u64 = 640 * 1024 * 1024;
 const HOST_LOG_MAX_WARNING_CATEGORIES: usize = 256;
+/// Ceiling on how long shutdown and panic paths wait for the bounded-log drain
+/// thread to catch up. A healthy drain acks in well under a tick; this only
+/// bounds the pathological case (dead or wedged drain thread) so the host can
+/// still exit.
+#[cfg(unix)]
+const HOST_LOG_FLUSH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
 pub(crate) fn build_info() -> limux_control::BuildInfo {
     limux_control::BuildInfo::from_compile_env(
@@ -83,6 +89,13 @@ fn install_panic_identity_hook(build: limux_control::BuildInfo) {
             render_build_identity("limux-host panic build", &build)
         );
         default_hook(info);
+        // The panic message and build identity are only in the stderr pipe at
+        // this point. A panicking process is usually about to die, and exiting
+        // kills the drain thread with the pipe still full — so wait for the
+        // drain to write them out before anything else can tear the process
+        // down.
+        #[cfg(unix)]
+        host_log::flush_bounded_stderr(HOST_LOG_FLUSH_TIMEOUT);
     }));
 }
 
@@ -422,6 +435,13 @@ fn main() {
         window::build_window(app);
     });
     app.run();
+
+    // GTK has returned, so the process is about to exit — and exiting kills the
+    // bounded-log drain thread wherever it happens to be, discarding the pipe
+    // buffer and its pending line. Everything logged during shutdown would be
+    // lost without this.
+    #[cfg(unix)]
+    host_log::flush_bounded_stderr(HOST_LOG_FLUSH_TIMEOUT);
 }
 
 #[cfg(test)]

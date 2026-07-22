@@ -5,12 +5,22 @@ use std::io::{self, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
 const MAX_WARNING_LINE_BYTES: u64 = 16 * 1024;
 const STDERR_READ_CHUNK_BYTES: usize = 8 * 1024;
 const STDERR_IDLE_TICK: Duration = Duration::from_millis(25);
+/// Written to stderr by [`flush_bounded_stderr`] and recognised (never logged)
+/// by the drain loop. The leading newline terminates any partial line already
+/// in flight, so the barrier is always parsed as a line of its own.
+const FLUSH_BARRIER: &[u8] = b"\nlimux-log-flush-barrier\n";
+/// Body of [`FLUSH_BARRIER`], i.e. what one drained line has to equal.
+const FLUSH_BARRIER_BODY: &[u8] = b"limux-log-flush-barrier";
+/// How often [`flush_bounded_stderr`] re-checks for the drain thread's ack.
+const FLUSH_POLL_TICK: Duration = Duration::from_millis(1);
 /// Written once when the byte cap first drops output. Its length is held
 /// back from the usable budget so it always fits inside the cap.
 const CAP_MARKER: &[u8] = b"limux-log-cap-reached\n";
@@ -316,6 +326,15 @@ impl BoundedLogWriter {
         Ok(true)
     }
 
+    /// Push anything held in user space out to the log descriptor.
+    ///
+    /// `File` is unbuffered, so this is a no-op today; it is called on the
+    /// flush-barrier path so the durability guarantee survives someone later
+    /// wrapping the sink in a `BufWriter`.
+    pub(crate) fn flush_sink(&mut self) -> io::Result<()> {
+        self.file.flush()
+    }
+
     pub(crate) fn finish(&mut self) -> io::Result<()> {
         if self.finished {
             return Ok(());
@@ -577,10 +596,21 @@ fn process_stderr_line(
     Ok(())
 }
 
+/// True for the one line [`flush_bounded_stderr`] injects as a barrier.
+fn is_flush_barrier(line: &[u8]) -> bool {
+    let trimmed = line
+        .iter()
+        .rposition(|byte| *byte != b'\n' && *byte != b'\r')
+        .map(|end| &line[..=end])
+        .unwrap_or_default();
+    trimmed == FLUSH_BARRIER_BODY
+}
+
 fn drain_complete_lines(
     writer: &mut BoundedLogWriter,
     pending: &mut Vec<u8>,
     elapsed: Duration,
+    acks: &AtomicU64,
 ) -> io::Result<()> {
     loop {
         let newline = pending.iter().position(|byte| *byte == b'\n');
@@ -592,6 +622,15 @@ fn drain_complete_lines(
             break;
         };
         let line = pending.drain(..take).collect::<Vec<_>>();
+        if is_flush_barrier(&line) {
+            // Reaching this line means every earlier byte has already been
+            // handed to `write(2)` on the log fd, so publishing the ack tells
+            // the waiter its output is durable. The barrier itself is never
+            // logged.
+            writer.flush_sink()?;
+            acks.fetch_add(1, Ordering::Release);
+            continue;
+        }
         process_stderr_line(writer, &line, elapsed)?;
     }
     Ok(())
@@ -764,7 +803,7 @@ impl DrainState {
     }
 }
 
-fn drain_stderr(mut reader: File, mut writer: BoundedLogWriter) -> DrainState {
+fn drain_stderr(mut reader: File, mut writer: BoundedLogWriter, acks: &AtomicU64) -> DrainState {
     let started = Instant::now();
     let mut pending = Vec::with_capacity(MAX_WARNING_LINE_BYTES as usize);
     let mut chunk = [0u8; STDERR_READ_CHUNK_BYTES];
@@ -789,7 +828,7 @@ fn drain_stderr(mut reader: File, mut writer: BoundedLogWriter) -> DrainState {
                     state.note_discarded(read);
                 } else {
                     pending.extend_from_slice(&chunk[..read]);
-                    if drain_complete_lines(&mut writer, &mut pending, elapsed).is_err() {
+                    if drain_complete_lines(&mut writer, &mut pending, elapsed, acks).is_err() {
                         note_sink_failure(&mut state, &mut writer, &mut pending);
                     }
                 }
@@ -885,15 +924,27 @@ pub(crate) fn install_bounded_stderr(
         ));
     }
     let writer = BoundedLogWriter::new(file, config.max_active_bytes, warnings);
+    let acks = Arc::new(AtomicU64::new(0));
+    let drain_acks = Arc::clone(&acks);
     let drain = thread::Builder::new()
-        .name("limux-bounded-log".to_string())
-        .spawn(move || drain_stderr(read_file, writer));
-    if let Err(error) = drain {
-        unsafe {
-            libc::close(write_fd);
+        .name(DRAIN_THREAD_NAME.to_string())
+        .spawn(move || drain_stderr(read_file, writer, &drain_acks));
+    // The drain thread outlives this function by design: fd 2 is process-wide
+    // and every spawned child inherits it, so the pipe cannot reach EOF while
+    // the app is running and `join()` here would block forever. Detaching is
+    // therefore correct — but detaching alone loses everything still in the
+    // 64 KiB pipe buffer when `exit(2)` kills the thread, which is why
+    // `flush_bounded_stderr` exists. Bind the handle explicitly so the
+    // detachment stays a decision rather than a dropped `Result` variant.
+    let _detached_drain = match drain {
+        Ok(handle) => handle,
+        Err(error) => {
+            unsafe {
+                libc::close(write_fd);
+            }
+            return Err(format!("could not start bounded log drain: {error}"));
         }
-        return Err(format!("could not start bounded log drain: {error}"));
-    }
+    };
     if unsafe { libc::dup2(write_fd, libc::STDERR_FILENO) } < 0 {
         let error = io::Error::last_os_error();
         unsafe {
@@ -904,13 +955,77 @@ pub(crate) fn install_bounded_stderr(
     unsafe {
         libc::close(write_fd);
     }
+    // Publish only once fd 2 really is the pipe, so a flush can never write a
+    // barrier nobody will read and then wait out the whole timeout.
+    let _ = DRAIN_ACKS.set(acks);
     Ok(Some(path))
+}
+
+/// Ack counter of the installed drain thread, published by
+/// [`install_bounded_stderr`] once stderr is actually wired to the pipe.
+static DRAIN_ACKS: OnceLock<Arc<AtomicU64>> = OnceLock::new();
+
+const DRAIN_THREAD_NAME: &str = "limux-bounded-log";
+
+/// Block (up to `timeout`) until everything already written to stderr has
+/// reached the managed log file.
+///
+/// Before PR #88 stderr *was* the log file: `dup2(log_fd, 2)` made every write
+/// synchronous, so `exit(2)` could not lose anything. The pipe + drain-thread
+/// design broke that — `std::process::exit` kills the drain thread wherever it
+/// happens to be, typically mid `STDERR_IDLE_TICK` sleep, and the pipe buffer
+/// plus the thread's `pending` buffer die with it. Shutdown and panic paths
+/// call this to restore the old guarantee.
+///
+/// Implemented as a barrier rather than "close the write end and join": fd 2
+/// is inherited by every child, so closing the parent's copy does not produce
+/// EOF and a join would stall for the full timeout on every clean exit. The
+/// ack instead proves positively that the drain consumed past this point.
+///
+/// Returns `true` when the drain acknowledged, or when no bounded stderr is
+/// installed (nothing to flush). Costs one blank line in the log per call.
+#[cfg(unix)]
+pub(crate) fn flush_bounded_stderr(timeout: Duration) -> bool {
+    let Some(acks) = DRAIN_ACKS.get() else {
+        return true;
+    };
+    // A drain-thread panic runs the panic hook on the drain thread itself;
+    // waiting there would be waiting on ourselves for the whole timeout.
+    if thread::current().name() == Some(DRAIN_THREAD_NAME) {
+        return false;
+    }
+    let start = acks.load(Ordering::Acquire);
+    // Raw `write(2)`: `eprintln!` panics on EPIPE, and this runs on the
+    // shutdown and panic paths where a fresh panic would be fatal. The barrier
+    // is far below PIPE_BUF, so the write is atomic — no interleaving with
+    // another thread's stderr.
+    let written = unsafe {
+        libc::write(
+            libc::STDERR_FILENO,
+            FLUSH_BARRIER.as_ptr().cast::<libc::c_void>(),
+            FLUSH_BARRIER.len(),
+        )
+    };
+    if written != isize::try_from(FLUSH_BARRIER.len()).unwrap_or(isize::MAX) {
+        return false;
+    }
+    let deadline = Instant::now() + timeout;
+    loop {
+        if acks.load(Ordering::Acquire) > start {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        thread::sleep(FLUSH_POLL_TICK);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+    use std::process::Command;
     use std::time::Duration;
 
     /// A sink whose every write fails: an existing file opened read-only.
@@ -918,6 +1033,165 @@ mod tests {
         let path = root.join("readonly-sink.log");
         fs::write(&path, b"").expect("sink fixture");
         File::open(&path).expect("open read-only sink")
+    }
+
+    // ---------------------------------------------------------------------
+    // Subprocess probe harness.
+    //
+    // `install_bounded_stderr` takes over fd 2 for the whole process, so any
+    // test that drives the *real* installer in-process corrupts descriptors
+    // owned by the ~650 tests running alongside it — which is why the earlier
+    // end-to-end test had to be `#[ignore]`d. Running the installer in a child
+    // process instead gives each probe its own descriptor table, so these
+    // tests are parallel-safe and run by default.
+    // ---------------------------------------------------------------------
+
+    const PROBE_MODE_ENV: &str = "LIMUX_HOST_LOG_PROBE_MODE";
+    const PROBE_DIR_ENV: &str = "LIMUX_HOST_LOG_PROBE_DIR";
+    /// Lines the loss probe emits before it exits. Large enough that far more
+    /// than one 64 KiB pipe buffer is still unread at exit, so "the drain got
+    /// lucky and had already consumed everything" is not a realistic outcome.
+    const PROBE_LOSS_LINES: usize = 20_000;
+    const PROBE_TAIL_MARKER: &str = "limux-loss-probe-tail";
+    const PROBE_EXIT_CODE: i32 = 3;
+
+    fn probe_config(root: &Path) -> HostLogConfig {
+        HostLogConfig {
+            active_path: root.join("managed/limux-host.current.log"),
+            retained_dir: root.join("managed/retained"),
+            max_active_bytes: 16 * 1024 * 1024,
+            max_retained_count: 4,
+            max_total_bytes: 64 * 1024 * 1024,
+            max_warning_categories: 16,
+        }
+    }
+
+    /// Re-invoke this test binary, running only [`probe_child`], in `mode`.
+    fn run_probe(mode: &str, dir: &Path) -> std::process::Output {
+        let exe = std::env::current_exe().expect("test binary path");
+        Command::new(exe)
+            .args([
+                "--exact",
+                "host_log::tests::probe_child",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(PROBE_MODE_ENV, mode)
+            .env(PROBE_DIR_ENV, dir)
+            .output()
+            .expect("probe child must spawn")
+    }
+
+    /// The child half of the probe harness. Inert (and trivially passing)
+    /// unless [`PROBE_MODE_ENV`] is set, so a normal test run ignores it.
+    #[test]
+    fn probe_child() {
+        let Ok(mode) = std::env::var(PROBE_MODE_ENV) else {
+            return;
+        };
+        let dir = PathBuf::from(std::env::var_os(PROBE_DIR_ENV).expect("probe dir"));
+        let config = probe_config(&dir);
+        fs::create_dir_all(config.active_path.parent().expect("parent")).expect("active dir");
+        fs::create_dir_all(&config.retained_dir).expect("retained dir");
+        install_bounded_stderr(&config, 1).expect("probe install must succeed");
+
+        match mode.as_str() {
+            // H1: everything written before the flush must survive exit(2).
+            "loss" => {
+                for index in 0..PROBE_LOSS_LINES {
+                    eprintln!("limux-loss-probe {index:05}");
+                }
+                eprintln!("{PROBE_TAIL_MARKER}");
+                // The call site under test. Reverting *this line* is what the
+                // regression check reverts.
+                flush_bounded_stderr(Duration::from_secs(10));
+                std::process::exit(PROBE_EXIT_CODE);
+            }
+            other => panic!("unknown probe mode {other:?}"),
+        }
+    }
+
+    /// H1 regression: PR #88 replaced `dup2(log_fd, 2)` — where every stderr
+    /// write was synchronous and loss was impossible — with a pipe drained by
+    /// a detached thread. `std::process::exit` kills that thread wherever it
+    /// is (usually mid `STDERR_IDLE_TICK` sleep), and the 64 KiB pipe buffer
+    /// plus the thread's pending line die with it. Measured before the fix:
+    /// runs that captured 0 of 200 emitted lines.
+    #[cfg(unix)]
+    #[test]
+    fn stderr_written_before_shutdown_survives_process_exit() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let output = run_probe("loss", tmp.path());
+
+        assert_eq!(
+            output.status.code(),
+            Some(PROBE_EXIT_CODE),
+            "probe child must reach its exit: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let log = fs::read_to_string(probe_config(tmp.path()).active_path).expect("probe log");
+        assert!(
+            log.contains(PROBE_TAIL_MARKER),
+            "the last line written before exit never reached the log — stderr is \
+             being lost at shutdown (PR #88 regression)"
+        );
+        let captured = log.matches("limux-loss-probe ").count();
+        assert_eq!(
+            captured,
+            PROBE_LOSS_LINES,
+            "lost {} of {PROBE_LOSS_LINES} lines at shutdown",
+            PROBE_LOSS_LINES.saturating_sub(captured)
+        );
+    }
+
+    #[test]
+    fn flush_barrier_is_recognised_only_as_a_whole_line() {
+        assert!(is_flush_barrier(b"limux-log-flush-barrier\n"));
+        assert!(is_flush_barrier(b"limux-log-flush-barrier\r\n"));
+        assert!(is_flush_barrier(b"limux-log-flush-barrier"));
+        assert!(!is_flush_barrier(b"prefix limux-log-flush-barrier\n"));
+        assert!(!is_flush_barrier(b"limux-log-flush-barrier suffix\n"));
+        assert!(!is_flush_barrier(b"\n"));
+        assert!(!is_flush_barrier(b""));
+    }
+
+    #[test]
+    fn drain_acks_a_flush_barrier_without_logging_it() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut fds = [0 as RawFd; 2];
+        assert_eq!(unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) }, 0);
+        let reader = unsafe { File::from_raw_fd(fds[0]) };
+        let mut write_end = unsafe { File::from_raw_fd(fds[1]) };
+        set_nonblocking(&reader).expect("nonblocking reader");
+
+        let path = tmp.path().join("barrier.log");
+        let file = OpenOptions::new()
+            .create_new(true)
+            .append(true)
+            .open(&path)
+            .expect("active fixture");
+        let writer = BoundedLogWriter::new(file, u64::MAX, WarningAggregator::new(4));
+        let acks = Arc::new(AtomicU64::new(0));
+        let drain_acks = Arc::clone(&acks);
+        let drain = thread::spawn(move || drain_stderr(reader, writer, &drain_acks));
+
+        write_end.write_all(b"before-barrier\n").expect("feed");
+        write_end.write_all(FLUSH_BARRIER).expect("feed barrier");
+        drop(write_end);
+        drain.join().expect("drain thread");
+
+        assert_eq!(
+            acks.load(Ordering::Acquire),
+            1,
+            "barrier must be acked once"
+        );
+        let body = fs::read_to_string(&path).expect("barrier log");
+        assert!(body.contains("before-barrier"), "log: {body:?}");
+        assert!(
+            !body.contains("limux-log-flush-barrier"),
+            "the barrier is a control line and must never be logged: {body:?}"
+        );
     }
 
     #[test]
@@ -979,7 +1253,8 @@ mod tests {
         let writer = BoundedLogWriter::new(failing_sink(tmp.path()), u64::MAX, {
             WarningAggregator::new(4)
         });
-        let drain = thread::spawn(move || drain_stderr(reader, writer));
+        let acks = Arc::new(AtomicU64::new(0));
+        let drain = thread::spawn(move || drain_stderr(reader, writer, &acks));
 
         // Push far more than one pipe buffer (64 KiB on Linux) through the
         // write end, exactly as the GTK main thread would.
@@ -1044,7 +1319,8 @@ mod tests {
         let writer = BoundedLogWriter::new(failing_sink(tmp.path()), u64::MAX, {
             WarningAggregator::new(4)
         });
-        let drain = thread::spawn(move || drain_stderr(reader, writer));
+        let acks = Arc::new(AtomicU64::new(0));
+        let drain = thread::spawn(move || drain_stderr(reader, writer, &acks));
 
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
@@ -1123,7 +1399,8 @@ mod tests {
             .open(&path)
             .expect("active fixture");
         let writer = BoundedLogWriter::new(file, 96, WarningAggregator::new(4));
-        let drain = thread::spawn(move || drain_stderr(reader, writer));
+        let acks = Arc::new(AtomicU64::new(0));
+        let drain = thread::spawn(move || drain_stderr(reader, writer, &acks));
 
         for _ in 0..40 {
             write_end.write_all(&[b'z'; 32]).expect("feed");
