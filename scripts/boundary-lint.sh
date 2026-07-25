@@ -2,8 +2,16 @@
 # Boundary lint — hcom-convergence DP-7 tripwire (operator-ratified 2026-07-07).
 # Changes touching identity/messaging/resume/roster surfaces require an
 # HCOM_MGR boundary review before merge. Mechanical gate: the branch must carry
-# a `Boundary-Review: hcom` commit trailer (or the PR a `boundary-reviewed`
-# label — human-checked at review time) when gated surfaces change.
+# a `Boundary-Review: hcom` commit trailer when gated surfaces change. Add it
+# TRAILER-LAST — after the reviewer clears your current head — as a zero-code
+# commit, so the reviewed SHA and the marker coincide. The trailer is coupled to
+# history on purpose: a force-push rewrites it away and the gate fails closed,
+# demanding fresh review. A PR `boundary-reviewed` label was deliberately NOT
+# adopted (and never was DP-7 policy — the packet ratifies the trailer only): a
+# label survives force-push and carries no SHA, so it cannot express WHICH head
+# was reviewed and therefore cannot express staleness — a stale clearance goes
+# invisible rather than merely weak. A future label path would need an explicit
+# SHA binding. (Verified defect + rationale: levu + huno, 2026-07-25.)
 # Local iteration escape hatch: BOUNDARY_REVIEWED=1 ./scripts/check.sh
 # Decision record: docs/LIMUX_HCOM_CONVERGENCE_DECISION_PACKET_2026-07-07.html
 set -euo pipefail
@@ -82,8 +90,12 @@ fi
   printf 'operator-ratified 2026-07-07). Before merging:\n'
   printf '  1. Request a boundary review from HCOM_MGR (resolve the live owner\n'
   printf '     via `hcom list mgrs`).\n'
-  printf '  2. Record it: add a `Boundary-Review: hcom` trailer to a commit on\n'
-  printf '     this branch (or apply the `boundary-reviewed` label to the PR).\n'
+  printf '  2. Record it TRAILER-LAST: after the reviewer clears your current\n'
+  printf '     head, add a zero-code-delta commit carrying `Boundary-Review: hcom`\n'
+  printf '     as the final commit; the reviewer confirms that head. Verify a\n'
+  printf '     zero-delta commit by TREE IDENTITY, not by diff:\n'
+  printf '       [ "$(git rev-parse A^{tree})" = "$(git rev-parse B^{tree})" ]\n'
+  printf '     A later force-push removes the trailer and this gate fails closed.\n'
   printf '  Local iteration only: BOUNDARY_REVIEWED=1 ./scripts/check.sh\n'
   printf 'Decision record: docs/LIMUX_HCOM_CONVERGENCE_DECISION_PACKET_2026-07-07.html\n\n'
 } >&2
