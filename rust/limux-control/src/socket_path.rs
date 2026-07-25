@@ -11,7 +11,6 @@ const LIMUX_SOCKET_ENV: &str = "LIMUX_SOCKET";
 const LIMUX_SOCKET_PATH_ENV: &str = "LIMUX_SOCKET_PATH";
 pub const LIMUX_CHANNEL_ENV: &str = "LIMUX_CHANNEL";
 pub const LIMUX_PREVIEW_ID_ENV: &str = "LIMUX_PREVIEW_ID";
-pub const LIMUX_PROFILE_ID_ENV: &str = "LIMUX_PROFILE_ID";
 const RUNTIME_SUBDIR: &str = "limux";
 const RUNTIME_SOCKET_NAME: &str = "limux.sock";
 const FALLBACK_RUNTIME_SOCKET: &str = "/tmp/limux.sock";
@@ -29,46 +28,22 @@ pub enum SocketMode {
 pub enum RuntimeChannel {
     Stable,
     Preview(String),
-    /// A named user session profile: its own control socket AND its own
-    /// persisted `session.json`, so several independently-restorable
-    /// workspace sets can coexist. Distinct from `Preview`, which namespaces
-    /// *build* channels — overloading that would collide a profile named
-    /// `work` with a preview build id `work`.
-    Profile(String),
 }
 
 impl RuntimeChannel {
     pub const DEFAULT_PREVIEW_ID: &'static str = "default";
-    pub const DEFAULT_PROFILE_ID: &'static str = "default";
-    /// Prefix for profiles the host assigns itself when a bare `limux`
-    /// launch finds the default socket busy. Named so `profile list` can
-    /// flag them as auto-created and therefore safe to prune.
-    pub const AUTO_PROFILE_PREFIX: &'static str = "auto-";
 
     pub fn parse(raw: &str) -> Option<Self> {
         let raw = raw.trim();
         match raw {
             "stable" => Some(Self::Stable),
             "preview" => Some(Self::Preview(Self::DEFAULT_PREVIEW_ID.to_string())),
-            "profile" => Some(Self::Profile(Self::DEFAULT_PROFILE_ID.to_string())),
             _ => raw
                 .strip_prefix("preview:")
                 .or_else(|| raw.strip_prefix("preview/"))
                 .and_then(sanitize_channel_id)
-                .map(Self::Preview)
-                .or_else(|| {
-                    raw.strip_prefix("profile:")
-                        .or_else(|| raw.strip_prefix("profile/"))
-                        .and_then(sanitize_channel_id)
-                        .map(Self::Profile)
-                }),
+                .map(Self::Preview),
         }
-    }
-
-    /// Build a profile channel from a raw user-supplied name, rejecting
-    /// anything that could escape the profile directory.
-    pub fn profile(name: &str) -> Option<Self> {
-        sanitize_channel_id(name).map(Self::Profile)
     }
 
     pub fn from_env() -> Option<Self> {
@@ -79,11 +54,6 @@ impl RuntimeChannel {
                 .and_then(|value| sanitize_channel_id(&value))
                 .map(Self::Preview)
                 .or_else(|| Some(Self::Preview(Self::DEFAULT_PREVIEW_ID.to_string()))),
-            "profile" => env::var(LIMUX_PROFILE_ID_ENV)
-                .ok()
-                .and_then(|value| sanitize_channel_id(&value))
-                .map(Self::Profile)
-                .or_else(|| Some(Self::Profile(Self::DEFAULT_PROFILE_ID.to_string()))),
             _ => Self::parse(&channel),
         }
     }
@@ -92,7 +62,6 @@ impl RuntimeChannel {
         match self {
             Self::Stable => "stable".to_string(),
             Self::Preview(id) => format!("preview:{id}"),
-            Self::Profile(id) => format!("profile:{id}"),
         }
     }
 
@@ -100,15 +69,6 @@ impl RuntimeChannel {
         match self {
             Self::Stable => "stable".to_string(),
             Self::Preview(id) => format!("preview/{id}"),
-            Self::Profile(id) => format!("profile/{id}"),
-        }
-    }
-
-    /// The profile name, when this channel is a profile.
-    pub fn profile_id(&self) -> Option<&str> {
-        match self {
-            Self::Profile(id) => Some(id.as_str()),
-            _ => None,
         }
     }
 
@@ -123,10 +83,6 @@ impl RuntimeChannel {
                         path.push("preview");
                         path.push(id);
                     }
-                    Self::Profile(id) => {
-                        path.push("profiles");
-                        path.push(id);
-                    }
                 }
                 path.push(RUNTIME_SOCKET_NAME);
                 path
@@ -135,18 +91,10 @@ impl RuntimeChannel {
                 let file_name = match self {
                     Self::Stable => "limux-stable.sock".to_string(),
                     Self::Preview(id) => format!("limux-preview-{id}.sock"),
-                    Self::Profile(id) => format!("limux-profile-{id}.sock"),
                 };
                 PathBuf::from("/tmp").join(file_name)
             }
         }
-    }
-
-    /// Public accessor for a channel's runtime socket path, so callers that
-    /// need to probe a specific channel (profile allocation, `profile list`)
-    /// do not have to reimplement the layout.
-    pub fn socket_path(&self) -> PathBuf {
-        self.runtime_socket_path()
     }
 }
 
@@ -433,102 +381,6 @@ mod tests {
         );
         assert_eq!(RuntimeChannel::parse("preview:bad/id"), None);
         assert_eq!(RuntimeChannel::parse("preview:.."), None);
-    }
-
-    #[test]
-    fn runtime_channel_parses_profile_ids() {
-        assert_eq!(
-            RuntimeChannel::parse("profile"),
-            Some(RuntimeChannel::Profile("default".to_string()))
-        );
-        assert_eq!(
-            RuntimeChannel::parse("profile:work"),
-            Some(RuntimeChannel::Profile("work".to_string()))
-        );
-        assert_eq!(
-            RuntimeChannel::parse("profile/scratch"),
-            Some(RuntimeChannel::Profile("scratch".to_string()))
-        );
-        assert_eq!(
-            RuntimeChannel::parse("profile:auto-2"),
-            Some(RuntimeChannel::Profile("auto-2".to_string()))
-        );
-        // Traversal and separator characters must not reach the filesystem.
-        assert_eq!(RuntimeChannel::parse("profile:.."), None);
-        assert_eq!(RuntimeChannel::parse("profile:bad/id"), None);
-        assert_eq!(RuntimeChannel::profile("../escape"), None);
-        assert_eq!(RuntimeChannel::profile(""), None);
-    }
-
-    #[test]
-    fn profile_and_preview_with_the_same_id_do_not_collide() {
-        let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
-        let _socket = EnvGuard::set(LIMUX_SOCKET_ENV, None);
-        let _socket_path = EnvGuard::set(LIMUX_SOCKET_PATH_ENV, None);
-        let xdg = TempDir::new().expect("xdg runtime dir temp path");
-        let _xdg = EnvGuard::set("XDG_RUNTIME_DIR", Some(xdg.path().to_str().expect("utf8")));
-
-        let preview = RuntimeChannel::Preview("work".to_string()).socket_path();
-        let profile = RuntimeChannel::Profile("work".to_string()).socket_path();
-
-        assert_ne!(preview, profile);
-        assert_eq!(profile, xdg.path().join("limux/profiles/work/limux.sock"));
-    }
-
-    #[test]
-    fn profile_env_round_trips_through_channel_and_id_vars() {
-        let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
-        let _channel = EnvGuard::set(LIMUX_CHANNEL_ENV, Some("profile"));
-        let _preview_id = EnvGuard::set(LIMUX_PREVIEW_ID_ENV, None);
-        let _profile_id = EnvGuard::set(LIMUX_PROFILE_ID_ENV, Some("work"));
-
-        assert_eq!(
-            RuntimeChannel::from_env(),
-            Some(RuntimeChannel::Profile("work".to_string()))
-        );
-
-        // The single-var form the CLI actually emits must round-trip too.
-        let _profile_id_cleared = EnvGuard::set(LIMUX_PROFILE_ID_ENV, None);
-        let channel = RuntimeChannel::Profile("work".to_string());
-        let _channel_combined = EnvGuard::set(LIMUX_CHANNEL_ENV, Some(&channel.env_value()));
-        assert_eq!(RuntimeChannel::from_env(), Some(channel));
-    }
-
-    /// A per-profile socket must be no more permissive than any other Limux
-    /// socket. Profiles multiply the number of live sockets, so a 0600 drift
-    /// here would multiply the exposure too. Guards the #86 fail-open lesson:
-    /// socket hardening is derived from the control mode, never from the path.
-    #[test]
-    fn profile_socket_is_owner_only_like_every_other_channel() {
-        let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
-        let _socket = EnvGuard::set(LIMUX_SOCKET_ENV, None);
-        let _socket_path = EnvGuard::set(LIMUX_SOCKET_PATH_ENV, None);
-        let xdg = TempDir::new().expect("xdg runtime dir temp path");
-        let _xdg = EnvGuard::set("XDG_RUNTIME_DIR", Some(xdg.path().to_str().expect("utf8")));
-
-        let path = RuntimeChannel::Profile("work".to_string()).socket_path();
-        let listener =
-            bind_listener(&path, SocketMode::Runtime, true).expect("bind profile socket");
-
-        let mode = std::fs::metadata(&path)
-            .expect("profile socket metadata")
-            .permissions()
-            .mode()
-            & 0o777;
-        assert_eq!(mode, SOCKET_FILE_MODE);
-
-        drop(listener);
-    }
-
-    #[test]
-    fn profile_socket_falls_back_to_tmp_without_xdg_runtime_dir() {
-        let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
-        let _xdg = EnvGuard::set("XDG_RUNTIME_DIR", None);
-
-        assert_eq!(
-            RuntimeChannel::Profile("work".to_string()).socket_path(),
-            PathBuf::from("/tmp/limux-profile-work.sock")
-        );
     }
 
     #[test]
