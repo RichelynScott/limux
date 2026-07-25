@@ -50,14 +50,37 @@ main @ `fc40cf5` — gate green: `./scripts/check.sh` exit 0, **660 passed / 0
 failed / 0 ignored**, clippy `-D warnings` + fmt clean. (The previously-ignored
 fd test was deleted with the unreachable fd layer in #90.)
 
-> **In-flight (2026-07-25):** `huno` is building `feat/named-session-profiles`
-> in this repo, operator-directed — `RuntimeChannel::Profile(name)` + per-profile
-> socket/session.json + `limux --profile`/`profile list|path|rm`. Branch is
-> local (not on origin yet), boundary-lint routed to `levu`, not merging without
-> review. **tutu is the reviewer.** Overlap to check at review: socket-auth
-> (must keep the #86 fail-open fix + LocalUser/0600 default), `doctor`'s
-> single-path socket check vs per-profile sockets, and the #79/#80 launcher-drift
-> guard vs a new channel variant. Full checklist sent to huno via hcom.
+> **PR #92 (2026-07-25) — `huno`'s named session profiles — REVIEWED, tutu APPROVE
+> pending levu's boundary sign-off.** `RuntimeChannel::Profile(name)` + per-profile
+> socket/session.json + `limux --profile`/`profile list|path|rm`. Head `4b68c4a`.
+>
+> - **HIGH-1 (found + fixed): auto-profile allocation data-loss TOCTOU.** The
+>   original allocator was check-then-bind (probe socket free → adopt `auto-N`),
+>   with a huge window between allocation (`main.rs:444`) and socket bind
+>   (`window.rs:3219`); the loser's bind-fail is non-fatal (`control_bridge.rs:1664`)
+>   so it kept running on the contended profile and clobbered the winner's
+>   `session.json` → workspaces silently lost. **huno found it independently, and
+>   tutu's adversary found the identical race** — two lenses converged. Fixed with
+>   `AutoProfileClaim`: an flock (`LOCK_EX|LOCK_NB`) reservation taken at allocation
+>   time, held for process life, `O_CLOEXEC`/`O_NOFOLLOW`/0600, runtime-dir. tutu
+>   source-verified the fix closes the race at root (covers the pre-bind window the
+>   probe can't see). **Evidence caveat:** tutu did NOT execute the host-crate flock
+>   test (fresh-worktree ghostty unbuilt; safe workaround tripped the rm-guard near
+>   huno's live checkout). Rests on source review + test read + deductive
+>   load-bearingness + huno's reported pass/M4b-fail + the adversary's confirmation.
+> - **LOW-2 (open, huno's disposition — NOT a blocker):** `profile rm` is
+>   check-then-rename (`main.rs:505-524`) — small two-syscall TOCTOU; a host starting
+>   `<name>` between check and archive gets its dir archived out from under it.
+>   huno to fix (flock) or accept-with-rationale like the doctor gap.
+> - **Cleared** (tutu's hands + adversary, falsified each): sanitizer allowlist,
+>   mode-derived owner_only (#86 intact), 0600 load-bearing, no socket↔session
+>   drift, single-source-of-truth via `session_paths`, `profile rm` archive-not-delete
+>   + sanitized path. Test quality: adversary reverted 4/7 (all failed), tutu
+>   reverted the 0600 pin (failed) — no decorative tests.
+> - **Still open (acknowledged, not blockers):** launcher-drift reasoned-not-proven-live;
+>   `doctor` does not enumerate profiles (tutu's design call, documented gap).
+> - **Merge path:** code-ready; gates on levu's boundary-lint (DP-7 — `layout_state.rs`
+>   path-gate). Full verdict + checklist sent to huno via hcom.
 
 | PR | Content |
 |---|---|
