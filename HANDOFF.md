@@ -14,48 +14,50 @@ the per-session handoffs listed in §7.
 
 ---
 
-## 1. 🔴 THE ONE THING THAT NEEDS THE OPERATOR
+## 1. STATUS — restart DONE, host healthy (was the top operator item)
 
-**The Limux host is DOWN. The operator restarts it by typing `limux` in a
-Windows terminal.** Nothing shipped is live until then.
+**The 2026-07-21 restart happened.** As of **2026-07-25 ~3:57 PM EDT** the host
+is **UP** on the installed `c757056` build (2 host processes), and **`limux
+doctor` is fully green** — launchers, processes, socket, stale-sockets, ghostty
+resources all `[ok]`. The launcher-drift `[fail]` cleared on restart exactly as
+predicted.
 
-Verified 2026-07-21 ~18:2x EDT: no host process, and
-`/run/user/1000/limux/stable/limux.sock` does not exist.
+So the seven reviewed PRs (#81–#87) are **live**. The OMP scrollbar root-cause
+fix is running.
 
-**The usual restart cost is already paid.** A host restart normally kills every
-hosted pane process (pane shells are direct children of the host; layout and cwd
-restore, process state does not). The host is already down, so there is nothing
-left to lose — restarting now costs nothing.
-
-After restart: expect `limux doctor` to go green, then re-check the OMP
-scrollbar behavior with `karo` (OMP_MGR).
+**Still not live-verified in the GUI:** the OMP scroll fix and #84's resize
+behaviour have not been *observed* working — only gate-verified and source-traced.
+The host is now up, so verification is possible, but it means interacting with
+the operator's live panes — coordinate with the operator + `karo` (OMP_MGR)
+before poking the running host.
 
 ---
 
-## 2. WHAT IS INSTALLED RIGHT NOW
+## 2. WHAT IS INSTALLED / RUNNING
 
 | | Value |
 |---|---|
-| **Installed** | `limux-cli 0.2.3 (c757056d2539, release)` — clean, no `-dirty` |
-| **install-id** | `main-c757056d2539-adv-remediated-20260721`, channel `stable` |
-| **Contains** | ALL SEVEN merged PRs (#81–#87), including the adversarial-review remediation |
+| **Installed + running** | `limux-cli 0.2.3 (c757056d2539, release)` — clean, no `-dirty`; install-id `main-c757056d2539-adv-remediated-20260721`, channel `stable` |
+| **Contains** | The SEVEN reviewed PRs #81–#87 (adversarial-review remediation included) |
+| **NOT in the running build** | #88/#90 (bounded-logging) merged to main *after* this install. They are internal logging fixes; #88 alone was regressive but #90 fixed it. Reinstalling from main would pick them up — but there is no pressing reason to, and it would cost the operator a restart. Leave until there is one. |
 | **Previous launchers** | archived via `mv` (not `rm`) at `~/.local/limux-reviewed/archive/20260721T223224Z/` |
-
-`limux doctor` currently shows two `[warn]`s — "no running Limux host process"
-and "socket not connectable". **Both are correct and expected while the host is
-down.** They clear on restart. Do not "fix" them.
 
 ---
 
 ## 3. WHAT IS MERGED ON MAIN
 
-main @ `9f469c1` — gate green: `./scripts/check.sh` exit 0, **656 passed / 0
-failed / 1 ignored**, clippy `-D warnings` + fmt clean.
+main @ `fc40cf5` — gate green: `./scripts/check.sh` exit 0, **660 passed / 0
+failed / 0 ignored**, clippy `-D warnings` + fmt clean. (The previously-ignored
+fd test was deleted with the unreachable fd layer in #90.)
 
-> The `1 ignored` is deliberate: `install_survives_a_closed_stderr_and_keeps_logging`
-> hijacks process-wide stderr via `dup2` and would corrupt descriptors owned by
-> parallel tests. Run it on purpose:
-> `cargo test -p limux-host-linux install_survives -- --ignored --test-threads=1`
+> **In-flight (2026-07-25):** `huno` is building `feat/named-session-profiles`
+> in this repo, operator-directed — `RuntimeChannel::Profile(name)` + per-profile
+> socket/session.json + `limux --profile`/`profile list|path|rm`. Branch is
+> local (not on origin yet), boundary-lint routed to `levu`, not merging without
+> review. **tutu is the reviewer.** Overlap to check at review: socket-auth
+> (must keep the #86 fail-open fix + LocalUser/0600 default), `doctor`'s
+> single-path socket check vs per-profile sockets, and the #79/#80 launcher-drift
+> guard vs a new channel variant. Full checklist sent to huno via hcom.
 
 | PR | Content |
 |---|---|
