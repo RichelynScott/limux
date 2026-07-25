@@ -8,10 +8,14 @@
 # history on purpose: a force-push rewrites it away and the gate fails closed,
 # demanding fresh review. A PR `boundary-reviewed` label was deliberately NOT
 # adopted (and never was DP-7 policy — the packet ratifies the trailer only): a
-# label survives force-push and carries no SHA, so it cannot express WHICH head
-# was reviewed and therefore cannot express staleness — a stale clearance goes
-# invisible rather than merely weak. A future label path would need an explicit
-# SHA binding. (Verified defect + rationale: levu + huno, 2026-07-25.)
+# label attaches to the PR, not to a commit, so it has no field in which the
+# reviewed SHA can be recorded. A marker that cannot express WHICH head was
+# reviewed cannot express staleness either — it stays green across force-pushes
+# to code no reviewer has seen, which makes it invisible rather than merely weak.
+# The trailer's coupling to history is the safety property: rewriting history
+# removes it and the gate correctly fails closed. A future label path would need
+# an explicit SHA binding. (Defect found + analyzed by huno + levu, DP-7 read by
+# tutu, 2026-07-25.)
 # Local iteration escape hatch: BOUNDARY_REVIEWED=1 ./scripts/check.sh
 # Decision record: docs/LIMUX_HCOM_CONVERGENCE_DECISION_PACKET_2026-07-07.html
 set -euo pipefail
