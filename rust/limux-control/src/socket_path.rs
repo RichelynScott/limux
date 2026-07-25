@@ -13,6 +13,7 @@ pub const LIMUX_CHANNEL_ENV: &str = "LIMUX_CHANNEL";
 pub const LIMUX_PREVIEW_ID_ENV: &str = "LIMUX_PREVIEW_ID";
 pub const LIMUX_PROFILE_ID_ENV: &str = "LIMUX_PROFILE_ID";
 const RUNTIME_SUBDIR: &str = "limux";
+const PROFILES_SUBDIR: &str = "profiles";
 const RUNTIME_SOCKET_NAME: &str = "limux.sock";
 const FALLBACK_RUNTIME_SOCKET: &str = "/tmp/limux.sock";
 const DEBUG_SOCKET: &str = "/tmp/limux-debug.sock";
@@ -25,21 +26,19 @@ pub enum SocketMode {
     Debug,
 }
 
+/// Which BUILD lane a runtime belongs to. Orthogonal to a session profile:
+/// installed launchers pin the lane (`--channel stable`), while the operator
+/// selects a session set (`--profile work`). Folding the two into one value
+/// made them mutually exclusive, which made `--profile` unreachable from every
+/// installed launcher — see `profile` below.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeChannel {
     Stable,
     Preview(String),
-    /// A named user session profile: its own control socket AND its own
-    /// persisted `session.json`, so several independently-restorable
-    /// workspace sets can coexist. Distinct from `Preview`, which namespaces
-    /// *build* channels — overloading that would collide a profile named
-    /// `work` with a preview build id `work`.
-    Profile(String),
 }
 
 impl RuntimeChannel {
     pub const DEFAULT_PREVIEW_ID: &'static str = "default";
-    pub const DEFAULT_PROFILE_ID: &'static str = "default";
     /// Prefix for profiles the host assigns itself when a bare `limux`
     /// launch finds the default socket busy. Named so `profile list` can
     /// flag them as auto-created and therefore safe to prune.
@@ -50,25 +49,12 @@ impl RuntimeChannel {
         match raw {
             "stable" => Some(Self::Stable),
             "preview" => Some(Self::Preview(Self::DEFAULT_PREVIEW_ID.to_string())),
-            "profile" => Some(Self::Profile(Self::DEFAULT_PROFILE_ID.to_string())),
             _ => raw
                 .strip_prefix("preview:")
                 .or_else(|| raw.strip_prefix("preview/"))
                 .and_then(sanitize_channel_id)
-                .map(Self::Preview)
-                .or_else(|| {
-                    raw.strip_prefix("profile:")
-                        .or_else(|| raw.strip_prefix("profile/"))
-                        .and_then(sanitize_channel_id)
-                        .map(Self::Profile)
-                }),
+                .map(Self::Preview),
         }
-    }
-
-    /// Build a profile channel from a raw user-supplied name, rejecting
-    /// anything that could escape the profile directory.
-    pub fn profile(name: &str) -> Option<Self> {
-        sanitize_channel_id(name).map(Self::Profile)
     }
 
     pub fn from_env() -> Option<Self> {
@@ -79,11 +65,6 @@ impl RuntimeChannel {
                 .and_then(|value| sanitize_channel_id(&value))
                 .map(Self::Preview)
                 .or_else(|| Some(Self::Preview(Self::DEFAULT_PREVIEW_ID.to_string()))),
-            "profile" => env::var(LIMUX_PROFILE_ID_ENV)
-                .ok()
-                .and_then(|value| sanitize_channel_id(&value))
-                .map(Self::Profile)
-                .or_else(|| Some(Self::Profile(Self::DEFAULT_PROFILE_ID.to_string()))),
             _ => Self::parse(&channel),
         }
     }
@@ -92,7 +73,6 @@ impl RuntimeChannel {
         match self {
             Self::Stable => "stable".to_string(),
             Self::Preview(id) => format!("preview:{id}"),
-            Self::Profile(id) => format!("profile:{id}"),
         }
     }
 
@@ -100,53 +80,76 @@ impl RuntimeChannel {
         match self {
             Self::Stable => "stable".to_string(),
             Self::Preview(id) => format!("preview/{id}"),
-            Self::Profile(id) => format!("profile/{id}"),
         }
     }
 
-    /// The profile name, when this channel is a profile.
-    pub fn profile_id(&self) -> Option<&str> {
+    /// Path segments this lane contributes, under the `limux` root.
+    fn segments(&self) -> Vec<String> {
         match self {
-            Self::Profile(id) => Some(id.as_str()),
-            _ => None,
+            Self::Stable => vec!["stable".to_string()],
+            Self::Preview(id) => vec!["preview".to_string(), id.clone()],
         }
     }
 
     fn runtime_socket_path(&self) -> PathBuf {
-        match env::var_os("XDG_RUNTIME_DIR") {
-            Some(runtime_dir) if !runtime_dir.is_empty() => {
-                let mut path = PathBuf::from(runtime_dir);
-                path.push(RUNTIME_SUBDIR);
-                match self {
-                    Self::Stable => path.push("stable"),
-                    Self::Preview(id) => {
-                        path.push("preview");
-                        path.push(id);
-                    }
-                    Self::Profile(id) => {
-                        path.push("profiles");
-                        path.push(id);
-                    }
-                }
-                path.push(RUNTIME_SOCKET_NAME);
-                path
-            }
-            _ => {
-                let file_name = match self {
-                    Self::Stable => "limux-stable.sock".to_string(),
-                    Self::Preview(id) => format!("limux-preview-{id}.sock"),
-                    Self::Profile(id) => format!("limux-profile-{id}.sock"),
-                };
-                PathBuf::from("/tmp").join(file_name)
-            }
-        }
+        runtime_socket_path_for(Some(self), None)
     }
 
-    /// Public accessor for a channel's runtime socket path, so callers that
-    /// need to probe a specific channel (profile allocation, `profile list`)
-    /// do not have to reimplement the layout.
+    /// Public accessor for a channel's runtime socket path.
     pub fn socket_path(&self) -> PathBuf {
         self.runtime_socket_path()
+    }
+}
+
+/// Validate a user-supplied session profile name, rejecting anything that
+/// could escape the profiles directory.
+pub fn sanitize_profile_id(raw: &str) -> Option<String> {
+    sanitize_channel_id(raw)
+}
+
+/// The session profile selected by the environment, independent of the build
+/// lane in `LIMUX_CHANNEL`. Read separately precisely so a launcher-pinned
+/// channel and an operator-chosen profile can coexist.
+pub fn profile_from_env() -> Option<String> {
+    env::var(LIMUX_PROFILE_ID_ENV)
+        .ok()
+        .and_then(|value| sanitize_profile_id(&value))
+}
+
+/// Runtime socket for a (build lane, session profile) pair.
+///
+/// Profiles nest UNDER their lane, so a preview build and a stable build can
+/// each have a profile named `work` without sharing a socket or a session
+/// file. Neither dimension is required: no lane and no profile resolves to the
+/// historical default socket.
+pub fn runtime_socket_path_for(channel: Option<&RuntimeChannel>, profile: Option<&str>) -> PathBuf {
+    match env::var_os("XDG_RUNTIME_DIR") {
+        Some(runtime_dir) if !runtime_dir.is_empty() => {
+            let mut path = PathBuf::from(runtime_dir);
+            path.push(RUNTIME_SUBDIR);
+            if let Some(channel) = channel {
+                for segment in channel.segments() {
+                    path.push(segment);
+                }
+            }
+            if let Some(profile) = profile {
+                path.push(PROFILES_SUBDIR);
+                path.push(profile);
+            }
+            path.push(RUNTIME_SOCKET_NAME);
+            path
+        }
+        _ => {
+            let lane = match channel {
+                Some(RuntimeChannel::Stable) => "-stable".to_string(),
+                Some(RuntimeChannel::Preview(id)) => format!("-preview-{id}"),
+                None => String::new(),
+            };
+            let profile = profile
+                .map(|name| format!("-profile-{name}"))
+                .unwrap_or_default();
+            PathBuf::from("/tmp").join(format!("limux{lane}{profile}.sock"))
+        }
     }
 }
 
@@ -171,8 +174,10 @@ pub fn resolve_socket_path(explicit: Option<PathBuf>, mode: SocketMode) -> PathB
         if let Some(path) = get_env_path(LIMUX_SOCKET_PATH_ENV) {
             return path;
         }
-        if let Some(channel) = RuntimeChannel::from_env() {
-            return channel.runtime_socket_path();
+        let channel = RuntimeChannel::from_env();
+        let profile = profile_from_env();
+        if channel.is_some() || profile.is_some() {
+            return runtime_socket_path_for(channel.as_ref(), profile.as_deref());
         }
     }
 

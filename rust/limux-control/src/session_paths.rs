@@ -25,13 +25,40 @@ pub fn base_persistence_dir() -> PathBuf {
     home.join(".local/share").join(PERSISTENCE_DIR_NAME)
 }
 
+/// Directory a build lane owns, relative to an explicit base.
+fn channel_dir_in(base: &Path, channel: Option<&RuntimeChannel>) -> PathBuf {
+    match channel {
+        Some(RuntimeChannel::Stable) => base.join("stable"),
+        Some(RuntimeChannel::Preview(id)) => base.join("preview").join(id),
+        // No lane: the historical un-namespaced root.
+        None => base.to_path_buf(),
+    }
+}
+
+/// Persisted session directory for a (build lane, session profile) pair.
+///
+/// Profiles nest UNDER their lane, so a preview build and a stable build can
+/// each hold a profile named `work` without sharing a `session.json`.
+pub fn session_dir_in(
+    base: &Path,
+    channel: Option<&RuntimeChannel>,
+    profile: Option<&str>,
+) -> PathBuf {
+    let lane = channel_dir_in(base, channel);
+    match profile {
+        Some(name) => profiles_root_dir_in(base, channel)
+            .join(name)
+            .join(SESSION_DIR_NAME),
+        // Preserve the historical shapes exactly: an un-namespaced runtime
+        // keeps session.json at the root, a lane keeps it under `session/`.
+        None if channel.is_none() => lane,
+        None => lane.join(SESSION_DIR_NAME),
+    }
+}
+
 /// Persisted session directory for a channel, relative to an explicit base.
 pub fn channel_persistence_dir_in(base: &Path, channel: &RuntimeChannel) -> PathBuf {
-    match channel {
-        RuntimeChannel::Stable => base.join("stable").join(SESSION_DIR_NAME),
-        RuntimeChannel::Preview(id) => base.join("preview").join(id).join(SESSION_DIR_NAME),
-        RuntimeChannel::Profile(id) => profile_persistence_dir_in(base, id),
-    }
+    session_dir_in(base, Some(channel), None)
 }
 
 /// Persisted session directory for a channel under the default base.
@@ -39,29 +66,28 @@ pub fn channel_persistence_dir(channel: &RuntimeChannel) -> PathBuf {
     channel_persistence_dir_in(&base_persistence_dir(), channel)
 }
 
-/// Directory containing every named profile.
-pub fn profiles_root_dir_in(base: &Path) -> PathBuf {
-    base.join(PROFILES_DIR_NAME)
+/// Directory containing every profile belonging to one build lane.
+pub fn profiles_root_dir_in(base: &Path, channel: Option<&RuntimeChannel>) -> PathBuf {
+    channel_dir_in(base, channel).join(PROFILES_DIR_NAME)
 }
 
-/// Directory containing every named profile, under the default base.
-pub fn profiles_root_dir() -> PathBuf {
-    profiles_root_dir_in(&base_persistence_dir())
+/// Directory containing every profile of the active lane, under the default base.
+pub fn profiles_root_dir(channel: Option<&RuntimeChannel>) -> PathBuf {
+    profiles_root_dir_in(&base_persistence_dir(), channel)
 }
 
-/// Persisted session directory for one named profile.
-pub fn profile_persistence_dir_in(base: &Path, id: &str) -> PathBuf {
-    profiles_root_dir_in(base).join(id).join(SESSION_DIR_NAME)
-}
-
-/// Persisted session directory for one named profile, under the default base.
-pub fn profile_persistence_dir(id: &str) -> PathBuf {
-    profile_persistence_dir_in(&base_persistence_dir(), id)
+/// Persisted session directory for one named profile within a lane.
+pub fn profile_persistence_dir_in(
+    base: &Path,
+    channel: Option<&RuntimeChannel>,
+    id: &str,
+) -> PathBuf {
+    session_dir_in(base, channel, Some(id))
 }
 
 /// Everything belonging to one profile — removed wholesale by `profile rm`.
-pub fn profile_root_dir_in(base: &Path, id: &str) -> PathBuf {
-    profiles_root_dir_in(base).join(id)
+pub fn profile_root_dir_in(base: &Path, channel: Option<&RuntimeChannel>, id: &str) -> PathBuf {
+    profiles_root_dir_in(base, channel).join(id)
 }
 
 /// True when this profile was auto-created by the host rather than named by
