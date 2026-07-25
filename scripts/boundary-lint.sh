@@ -79,6 +79,30 @@ fi
 
 # Gated surfaces changed — require the boundary-review trailer on the branch.
 # Same pipefail/SIGPIPE hazard as above: capture the log fully, then grep it.
+#
+# AUTHORING RULE (matters — a blank line silently breaks your marker):
+# keep `Boundary-Review: hcom` in the FINAL trailer paragraph, adjacent to the
+# papa-git Session-ID/Agent/Protocol-Version block with NO blank line before it.
+# A blank line demotes it to body text: `git log --format='%(trailers:key=Boundary-Review)'`
+# then returns EMPTY. (papa-git does NOT cause this — it appends adjacent to
+# whatever it finds and faithfully preserves the author's paragraph break;
+# verified 2026-07-25 on two commits with identical trees c8b7c288, one with the
+# blank line demoted and one without parsing correctly.)
+#
+# WHY THIS IS A RAW GREP, NOT `%(trailers)` / `git interpret-trailers` — a
+# deliberate choice, do not "improve" it without reading this:
+#   - grep is FAIL-OPEN: a commit body containing a prose line
+#     `Boundary-Review: hcom` matches with no review. Accepted for a PROCESS
+#     tripwire (a determined actor bypasses a local script anyway; this catches
+#     FORGETTING review, not deliberate forgery). Stated honestly, not hidden.
+#   - a trailer PARSER is fail-closed and forge-resistant, and it works TODAY for
+#     any correctly-authored commit — it is NOT blocked on any papa-git change.
+#     The only cost of migrating is historical markers written the blank-line way
+#     (a docs + backfill problem, not a cross-lane dependency).
+# So a future move to fail-closed parsing is viable; it just is not free, and it
+# is a decision, not a cleanup. (Finding: levu 2026-07-25, via %(trailers)
+# disagreeing with this grep — two readings of one artifact; the disagreement is
+# the tell, and it also caught tutu's initial wrong "papa-git demotes" diagnosis.)
 branch_log="$(git log "$base"..HEAD --format=%B 2>/dev/null || true)"
 if grep -q '^Boundary-Review: hcom' <<<"$branch_log"; then
   printf 'boundary-lint: gated surfaces changed; Boundary-Review: hcom trailer present\n' >&2
