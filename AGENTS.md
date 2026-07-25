@@ -77,6 +77,53 @@ flag before the subcommand, for example `limux --json identify`; `doctor --json`
 is a subcommand-local exception that was added with the doctor surface. Check
 the real parser/help before adding examples.
 
+### Session profiles
+
+`RuntimeChannel::Profile(name)` (`rust/limux-control/src/socket_path.rs`) is a
+third channel variant beside `Stable` and `Preview`. It namespaces a **saved
+session set**, not a build:
+
+- Socket: `$XDG_RUNTIME_DIR/limux/profiles/<name>/limux.sock`
+- State: `~/.local/share/limux/profiles/<name>/session/session.json`
+- Selected by `limux --profile <name>`, or the long spelling
+  `--channel profile:<name>`, or `LIMUX_CHANNEL=profile:<name>` /
+  `LIMUX_CHANNEL=profile` + `LIMUX_PROFILE_ID=<name>`.
+
+`Profile` is deliberately *not* folded into `Preview`: a profile named `work`
+and a preview build id `work` must not share a socket or a session file.
+
+On-disk layout lives in **one** place, `limux_control::session_paths` — the
+host reads and writes session state through it and the CLI's `profile list` /
+`rm` resolve through it, so the two cannot disagree about where a profile is.
+`layout_state::channel_persistence_dir` re-exports from there; do not rebuild
+the path anywhere else.
+
+A bare `limux` whose default socket is busy claims the first free
+`auto-<n>` profile (`next_free_auto_profile` in the host `main.rs`, capped at
+`MAX_AUTO_PROFILE_INDEX`) rather than the historical throwaway session dir. It
+does this by setting `LIMUX_CHANNEL` alone, so the socket and the session file
+can never drift apart. If every auto slot is claimed it falls back to the old
+throwaway behavior so startup still succeeds.
+
+Allocation is **atomic, not check-then-act**. Socket-probing alone is a TOCTOU:
+two hosts starting together both see `auto-2` with no live socket and both
+adopt it. The loser's socket bind then fails — but that failure is *non-fatal*
+in `control_bridge::start`, so it keeps running against the winner's
+`session.json` and clobbers it on save. So each slot is claimed with a
+non-blocking `flock` on `<socket-dir>/.claim.lock` (`AutoProfileClaim`), held
+for the life of the process and released by the kernel on exit or crash — a
+dead host never burns a slot. Claims live in the **runtime** dir, not the data
+dir, so they can never appear as profiles in `limux profile list` and never
+survive a reboot. Do not "simplify" this back to a bare probe; the regression
+is silent workspace loss.
+
+`limux profile rm` archives to `profiles-archive/<name>-<timestamp>/` instead
+of deleting, and refuses while that profile's socket is live.
+
+Known gaps, deliberately out of scope for the change that added profiles:
+`doctor` still checks only the active channel's socket, so profiles are not
+enumerated there.
+
 `doctor` is the first-line runtime diagnostic for launcher drift, stale socket
 state, process identity, Ghostty resources, and optional log triage. Exit code
 `0` means all checks passed, `1` means at least one check failed, and `2` means
