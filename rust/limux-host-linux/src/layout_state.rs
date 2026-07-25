@@ -489,22 +489,9 @@ pub fn persistence_dir() -> PathBuf {
     base_persistence_dir()
 }
 
-fn base_persistence_dir() -> PathBuf {
-    if let Some(data_dir) = dirs::data_dir() {
-        return data_dir.join(PERSISTENCE_DIR_NAME);
-    }
-
-    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-    home.join(".local/share").join(PERSISTENCE_DIR_NAME)
-}
-
-pub fn channel_persistence_dir(channel: &RuntimeChannel) -> PathBuf {
-    let base = base_persistence_dir();
-    match channel {
-        RuntimeChannel::Stable => base.join("stable").join("session"),
-        RuntimeChannel::Preview(id) => base.join("preview").join(id).join("session"),
-    }
-}
+// On-disk layout lives in `limux_control::session_paths` so the CLI
+// (`profile list` / `profile rm`) and the host resolve identical paths.
+pub use limux_control::session_paths::{base_persistence_dir, channel_persistence_dir};
 
 pub fn canonical_session_path_in(dir: &Path) -> PathBuf {
     dir.join(SESSION_FILE_NAME)
@@ -1540,6 +1527,77 @@ mod tests {
         assert_eq!(
             persistence_dir(),
             PathBuf::from("/tmp/limux-xdg-data/limux/preview/branch/session")
+        );
+    }
+
+    /// Wiring test, not a helper test: it drives the real entry point
+    /// (`persistence_dir`) through env resolution, so reverting the
+    /// `RuntimeChannel::Profile` arm in `channel_persistence_dir` fails here.
+    #[test]
+    fn persistence_dir_uses_profile_namespace_when_set() {
+        let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
+        let _session_dir = EnvGuard::set(LIMUX_SESSION_DIR_ENV, None);
+        let _channel = EnvGuard::set(
+            limux_control::socket_path::LIMUX_CHANNEL_ENV,
+            Some("profile:work"),
+        );
+        let _profile_id = EnvGuard::set(limux_control::socket_path::LIMUX_PROFILE_ID_ENV, None);
+        let _xdg = EnvGuard::set("XDG_DATA_HOME", Some("/tmp/limux-xdg-data"));
+
+        assert_eq!(
+            persistence_dir(),
+            PathBuf::from("/tmp/limux-xdg-data/limux/profiles/work/session")
+        );
+    }
+
+    /// Two profiles must never share a session file — that is the whole
+    /// point of the feature.
+    #[test]
+    fn distinct_profiles_get_distinct_session_files() {
+        let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
+        let _session_dir = EnvGuard::set(LIMUX_SESSION_DIR_ENV, None);
+        let _xdg = EnvGuard::set("XDG_DATA_HOME", Some("/tmp/limux-xdg-data"));
+        let _profile_id = EnvGuard::set(limux_control::socket_path::LIMUX_PROFILE_ID_ENV, None);
+
+        let work = {
+            let _channel = EnvGuard::set(
+                limux_control::socket_path::LIMUX_CHANNEL_ENV,
+                Some("profile:work"),
+            );
+            canonical_session_path_in(&persistence_dir())
+        };
+        let scratch = {
+            let _channel = EnvGuard::set(
+                limux_control::socket_path::LIMUX_CHANNEL_ENV,
+                Some("profile:scratch"),
+            );
+            canonical_session_path_in(&persistence_dir())
+        };
+        let preview_same_name = {
+            let _channel = EnvGuard::set(
+                limux_control::socket_path::LIMUX_CHANNEL_ENV,
+                Some("preview:work"),
+            );
+            canonical_session_path_in(&persistence_dir())
+        };
+
+        assert_ne!(work, scratch);
+        assert_ne!(work, preview_same_name);
+        assert!(work.ends_with("limux/profiles/work/session/session.json"));
+    }
+
+    #[test]
+    fn profile_persistence_dir_agrees_with_channel_resolution() {
+        let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
+        let _xdg = EnvGuard::set("XDG_DATA_HOME", Some("/tmp/limux-xdg-data"));
+
+        assert_eq!(
+            limux_control::session_paths::profile_persistence_dir("auto-2"),
+            channel_persistence_dir(&RuntimeChannel::Profile("auto-2".to_string()))
+        );
+        assert_eq!(
+            limux_control::session_paths::profiles_root_dir(),
+            PathBuf::from("/tmp/limux-xdg-data/limux/profiles")
         );
     }
 

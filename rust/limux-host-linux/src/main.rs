@@ -33,6 +33,7 @@ const LIMUX_TARGET_ENV_REMOVALS: &[&str] = &[
     "LIMUX_SOCKET_PATH",
     limux_control::socket_path::LIMUX_CHANNEL_ENV,
     limux_control::socket_path::LIMUX_PREVIEW_ID_ENV,
+    limux_control::socket_path::LIMUX_PROFILE_ID_ENV,
     layout_state::LIMUX_SESSION_DIR_ENV,
     "LIMUX_WORKSPACE_ID",
     "LIMUX_SURFACE_ID",
@@ -289,6 +290,26 @@ fn session_dir_env_override_present() -> bool {
     std::env::var_os(layout_state::LIMUX_SESSION_DIR_ENV).is_some_and(|value| !value.is_empty())
 }
 
+/// Highest `auto-<n>` profile the host will allocate before giving up and
+/// falling back to a throwaway session. Bounded so a leaked socket directory
+/// cannot make startup scan forever.
+const MAX_AUTO_PROFILE_INDEX: u32 = 64;
+
+/// First free `auto-<n>` profile, or `None` if every slot up to the cap is
+/// already served by a live host.
+///
+/// Numbering starts at 2 because the un-namespaced default session is
+/// effectively profile 1 — the one a lone `limux` restores.
+fn next_free_auto_profile() -> Option<limux_control::socket_path::RuntimeChannel> {
+    (2..=MAX_AUTO_PROFILE_INDEX).find_map(|index| {
+        let channel = limux_control::socket_path::RuntimeChannel::Profile(format!(
+            "{}{index}",
+            limux_control::socket_path::RuntimeChannel::AUTO_PROFILE_PREFIX
+        ));
+        (!socket_accepts_connections(&channel.socket_path())).then_some(channel)
+    })
+}
+
 fn ensure_runtime_socket_does_not_collide() {
     if socket_env_override_present() {
         return;
@@ -302,10 +323,33 @@ fn ensure_runtime_socket_does_not_collide() {
         return;
     }
 
+    // A second concurrent Limux used to get a throwaway session directory
+    // under the runtime dir, so everything it had open was discarded on exit.
+    // Give it a persistent auto-profile instead; `limux profile list` shows
+    // these as `auto` and `limux profile rm` prunes them.
+    if let Some(channel) = next_free_auto_profile() {
+        eprintln!(
+            "limux: default control socket already in use ({}); using profile {} (persistent; see `limux profile list`)",
+            default_path.display(),
+            channel.label()
+        );
+        // Setting the channel alone repoints BOTH the control socket and the
+        // session file, so the two can never drift apart. An explicit
+        // LIMUX_SESSION_DIR still wins inside persistence_dir().
+        std::env::set_var(
+            limux_control::socket_path::LIMUX_CHANNEL_ENV,
+            channel.env_value(),
+        );
+        std::env::remove_var(limux_control::socket_path::LIMUX_PROFILE_ID_ENV);
+        return;
+    }
+
+    // Every auto slot is live. Fall back to the historical throwaway session
+    // so startup still succeeds rather than refusing to open a window.
     let socket_path = unique_runtime_socket_path(&default_path);
     let session_dir = unique_runtime_session_dir(&socket_path);
     eprintln!(
-        "limux: default control socket already in use ({}); using {}",
+        "limux: default control socket already in use ({}) and all auto profiles are running; using throwaway session {}",
         default_path.display(),
         socket_path.display()
     );
@@ -598,9 +642,31 @@ mod tests {
         }
     }
 
+    /// Binds every auto-profile socket in `indices`, returning the listeners
+    /// so the caller keeps them alive for the duration of the test.
+    #[cfg(unix)]
+    fn bind_auto_profile_sockets(indices: impl IntoIterator<Item = u32>) -> Vec<UnixListener> {
+        indices
+            .into_iter()
+            .map(|index| {
+                let path = limux_control::socket_path::RuntimeChannel::Profile(format!(
+                    "{}{index}",
+                    limux_control::socket_path::RuntimeChannel::AUTO_PROFILE_PREFIX
+                ))
+                .socket_path();
+                fs::create_dir_all(path.parent().expect("auto profile socket parent"))
+                    .expect("create auto profile socket parent");
+                UnixListener::bind(&path).expect("bind auto profile socket")
+            })
+            .collect()
+    }
+
+    /// A second Limux must land on a *persistent* auto profile, not the old
+    /// throwaway session directory. Reverting the auto-profile branch in
+    /// `ensure_runtime_socket_does_not_collide` fails here.
     #[cfg(unix)]
     #[test]
-    fn runtime_socket_uses_unique_path_when_default_socket_is_live() {
+    fn runtime_socket_uses_persistent_auto_profile_when_default_socket_is_live() {
         let _lock = GHOSTTY_ENV_LOCK
             .lock()
             .expect("ghostty env test lock poisoned");
@@ -616,6 +682,10 @@ mod tests {
             limux_control::socket_path::LIMUX_PREVIEW_ID_ENV,
             Option::<&str>::None,
         );
+        let _profile_id = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_PROFILE_ID_ENV,
+            Option::<&str>::None,
+        );
         let _session_dir =
             EnvVarGuard::set(layout_state::LIMUX_SESSION_DIR_ENV, Option::<&str>::None);
 
@@ -625,6 +695,109 @@ mod tests {
         fs::create_dir_all(default_path.parent().expect("default socket parent"))
             .expect("create socket parent");
         let _listener = UnixListener::bind(&default_path).expect("bind default socket");
+
+        ensure_runtime_socket_does_not_collide();
+
+        assert_eq!(
+            std::env::var_os(limux_control::socket_path::LIMUX_CHANNEL_ENV),
+            Some(std::ffi::OsString::from("profile:auto-2")),
+            "second instance must claim the first free auto profile"
+        );
+        // The throwaway path must NOT have been taken: no forced session dir,
+        // no pid-named socket. Those are what made state disappear on exit.
+        assert!(
+            std::env::var_os(layout_state::LIMUX_SESSION_DIR_ENV).is_none(),
+            "auto profile must persist, not fall back to a throwaway session dir"
+        );
+        assert!(
+            std::env::var_os(LIMUX_SOCKET_ENV).is_none(),
+            "auto profile repoints via the channel, not an explicit socket override"
+        );
+        // And the state it resolves to must be the persistent profile dir.
+        assert_eq!(
+            layout_state::persistence_dir(),
+            limux_control::session_paths::profile_persistence_dir("auto-2")
+        );
+    }
+
+    /// Allocation must skip auto slots that are already served by a live host,
+    /// otherwise two instances would fight over one session file.
+    #[cfg(unix)]
+    #[test]
+    fn runtime_socket_skips_auto_profiles_already_in_use() {
+        let _lock = GHOSTTY_ENV_LOCK
+            .lock()
+            .expect("ghostty env test lock poisoned");
+        let runtime_dir = tempfile::tempdir().expect("runtime tempdir");
+        let _xdg = EnvVarGuard::set("XDG_RUNTIME_DIR", Some(runtime_dir.path()));
+        let _socket = EnvVarGuard::set(LIMUX_SOCKET_ENV, Option::<&str>::None);
+        let _socket_path = EnvVarGuard::set(LIMUX_SOCKET_PATH_ENV, Option::<&str>::None);
+        let _channel = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_CHANNEL_ENV,
+            Option::<&str>::None,
+        );
+        let _preview_id = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_PREVIEW_ID_ENV,
+            Option::<&str>::None,
+        );
+        let _profile_id = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_PROFILE_ID_ENV,
+            Option::<&str>::None,
+        );
+        let _session_dir =
+            EnvVarGuard::set(layout_state::LIMUX_SESSION_DIR_ENV, Option::<&str>::None);
+
+        let default_path = limux_control::socket_path::SocketMode::default_for(
+            limux_control::socket_path::SocketMode::Runtime,
+        );
+        fs::create_dir_all(default_path.parent().expect("default socket parent"))
+            .expect("create socket parent");
+        let _listener = UnixListener::bind(&default_path).expect("bind default socket");
+        let _busy = bind_auto_profile_sockets(2..=4);
+
+        ensure_runtime_socket_does_not_collide();
+
+        assert_eq!(
+            std::env::var_os(limux_control::socket_path::LIMUX_CHANNEL_ENV),
+            Some(std::ffi::OsString::from("profile:auto-5")),
+            "auto-2..4 are live, so the next instance must take auto-5"
+        );
+    }
+
+    /// When every auto slot is live, startup must still succeed by falling
+    /// back to the historical throwaway session rather than refusing to open.
+    #[cfg(unix)]
+    #[test]
+    fn runtime_socket_falls_back_to_throwaway_when_all_auto_profiles_are_live() {
+        let _lock = GHOSTTY_ENV_LOCK
+            .lock()
+            .expect("ghostty env test lock poisoned");
+        let runtime_dir = tempfile::tempdir().expect("runtime tempdir");
+        let _xdg = EnvVarGuard::set("XDG_RUNTIME_DIR", Some(runtime_dir.path()));
+        let _socket = EnvVarGuard::set(LIMUX_SOCKET_ENV, Option::<&str>::None);
+        let _socket_path = EnvVarGuard::set(LIMUX_SOCKET_PATH_ENV, Option::<&str>::None);
+        let _channel = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_CHANNEL_ENV,
+            Option::<&str>::None,
+        );
+        let _preview_id = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_PREVIEW_ID_ENV,
+            Option::<&str>::None,
+        );
+        let _profile_id = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_PROFILE_ID_ENV,
+            Option::<&str>::None,
+        );
+        let _session_dir =
+            EnvVarGuard::set(layout_state::LIMUX_SESSION_DIR_ENV, Option::<&str>::None);
+
+        let default_path = limux_control::socket_path::SocketMode::default_for(
+            limux_control::socket_path::SocketMode::Runtime,
+        );
+        fs::create_dir_all(default_path.parent().expect("default socket parent"))
+            .expect("create socket parent");
+        let _listener = UnixListener::bind(&default_path).expect("bind default socket");
+        let _busy = bind_auto_profile_sockets(2..=MAX_AUTO_PROFILE_INDEX);
 
         ensure_runtime_socket_does_not_collide();
 
@@ -697,6 +870,10 @@ mod tests {
             limux_control::socket_path::LIMUX_PREVIEW_ID_ENV,
             Option::<&str>::None,
         );
+        let _profile_id = EnvVarGuard::set(
+            limux_control::socket_path::LIMUX_PROFILE_ID_ENV,
+            Option::<&str>::None,
+        );
         let _session_dir =
             EnvVarGuard::set(layout_state::LIMUX_SESSION_DIR_ENV, Option::<&str>::None);
 
@@ -709,14 +886,11 @@ mod tests {
 
         ensure_runtime_socket_does_not_collide();
 
-        let expected_socket = unique_runtime_socket_path(&default_path);
+        // Empty is treated as unset, so collision handling still runs and
+        // claims an auto profile rather than short-circuiting.
         assert_eq!(
-            std::env::var_os(LIMUX_SOCKET_ENV),
-            Some(expected_socket.clone().into_os_string())
-        );
-        assert_eq!(
-            std::env::var_os(layout_state::LIMUX_SESSION_DIR_ENV),
-            Some(unique_runtime_session_dir(&expected_socket).into_os_string())
+            std::env::var_os(limux_control::socket_path::LIMUX_CHANNEL_ENV),
+            Some(std::ffi::OsString::from("profile:auto-2"))
         );
     }
 

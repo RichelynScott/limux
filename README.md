@@ -111,6 +111,75 @@ warnings were found but no check failed. `--log-triage` summarizes common
 runtime log warnings such as Mesa/GDK environment issues without requiring a
 full manual log scrape.
 
+## Session profiles
+
+Limux restores the workspaces you had open when it last closed. A **profile**
+gives you more than one such saved set — each with its own workspaces, its own
+`session.json`, and its own control socket — so you can keep a heavy set and a
+light set separately instead of restoring everything into one window.
+
+```bash
+limux --profile work        # launch the "work" set (creates it on first use)
+limux --profile scratch     # a separate set; unrelated to "work"
+limux                       # the default set, exactly as before
+
+limux profile list          # what is saved, and what is running right now
+limux profile path work     # where that profile's session.json lives
+limux profile rm scratch    # archive it (recoverable — see below)
+```
+
+`profile list` reports each profile's name, whether a Limux is currently
+running on it, how large its saved session is, and whether it was named by you
+or auto-created:
+
+```
+NAME                 STATE     SAVED      KIND
+auto-2               stopped   12K        auto
+work                 running   48K        named
+```
+
+The CLI targets a profile the same way the app does, so agent commands reach
+the right window:
+
+```bash
+limux --profile work list-workspaces
+limux --profile work send --surface <id> "hello"
+```
+
+### Second instances now persist
+
+Previously, launching a second Limux while one was already running gave it a
+throwaway session directory — everything it had open was discarded on exit.
+It now claims the next free `auto-<n>` profile instead, so those workspaces
+come back. They are listed as `auto` and can be pruned:
+
+```bash
+limux profile rm auto-2
+```
+
+`profile rm` **archives rather than deletes**, moving the profile to
+`~/.local/share/limux/profiles-archive/<name>-<timestamp>/`, so a mistyped name
+does not destroy a workspace set. It refuses to remove a profile that is
+currently running.
+
+### Where profile state lives
+
+| What | Path |
+|---|---|
+| Session state | `~/.local/share/limux/profiles/<name>/session/session.json` |
+| Control socket | `$XDG_RUNTIME_DIR/limux/profiles/<name>/limux.sock` |
+| Archived removals | `~/.local/share/limux/profiles-archive/<name>-<timestamp>/` |
+
+Profile names accept letters, digits, `-` and `_`. Anything else is rejected so
+a name can never escape the profiles directory.
+
+> **Not the same as `--profile` in the installer script.** The CLI's
+> `--profile <name>` selects a saved session set. The installer's
+> `scripts/user-local-install/install-user-local.sh --profile release` selects
+> a *Cargo build profile*. Profiles are also distinct from the stable/preview
+> *channels* below, which namespace Limux **builds**; the two can be combined
+> (`limux --channel profile:work` is the long spelling of `--profile work`).
+
 ## Live workspace header
 
 The left side of the application header identifies the workspace currently in
