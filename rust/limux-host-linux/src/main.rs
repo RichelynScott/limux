@@ -334,6 +334,13 @@ impl AutoProfileClaim {
             .create(true)
             .truncate(false)
             .mode(0o600)
+            // O_CLOEXEC is REQUIRED, not optional: flock binds to the open file
+            // description, so any child inheriting this fd keeps the slot held
+            // after this host dies. Limux spawns a shell per pane, and Rust's
+            // `Command` does not close arbitrary inherited fds. Rust's
+            // OpenOptions already opens with O_CLOEXEC on Linux — it is named
+            // here so the requirement is visible at the call site, not because
+            // it adds behavior. Do not "clean up" this comment into the flag.
             .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
             .open(dir.join(".claim.lock"))
             .ok()?;
@@ -890,6 +897,66 @@ mod tests {
         assert!(taken, "a held auto-profile claim must block a second flock");
 
         drop(rival);
+    }
+
+    /// The claim must not leak into spawned children.
+    ///
+    /// `flock` is tied to the open file *description*, not the descriptor, so
+    /// any child inheriting the claim fd keeps the slot held after this host
+    /// dies — leaking that auto profile until every such child exits. Limux
+    /// spawns a shell per pane and several helper processes, and Rust's
+    /// `Command` does NOT close arbitrary inherited fds.
+    ///
+    /// Note on what this does and does not guard: deleting the explicit
+    /// `libc::O_CLOEXEC` does NOT fail this test, because Rust's `OpenOptions`
+    /// already opens with `O_CLOEXEC` on Linux — that redundancy was measured,
+    /// not assumed. What this test does catch is a genuine leak: actively
+    /// clearing `FD_CLOEXEC` fails it. So it guards the close-on-exec
+    /// *behavior* the claim depends on, whatever supplies it.
+    #[cfg(unix)]
+    #[test]
+    fn auto_profile_claim_is_not_inherited_by_spawned_children() {
+        use std::os::fd::AsRawFd;
+
+        let _lock = GHOSTTY_ENV_LOCK
+            .lock()
+            .expect("ghostty env test lock poisoned");
+        let runtime_dir = tempfile::tempdir().expect("runtime tempdir");
+        let _xdg = EnvVarGuard::set("XDG_RUNTIME_DIR", Some(runtime_dir.path()));
+
+        let socket =
+            limux_control::socket_path::RuntimeChannel::Profile("auto-2".to_string()).socket_path();
+        let claim = AutoProfileClaim::try_acquire(&socket).expect("claim auto-2");
+
+        // Mechanism check: the descriptor is marked close-on-exec.
+        // SAFETY: fcntl(F_GETFD) only reads flags from the live descriptor.
+        let flags = unsafe { libc::fcntl(claim.0.as_raw_fd(), libc::F_GETFD) };
+        assert!(flags >= 0, "F_GETFD failed");
+        assert_eq!(
+            flags & libc::FD_CLOEXEC,
+            libc::FD_CLOEXEC,
+            "claim fd must be close-on-exec"
+        );
+
+        // Behavioral check: a child spawned while the claim is held, which
+        // outlives it, must not keep the slot locked.
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn child holding any inherited fds");
+        drop(claim);
+
+        let reacquired = AutoProfileClaim::try_acquire(&socket);
+        let released = reacquired.is_some();
+        let _ = child.kill();
+        let _ = child.wait();
+
+        assert!(
+            released,
+            "a spawned child inherited the claim fd and is still holding the slot"
+        );
     }
 
     /// When every auto slot is live, startup must still succeed by falling

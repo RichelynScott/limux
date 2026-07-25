@@ -502,6 +502,22 @@ fn run_profile_command(args: &[String], json_output: bool) -> Result<CommandOutp
             }
             // Yanking the session directory out from under a live host would
             // make it write its state back into a path that no longer exists.
+            //
+            // This is check-then-rename, so a host starting in the gap between
+            // here and the rename below is not PREVENTED. Two reasons it is
+            // accepted rather than locked, both stated so the next reader can
+            // re-decide: the window is two adjacent syscalls and only opens if
+            // the operator launches and removes the same profile at the same
+            // instant, and the removal is an archive, so the state survives.
+            //
+            // What is NOT acceptable is that outcome being silent, so the
+            // rename is followed by a second liveness check that reports it.
+            // The full prevention is to hold the profile's `.claim.lock` here
+            // — but today only auto-<n> profiles are claimed (by the host's
+            // allocator); a host started with an explicit `--profile <name>`
+            // holds no claim, so closing this properly means claiming every
+            // profile at host startup, not just auto ones. That is a design
+            // change, deliberately not folded into this one.
             if profile_is_running(name) {
                 bail!(
                     "profile {name} is currently running; close that Limux window before removing it"
@@ -525,11 +541,29 @@ fn run_profile_command(args: &[String], json_output: bool) -> Result<CommandOutp
                 )
             })?;
 
+            // A host that started during the rename now owns a profile whose
+            // directory has been archived away; it will silently recreate an
+            // empty session and diverge. Detect that and say so loudly — the
+            // race is tolerated, being quiet about it is not.
+            let raced = profile_is_running(name);
+
             if json_output {
                 Ok(CommandOutput::Json(json!({
                     "profile": name,
                     "archived_to": archive.to_string_lossy(),
+                    "started_during_removal": raced,
                 })))
+            } else if raced {
+                Ok(CommandOutput::Text(format!(
+                    "archived profile {name} to {}\n\
+                     WARNING: a Limux started on profile {name} while it was being removed.\n\
+                     That window is now running against a fresh, empty session and its\n\
+                     workspaces will not match the archive. Close it, then restore with:\n\
+                       mv {} {}",
+                    archive.display(),
+                    archive.display(),
+                    profile_dir.display()
+                )))
             } else {
                 Ok(CommandOutput::Text(format!(
                     "archived profile {name} to {}",
