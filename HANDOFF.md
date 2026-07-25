@@ -92,8 +92,10 @@ fd test was deleted with the unreachable fd layer in #90.)
 > All the good work (HIGH-1 flock fix, sanitizer, O_CLOEXEC correction) re-lands.
 >
 > **✅ RE-LAND = PR #99 (`feat/session-profiles-v2`, off post-revert main) — tutu CODE
-> APPROVE + channel sanitizer CLEARED, pending levu's FRESH boundary review; operator
-> decides merge + install.** Orthogonal design (channel = build lane / launcher-supplied;
+> APPROVE + channel sanitizer CLEARED + **levu boundary CLEARED** = BOTH review gates green;
+> MERGE-READY. Head is now `72b8f14` (c61ba07 + a 1-line Cargo.lock `dirs` direct-dep add;
+> source byte-identical, so clearances carried — tutu re-verified). **Operator decides merge
+> + install.** Orthogonal design (channel = build lane / launcher-supplied;
 > profile = session set / user-supplied, read independently; nested `<lane>/profiles/<name>`,
 > composed in one place so host+CLI can't disagree). All three of tutu's non-negotiables in,
 > and tutu **revert-verified** the two owned surfaces: (1) **channel-as-path-segment sanitizer**
