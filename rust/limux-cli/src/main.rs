@@ -9,9 +9,7 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, bail, Context, Result};
-use limux_control::socket_path::{
-    resolve_socket_path, resolve_socket_path_for_channel, RuntimeChannel, SocketMode,
-};
+use limux_control::socket_path::{resolve_socket_path, RuntimeChannel, SocketMode};
 use limux_protocol::{validate_terminal_text_payload, V2Error, V2Request, V2Response};
 use serde_json::{json, Map, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -37,6 +35,9 @@ const HOST_LAUNCH_SOCKET_ENV_REMOVALS: &[&str] = &[
     "LIMUX_SOCKET_PATH",
     limux_control::socket_path::LIMUX_CHANNEL_ENV,
     limux_control::socket_path::LIMUX_PREVIEW_ID_ENV,
+    // A stale LIMUX_PROFILE_ID inherited from the launching pane must not
+    // silently repoint a host at another session set.
+    limux_control::socket_path::LIMUX_PROFILE_ID_ENV,
 ];
 const HOST_LAUNCH_SESSION_ENV_REMOVALS: &[&str] = &["LIMUX_SESSION_DIR"];
 const HOST_LAUNCH_TARGET_ENV_REMOVALS: &[&str] = &[
@@ -82,7 +83,13 @@ impl IdFormat {
 #[derive(Debug, Clone)]
 struct GlobalOptions {
     socket: Option<PathBuf>,
+    /// Build lane. Installed launchers pin this (`exec limux-cli --channel
+    /// stable "$@"`), so it is usually NOT operator-supplied.
     channel: Option<RuntimeChannel>,
+    /// Session set. Operator-supplied, and deliberately a SEPARATE field from
+    /// `channel`: modelling them as one made `--profile` contradict every
+    /// launcher's pinned lane, which is what forced the #92 revert.
+    profile: Option<String>,
     socket_mode: SocketMode,
     json_output: bool,
     id_format: IdFormat,
@@ -188,9 +195,14 @@ impl Client {
 }
 
 fn parse_global_args() -> Result<GlobalOptions> {
-    let mut args: Vec<String> = env::args().skip(1).collect();
+    parse_global_args_from(env::args().skip(1).collect())
+}
+
+/// Split out so argument parsing is testable without a real process.
+fn parse_global_args_from(mut args: Vec<String>) -> Result<GlobalOptions> {
     let mut socket: Option<PathBuf> = None;
     let mut channel: Option<RuntimeChannel> = None;
+    let mut profile: Option<String> = None;
     let mut socket_mode = SocketMode::Runtime;
     let mut json_output = false;
     let mut id_format = IdFormat::Refs;
@@ -226,9 +238,38 @@ fn parse_global_args() -> Result<GlobalOptions> {
                 let value = args
                     .get(command_start + 1)
                     .ok_or_else(|| anyhow!("--channel requires stable|preview[:id]"))?;
-                channel = RuntimeChannel::parse(value)
-                    .ok_or_else(|| anyhow!("--channel requires stable|preview[:id]"))?
-                    .into();
+                let parsed = RuntimeChannel::parse(value)
+                    .ok_or_else(|| anyhow!("--channel requires stable|preview[:id]"))?;
+                // Genuine user error: two contradictory lanes. A launcher-pinned
+                // lane plus a user --profile is NOT an error and must not be
+                // treated as one — that mistake made #92 unreachable.
+                if let Some(existing) = channel.as_ref() {
+                    if existing != &parsed {
+                        bail!(
+                            "conflicting --channel: already set {}",
+                            existing.env_value()
+                        );
+                    }
+                }
+                channel = Some(parsed);
+                command_start += 2;
+            }
+            "--profile" => {
+                let value = args
+                    .get(command_start + 1)
+                    .ok_or_else(|| anyhow!("--profile requires a name"))?;
+                let parsed = limux_control::socket_path::sanitize_profile_id(value)
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "--profile name must be non-empty and use only letters, digits, '-' or '_' (got {value:?})"
+                        )
+                    })?;
+                if let Some(existing) = profile.as_ref() {
+                    if existing != &parsed {
+                        bail!("conflicting --profile: already set {existing}");
+                    }
+                }
+                profile = Some(parsed);
                 command_start += 2;
             }
             "--json" => {
@@ -270,6 +311,7 @@ fn parse_global_args() -> Result<GlobalOptions> {
     Ok(GlobalOptions {
         socket,
         channel,
+        profile,
         socket_mode,
         json_output,
         id_format,
@@ -281,7 +323,7 @@ fn parse_global_args() -> Result<GlobalOptions> {
 
 fn print_help() {
     println!(
-        "limux CLI\n\nUsage: limux [--socket <path>] [--channel stable|preview[:id]] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nCommon commands:\n  --version\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  doctor [--json] [--log-triage [--lines <n>]]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  close-surface --workspace <id|ref> --surface <id|ref>\n      Closes exactly one explicit surface; never falls back to current focus.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  pane-action --action set_flag_color --color <orange|red|purple|pink|green|yellow|teal|cyan> [--workspace <id|ref>] [--pane <id|ref>]\n  pane-action --action clear_flag_color [--workspace <id|ref>] [--pane <id|ref>]\n  target-info (alias: socket-info) prints the resolved socket/channel without connecting\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--launch-mode direct|hcom] [--workspace <id|ref>] [--surface <id|ref>] [--pane <id|ref>] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the explicitly targeted workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, or hcom with --run-here when requested, writes\n      (live runs require explicit target flags or LIMUX_WORKSPACE_ID/LIMUX_SURFACE_ID),\n      LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md plus\n      LIMUX_REVIEW_LEDGER.md when missing so peers can coordinate via durable\n      files and `limux send --surface <peer-surface-id> <envelope>`.\n  review prepare --artifact <path-or-ref> --reviewer <agent|manual> --lens <name> --summary <text> [--cwd <path>] [--ledger-path <path>] [--reviews-dir <path>] [--review-id <id>] [--dry-run]\n      Creates a durable review request file, appends a pending review-ledger\n      entry, and prints the reviewer prompt without launching a reviewer pane.\n"
+        "limux CLI\n\nUsage: limux [--socket <path>] [--profile <name>] [--channel stable|preview[:id]] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nSession profiles:\n  A profile is a separate saved workspace set with its own session and socket,\n  so several independently-restorable Limux windows can coexist.\n    limux --profile work        launch (or target) the \"work\" profile\n    limux profile list          saved profiles in this build lane, and which run\n    limux profile path <name>   print a profile session directory\n    limux profile rm <name>     archive a profile (recoverable, never deleted)\n  Profiles nest inside the build lane, so a stable build and a preview build\n  can each hold a profile named \"work\" without sharing state.\n  A bare `limux` launched while another is running takes the next free auto-<n>\n  profile, so its workspaces persist instead of being discarded.\n\nCommon commands:\n  --version\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  doctor [--json] [--log-triage [--lines <n>]]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  close-surface --workspace <id|ref> --surface <id|ref>\n      Closes exactly one explicit surface; never falls back to current focus.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  pane-action --action set_flag_color --color <orange|red|purple|pink|green|yellow|teal|cyan> [--workspace <id|ref>] [--pane <id|ref>]\n  pane-action --action clear_flag_color [--workspace <id|ref>] [--pane <id|ref>]\n  target-info (alias: socket-info) prints the resolved socket/channel without connecting\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--launch-mode direct|hcom] [--workspace <id|ref>] [--surface <id|ref>] [--pane <id|ref>] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the explicitly targeted workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, or hcom with --run-here when requested, writes\n      (live runs require explicit target flags or LIMUX_WORKSPACE_ID/LIMUX_SURFACE_ID),\n      LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md plus\n      LIMUX_REVIEW_LEDGER.md when missing so peers can coordinate via durable\n      files and `limux send --surface <peer-surface-id> <envelope>`.\n  review prepare --artifact <path-or-ref> --reviewer <agent|manual> --lens <name> --summary <text> [--cwd <path>] [--ledger-path <path>] [--reviews-dir <path>] [--review-id <id>] [--dry-run]\n      Creates a durable review request file, appends a pending review-ledger\n      entry, and prints the reviewer prompt without launching a reviewer pane.\n"
     );
     println!(
         "  agent-team extra flags: --no-bootstrap skips the post-launch bootstrap prompt while still launching panes; --dry-run skips host contact but still materializes the protocol and seeds missing roster/ledger files."
@@ -308,6 +350,254 @@ fn current_cli_build_info() -> limux_control::BuildInfo {
 fn render_cli_version() -> String {
     let build = current_cli_build_info();
     limux_control::render_version_line("limux-cli", env!("CARGO_PKG_VERSION"), &build)
+}
+
+/// One named session profile as reported by `limux profile list`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProfileEntry {
+    name: String,
+    auto: bool,
+    running: bool,
+    has_session: bool,
+    session_bytes: u64,
+}
+
+impl ProfileEntry {
+    fn to_json(&self) -> Value {
+        json!({
+            "name": self.name,
+            "auto": self.auto,
+            "running": self.running,
+            "has_session": self.has_session,
+            "session_bytes": self.session_bytes,
+        })
+    }
+}
+
+/// True when a host is currently listening on this profile's control socket.
+fn profile_is_running(channel: Option<&RuntimeChannel>, name: &str) -> bool {
+    let socket = limux_control::socket_path::runtime_socket_path_for(channel, Some(name));
+    std::os::unix::net::UnixStream::connect(socket).is_ok()
+}
+
+/// Enumerate profiles from the profiles root, sorted by name.
+///
+/// Reads directories only; a profile that exists on disk but has never been
+/// saved (no `session.json`) is still listed, flagged `has_session: false`,
+/// so an allocated-but-unsaved profile is visible rather than invisible.
+fn collect_profiles_in(root: &Path, channel: Option<&RuntimeChannel>) -> Result<Vec<ProfileEntry>> {
+    let entries = match fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => return Err(err).with_context(|| format!("failed to read {}", root.display())),
+    };
+
+    let mut profiles = Vec::new();
+    for entry in entries {
+        let entry = entry.with_context(|| format!("failed to read entry in {}", root.display()))?;
+        if !entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+            continue;
+        };
+        // Anything that could not have been produced by a valid channel id is
+        // not a profile — never surface it as one.
+        if limux_control::socket_path::sanitize_profile_id(&name).is_none() {
+            continue;
+        }
+        let session_file = entry
+            .path()
+            .join(limux_control::session_paths::SESSION_DIR_NAME)
+            .join("session.json");
+        let metadata = fs::metadata(&session_file).ok();
+        profiles.push(ProfileEntry {
+            auto: limux_control::session_paths::is_auto_profile(&name),
+            running: profile_is_running(channel, &name),
+            has_session: metadata.is_some(),
+            session_bytes: metadata.map(|meta| meta.len()).unwrap_or(0),
+            name,
+        });
+    }
+    profiles.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(profiles)
+}
+
+fn render_profile_list_text(profiles: &[ProfileEntry]) -> String {
+    if profiles.is_empty() {
+        return "no saved profiles yet — create one with `limux --profile <name>`".to_string();
+    }
+    let mut lines = Vec::with_capacity(profiles.len() + 1);
+    lines.push("NAME                 STATE     SAVED      KIND".to_string());
+    for profile in profiles {
+        let state = if profile.running {
+            "running"
+        } else {
+            "stopped"
+        };
+        let saved = if profile.has_session {
+            format!("{}K", profile.session_bytes.div_ceil(1024))
+        } else {
+            "-".to_string()
+        };
+        let kind = if profile.auto { "auto" } else { "named" };
+        lines.push(format!(
+            "{:<20} {:<9} {:<10} {}",
+            profile.name, state, saved, kind
+        ));
+    }
+    lines.join("\n")
+}
+
+/// Timestamped archive location for a removed profile.
+///
+/// `profile rm` archives rather than deletes: a mistyped profile name would
+/// otherwise destroy a workspace set with no undo.
+fn profile_archive_dir(
+    base: &Path,
+    channel: Option<&RuntimeChannel>,
+    name: &str,
+    stamp: u64,
+) -> PathBuf {
+    // Lane-scoped like the profiles root itself, so a removed `work` from the
+    // stable lane and one from a preview lane stay distinguishable in the
+    // archive rather than both landing in one shared bucket.
+    limux_control::session_paths::profiles_root_dir_in(base, channel)
+        .parent()
+        .unwrap_or(base)
+        .join("profiles-archive")
+        .join(format!("{name}-{stamp}"))
+}
+
+fn run_profile_command(
+    args: &[String],
+    json_output: bool,
+    channel: Option<&RuntimeChannel>,
+) -> Result<CommandOutput> {
+    let base = limux_control::session_paths::base_persistence_dir();
+    let root = limux_control::session_paths::profiles_root_dir_in(&base, channel);
+    let sub = args.first().map(String::as_str).unwrap_or("list");
+
+    match sub {
+        "list" => {
+            let profiles = collect_profiles_in(&root, channel)?;
+            if json_output {
+                Ok(CommandOutput::Json(json!({
+                    "profiles_root": root.to_string_lossy(),
+                    "profiles": profiles.iter().map(ProfileEntry::to_json).collect::<Vec<_>>(),
+                })))
+            } else {
+                Ok(CommandOutput::Text(render_profile_list_text(&profiles)))
+            }
+        }
+        "path" => {
+            let name = args
+                .get(1)
+                .ok_or_else(|| anyhow!("profile path requires a profile name"))?;
+            let name = limux_control::socket_path::sanitize_profile_id(name)
+                .ok_or_else(|| anyhow!("invalid profile name {name:?}"))?;
+            let dir =
+                limux_control::session_paths::profile_persistence_dir_in(&base, channel, &name);
+            if json_output {
+                Ok(CommandOutput::Json(json!({
+                    "profile": name,
+                    "session_dir": dir.to_string_lossy(),
+                    "socket": limux_control::socket_path::runtime_socket_path_for(
+                        channel,
+                        Some(&name),
+                    )
+                    .to_string_lossy(),
+                })))
+            } else {
+                Ok(CommandOutput::Text(dir.to_string_lossy().into_owned()))
+            }
+        }
+        "rm" | "remove" => {
+            let raw = args
+                .get(1)
+                .ok_or_else(|| anyhow!("profile rm requires a profile name"))?;
+            let name = limux_control::socket_path::sanitize_profile_id(raw)
+                .ok_or_else(|| anyhow!("invalid profile name {raw:?}"))?;
+            let name = name.as_str();
+
+            let profile_dir =
+                limux_control::session_paths::profile_root_dir_in(&base, channel, name);
+            if !profile_dir.is_dir() {
+                bail!("no such profile: {name}");
+            }
+            // Yanking the session directory out from under a live host would
+            // make it write its state back into a path that no longer exists.
+            //
+            // This is check-then-rename, so a host starting in the gap between
+            // here and the rename below is not PREVENTED. Two reasons it is
+            // accepted rather than locked, both stated so the next reader can
+            // re-decide: the window is two adjacent syscalls and only opens if
+            // the operator launches and removes the same profile at the same
+            // instant, and the removal is an archive, so the state survives.
+            //
+            // What is NOT acceptable is that outcome being silent, so the
+            // rename is followed by a second liveness check that reports it.
+            // The full prevention is to hold the profile's `.claim.lock` here
+            // — but today only auto-<n> profiles are claimed (by the host's
+            // allocator); a host started with an explicit `--profile <name>`
+            // holds no claim, so closing this properly means claiming every
+            // profile at host startup, not just auto ones. That is a design
+            // change, deliberately not folded into this one.
+            if profile_is_running(channel, name) {
+                bail!(
+                    "profile {name} is currently running; close that Limux window before removing it"
+                );
+            }
+
+            let stamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|value| value.as_secs())
+                .unwrap_or(0);
+            let archive = profile_archive_dir(&base, channel, name, stamp);
+            if let Some(parent) = archive.parent() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create {}", parent.display()))?;
+            }
+            fs::rename(&profile_dir, &archive).with_context(|| {
+                format!(
+                    "failed to archive {} to {}",
+                    profile_dir.display(),
+                    archive.display()
+                )
+            })?;
+
+            // A host that started during the rename now owns a profile whose
+            // directory has been archived away; it will silently recreate an
+            // empty session and diverge. Detect that and say so loudly — the
+            // race is tolerated, being quiet about it is not.
+            let raced = profile_is_running(channel, name);
+
+            if json_output {
+                Ok(CommandOutput::Json(json!({
+                    "profile": name,
+                    "archived_to": archive.to_string_lossy(),
+                    "started_during_removal": raced,
+                })))
+            } else if raced {
+                Ok(CommandOutput::Text(format!(
+                    "archived profile {name} to {}\n\
+                     WARNING: a Limux started on profile {name} while it was being removed.\n\
+                     That window is now running against a fresh, empty session and its\n\
+                     workspaces will not match the archive. Close it, then restore with:\n\
+                       mv {} {}",
+                    archive.display(),
+                    archive.display(),
+                    profile_dir.display()
+                )))
+            } else {
+                Ok(CommandOutput::Text(format!(
+                    "archived profile {name} to {}",
+                    archive.display()
+                )))
+            }
+        }
+        other => bail!("unknown profile subcommand {other:?}; expected list|path|rm"),
+    }
 }
 
 fn should_launch_host(opts: &GlobalOptions) -> bool {
@@ -365,6 +655,7 @@ fn host_launch_command_with_inherited_target_env(
     host: &Path,
     inherited_target_env: bool,
     channel: Option<&RuntimeChannel>,
+    profile: Option<&str>,
 ) -> Command {
     let mut command = Command::new(host);
     for key in host_launch_env_removals(inherited_target_env, channel.is_some()) {
@@ -376,14 +667,24 @@ fn host_launch_command_with_inherited_target_env(
             channel.env_value(),
         );
     }
+    // Forwarded ALONGSIDE the lane, never instead of it, so the host resolves
+    // the same (lane, profile) pair the CLI just did.
+    if let Some(profile) = profile {
+        command.env(limux_control::socket_path::LIMUX_PROFILE_ID_ENV, profile);
+    }
     command
 }
 
-fn host_launch_command(host: &Path, channel: Option<&RuntimeChannel>) -> Command {
+fn host_launch_command(
+    host: &Path,
+    channel: Option<&RuntimeChannel>,
+    profile: Option<&str>,
+) -> Command {
     host_launch_command_with_inherited_target_env(
         host,
         host_launch_has_inherited_target_env(),
         channel,
+        profile,
     )
 }
 
@@ -405,9 +706,9 @@ fn host_launch_env_removals(
     removals
 }
 
-fn launch_host(channel: Option<&RuntimeChannel>) -> Result<()> {
+fn launch_host(channel: Option<&RuntimeChannel>, profile: Option<&str>) -> Result<()> {
     let host = resolve_host_binary()?;
-    let err = host_launch_command(&host, channel)
+    let err = host_launch_command(&host, channel, profile)
         .spawn()
         .with_context(|| format!("failed to launch {}", host.display()))?
         .wait()
@@ -6113,6 +6414,10 @@ async fn execute_command(client: &mut Client, opts: &GlobalOptions) -> Result<Co
                 CommandOutput::Text(render_target_info_text(&payload))
             }
         }
+        // Offline: reads and prunes on-disk profile state; never contacts a host.
+        "profile" | "profiles" => {
+            return run_profile_command(args, opts.json_output, opts.channel.as_ref())
+        }
         "identify" => CommandOutput::Json(run_identify(client, args).await?),
         "doctor" => {
             let run = doctor::run(
@@ -6435,17 +6740,20 @@ async fn execute_command(client: &mut Client, opts: &GlobalOptions) -> Result<Co
 async fn main() -> Result<()> {
     let opts = parse_global_args()?;
     if should_launch_host(&opts) {
-        return launch_host(opts.channel.as_ref());
+        return launch_host(opts.channel.as_ref(), opts.profile.as_deref());
     }
 
-    let socket = if opts.channel.is_some() {
-        resolve_socket_path_for_channel(
-            opts.socket.clone(),
-            opts.socket_mode,
-            opts.channel.as_ref(),
-        )
-    } else {
-        resolve_socket_path(opts.socket.clone(), opts.socket_mode)
+    // Resolve BOTH dimensions. A launcher pins the lane and the operator picks
+    // the profile; either alone, or both together, must target correctly.
+    let socket = match (&opts.socket, opts.socket_mode) {
+        (Some(explicit), _) => explicit.clone(),
+        (None, SocketMode::Runtime) if opts.channel.is_some() || opts.profile.is_some() => {
+            limux_control::socket_path::runtime_socket_path_for(
+                opts.channel.as_ref(),
+                opts.profile.as_deref(),
+            )
+        }
+        _ => resolve_socket_path(opts.socket.clone(), opts.socket_mode),
     };
 
     let mut client = Client::new(socket);
@@ -6531,6 +6839,7 @@ mod cli_arg_tests {
 
     fn default_opts(command_args: Vec<String>) -> GlobalOptions {
         GlobalOptions {
+            profile: None,
             socket: None,
             channel: None,
             socket_mode: SocketMode::Runtime,
@@ -6700,6 +7009,7 @@ mod cli_arg_tests {
             Path::new("/tmp/limux-host"),
             false,
             None,
+            None,
         );
         let removals = command
             .get_envs()
@@ -6723,6 +7033,53 @@ mod cli_arg_tests {
         }
     }
 
+    /// Wiring proof: `limux --profile work` with no subcommand launches the
+    /// GUI, and the profile must reach the spawned host ALONGSIDE the lane.
+    /// Forwarding only the lane would leave the host on a different session
+    /// than the CLI just resolved.
+    #[test]
+    fn profile_flag_reaches_the_spawned_host_alongside_the_lane() {
+        let opts = parse_global_args_from(args(&["--channel", "stable", "--profile", "work"]))
+            .expect("launcher-shaped args must parse");
+        assert_eq!(opts.channel, Some(RuntimeChannel::Stable));
+        assert_eq!(opts.profile.as_deref(), Some("work"));
+
+        let command = host_launch_command_with_inherited_target_env(
+            Path::new("/tmp/limux-host"),
+            false,
+            opts.channel.as_ref(),
+            opts.profile.as_deref(),
+        );
+        let env_of = |key: &str| {
+            command
+                .get_envs()
+                .find_map(|(k, v)| (k == key).then(|| v.map(|v| v.to_string_lossy().to_string())))
+                .flatten()
+        };
+
+        assert_eq!(
+            env_of(limux_control::socket_path::LIMUX_PROFILE_ID_ENV).as_deref(),
+            Some("work"),
+            "the profile must be forwarded to the host"
+        );
+        assert_eq!(
+            env_of(limux_control::socket_path::LIMUX_CHANNEL_ENV).as_deref(),
+            Some("stable"),
+            "and the lane must survive alongside it"
+        );
+        assert!(should_launch_host(&opts));
+    }
+
+    #[test]
+    fn profile_flag_rejects_names_that_could_escape() {
+        for bad in ["../escape", "a/b", "", ".."] {
+            assert!(
+                parse_global_args_from(args(&["--profile", bad])).is_err(),
+                "--profile {bad:?} must be rejected"
+            );
+        }
+    }
+
     #[test]
     fn host_launch_command_sets_explicit_runtime_channel() {
         let channel = RuntimeChannel::Preview("branch".to_string());
@@ -6730,6 +7087,7 @@ mod cli_arg_tests {
             Path::new("/tmp/limux-host"),
             false,
             Some(&channel),
+            None,
         );
         let channel_env = command
             .get_envs()
@@ -6744,8 +7102,12 @@ mod cli_arg_tests {
 
     #[test]
     fn host_launch_command_clears_inherited_channel_without_explicit_channel() {
-        let command =
-            host_launch_command_with_inherited_target_env(Path::new("/tmp/limux-host"), true, None);
+        let command = host_launch_command_with_inherited_target_env(
+            Path::new("/tmp/limux-host"),
+            true,
+            None,
+            None,
+        );
         let removals = command
             .get_envs()
             .filter_map(|(key, value)| value.is_none().then_some(key.to_string_lossy()))
@@ -9170,6 +9532,7 @@ mod review_prepare_tests {
         let cwd = tmp.path();
         let mut client = Client::new(cwd.join("missing.sock"));
         let opts = GlobalOptions {
+            profile: None,
             socket: None,
             channel: None,
             socket_mode: SocketMode::Runtime,
