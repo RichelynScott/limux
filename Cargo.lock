@@ -756,6 +756,7 @@ version = "0.2.3"
 dependencies = [
  "anyhow",
  "clap",
+ "dirs",
  "libc",
  "limux-core",
  "limux-protocol",
