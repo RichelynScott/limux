@@ -295,19 +295,95 @@ fn session_dir_env_override_present() -> bool {
 /// cannot make startup scan forever.
 const MAX_AUTO_PROFILE_INDEX: u32 = 64;
 
+/// Exclusive claim on one auto-profile slot, held for the life of the process.
+///
+/// Probing "is this socket connectable?" is check-then-act: two hosts starting
+/// together both see auto-2 free and both take it. The loser's socket bind
+/// then fails — but that failure is NON-FATAL in `control_bridge::start`, so
+/// it keeps running with the winner's session file and silently clobbers it on
+/// save. An advisory `flock` makes the claim atomic instead, and the kernel
+/// releases it on exit or crash, so a dead host never burns a slot.
+///
+/// Claims live in the runtime dir, not the data dir, so they cannot show up as
+/// profiles in `limux profile list` and never survive a reboot.
+struct AutoProfileClaim(std::fs::File);
+
+impl Drop for AutoProfileClaim {
+    fn drop(&mut self) {
+        use std::os::fd::AsRawFd;
+        // Closing the descriptor would release the lock on its own; unlocking
+        // explicitly matches `durable_atomic::FileLock` and keeps the release
+        // point obvious at the call site.
+        // SAFETY: the descriptor remains owned by self until this drop completes.
+        unsafe {
+            libc::flock(self.0.as_raw_fd(), libc::LOCK_UN);
+        }
+    }
+}
+
+impl AutoProfileClaim {
+    fn try_acquire(socket_path: &Path) -> Option<Self> {
+        use std::os::fd::AsRawFd;
+        use std::os::unix::fs::OpenOptionsExt;
+
+        let dir = socket_path.parent()?;
+        std::fs::create_dir_all(dir).ok()?;
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(dir.join(".claim.lock"))
+            .ok()?;
+        // SAFETY: flock only reads the live descriptor and does not retain it.
+        // LOCK_NB so a slot held by another host is skipped, never waited on.
+        let acquired = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0;
+        acquired.then_some(Self(file))
+    }
+}
+
+/// Claims are intentionally never released before exit: the slot must stay
+/// reserved for as long as this host is alive. A host claims exactly once, so
+/// in production this holds a single entry; it is a `Vec` rather than a
+/// `OnceLock` only so tests (which share one process) can reset between cases
+/// without ever dropping a claim early in the real path.
+static HELD_AUTO_PROFILE_CLAIMS: std::sync::Mutex<Vec<AutoProfileClaim>> =
+    std::sync::Mutex::new(Vec::new());
+
 /// First free `auto-<n>` profile, or `None` if every slot up to the cap is
-/// already served by a live host.
+/// already claimed.
 ///
 /// Numbering starts at 2 because the un-namespaced default session is
 /// effectively profile 1 — the one a lone `limux` restores.
 fn next_free_auto_profile() -> Option<limux_control::socket_path::RuntimeChannel> {
-    (2..=MAX_AUTO_PROFILE_INDEX).find_map(|index| {
+    for index in 2..=MAX_AUTO_PROFILE_INDEX {
         let channel = limux_control::socket_path::RuntimeChannel::Profile(format!(
             "{}{index}",
             limux_control::socket_path::RuntimeChannel::AUTO_PROFILE_PREFIX
         ));
-        (!socket_accepts_connections(&channel.socket_path())).then_some(channel)
-    })
+        let socket = channel.socket_path();
+        // Cheap reject first: a slot with a live socket is definitely taken.
+        if socket_accepts_connections(&socket) {
+            continue;
+        }
+        // Then claim it atomically. Only the flock winner proceeds, so two
+        // hosts racing the same slot cannot both adopt its session file.
+        let Some(claim) = AutoProfileClaim::try_acquire(&socket) else {
+            continue;
+        };
+        // Hold the claim for the life of the process.
+        match HELD_AUTO_PROFILE_CLAIMS.lock() {
+            Ok(mut held) => held.push(claim),
+            // A poisoned lock means another thread panicked mid-claim. Dropping
+            // `claim` here would release the slot we just won, so refuse the
+            // auto-profile path entirely and let the caller fall back.
+            Err(_) => return None,
+        }
+        return Some(channel);
+    }
+    None
 }
 
 fn ensure_runtime_socket_does_not_collide() {
@@ -762,6 +838,58 @@ mod tests {
             Some(std::ffi::OsString::from("profile:auto-5")),
             "auto-2..4 are live, so the next instance must take auto-5"
         );
+    }
+
+    /// The allocator must be atomic, not check-then-act.
+    ///
+    /// Socket-probing alone is a TOCTOU: two hosts starting together both see
+    /// auto-2 with no live socket and both adopt it. The loser's bind then
+    /// fails, but that failure is non-fatal in `control_bridge::start`, so it
+    /// keeps running against the winner's `session.json` and clobbers it on
+    /// save — silently losing a window's workspaces, the exact failure this
+    /// feature exists to prevent.
+    ///
+    /// Here the "other host" holds only the claim lock, with NO socket bound —
+    /// the precise window socket-probing cannot see. Reverting the claim to a
+    /// bare probe makes this fail.
+    #[cfg(unix)]
+    #[test]
+    fn auto_profile_claim_is_atomic_not_check_then_act() {
+        use std::os::fd::AsRawFd;
+
+        let _lock = GHOSTTY_ENV_LOCK
+            .lock()
+            .expect("ghostty env test lock poisoned");
+        let runtime_dir = tempfile::tempdir().expect("runtime tempdir");
+        let _xdg = EnvVarGuard::set("XDG_RUNTIME_DIR", Some(runtime_dir.path()));
+
+        let auto2 = limux_control::socket_path::RuntimeChannel::Profile("auto-2".to_string());
+        let socket = auto2.socket_path();
+        assert!(
+            !socket_accepts_connections(&socket),
+            "precondition: auto-2 has no live socket, so a naive probe sees it as free"
+        );
+
+        // Simulate the racing host mid-startup: claim held, socket not yet bound.
+        let rival = AutoProfileClaim::try_acquire(&socket).expect("rival claims auto-2");
+
+        let picked = next_free_auto_profile().expect("an auto profile must still be available");
+        assert_eq!(
+            picked.profile_id(),
+            Some("auto-3"),
+            "auto-2 is claimed by a starting host; allocation must move on"
+        );
+
+        // And the claim is genuinely exclusive at the OS level.
+        let contender =
+            std::fs::File::open(socket.parent().expect("socket parent").join(".claim.lock"))
+                .expect("open claim lock");
+        // SAFETY: flock only reads the live descriptor and does not retain it.
+        let taken =
+            unsafe { libc::flock(contender.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0;
+        assert!(taken, "a held auto-profile claim must block a second flock");
+
+        drop(rival);
     }
 
     /// When every auto slot is live, startup must still succeed by falling

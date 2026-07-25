@@ -102,8 +102,20 @@ A bare `limux` whose default socket is busy claims the first free
 `auto-<n>` profile (`next_free_auto_profile` in the host `main.rs`, capped at
 `MAX_AUTO_PROFILE_INDEX`) rather than the historical throwaway session dir. It
 does this by setting `LIMUX_CHANNEL` alone, so the socket and the session file
-can never drift apart. If every auto slot is live it falls back to the old
+can never drift apart. If every auto slot is claimed it falls back to the old
 throwaway behavior so startup still succeeds.
+
+Allocation is **atomic, not check-then-act**. Socket-probing alone is a TOCTOU:
+two hosts starting together both see `auto-2` with no live socket and both
+adopt it. The loser's socket bind then fails — but that failure is *non-fatal*
+in `control_bridge::start`, so it keeps running against the winner's
+`session.json` and clobbers it on save. So each slot is claimed with a
+non-blocking `flock` on `<socket-dir>/.claim.lock` (`AutoProfileClaim`), held
+for the life of the process and released by the kernel on exit or crash — a
+dead host never burns a slot. Claims live in the **runtime** dir, not the data
+dir, so they can never appear as profiles in `limux profile list` and never
+survive a reboot. Do not "simplify" this back to a bare probe; the regression
+is silent workspace loss.
 
 `limux profile rm` archives to `profiles-archive/<name>-<timestamp>/` instead
 of deleting, and refuses while that profile's socket is live.
