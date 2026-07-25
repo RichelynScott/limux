@@ -232,6 +232,19 @@ this repo's workstream.
 
 ## 8. TRAPS — learned the hard way, do not relearn
 
+- **🔴 THIS CHECKOUT IS SHARED — do NOT `git checkout`/branch-switch it while a
+  peer is live in it.** 2026-07-25: `huno` was live-editing
+  `feat/named-session-profiles` in `/home/riche/MCPs/limux` while tutu was also
+  operating there. tutu's orientation `git checkout main` (no clean-tree
+  preflight) bumped huno's HEAD off their branch, carrying their uncommitted
+  work onto main. Restored (huno's work proven intact by sha256), but the fix is
+  structural: **two sessions branch-switching one checkout is the exact
+  worktree-hygiene hazard.** Arrangement going forward — **huno owns the main
+  checkout for the profile work; tutu (review/coordination) commits HANDOFF/docs
+  via an EPHEMERAL worktree off `origin/main`** (`/tmp/worktrees/…`, push,
+  `git worktree remove`), never touching the live checkout's HEAD. Run the
+  new-work-lane preflight (`git status`/`branch --show-current`) BEFORE any
+  branch op here.
 - **Task state is PER-BRANCH.** A TaskMaster tag that looks "missing" is usually
   a branch-view difference, not data loss. This caused a false alarm.
 - **Work strands on branches.** Three separate efforts were stranded on unmerged
