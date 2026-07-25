@@ -91,6 +91,22 @@ fd test was deleted with the unreachable fd layer in #90.)
 > profiles exist — revert keeps that window open; fix-forward can close it silently.
 > All the good work (HIGH-1 flock fix, sanitizer, O_CLOEXEC correction) re-lands.
 >
+> **✅ RE-LAND = PR #99 (`feat/session-profiles-v2`, off post-revert main) — tutu CODE
+> APPROVE + channel sanitizer CLEARED, pending levu's FRESH boundary review; operator
+> decides merge + install.** Orthogonal design (channel = build lane / launcher-supplied;
+> profile = session set / user-supplied, read independently; nested `<lane>/profiles/<name>`,
+> composed in one place so host+CLI can't disagree). All three of tutu's non-negotiables in,
+> and tutu **revert-verified** the two owned surfaces: (1) **channel-as-path-segment sanitizer**
+> — same allowlist as profile names, no production bypass (all `Preview`/`Profile` construction
+> sanitizes at parse; raw-string ones are test-only), traversal test covers `..`/`/`/empty/`.`/NUL
+> on both dimensions, and disabling it fails the test; (2) **generated-launcher test** —
+> `limux-cli/tests/launcher_route.rs` runs a real installer-shaped launcher → real binary
+> (the route, not the parser), 5/5 pass, and injecting M0 (the single-field conflict that
+> forced the revert) fails 3/5 — the P1's coverage gap is closed. Suites green 182/0
+> (limux-control + limux-cli). Evidence caveat: host-crate tests (ghostty) not run — flock +
+> O_CLOEXEC carried forward from #92's adversarial review, huno reports 9/9 (incl. M3/M8 that
+> initially survived, then covered). `#92`/`f3aeb84` clearances are DEAD — do not cite them.
+>
 > ---
 >
 > **Original review record (accurate history — the review happened; only reachability
