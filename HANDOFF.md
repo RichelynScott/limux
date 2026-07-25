@@ -50,11 +50,52 @@ main @ `fc40cf5` — gate green: `./scripts/check.sh` exit 0, **660 passed / 0
 failed / 0 ignored**, clippy `-D warnings` + fmt clean. (The previously-ignored
 fd test was deleted with the unreachable fd layer in #90.)
 
-> **PR #92 (2026-07-25) — `huno`'s named session profiles — REVIEWED, tutu APPROVE
-> pending levu's boundary sign-off.** `RuntimeChannel::Profile(name)` + per-profile
-> socket/session.json + `limux --profile`/`profile list|path|rm`. Head **`dce730a`**
-> (re-reviewed after two head moves; `limux-control` security crate byte-unchanged
-> across them, so security clearances transfer).
+> ## 🔴 PR #92 (named session profiles) — MERGED, then P1'd, now BEING REVERTED
+>
+> **Timeline:** reviewed → APPROVED (tutu code + levu boundary) → merged `4e625bf`
+> → **huno installed it and found a P1** → tutu decided REVERT → **revert = PR #96
+> (`e157c90`), tree-verified clean by tutu** (`e157c90^{tree}` == `400dc36^{tree}`,
+> the exact pre-#92 tree) + levu boundary-cleared. Merges once huno adds levu's
+> trailer. **Note:** the revert branch is based on `4e625bf` (pre-#95), so a normal
+> merge PRESERVES tutu's #95 boundary-lint fix (different files) — post-revert main
+> = pre-#92 tree PLUS #95, which is correct. WIP of the corrected orthogonal design
+> is preserved on `fix/profile-channel-orthogonal` (`803eeb1`) — nothing lost.
+>
+> **THE P1 (tutu-reproduced from a clean `limux-cli` build):** the feature is
+> **unreachable through every installed launcher.** Launchers pin `--channel <lane>`,
+> so `limux --profile work` arrives as `--channel <lane> --profile work`, and huno's
+> conflict-detection (channel + profile modeled as the SAME field) fires:
+> `Error: conflicting channel selection`. `--profile work` works only via the raw
+> binary with no launcher channel. Opt-in + non-regressive (`limux` without
+> `--profile` is unaffected), but the feature as merged cannot be reached the way
+> users invoke it.
+>
+> **THE MISS, and it is the session's whole theme one level up:** 9/9 mutations +
+> two reviewers + three rounds, all against source (`parse_global_args_from` / raw
+> binary) — **none ran the installed artifact.** Revert-the-call-site at the LAUNCHER
+> level: proved the flag is WIRED, never proved it is REACHABLE. tutu's APPROVE shares
+> the miss — reviewed isolation, never ran the launcher.
+>
+> **RE-LAND REQUIREMENTS (tutu's steer, all agreed):** (1) orthogonal model —
+> `--channel` = build lane (launcher), `--profile` = session set (user), nested
+> `<channel>/profiles/<name>`; (2) **MANDATORY** test that invokes through a
+> GENERATED LAUNCHER, not the raw binary — the actual coverage gap; (3) **NEW
+> security surface: `<channel>` is now a path component** → must go through the same
+> allowlist sanitizer as the profile name (tutu's to clear — levu flagged it's limux
+> security, not hcom boundary); (4) rework conflict-detection to let launcher-channel
+> + user-profile coexist. **levu's f3aeb84 boundary clearance does NOT carry to the
+> re-land** — fresh boundary review from scratch (layout_state.rs re-trips the gate).
+>
+> **Why revert not fix-forward:** an unreachable-via-launcher feature is not shipped;
+> leaving it makes main dishonest. And the layout change is free ONLY while zero
+> profiles exist — revert keeps that window open; fix-forward can close it silently.
+> All the good work (HIGH-1 flock fix, sanitizer, O_CLOEXEC correction) re-lands.
+>
+> ---
+>
+> **Original review record (accurate history — the review happened; only reachability
+> was missed):** Head was `dce730a`; `limux-control` security crate byte-unchanged
+> across head moves.
 >
 > - **HIGH-1 (found + fixed): auto-profile allocation data-loss TOCTOU.** The
 >   original allocator was check-then-bind (probe socket free → adopt `auto-N`),
