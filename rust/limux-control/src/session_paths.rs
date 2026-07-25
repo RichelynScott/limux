@@ -123,7 +123,11 @@ mod tests {
             PathBuf::from("/data/limux/stable/profiles/work/session")
         );
         assert_eq!(
-            session_dir_in(base, Some(&RuntimeChannel::Preview("lab".into())), Some("work")),
+            session_dir_in(
+                base,
+                Some(&RuntimeChannel::Preview("lab".into())),
+                Some("work")
+            ),
             PathBuf::from("/data/limux/preview/lab/profiles/work/session")
         );
     }
@@ -135,7 +139,11 @@ mod tests {
         let base = Path::new("/data/limux");
 
         let stable = session_dir_in(base, Some(&RuntimeChannel::Stable), Some("work"));
-        let preview = session_dir_in(base, Some(&RuntimeChannel::Preview("lab".into())), Some("work"));
+        let preview = session_dir_in(
+            base,
+            Some(&RuntimeChannel::Preview("lab".into())),
+            Some("work"),
+        );
         let laneless = session_dir_in(base, None, Some("work"));
 
         assert_ne!(stable, preview);
@@ -149,7 +157,10 @@ mod tests {
     fn historical_shapes_are_preserved() {
         let base = Path::new("/data/limux");
 
-        assert_eq!(session_dir_in(base, None, None), PathBuf::from("/data/limux"));
+        assert_eq!(
+            session_dir_in(base, None, None),
+            PathBuf::from("/data/limux")
+        );
         assert_eq!(
             session_dir_in(base, Some(&RuntimeChannel::Stable), None),
             PathBuf::from("/data/limux/stable/session")

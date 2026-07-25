@@ -111,7 +111,62 @@ warnings were found but no check failed. `--log-triage` summarizes common
 runtime log warnings such as Mesa/GDK environment issues without requiring a
 full manual log scrape.
 
+## Session profiles
+
+Limux restores the workspaces you had open when it last closed. A **profile**
+gives you more than one such saved set — each with its own workspaces, its own
+`session.json`, and its own control socket — so you can keep a heavy set and a
+light set separately instead of restoring everything into one window.
+
+```bash
+limux --profile work        # launch the "work" set (creates it on first use)
+limux --profile scratch     # a separate set; unrelated to "work"
+limux                       # the default set, exactly as before
+
+limux profile list          # what is saved, and what is running right now
+limux profile path work     # where that profile's session.json lives
+limux profile rm scratch    # archive it (recoverable — see below)
+```
+
+```
+NAME                 STATE     SAVED      KIND
+auto-2               stopped   12K        auto
+work                 running   48K        named
+```
+
+### Second instances now persist
+
+Previously, launching a second Limux while one was already running gave it a
+throwaway session directory — everything it had open was discarded on exit.
+It now claims the next free `auto-<n>` profile, so those workspaces come back.
+They are listed as `auto` and can be pruned with `limux profile rm auto-2`.
+
+`profile rm` **archives rather than deletes**, moving the profile to
+`profiles-archive/<name>-<timestamp>/`, so a mistyped name does not destroy a
+workspace set. It refuses to remove a profile that is currently running.
+
+### Profiles live inside their build channel
+
+A profile is a *session set*; a channel (below) is a *build lane*. They are
+independent and compose, so an installed launcher can pin its lane while you
+choose the profile:
+
+| What | Path |
+|---|---|
+| Session state | `~/.local/share/limux/<channel>/profiles/<name>/session/session.json` |
+| Control socket | `$XDG_RUNTIME_DIR/limux/<channel>/profiles/<name>/limux.sock` |
+
+Because profiles nest inside the lane, a stable build and a preview build can
+each hold a profile named `work` without sharing state. Profile names accept
+letters, digits, `-` and `_`; anything else is rejected so a name can never
+escape the profiles directory.
+
+> **Not the same as `--profile` in the installer script.** The CLI's
+> `--profile <name>` selects a saved session set. The installer's
+> `install-user-local.sh --profile release` selects a *Cargo build profile*.
+
 ## Live workspace header
+
 
 The left side of the application header identifies the workspace currently in
 view and refreshes its live status once per second:

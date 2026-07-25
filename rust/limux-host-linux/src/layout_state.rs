@@ -478,33 +478,27 @@ impl TabState {
     }
 }
 
+/// Where this runtime's `session.json` lives.
+///
+/// Resolves BOTH dimensions independently — the build lane from
+/// `LIMUX_CHANNEL` and the session profile from `LIMUX_PROFILE_ID` — so a
+/// launcher-pinned lane and an operator-chosen profile compose rather than
+/// contradict. Modelling them as one value is what made `--profile`
+/// unreachable from every installed launcher in #92.
 pub fn persistence_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os(LIMUX_SESSION_DIR_ENV).filter(|value| !value.is_empty()) {
         return PathBuf::from(dir);
     }
-    if let Some(channel) = RuntimeChannel::from_env() {
-        return channel_persistence_dir(&channel);
-    }
-
-    base_persistence_dir()
+    limux_control::session_paths::session_dir_in(
+        &base_persistence_dir(),
+        RuntimeChannel::from_env().as_ref(),
+        limux_control::socket_path::profile_from_env().as_deref(),
+    )
 }
 
-fn base_persistence_dir() -> PathBuf {
-    if let Some(data_dir) = dirs::data_dir() {
-        return data_dir.join(PERSISTENCE_DIR_NAME);
-    }
-
-    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-    home.join(".local/share").join(PERSISTENCE_DIR_NAME)
-}
-
-pub fn channel_persistence_dir(channel: &RuntimeChannel) -> PathBuf {
-    let base = base_persistence_dir();
-    match channel {
-        RuntimeChannel::Stable => base.join("stable").join("session"),
-        RuntimeChannel::Preview(id) => base.join("preview").join(id).join("session"),
-    }
-}
+// On-disk layout lives in `limux_control::session_paths` so the host and the
+// CLI (`profile list` / `rm`) cannot disagree about where a profile is.
+pub use limux_control::session_paths::base_persistence_dir;
 
 pub fn canonical_session_path_in(dir: &Path) -> PathBuf {
     dir.join(SESSION_FILE_NAME)
@@ -1525,6 +1519,61 @@ mod tests {
             persistence_dir(),
             PathBuf::from("/tmp/limux-xdg-data").join(PERSISTENCE_DIR_NAME)
         );
+    }
+
+    /// The host must resolve BOTH dimensions from env: the lane a launcher
+    /// pinned, and the profile the operator chose. Reading only one is what
+    /// made #92 unreachable through installed launchers.
+    #[test]
+    fn persistence_dir_composes_lane_and_profile_from_env() {
+        let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
+        let _session_dir = EnvGuard::set(LIMUX_SESSION_DIR_ENV, None);
+        let _channel = EnvGuard::set(
+            limux_control::socket_path::LIMUX_CHANNEL_ENV,
+            Some("stable"),
+        );
+        let _profile = EnvGuard::set(
+            limux_control::socket_path::LIMUX_PROFILE_ID_ENV,
+            Some("work"),
+        );
+        let _xdg = EnvGuard::set("XDG_DATA_HOME", Some("/tmp/limux-xdg-data"));
+
+        assert_eq!(
+            persistence_dir(),
+            PathBuf::from("/tmp/limux-xdg-data/limux/stable/profiles/work/session")
+        );
+    }
+
+    /// A profile with no lane still resolves, and a lane with no profile is
+    /// unchanged from before this feature.
+    #[test]
+    fn persistence_dir_handles_each_dimension_alone() {
+        let _lock = ENV_TEST_LOCK.lock().expect("env test lock");
+        let _session_dir = EnvGuard::set(LIMUX_SESSION_DIR_ENV, None);
+        let _xdg = EnvGuard::set("XDG_DATA_HOME", Some("/tmp/limux-xdg-data"));
+
+        {
+            let _channel = EnvGuard::set(limux_control::socket_path::LIMUX_CHANNEL_ENV, None);
+            let _profile = EnvGuard::set(
+                limux_control::socket_path::LIMUX_PROFILE_ID_ENV,
+                Some("work"),
+            );
+            assert_eq!(
+                persistence_dir(),
+                PathBuf::from("/tmp/limux-xdg-data/limux/profiles/work/session")
+            );
+        }
+        {
+            let _channel = EnvGuard::set(
+                limux_control::socket_path::LIMUX_CHANNEL_ENV,
+                Some("stable"),
+            );
+            let _profile = EnvGuard::set(limux_control::socket_path::LIMUX_PROFILE_ID_ENV, None);
+            assert_eq!(
+                persistence_dir(),
+                PathBuf::from("/tmp/limux-xdg-data/limux/stable/session")
+            );
+        }
     }
 
     #[test]

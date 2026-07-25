@@ -82,6 +82,44 @@ state, process identity, Ghostty resources, and optional log triage. Exit code
 `0` means all checks passed, `1` means at least one check failed, and `2` means
 there were warnings but no failed checks.
 
+
+### Session profiles
+
+A **profile** is a saved session set; a **channel** is a build lane. They are
+ORTHOGONAL and compose — this is load-bearing. Installed launchers pin the lane
+(`exec limux-cli --channel stable "$@"`), so a design where `--profile` and
+`--channel` are one value makes `--profile` unreachable for every installed
+user. That shipped once as #92 and was reverted; see `tests/launcher_route.rs`.
+
+- Lane: `RuntimeChannel` (`Stable` / `Preview`), from `LIMUX_CHANNEL`.
+- Profile: a plain sanitized `String`, from `LIMUX_PROFILE_ID`, read
+  INDEPENDENTLY of the lane by `socket_path::profile_from_env`.
+- Composition lives in ONE place — `limux_control::session_paths::session_dir_in`
+  and `socket_path::runtime_socket_path_for` — so the host and the CLI cannot
+  disagree about where a profile is.
+
+Paths nest the profile under its lane:
+
+    socket:  $XDG_RUNTIME_DIR/limux/<lane>/profiles/<name>/limux.sock
+    session: ~/.local/share/limux/<lane>/profiles/<name>/session/
+
+Do NOT "simplify" this by letting `--profile` override the lane: that shares one
+socket and one `session.json` across two different BUILDS.
+
+The lane is a PATH COMPONENT, so channel/preview ids go through the same
+allowlist as profile names (`sanitize_channel_id`). A crafted `--channel` must
+not traverse.
+
+A bare `limux` whose default socket is busy claims the first free `auto-<n>`
+profile WITHIN THE CURRENT LANE, via a non-blocking `flock` on
+`<socket-dir>/.claim.lock` held for process lifetime. Socket-probing alone is a
+TOCTOU: two hosts both see the slot free, and the loser's bind failure is
+NON-FATAL in `control_bridge::start`, so it would keep running against the
+winner's `session.json`. `O_CLOEXEC` keeps the claim out of the shell spawned
+per pane.
+
+Known gap, deliberately out of scope: `doctor` does not enumerate profiles.
+
 ## Quality Gate
 
 The canonical check is:

@@ -440,11 +440,6 @@ mod tests {
         assert_eq!(RuntimeChannel::parse("preview:.."), None);
     }
 
-
-
-
-
-
     /// The #92 revert defect: a launcher-pinned lane and a user profile must
     /// resolve TOGETHER. Modelling them as one value made `--profile`
     /// unreachable from every installed launcher.
@@ -460,7 +455,8 @@ mod tests {
         );
         assert_eq!(
             runtime_socket_path_for(Some(&RuntimeChannel::Preview("lab".into())), Some("work")),
-            xdg.path().join("limux/preview/lab/profiles/work/limux.sock")
+            xdg.path()
+                .join("limux/preview/lab/profiles/work/limux.sock")
         );
         // Either dimension alone still resolves.
         assert_eq!(
