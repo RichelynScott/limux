@@ -52,7 +52,9 @@ fd test was deleted with the unreachable fd layer in #90.)
 
 > **PR #92 (2026-07-25) — `huno`'s named session profiles — REVIEWED, tutu APPROVE
 > pending levu's boundary sign-off.** `RuntimeChannel::Profile(name)` + per-profile
-> socket/session.json + `limux --profile`/`profile list|path|rm`. Head `4b68c4a`.
+> socket/session.json + `limux --profile`/`profile list|path|rm`. Head **`dce730a`**
+> (re-reviewed after two head moves; `limux-control` security crate byte-unchanged
+> across them, so security clearances transfer).
 >
 > - **HIGH-1 (found + fixed): auto-profile allocation data-loss TOCTOU.** The
 >   original allocator was check-then-bind (probe socket free → adopt `auto-N`),
@@ -68,10 +70,21 @@ fd test was deleted with the unreachable fd layer in #90.)
 >   test (fresh-worktree ghostty unbuilt; safe workaround tripped the rm-guard near
 >   huno's live checkout). Rests on source review + test read + deductive
 >   load-bearingness + huno's reported pass/M4b-fail + the adversary's confirmation.
-> - **LOW-2 (open, huno's disposition — NOT a blocker):** `profile rm` is
->   check-then-rename (`main.rs:505-524`) — small two-syscall TOCTOU; a host starting
->   `<name>` between check and archive gets its dir archived out from under it.
->   huno to fix (flock) or accept-with-rationale like the doctor gap.
+> - **LOW-2 (DISPOSED at `dce730a` — accepted, not silent):** `profile rm`
+>   check-then-rename TOCTOU. huno correctly declined to partial-flock it (an
+>   auto-only claim would *look* fixed while silently leaving named profiles racy)
+>   and instead made it LOUD: a second liveness check after the rename reports
+>   `started_during_removal` (JSON) + a warning with the exact `mv` restore command.
+>   Accepted as documented. Full every-profile-claim fix is a separate design change,
+>   deliberately not folded in.
+> - **O_CLOEXEC decorative-test correction (at `dce730a`):** tutu's fork+exec catch
+>   surfaced that huno's explicit `libc::O_CLOEXEC` was redundant (Rust `OpenOptions`
+>   sets it by default on Linux — **tutu confirmed by executing a standalone probe**)
+>   so the mutation reverting the flag was decorative. huno fixed the test to verify
+>   the *property* (`F_GETFD` FD_CLOEXEC assertion + behavioral spawn-child-non-inherit),
+>   which an actively-clear-`FD_CLOEXEC` mutation catches. Mutation proof 9/9. Lesson:
+>   a mutation-tested guard is still decorative if the property is supplied by a
+>   platform DEFAULT you didn't measure — test the property, not your line.
 > - **Cleared** (tutu's hands + adversary, falsified each): sanitizer allowlist,
 >   mode-derived owner_only (#86 intact), 0600 load-bearing, no socket↔session
 >   drift, single-source-of-truth via `session_paths`, `profile rm` archive-not-delete
@@ -79,6 +92,18 @@ fd test was deleted with the unreachable fd layer in #90.)
 >   reverted the 0600 pin (failed) — no decorative tests.
 > - **Still open (acknowledged, not blockers):** launcher-drift reasoned-not-proven-live;
 >   `doctor` does not enumerate profiles (tutu's design call, documented gap).
+> - **🔴 BOUNDARY-GATE DESIGN DEFECT (levu found, tutu owns — `scripts/boundary-lint.sh`):**
+>   The script's header + failure message advertise a `boundary-reviewed` LABEL path
+>   that is **documented twice, implemented zero times** (`grep gh|labels boundary-lint.sh`
+>   → no matches). The only working satisfaction path is the `Boundary-Review: hcom`
+>   trailer — but adding it moves HEAD, invalidating the SHA-scoped clearance (the
+>   "trailer trap" huno found). levu's analysis (which I agree with): trailer coupling
+>   to history is a fail-CLOSED safety property; a label decouples → survives force-push
+>   → stale-clearance hazard, invisible (no SHA). **Fix direction:** (1) remove or
+>   implement the label path (minimum: stop advertising a remedy that can't work),
+>   (2) document trailer-LAST as the workflow. **Gating question:** DP-7 is
+>   operator-ratified — verify whether the label path was intended policy (→ operator
+>   decision) or a doc error (→ tutu doc-fix) before changing what satisfies the gate.
 > - **Merge path:** code-ready; gates on levu's boundary-lint (DP-7 — `layout_state.rs`
 >   path-gate). Full verdict + checklist sent to huno via hcom.
 
