@@ -19,7 +19,28 @@ destruction window is unconditional.
 | | |
 |---|---|
 | Staged | **6** targets / **28.45 GiB** (was 5 / 28.41 — added `06-4e625bfbade5`) |
-| Commits | `da8c108` → `438e1fc` → `703adc7` → `b4c8dd8`, all pushed |
+| Commits | `da8c108` → `438e1fc` → `703adc7` → `b4c8dd8` → **`61a0f36`** → `ef4e7d9` → `be4a19f`, all pushed |
+
+## ⚠️ `61a0f36` CHANGED THIS REPO'S IGNORE BEHAVIOUR — know this before you touch `.gitignore`
+
+`archive/` is **no longer ignored**, in either scope. I removed it from the
+committed `.gitignore` *and* from machine-local `.git/info/exclude:19` — either
+alone would have left the ignore in force.
+
+**Do not put it back.** `archive-not-delete.md` now carries a tracked-archive
+invariant (landed off this lane's finding): `archive/` MUST be tracked, because
+`git clean` removes only untracked paths, so a gitignored archive is destroyed by
+exactly the command a space crisis invites. My original `da8c108` line is the
+named anti-example in that rule; `61a0f36` is the cited remediation.
+
+If regenerable build output needs parking, the sanctioned pattern — already
+convention in `hcom`, `CODEX_CLAUDE_CODE`, `claude-task-master`, `SCRIM` — is to
+ignore a **specific subdirectory** (`archive/generated/`), never the root.
+
+**Closeout figure is settled: 41.31 GiB ALLOCATED**, ratified into protocol §6.6.
+Never quote the apparent-bytes 40.29 — allocated is what `df` frees. Manifest is
+exact to −32,768 B against `du -s` of the root, which also proved all three lanes
+recorded consistently.
 | First shutdown (10:05) | happened, but **destroy + compact did NOT** — both vhdx still byte-identical to the 08:45 baseline |
 | Compact headroom | **146.2 GiB** compact-alone · **187.5 GiB** if staging destroyed first |
 
