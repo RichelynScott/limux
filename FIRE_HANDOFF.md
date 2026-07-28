@@ -5,6 +5,69 @@
 **Purpose:** Resume spec for the limux lane of the 2026-07-28 fleet disk-space
 effort. Written before an operator-initiated session restart.
 
+---
+
+# ⚡ UPDATE 14:50 EST — read this before §1; the sections below it are 09:05 state
+
+Operator chose **GO NOW** (relayed by `luhe`, #597087). `wsl --shutdown` may fire
+at any moment, then staging destruction (20 manifest lines, ~41.3 GiB) then
+sparse/compact. funo's verify-against-live-pin condition is CLOSED — the
+destruction window is unconditional.
+
+## What changed since 09:05
+
+| | |
+|---|---|
+| Staged | **6** targets / **28.45 GiB** (was 5 / 28.41 — added `06-4e625bfbade5`) |
+| Commits | `da8c108` → `438e1fc` → `703adc7` → `b4c8dd8`, all pushed |
+| First shutdown (10:05) | happened, but **destroy + compact did NOT** — both vhdx still byte-identical to the 08:45 baseline |
+| Compact headroom | **146.2 GiB** compact-alone · **187.5 GiB** if staging destroyed first |
+
+## ⚠️ DO NOT RUN `git clean` IN THIS REPO
+
+`-fdx` takes **13 paths** including `archive/`, `logs/`, `target/`. `-fd` looks
+safe and still takes the inbox dirs. Both inboxes are now committed, but per the
+**fencepost** (below) that is mitigation, never closure — the behavioural control
+is the real one.
+
+## Post-compact TODO, in priority order
+
+1. **huno's orphan tiers — 1.21 GiB across 15 snapshots**, deliberately held until
+   after the compact (adding install-snapshot churn mid-sequence was inverted
+   risk/reward). Classification + per-tier re-verification commands:
+   `FIRE_INBOX/RESPONSE_FROM_huno_2026-07-28_limux-reviewed-orphan-classification.md`.
+   Note huno's own correction: tiers are **1.21 GiB of 15**, not the 1.92 GiB
+   headline; 21 snapshots (0.71 GiB) are deliberately **untiered** because they
+   could not be justified by build history.
+2. **huno may retire** `limux-preview-profiles` + `-cli` (36 MB duplicate) — they
+   are standing by for the word, post-compact only.
+3. **Full-workspace `check.sh` gate** — still owed for `da8c108` before the next
+   release/tag. Scoped gate was run in its place by kazu's ruling.
+4. Task #4 — keep-last-N prune for `~/.local/limux-reviewed` (install script;
+   resolve the live set **at execution time**, and sweep `~/.local/libexec` too).
+
+## Open, routed, not mine to close
+
+- **`archive/` vs `git clean -fdx`** — a rule-level defect in `archive-not-delete`
+  routed to kazu: `git clean -fdx` deletes the archive-not-delete *destination*,
+  and `git add` into an ignored dir silently no-ops. **Partly self-inflicted**:
+  `.gitignore:9` is a line I added in `da8c108`, which made the exposure portable
+  to every clone. Filed at
+  `~/Proj/CODEX_CLAUDE_CODE/CLAUDE_MGR_INBOX/INFO_FROM_fire_2026-07-28_git-clean-defeats-archive-not-delete.md`.
+- **Fencepost in `dirty-coordination-surfaces`** — committing the coordination
+  record can never reach zero residual; measured at +139 s. Same file.
+- **`docs/LIMUX_RUNTIME_CLOSEOUT_..._LIFO.html`** — still untracked and still
+  exposed to `git clean`. lifo's artifact, deliberately **not** absorbed.
+
+## Four instances of one defect (worth carrying forward)
+
+A live target doesn't make its **siblings** live · a referrer existing doesn't
+make it **reachable** · a tracked directory doesn't make its **contents** tracked
+· a gitignored path isn't necessarily **disposable**. All four: an existence or
+property check standing in for a consequence check.
+
+---
+
 > Per-session file per this repo's convention (§7 of the shared `HANDOFF.md`,
 > owned by the LIMUX_MGR — `tutu` as of 2026-07-21, operator now refers to
 > `huno`). **I did not write the shared `HANDOFF.md`** — peer-owned, route-only.
