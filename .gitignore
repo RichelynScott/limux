@@ -3,6 +3,10 @@ zig/.zig-cache/
 zig/zig-out/
 dist/
 logs/
+# Archived build output and superseded worktrees. Was ignored only via
+# .git/info/exclude, which is machine-local — a fresh clone inherits nothing and
+# would show hundreds of MB of build output as untracked noise.
+archive/
 *.tar.gz
 .worktrees/
 WORKTREES/
