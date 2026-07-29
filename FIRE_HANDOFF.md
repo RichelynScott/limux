@@ -7,7 +7,37 @@ effort. Written before an operator-initiated session restart.
 
 ---
 
-# ⚡⚡⚡ CURRENT STATE — 2026-07-29 11:50 EST. READ ONLY THIS BLOCK; everything below is history
+# ⚡⚡⚡ CURRENT STATE — 2026-07-29 12:05 EST — PR CYCLE COMPLETE. READ ONLY THIS BLOCK; everything below is history
+
+**All three PRs MERGED (squash) and the checkout is reconciled on `main`:**
+#102 → `59876fa` (keep-last-N retention, durable fix C) · #103 → `457638a` (log cap +
+archive tracking + space-crisis records) · #104 → `ab05eac` (coordsurf FYI consolidation).
+Remote + local feature branches deleted. Bot verdicts were **P2-suggestions-only**; fixes
+applied pre-merge by fire: chmod 755 on the prune script (`1953bbe`), .gitignore git-clean
+wording + rename of a 0-byte non-UTF8 stray in archive/ (`b15fa05`), and the #104
+`list/save/rm`→`list/path/rm` correction (`31625da`, verified against `run_profile_command`).
+
+**da8c108 gate DISCHARGED:** full `./scripts/check.sh` green on the #103 head (685 tests,
+exit 0) — after root-causing two exit-101 runs to **shared-target cache poisoning**:
+limu's removed `/tmp` worktree path was baked (compile-time `env!("CARGO_MANIFEST_DIR")`)
+into the `limux-ghostty-sys` build-script binary; `cargo clean -p limux-ghostty-sys` fixed
+it. This partially reframes the old "flaky 101 under load" story.
+
+**Operator decisions (packet answered 2026-07-29):** D1 = destroy Tiers A–D, restore E —
+Tier E (`raw-key-input-202607010843`) restored by fire via `mv` and verified; staging root
+`~/.local/limux-ORPHAN-STAGING-20260729` now holds A–D only; the destroy step is the
+OPERATOR's alone. D2 = Docker reclaim **DEFERRED** (no inventory lane, no TaskMaster task).
+D3 = untiered remainder accepted, item **CLOSED**.
+
+**Remaining (on resume):** tutu = delete redundant `coordsurf/*` branches + sweep stale
+`.claude/worktrees` agent worktrees (no-loss check) + final shared-HANDOFF pass. limu =
+verify/clean the two stale `limu/*-20260721` branches + fast-follows 1–2. Repo **issues are
+DISABLED** → fast-follows live in `docs/LIMUX_FASTFOLLOWS_2026-07-29.md` (4 items).
+One-build-at-a-time + freeze directive stands until the operator's reclaim restart lands.
+
+---
+
+# (history) 2026-07-29 11:50 EST state block — superseded by the block above
 
 **11:50 addendum:** Operator decision packet delivered:
 `docs/LIMUX_SPACE_CRISIS_PR_CYCLE_DECISION_PACKET_2026-07-29.html` (untracked on purpose —

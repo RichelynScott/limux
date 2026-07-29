@@ -1,0 +1,513 @@
+<!-- LIMUX_SPACE_CRISIS_PR_CYCLE_DECISION_PACKET_2026-07-29.html — built from dark-decision-packet-template.html -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Limux Space Crisis — PR Cycle &amp; Residual Reclaim Decisions</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0c0f12;
+      --panel: #14191f;
+      --panel-2: #192129;
+      --line: #2b3540;
+      --line-strong: #43505d;
+      --text: #edf2f6;
+      --muted: #a8b4bf;
+      --faint: #74818d;
+      --accent: #4fb7a8;
+      --warn: #d7a441;
+      --danger: #de746b;
+      --ok: #82bf72;
+      --code: #090c0f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(255,255,255,.018) 1px, transparent 1px),
+        var(--bg);
+      background-size: 44px 44px, 44px 44px, auto;
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      line-height: 1.5;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr);
+      gap: 20px;
+      width: min(1320px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 24px 0 48px;
+    }
+    aside.roadmap {
+      position: sticky;
+      top: 16px;
+      align-self: start;
+      border: 1px solid var(--line);
+      background: rgba(20,25,31,.86);
+      padding: 16px;
+    }
+    .step {
+      display: grid;
+      grid-template-columns: 18px 1fr;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+    .step:last-child { border-bottom: 0; }
+    .dot { width: 10px; height: 10px; margin-top: 6px; background: var(--faint); }
+    .step.current .dot { background: var(--accent); box-shadow: 0 0 0 4px rgba(79,183,168,.14); }
+    .step.done .dot { background: var(--ok); }
+    .step.gated .dot { background: var(--warn); }
+    .step strong { display: block; font-size: 12px; }
+    .step span { display: block; color: var(--muted); font-size: 11px; }
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+      gap: 18px;
+      align-items: end;
+      padding: 18px 0 24px;
+      border-bottom: 1px solid var(--line-strong);
+    }
+    h1, h2, h3 { margin: 0; line-height: 1.12; letter-spacing: 0; }
+    h1 { font-size: clamp(26px, 4vw, 44px); }
+    h2 { font-size: 22px; margin-bottom: 14px; }
+    h3 { font-size: 14px; color: var(--warn); margin-bottom: 8px; text-transform: uppercase; }
+    p { margin: 0 0 12px; color: var(--muted); }
+    .meta, section, .copybox {
+      border: 1px solid var(--line);
+      background: rgba(20,25,31,.86);
+    }
+    .meta { padding: 14px; display: grid; gap: 8px; }
+    .meta div { display: flex; justify-content: space-between; gap: 14px; color: var(--muted); font-size: 12px; }
+    .meta strong { color: var(--text); text-align: right; }
+    section { margin-top: 18px; padding: 20px; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .fact, .decision {
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      padding: 14px;
+    }
+    .fact .label { color: var(--faint); font-size: 11px; text-transform: uppercase; }
+    .fact .value { margin-top: 8px; overflow-wrap: anywhere; font-size: 13px; }
+    .decision { margin-bottom: 12px; }
+    .decision p { font-size: 13px; }
+    label.option {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr);
+      gap: 10px;
+      padding: 10px;
+      margin-top: 8px;
+      background: rgba(9,12,15,.45);
+      border: 1px solid transparent;
+      cursor: pointer;
+    }
+    label.option:hover { border-color: var(--line-strong); }
+    input[type="radio"], input[type="checkbox"] { accent-color: var(--accent); margin-top: 3px; }
+    .option-title { display: block; color: var(--text); font-weight: 700; font-size: 13px; }
+    .option-detail { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .rec { color: var(--accent); font-size: 11px; text-transform: uppercase; margin-left: 6px; }
+    .decision-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+      gap: 18px;
+      align-items: start;
+    }
+    .copybox { position: sticky; top: 16px; padding: 16px; }
+    textarea, input[type="text"], select {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: var(--code);
+      color: var(--text);
+      padding: 12px;
+      font: inherit;
+    }
+    textarea { min-height: 100px; resize: vertical; }
+    #payload { min-height: 480px; }
+    .field { margin-top: 12px; }
+    .field label { display: block; margin-bottom: 6px; color: var(--text); font-weight: 800; font-size: 12px; }
+    .field small { display: block; margin-top: 5px; color: var(--faint); }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; color: var(--muted); overflow-wrap: anywhere; }
+    th { color: var(--text); background: var(--panel-2); font-size: 11px; text-transform: uppercase; }
+    td strong { color: var(--text); }
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .danger { color: var(--danger); }
+    .section-header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+    .source-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 18px;
+      padding-left: 18px;
+      margin: 0;
+    }
+    .source-list li { color: var(--muted); overflow-wrap: anywhere; font-size: 12.5px; }
+    .source-list a { color: var(--text); }
+    button {
+      width: 100%;
+      margin-top: 10px;
+      border: 1px solid var(--line-strong);
+      background: var(--accent);
+      color: #04100e;
+      font: inherit;
+      font-weight: 800;
+      padding: 12px;
+      cursor: pointer;
+    }
+    button.secondary { background: transparent; color: var(--text); }
+    code { background: var(--code); border: 1px solid #20262d; padding: 2px 5px; overflow-wrap: anywhere; }
+    @media (max-width: 960px) {
+      .layout, header, .decision-layout, .grid, .source-list { grid-template-columns: 1fr; }
+      aside.roadmap, .copybox { position: static; }
+    }
+  </style>
+</head>
+<body>
+  <main class="layout">
+    <aside class="roadmap" aria-label="Roadmap">
+      <div class="step done"><i class="dot"></i><div><strong>P1 Crisis destruction</strong><span>41.31 GiB destroyed (7/28)</span></div></div>
+      <div class="step done"><i class="dot"></i><div><strong>P2 vhdx compact</strong><span>−150.79 GiB (7/29 AM)</span></div></div>
+      <div class="step done"><i class="dot"></i><div><strong>P3 Durable fixes A/B/C</strong><span>log cap · tripwire · keep-last-N</span></div></div>
+      <div class="step current"><i class="dot"></i><div><strong>P4 PR cycle</strong><span>#102 + #103 in bot review</span></div></div>
+      <div class="step gated"><i class="dot"></i><div><strong>P5 Consolidation + cleanup</strong><span>tutu, after merges</span></div></div>
+      <div class="step gated"><i class="dot"></i><div><strong>P6 Residual reclaim</strong><span>YOUR decisions below</span></div></div>
+    </aside>
+
+    <div>
+      <header>
+        <div>
+          <p>Decision packet — limux lane, fleet C: space crisis</p>
+          <h1>PR Cycle Status &amp; Residual Reclaim Decisions</h1>
+        </div>
+        <div class="meta">
+          <div><span>Date</span><strong>2026-07-29</strong></div>
+          <div><span>Time</span><strong>11:35 AM EST</strong></div>
+          <div><span>Author</span><strong>fire (limux lane, session 37f828e0)</strong></div>
+          <div><span>Model</span><strong>Claude Fable 5 (xhigh)</strong></div>
+          <div><span>Scope</span><strong>~/MCPs/limux · ~/.local/limux-* · WSL2 host</strong></div>
+        </div>
+      </header>
+
+      <section>
+        <h2>Summary</h2>
+        <div class="grid">
+          <div class="fact"><div class="label">Done</div><div class="value">Compact −150.79 GiB (vhdx 347.19→196.40 GiB, C: 22G→177G, two independent readings). Keep-last-N retention built by limu, cross-family reviewed by tutu (CONFIRMED-GOOD), final PASS by fire. Orphan staging: 15 snapshots / 1.211 GiB staged mv-only with destroy manifest. Freeze root-caused (whole-VM thrash from concurrent team builds + a 17.6 GB ugrep — NOT limux, NOT WSLg); one-build-at-a-time directive issued. PRs #102 + #103 opened, <code>@codex review</code> requested.</div></div>
+          <div class="fact"><div class="label">Verified</div><div class="value">Compact result bracketed by vhdx bytes + df (agree within rounding). Freezes reproduced live: 16 clock-gaps of 1.3–8.4 s in a 240 s probe; PSI io-full ~55 s/240 s. Prune diff: revert-the-call-site fails the suite; no-delete scanner 0 REMOVE; pushed blob verified (6214fa6). huno's staging spot-checked (commit 99ea195, limux-reviewed 2.2G→980M, launchers + doctor green).</div></div>
+          <div class="fact"><div class="label">Gated / Open</div><div class="value">Bot verdicts on #102/#103 pending. #103 still owes its own full <code>check.sh</code> (huno assigned — limu's green run was main-based; does NOT discharge the da8c108 gate). huno's hibernation+shutdown+recompact paste pending (~48–82 GiB; kills all sessions). Drain resumed: agent DBs regrew vhdx 196.40→202.28 GiB by 10:46 — retention asks routed to codex/hcom/hermes owners. Decisions D1–D3 below are yours.</div></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>PR / Bot-Review Lane</h2>
+        <table>
+          <tr><th>PR</th><th>Branch → main</th><th>Content</th><th>Review trail</th><th>State</th><th>Merge gate</th></tr>
+          <tr>
+            <td><strong>#102</strong></td>
+            <td><code>limu/keep-last-reviewed-runtimes-20260729</code> (base 93132ae = current main)</td>
+            <td>Keep-last-N retention: mv-only archive + TSV manifests, fail-closed protections, 3 files / +697</td>
+            <td>tutu CONFIRMED-GOOD (blob-verified 6214fa6, independent revert-callsite + scanner) · fire PASS (direct 438-line read)</td>
+            <td class="warn">OPEN — @codex review requested 11:15 EST</td>
+            <td>Operator pre-authorized merge-on-greenlight · limu drives · fire judges findings</td>
+          </tr>
+          <tr>
+            <td><strong>#103</strong></td>
+            <td><code>fire/log-retention-and-cache-hygiene-20260728</code> (merge-tree: 0 conflicts vs main)</td>
+            <td>agent-hook-debug 8 MiB cap + rotation + tests · target/target tripwire · archive/ tracked-invariant fix (da8c108→61a0f36) · orphan manifest · crisis records</td>
+            <td>Self-audited + tests green at authoring · <span class="warn">full check.sh on THIS branch outstanding (huno assigned — the real da8c108 gate)</span></td>
+            <td class="warn">OPEN — @codex review requested 11:15 EST</td>
+            <td>Merge-on-greenlight AND huno's check.sh green · fire judges</td>
+          </tr>
+        </table>
+        <p style="margin-top:10px">After both merge: tutu builds ONE consolidation PR off fresh main (stranded coordsurf FYI entries), then deletes all six <code>coordsurf/huno-*</code> branches, sweeps 3 stale <code>.claude/worktrees/agent-*</code>, reconciles the shared checkout to main, and closes the shared HANDOFF.md. Bot reviews run on GitHub — the coming WSL shutdown costs the cycle nothing.</p>
+      </section>
+
+      <section>
+        <h2>Decisions</h2>
+        <div class="decision-layout">
+          <div>
+            <article class="decision">
+              <h3>D1 — Destroy the staged orphan snapshots? (1.211 GiB)</h3>
+              <p><strong>Context:</strong> 15 snapshots staged mv-only at <code>~/.local/limux-ORPHAN-STAGING-20260729</code>; manifest with restore command at <code>docs/LIMUX_ORPHAN_STAGING_MANIFEST_2026-07-29.md</code>. Tiers A–D rest on duplication/supersession arguments (verified: zero launcher references, Tier A byte-identical to live). <strong>Tier E (0.068 GiB) rests on a weaker reachability argument</strong> — huno flagged it for your judgment. Under kazu-protocol only YOU destroy. Post-compact this is marginal space; no urgency.</p>
+              <p data-copy-detail><strong>Recommendation:</strong> Destroy A–D, restore E (huno's if-in-doubt guidance). Deliberately UNSELECTED by default — destruction must be an explicit pick.</p>
+              <label class="option"><input type="radio" name="d1" value="Destroy Tiers A-D, restore Tier E" data-detail="Operator deletes staging root except Tier E dir (manifest lists exact paths + restore command); ~1.14 GiB freed."><span><span class="option-title">Destroy A–D, restore E <span class="rec">recommended</span></span><span class="option-detail">Strong-evidence tiers destroyed; the reachability-argued one goes back.</span></span></label>
+              <label class="option"><input type="radio" name="d1" value="Destroy all Tiers A-E" data-detail="Operator deletes the whole staging root; 1.211 GiB freed; Tier E's referrer was confirmed off $PATH but that is reachability evidence, not duplication evidence."><span><span class="option-title">Destroy all A–E</span><span class="option-detail">Accept the reachability argument for E too.</span></span></label>
+              <label class="option"><input type="radio" name="d1" value="Hold staging as-is" data-detail="Nothing destroyed; staging root remains; revisit after the Docker/vhdx items land."><span><span class="option-title">Hold everything</span><span class="option-detail">Space is no longer critical; costs 1.2 GiB of disk to keep optionality.</span></span></label>
+            </article>
+
+            <article class="decision">
+              <h3>D2 — Docker vhdx: 154.85 GiB, never compacted (biggest remaining reclaim)</h3>
+              <p><strong>Context:</strong> <code>docker_data.vhdx</code> is flat right now (not the active drain) but has apparently never been compacted — huno estimates up to ~100 GiB reclaimable. Requires knowing which images/volumes are disposable; no agent will guess at that.</p>
+              <p data-copy-detail><strong>Recommendation:</strong> Assign a read-only inventory lane first — catalog images/volumes/last-used and produce a small destroy-list packet for you; you prune + compact after.</p>
+              <label class="option"><input type="radio" name="d2" value="Assign read-only Docker inventory lane" data-detail="A session runs docker system df / image+volume listing READ-ONLY, produces a destroy-list decision packet; operator prunes + compacts after approving it." checked><span><span class="option-title">Read-only inventory first <span class="rec">recommended</span></span><span class="option-detail">Evidence before destruction; same pattern that worked for the orphan tiers.</span></span></label>
+              <label class="option"><input type="radio" name="d2" value="Operator handles Docker solo" data-detail="You run docker system prune / Docker Desktop cleanup + compact yourself; agents stay out entirely."><span><span class="option-title">You handle it solo</span><span class="option-detail">Fastest if you already know what's disposable.</span></span></label>
+              <label class="option"><input type="radio" name="d2" value="Defer Docker reclaim" data-detail="No action; revisit only if C: free drops below a threshold you set."><span><span class="option-title">Defer</span><span class="option-detail">Not urgent at current free space; the ratchet risk stays parked.</span></span></label>
+            </article>
+
+            <article class="decision">
+              <h3>D3 — Untiered remainder: 23 snapshots, ~0.71 GiB</h3>
+              <p><strong>Context:</strong> huno deliberately did NOT stage these — unreferenced, but not justifiable by build history, and "unreferenced" alone is insufficient grounds. huno recommends spending no more agent time at current free space.</p>
+              <p data-copy-detail><strong>Recommendation:</strong> Accept huno's call — leave unstaged, close the item.</p>
+              <label class="option"><input type="radio" name="d3" value="Accept: leave untiered remainder unstaged, close item" data-detail="No further classification work; 0.71 GiB stays; item closed as not-worth-agent-time." checked><span><span class="option-title">Accept huno's recommendation <span class="rec">recommended</span></span><span class="option-detail">0.71 GiB is not worth the classification cost.</span></span></label>
+              <label class="option"><input type="radio" name="d3" value="Backlog: classify untiered remainder later" data-detail="Keep a backlog task to classify the 23 snapshots by build history when idle capacity exists."><span><span class="option-title">Backlog it</span><span class="option-detail">Revisit when the team is idle; no near-term action.</span></span></label>
+            </article>
+
+            <article class="decision">
+              <h3>Execution Mode</h3>
+              <p data-copy-detail><strong>Recommendation:</strong> Keep the current team topology — it just shipped a reviewed feature end-to-end in one morning.</p>
+              <label class="option"><input type="radio" name="execMode" value="Current team: fire orchestrates limu/huno/tutu" data-detail="fire (Fable) holds judgment + merges; limu (Codex co-mgr) executes; huno gates check.sh on #103; tutu (LIMUX_MGR) consolidates + cleans. Mutations only on owned/authorized branches; operator alone destroys staged data." checked><span><span class="option-title">Current team (fire + limu + huno + tutu) <span class="rec">recommended</span></span><span class="option-detail">Assignments already broadcast + in FIRE_HANDOFF; survives the WSL restart.</span></span></label>
+              <label class="option"><input type="radio" name="execMode" value="Current session only" data-detail="fire executes everything solo; slower, burns Fable tokens on mechanical work; team stands down."><span><span class="option-title">Current session only</span><span class="option-detail">Simplest control, worst economics.</span></span></label>
+              <label class="option"><input type="radio" name="execMode" value="Native subagents via agent-orchestration" data-detail="Bounded local slices go to Sonnet subagents; no mutations outside fire's branch; owner mapping stays with fire."><span><span class="option-title">Native subagents</span><span class="option-detail">For read-only slices (e.g. the Docker inventory lane).</span></span></label>
+              <label class="option"><input type="radio" name="execMode" value="Document only / defer" data-detail="No execution beyond what is already in flight until you say otherwise."><span><span class="option-title">Document only</span><span class="option-detail">Everything pauses after the in-flight PR cycle.</span></span></label>
+            </article>
+
+            <article class="decision">
+              <h3>Skills In Play</h3>
+              <label class="option"><input type="checkbox" name="skills" value="$gh-cli" checked><span><span class="option-title">$gh-cli</span><span class="option-detail">PR cycle mechanics — token-cheap gh commands, no GitHub MCP.</span></span></label>
+              <label class="option"><input type="checkbox" name="skills" value="$pr-bot-watcher-gh-fallback" checked><span><span class="option-title">$pr-bot-watcher-gh-fallback</span><span class="option-detail">Bounded gh polling for the Codex bot verdicts (canonical watcher is disabled).</span></span></label>
+              <label class="option"><input type="checkbox" name="skills" value="$efficient-fable" checked><span><span class="option-title">$efficient-fable</span><span class="option-detail">Fable = judgment/merges only; executors carry the load (active this whole cycle).</span></span></label>
+              <label class="option"><input type="checkbox" name="skills" value="$adversarial-review"><span><span class="option-title">$adversarial-review</span><span class="option-detail">Formal wave if a bot verdict surfaces something structural.</span></span></label>
+              <label class="option"><input type="checkbox" name="skills" value="$handoff"><span><span class="option-title">$handoff</span><span class="option-detail">Full session-wrap protocol at cycle close.</span></span></label>
+              <div class="field">
+                <label for="customSkills">Additional skills</label>
+                <textarea id="customSkills" placeholder="Any other skill to bring in."></textarea>
+                <small>The checklist is a starting point, not a limit.</small>
+              </div>
+              <label class="option"><input type="checkbox" name="skillRanker" value="yes"><span><span class="option-title">Spin up skill-ranking subagent</span><span class="option-detail">Dedicated native subagent scores skill applicability before further execution.</span></span></label>
+            </article>
+
+            <article class="decision">
+              <h3>TaskMaster Draft (gated — no CLI runs from this packet)</h3>
+              <div class="field">
+                <label for="taskTitle">Proposed task title</label>
+                <input id="taskTitle" type="text" value="Docker vhdx read-only inventory + destroy-list packet">
+              </div>
+              <div class="field">
+                <label for="taskPriority">Priority</label>
+                <select id="taskPriority">
+                  <option>P2 - Normal</option>
+                  <option>P0 - Urgent</option>
+                  <option>P1 - High</option>
+                  <option>P3 - Low</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="taskAcceptance">Acceptance criteria</label>
+                <textarea id="taskAcceptance">- Read-only: docker system df + image/volume/container inventory with sizes + last-used
+- Output: destroy-list decision packet for operator; NO prune executed by any agent
+- Operator prunes + compacts docker_data.vhdx after approving the list</textarea>
+              </div>
+              <label class="option"><input type="checkbox" name="taskmaster" value="Create after wrapper approval"><span><span class="option-title">Create TaskMaster task later</span><span class="option-detail">Convert this draft only via the reviewed wrapper, if D2 = inventory lane.</span></span></label>
+            </article>
+
+            <div class="field">
+              <label for="notes"><strong>Additional notes</strong></label>
+              <textarea id="notes" placeholder="Constraints, preferences, or extra instructions."></textarea>
+            </div>
+          </div>
+
+          <aside class="copybox">
+            <h2>Copy Back</h2>
+            <p>Selections generate a paste-ready response. D1 starts unselected on purpose — destruction requires an explicit pick.</p>
+            <textarea id="payload" readonly></textarea>
+            <button id="copyButton" type="button">Copy Decision Response</button>
+            <button class="secondary" id="resetButton" type="button">Reset</button>
+            <p id="copyState" aria-live="polite"></p>
+          </aside>
+        </div>
+      </section>
+
+      <section>
+        <h2>Status Reference (no decision needed)</h2>
+        <table>
+          <tr><th>Item</th><th>State</th></tr>
+          <tr><td>WSL compact (this morning)</td><td class="ok">SUCCESS — vhdx 347.19→196.40 GiB (−150.79); C: free 22G→177G; verified by two independent readings</td></tr>
+          <tr><td>~5 s freeze root cause</td><td class="ok">ANSWERED — whole-VM memory/swap+IO thrash from concurrent team builds + a 17.6 GB ugrep; NOT limux/WSLg/compact-damage. Directive: builds announced + one-at-a-time, scoped searches, nice/ionice.</td></tr>
+          <tr><td>Resumed C: drain (huno #599572)</td><td class="warn">Agent DB churn ratchets the vhdx (~codex 1.7 GB, hcom 492 MB, hermes 386 MB; VACUUM reclaims 0). Retention asks routed to those owners — out of this lane.</td></tr>
+          <tr><td>huno reclaim paste (operator-approved)</td><td class="warn">Pending on your clock: hibernation off (~25.5 GiB) + wsl --shutdown (~23 GiB swap) + re-compact (~34 GiB). KILLS ALL SESSIONS — team is checkpointed and durable.</td></tr>
+          <tr><td>Backlogs (owned, parked)</td><td>package.sh 24 pre-existing delete calls · host-test SIGSEGV-under-load flake · both filed as tasks #12/#13</td></tr>
+        </table>
+      </section>
+
+      <section>
+        <div class="section-header">
+          <div>
+            <h2>Sources / Evidence</h2>
+            <p>Concrete references this packet depends on.</p>
+          </div>
+        </div>
+        <ul class="source-list">
+          <li><a href="https://github.com/RichelynScott/limux/pull/102">PR #102 — keep-last-N retention (limu; base 93132ae)</a></li>
+          <li><a href="https://github.com/RichelynScott/limux/pull/103">PR #103 — log-retention + cache hygiene (fire)</a></li>
+          <li><a href="LIMUX_ORPHAN_STAGING_MANIFEST_2026-07-29.md">Orphan destroy manifest — docs/LIMUX_ORPHAN_STAGING_MANIFEST_2026-07-29.md (commit 99ea195)</a></li>
+          <li>Retention commit blob-verified: <code>6214fa6</code> · review verdict hcom #599379 (tutu) · closeout #599477 (limu)</li>
+          <li>Drain root-cause + reclaim plan: hcom #599572 (huno) · reclaim script <code>C:\Users\riche\reclaim-space-20260729.ps1</code></li>
+          <li>Freeze diagnosis: read-only subagent probe, this session (16 clock-gaps 1.3–8.4 s / 240 s; PSI io-full ~55 s; dmesg "Time jumped backwards" cluster 09:30–09:53)</li>
+          <li>Pre-shutdown checkpoint: <code>FIRE_HANDOFF.md</code> @ <code>0d294ca</code> (branch fire/log-retention-and-cache-hygiene-20260728)</li>
+          <li>archive/ tracked-invariant fix: <code>da8c108</code> (error) → <code>61a0f36</code> (remediation), cited in archive-not-delete rule</li>
+        </ul>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    var UNSELECTED_SENTINEL = "UNSELECTED — DO NOT TREAT AS APPROVAL";
+    function normalizedText(node) {
+      return node ? node.textContent.replace(/\s+/g, " ").trim() : "";
+    }
+    function optionDetailText(input) {
+      const option = input ? input.closest("label.option") : null;
+      if (!option) return "";
+      const dataDetail = (option.getAttribute("data-detail") || "").trim()
+        || (input.getAttribute("data-detail") || "").trim();
+      if (dataDetail) return dataDetail;
+      return normalizedText(option.querySelector(".option-detail"));
+    }
+    function optionCopyText(input) {
+      if (!input) return "- " + UNSELECTED_SENTINEL;
+      const option = input.closest("label.option");
+      const titleNode = option ? option.querySelector(".option-title") : null;
+      const selection = input.value.trim() || normalizedText(titleNode) || UNSELECTED_SENTINEL;
+      const keyDetail = (input.getAttribute("data-detail") || "").trim() || optionDetailText(input);
+      const lines = ["- Selection: " + selection];
+      if (keyDetail) lines.push("  Key detail: " + keyDetail);
+      return lines.join("\n");
+    }
+    function checkedOptionDetails(name) {
+      const nodes = Array.from(document.querySelectorAll('input[name="' + name + '"]:checked'));
+      return nodes.length ? nodes.map(optionCopyText).join("\n") : "";
+    }
+    function radioDecisionLine(label, name) {
+      const node = document.querySelector('input[name="' + name + '"]:checked');
+      if (!node) return label + ":\n- " + UNSELECTED_SENTINEL;
+      return label + ":\n" + optionCopyText(node);
+    }
+    function buildPayload() {
+      const notes = document.getElementById("notes").value.trim();
+      const customSkills = document.getElementById("customSkills").value.trim();
+      const taskTitle = document.getElementById("taskTitle").value.trim();
+      const taskPriority = document.getElementById("taskPriority").value;
+      const taskAcceptance = document.getElementById("taskAcceptance").value.trim();
+      const out = [
+        "Decision packet response — LIMUX_SPACE_CRISIS_PR_CYCLE 2026-07-29:",
+        "",
+        radioDecisionLine("D1 Orphan staging destruction (1.211 GiB)", "d1"),
+        "",
+        radioDecisionLine("D2 Docker vhdx (154.85 GiB)", "d2"),
+        "",
+        radioDecisionLine("D3 Untiered remainder (0.71 GiB)", "d3"),
+        "",
+        radioDecisionLine("Execution mode", "execMode")
+      ];
+      const skills = checkedOptionDetails("skills");
+      if (skills) out.push("", "Skills:", skills);
+      if (customSkills) out.push("", "Additional skills: " + customSkills);
+      const ranker = checkedOptionDetails("skillRanker");
+      if (ranker) out.push("", "Skill-ranking subagent:", ranker);
+      const tmCreate = checkedOptionDetails("taskmaster");
+      if (tmCreate || taskTitle) {
+        out.push("", "TaskMaster draft:");
+        if (taskTitle) out.push("- Title: " + taskTitle, "- Priority: " + taskPriority);
+        if (taskAcceptance) out.push("- Acceptance criteria:", taskAcceptance);
+        out.push(tmCreate ? "- Creation:\n" + tmCreate : "- Creation: not requested");
+      }
+      if (notes) out.push("", "Notes: " + notes);
+      return out.join("\n");
+    }
+    function updatePayload() {
+      document.getElementById("payload").value = buildPayload();
+      document.getElementById("copyState").textContent = "";
+    }
+    async function copyPayload() {
+      updatePayload();
+      const payload = document.getElementById("payload").value;
+      try {
+        await navigator.clipboard.writeText(payload);
+        document.getElementById("copyState").textContent = "Copied.";
+      } catch {
+        const box = document.getElementById("payload");
+        box.focus();
+        box.select();
+        const copied = document.execCommand("copy");
+        document.getElementById("copyState").textContent = copied
+          ? "Copied with fallback."
+          : "Copy failed. Select the payload and copy it manually.";
+      }
+    }
+    function runCopyBackSelfTest() {
+      const copyButton = document.getElementById("copyButton");
+      const copyState = document.getElementById("copyState");
+      const inputs = Array.from(document.querySelectorAll('input[type="radio"], input[type="checkbox"]'));
+      const originalStates = inputs.map((node) => node.checked);
+      const executionProbe = document.querySelector('input[name="execMode"][value="Native subagents via agent-orchestration"]');
+      const skillProbe = document.querySelector('input[name="skills"][value="$gh-cli"]');
+      const d1Probe = document.querySelector('input[name="d1"]');
+      let missing = [];
+      try {
+        if (!executionProbe || !skillProbe || !d1Probe) throw new Error("probe controls are missing");
+        // Probe 1: selected controls serialize value + key detail
+        document.querySelectorAll('input[name="skills"]').forEach((node) => { node.checked = false; });
+        executionProbe.checked = true;
+        skillProbe.checked = true;
+        const probePayload = buildPayload();
+        const required = [
+          executionProbe.value,
+          optionDetailText(executionProbe),
+          skillProbe.value
+        ].filter(Boolean);
+        missing = required.filter((text) => !probePayload.includes(text));
+        // Probe 2: unselected decision emits the sentinel, never a blank
+        document.querySelectorAll('input[name="d1"]').forEach((node) => { node.checked = false; });
+        const sentinelPayload = buildPayload();
+        if (!sentinelPayload.includes(UNSELECTED_SENTINEL)) missing.push("unselected-decision sentinel");
+        // Probe 3: no bracketed [A / B] template leftovers in the payload
+        if (/\[[^\]]+\/[^\]]+\]/.test(sentinelPayload)) missing.push("bracketed-alternatives leftover");
+      } catch (error) {
+        missing = [error.message];
+      } finally {
+        inputs.forEach((node, index) => { node.checked = originalStates[index]; });
+        updatePayload();
+      }
+      if (missing.length) {
+        copyButton.disabled = true;
+        copyState.textContent = "Copy-back self-test failed: " + missing.join(", ");
+        document.documentElement.dataset.copyBackSelfTest = "fail";
+        return false;
+      }
+      copyButton.disabled = false;
+      document.documentElement.dataset.copyBackSelfTest = "pass";
+      return true;
+    }
+    function resetPacket() {
+      document.querySelectorAll("input[type=checkbox]").forEach((node) => { node.checked = false; });
+      // D1 resets to UNSELECTED on purpose (destruction requires an explicit pick)
+      document.querySelectorAll('input[name="d1"]').forEach((node) => { node.checked = false; });
+      document.querySelector('input[name="d2"][value="Assign read-only Docker inventory lane"]').checked = true;
+      document.querySelector('input[name="d3"][value="Accept: leave untiered remainder unstaged, close item"]').checked = true;
+      document.querySelector('input[name="execMode"][value="Current team: fire orchestrates limu/huno/tutu"]').checked = true;
+      ["$gh-cli", "$pr-bot-watcher-gh-fallback", "$efficient-fable"].forEach((value) => {
+        const node = document.querySelector('input[name="skills"][value="' + value.replace("$", "\\$") + '"]');
+        if (node) node.checked = true;
+      });
+      document.getElementById("customSkills").value = "";
+      document.getElementById("taskTitle").value = "Docker vhdx read-only inventory + destroy-list packet";
+      document.getElementById("taskPriority").selectedIndex = 0;
+      document.getElementById("taskAcceptance").value = "- Read-only: docker system df + image/volume/container inventory with sizes + last-used\n- Output: destroy-list decision packet for operator; NO prune executed by any agent\n- Operator prunes + compacts docker_data.vhdx after approving the list";
+      document.getElementById("notes").value = "";
+      updatePayload();
+    }
+    document.querySelectorAll("input, textarea, select").forEach((node) => {
+      node.addEventListener("input", updatePayload);
+      node.addEventListener("change", updatePayload);
+    });
+    document.getElementById("copyButton").addEventListener("click", copyPayload);
+    document.getElementById("resetButton").addEventListener("click", resetPacket);
+    updatePayload();
+    runCopyBackSelfTest();
+  </script>
+</body>
+</html>
