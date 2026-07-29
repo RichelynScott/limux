@@ -7,7 +7,64 @@ effort. Written before an operator-initiated session restart.
 
 ---
 
-# ⚡⚡⚡ CURRENT STATE — 2026-07-29 12:05 EST — PR CYCLE COMPLETE. READ ONLY THIS BLOCK; everything below is history
+# ⚡⚡⚡ CURRENT STATE — 2026-07-29 18:05 EST — LANE CLOSED OUT. READ ONLY THIS BLOCK; everything below is history
+
+`main` = **896f93c**, tree clean, in sync with origin. **Zero branches ahead-or-gone.**
+All 14 tracked tasks closed. All 4 PRs of this cycle merged: #102 `59876fa`, #103
+`457638a`, #104 `ab05eac`, #105 `a520e4d`.
+
+## What a successor must NOT re-derive
+
+- **Disk reality:** `/` Avail 665G → **772G**. But the **vhdx is back to 223 GiB and C: is
+  87% full (127G free)**. Freeing space inside WSL does **not** return C: space — the vhdx
+  only grows; only `wsl --shutdown` + compact converts internal frees. The ratchet is agent
+  DB churn (codex `logs_2.sqlite` 1.7G, `hcom.db` 497M, hermes `state.db` 387M) — **other
+  owners' lanes**, retention asks already routed.
+- **Retention prune is live and validated** (`scripts/user-local-install/prune-reviewed-runtimes.sh`):
+  **defaults to dry-run**, needs explicit `--apply`, and `--reviewed-root` is **required**.
+  First live run archived 6 stale snapshots while protecting the active process, all 5
+  launcher links, and newest-3 per lane; verified after by all-5-launchers-OK + green
+  `limux doctor`.
+- **8 retired-session branches are preserved on origin as `preservation/*` refs**, SHA-verified,
+  before their locals were deleted (95 → 82 branches). Reason: for gone-upstream branches the
+  only evidence was file-existence, which does **not** prove a commit's changes landed —
+  preservation was cheaper than upgrading the proof. Deleting refs reclaimed ~zero disk.
+- **Batched `git push` in a loop fails** ("failed to push some refs") then succeeds when run
+  individually — remote lock under rapid succession. **Verify pushes with `git ls-remote`,
+  never by push exit status.**
+
+## OPERATOR DECISIONS STILL OPEN
+
+1. **Packaging fix (severe, ships to users).** `docs/LIMUX_PACKAGING_DELETE_AUDIT_2026-07-29.md`:
+   the generated `install.sh` + `.deb` postinst delete `/usr/local` files **as root on an
+   ordinary `dpkg -i`**, destroying a source-built install; the legacy-host heuristic matches
+   any GTK binary named `limux` and **executes it** before deleting. Fix drafted, **not
+   applied** — changes what lands on user machines. Lane: limu.
+2. **Three stale PRs open since 2026-07-15/16** from retired sessions: **#68**
+   bounded-logging, **#67** renderer-diagnostics, **#58** hcom-tracking. Merge / close /
+   adopt. (I previously mis-stated "zero open PRs" — I had only looked at this cycle's.)
+3. **H1 workspace-entitlement code fix** — design note + blast-radius inventory on main
+   (`d6cd153`). Socket auth is uid-only, so cross-workspace pane reads succeed; the only
+   legitimate cross-workspace reader is the operator (same uid), so entitlement cannot key
+   on uid. Not implemented by design.
+
+## Queued, not blocked
+
+- **tutu** (live): item-2 reject-unknown-flags CLI hardening, item-3 limux-local CLAUDE.md
+  checklist lessons, plus karo's scroll bug below.
+- **limu**: packaging fix (gated above) + fast-follows 1–2 in `docs/LIMUX_FASTFOLLOWS_2026-07-29.md`.
+- **karo's scroll-input bug**, source-verified by me and committed (`896f93c`) — it arrived
+  **untracked in the retired `LIFO_INBOX/`**, one `git clean` from gone. `terminal.rs:2643`
+  passes the keyboard-mods byte as `scroll_mods`; `embedded.zig:1976` bitcasts it into
+  `ScrollMods` whose bit 0 is `precision`; `GHOSTTY_MODS_SHIFT = 1<<0` → **Shift+wheel sets
+  `precision=true`** and a discrete tick becomes a pixel delta. One-line fix; **no test seam**
+  (GTK closure) so use the repo's documented escape hatch rather than forcing a timing test.
+- **huno, nafo, lifo are GONE from the hcom roster** (not merely idle). Don't wait on them.
+  Route limux reports to **tutu**.
+
+---
+
+# (history) 2026-07-29 12:05 EST — PR cycle complete
 
 **All three PRs MERGED (squash) and the checkout is reconciled on `main`:**
 #102 → `59876fa` (keep-last-N retention, durable fix C) · #103 → `457638a` (log cap +
