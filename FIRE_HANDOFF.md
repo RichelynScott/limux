@@ -53,6 +53,65 @@ is the real one.
 
 ---
 
+# ⚡⚡ CURRENT STATE — 2026-07-29 07:30 EST. READ ONLY THIS BLOCK; everything below is history.
+
+**Compact STILL has not run.** `ext4.vhdx` = 372,797,079,552 B (347.19 GiB), byte-identical to
+the 2026-07-28 08:45 baseline. Two shutdowns have happened (10:05 and 06:11) with **no reclaim**.
+
+| | |
+|---|---|
+| ext4 in use | ~158 GiB (`statvfs` — read `Used`, never derive from total−avail) |
+| **Recoverable** | **~189 GiB** |
+| C: free | **25 GiB** and falling (27G at 22:00) — losing ~2 GB/night with our lanes idle |
+
+**Relay is `levu`'s.** Paste-once block: Docker-quit → `wsl --shutdown` → null-stripped
+Running-gate → `diskpart /s C:\Users\riche\compact-wsl.txt` → size report. **Do not re-hand any
+`--set-sparse` sequence** — it is hard-blocked on this host (`Wsl/Service/E_INVALIDARG`);
+`--allow-unsafe` is the only sparse path and is advised against.
+
+## Limux crashed 07:23 — it was NOT limux
+
+`Gdk-Message: Error flushing display: Broken pipe`. The **WSLg display connection** died; the host
+exited, the relaunch hit exit 1 mid-settle, a later launch succeeded. Verified the binary is sound:
+run directly it starts and stays up (exit 124 = my timeout, not 1). Same root cause as the
+2026-07-28 freeze — WSLg degrades as C: tightens. **Expect recurrence until the compact lands.**
+
+## My lane: COMPLETE. Nothing owed, nothing in flight.
+
+Freed 17.24 GiB · staged 28.45 GiB (destroyed by the operator, banked) · durable fixes landed.
+All work pushed. Working tree clean except lifo's untracked HTML (not mine).
+
+## ⚠️ Do not run `git clean` in this repo
+
+`-fdx` takes 13 paths including `archive/` — the archive-not-delete destination. Coordination
+artifacts accumulate untracked inside inbox dirs that *look* committed. Committing is mitigation,
+never closure (the artifact announcing a fix always postdates it).
+
+## Post-compact TODO, priority order
+
+1. **huno's orphan tiers** — 1.21 GiB justified across 15 snapshots (+0.77 GiB in 23 more,
+   classified in `FIRE_INBOX/RESPONSE_FROM_huno_..._untiered-archaeology-complete.md`). Held
+   deliberately: post-restart ≠ post-compact, and that trigger never fired.
+2. **huno may retire** `limux-preview-profiles`/`-cli` (36 MB duplicate) — standing by for the word.
+3. **Full-workspace `check.sh`** — still owed for `da8c108` before the next release/tag.
+4. Task #4 — keep-last-N prune for `~/.local/limux-reviewed` (resolve the live set **at execution
+   time**; sweep `~/.local/libexec` too).
+
+## Open, not mine
+
+**H1 — the repo's own #1 risk**, `docs/REPO_AUDIT_limux_2026-07-21.md:57`: `read-screen` does not
+reject unknown flags and does not require an explicit target, so it falls through to a focused-surface
+read. Documented 2026-07-21 with source lines and a fix plan; **still open** — I reproduced it
+accidentally (`read-screen --xyzzy BOGUS` → rc=0, returned my own screen). reve observed a genuine
+**cross-workspace** disclosure on the *legacy* channel. tutu owns it; next move is a source-history
+diff of the surface-resolution path (legacy vs current) — answerable with **no live probe**.
+
+**The process lesson, and it cost the most hours of anything last night:** three sessions
+live-probed a question the repo's own audit had answered eight days earlier. `git grep` the audit
+and inbox *before* probing.
+
+---
+
 # ⚡ UPDATE 22:42 EST — first compact attempt FAILED; the hold still stands
 
 **The 2026-07-28 restart happened. The compact did NOT.** Destruction succeeded
