@@ -29,12 +29,56 @@ GHOSTTY_ZIG_ARGS=(-Doptimize=ReleaseFast -Dcpu=baseline)
 CLI_ENTRYPOINT_NAME="limux"
 HOST_ENTRYPOINT_NAME="limux-host"
 
+# Bound the blast radius of the generic recursive deleter below.
+#
+# `remove_tree` is called with targets derived from unvalidated input --
+# VERSION comes from "$1" -- so the allowlist, not the call sites, is what
+# actually constrains what can be destroyed. Refusals are fatal and loud:
+# a build that would delete outside its own scratch space is a bug, not a
+# condition to paper over.
+assert_removable_path() {
+    local path="$1"
+    local parent
+    local resolved
+
+    case "$path" in
+        ''|-*)
+            echo "ERROR: remove_tree refused a suspicious path: '${path}'" >&2
+            exit 1
+            ;;
+    esac
+
+    # Canonicalize before matching. A literal prefix test is bypassable:
+    # VERSION='../../etc' yields '/tmp/limux-../../etc', which *starts with*
+    # an allowed prefix but resolves to /etc.
+    parent="$(cd "$(dirname "$path")" 2>/dev/null && pwd -P)" || parent=""
+    if [ -z "$parent" ]; then
+        echo "ERROR: remove_tree could not resolve path: '${path}'" >&2
+        exit 1
+    fi
+    resolved="${parent%/}/$(basename "$path")"
+
+    case "$resolved" in
+        /tmp/limux-*|/tmp/rpmbuild-*) return 0 ;;
+        "$STAGE"|"$STAGE"/*) return 0 ;;
+        "$OUT_DIR"|"$OUT_DIR"/*) return 0 ;;
+    esac
+
+    echo "ERROR: remove_tree refused to delete outside the allowed build paths." >&2
+    echo "       requested: '${path}'" >&2
+    echo "       resolved:  '${resolved}'" >&2
+    echo "       allowed:   /tmp/limux-*, /tmp/rpmbuild-*, ${STAGE}, ${OUT_DIR}" >&2
+    exit 1
+}
+
 remove_tree() {
     local path="$1"
 
     if [ ! -e "$path" ]; then
         return 0
     fi
+
+    assert_removable_path "$path"
 
     find "$path" -depth -mindepth 1 ! -type d -exec rm -f {} +
     find "$path" -depth -mindepth 1 -type d -exec rmdir {} + 2>/dev/null || true
@@ -435,11 +479,14 @@ build_rpm_package() {
     if [ -f "$rpm_output" ]; then
         cp "$rpm_output" "$OUT_DIR/"
         echo "  -> dist/limux-${VERSION}-1.${RPM_ARCH}.rpm"
+        remove_tree "$rpmbuild_dir"
     else
+        # Keep the tree on the failure path: rpmbuild/BUILD holds the only
+        # diagnostic evidence for why the RPM was not produced, and this is
+        # the exact moment it is needed.
         echo "  WARNING: rpmbuild did not produce expected RPM file"
+        echo "  Keeping build tree for diagnosis: $rpmbuild_dir"
     fi
-
-    remove_tree "$rpmbuild_dir"
 }
 
 # =========================================================================
@@ -542,16 +589,47 @@ legacy_limux_paths() {
     fi
 }
 
+# Positively identify the pre-split GTK host binary WITHOUT executing it.
+#
+# The previous test ran "$path" --help as root and accepted any output
+# mentioning "GApplication". That matches essentially any GTK application
+# named `limux`, and it executed an unidentified binary as root before
+# deleting it. Instead, scan the file contents for the GTK host's compiled-in
+# GApplication id (APP_ID in rust/limux-host-linux), which is limux-specific,
+# and treat the CLI's own banner as a hard exclusion.
+#
+# Fail SAFE: anything that cannot be positively identified returns 1 and is
+# left completely alone. A missed cleanup is harmless -- the installer already
+# warns about a shadowed entrypoint via warn_if_limux_is_shadowed -- whereas a
+# false positive would rename a stranger's binary as root.
 is_legacy_limux_host() {
     local path="$1"
-    local help
 
+    [ -f "$path" ] || return 1
     [ -x "$path" ] || return 1
-    help="$("$path" --help 2>&1 || true)"
-    printf '%s\n' "$help" | grep -q "limux CLI" && return 1
-    printf '%s\n' "$help" | grep -q "GApplication" && return 0
-    "$path" --json identify >/tmp/limux-installer-probe.log 2>&1 && return 1
-    grep -q "Unknown option --json" /tmp/limux-installer-probe.log
+    # Never touch the current CLI entrypoint.
+    grep -qaF 'limux CLI' "$path" 2>/dev/null && return 1
+    # Require the limux GTK host's application id.
+    grep -qaF 'dev.limux.linux' "$path" 2>/dev/null
+}
+
+# Archive-not-delete, pointed outward: retire a legacy file by renaming it
+# rather than removing it, so the user can undo the change. Never fatal --
+# a failed rename must not abort an install.
+retire_legacy_path() {
+    local path="$1"
+    local retired
+
+    [ -e "$path" ] || return 0
+
+    retired="${path}.limux-legacy-$(date -u +%Y%m%dT%H%M%SZ)"
+    if mv "$path" "$retired" 2>/dev/null; then
+        echo "Retired legacy Limux file (renamed, not deleted):"
+        echo "  $path -> $retired"
+    else
+        echo "WARNING: could not retire legacy Limux file, leaving it in place: $path" >&2
+    fi
+    return 0
 }
 
 clean_legacy_limux_entrypoints() {
@@ -560,14 +638,11 @@ clean_legacy_limux_entrypoints() {
     while IFS= read -r path; do
         [ -n "$path" ] || continue
         [ "$path" = "$PREFIX/bin/limux" ] && continue
-        if [ "${path%/bin/limux}" != "$path" ]; then
-            if is_legacy_limux_host "$path"; then
-                rm -f "$path"
-                echo "Removed legacy Limux host entrypoint: $path"
-            fi
-        elif [ -e "$path" ]; then
-            rm -f "$path"
-            echo "Removed legacy Limux host entrypoint: $path"
+        # Every candidate goes through the same positive identification. The
+        # non-bin paths used to be deleted unconditionally, which reached into
+        # foreign install prefixes (including dpkg/rpm-owned locations).
+        if is_legacy_limux_host "$path"; then
+            retire_legacy_path "$path"
         fi
     done <<EOF_PATHS
 $(legacy_limux_paths)
@@ -590,12 +665,58 @@ warn_if_limux_is_shadowed() {
     fi
 }
 
+# Bound the blast radius of the generic recursive deleter below.
+#
+# PREFIX comes straight from --prefix= with no validation, and every
+# remove_tree call site here is derived from it, so the allowlist -- not the
+# call sites -- is what constrains what can be destroyed. Note an empty
+# PREFIX would turn "$PREFIX/libexec/limux" into "/libexec/limux", so the
+# empty and root cases are rejected outright rather than pattern-matched.
+assert_removable_path() {
+    local path="$1"
+    local parent
+    local resolved
+
+    case "$PREFIX" in
+        ''|/)
+            echo "ERROR: refusing to operate with PREFIX='${PREFIX}'" >&2
+            exit 1
+            ;;
+        /*) ;;
+        *)
+            echo "ERROR: PREFIX must be an absolute path: '${PREFIX}'" >&2
+            exit 1
+            ;;
+    esac
+
+    # Canonicalize before matching, so a crafted --prefix= containing '..'
+    # cannot slip past a literal prefix comparison.
+    parent="$(cd "$(dirname "$path")" 2>/dev/null && pwd -P)" || parent=""
+    if [ -z "$parent" ]; then
+        echo "ERROR: remove_tree could not resolve path: '${path}'" >&2
+        exit 1
+    fi
+    resolved="${parent%/}/$(basename "$path")"
+
+    case "$resolved" in
+        "${PREFIX%/}"/*/limux) return 0 ;;
+    esac
+
+    echo "ERROR: remove_tree refused to delete outside the Limux install tree." >&2
+    echo "       requested: '${path}'" >&2
+    echo "       resolved:  '${resolved}'" >&2
+    echo "       allowed:   ${PREFIX%/}/*/limux" >&2
+    exit 1
+}
+
 remove_tree() {
     local path="$1"
 
     if [ ! -e "$path" ]; then
         return 0
     fi
+
+    assert_removable_path "$path"
 
     find "$path" -depth -mindepth 1 ! -type d -exec rm -f {} +
     find "$path" -depth -mindepth 1 -type d -exec rmdir {} + 2>/dev/null || true
@@ -704,24 +825,48 @@ cat > "$DEB_ROOT/DEBIAN/postinst" << 'EOF'
 #!/bin/bash
 set -e
 
+# Positively identify the pre-split GTK host binary WITHOUT executing it.
+# The previous test ran "$path" --help as root and accepted any output
+# mentioning "GApplication", which matches essentially any GTK application
+# named `limux`. Scan the file contents for the GTK host's compiled-in
+# GApplication id (APP_ID in rust/limux-host-linux) instead, and treat the
+# CLI's own banner as a hard exclusion. Fail SAFE: anything not positively
+# identified returns 1 and is left completely alone.
 is_legacy_limux_host() {
     path="$1"
+    [ -f "$path" ] || return 1
     [ -x "$path" ] || return 1
-    help="$("$path" --help 2>&1 || true)"
-    echo "$help" | grep -q "limux CLI" && return 1
-    echo "$help" | grep -q "GApplication" && return 0
-    "$path" --json identify >/tmp/limux-postinst-probe.log 2>&1 && return 1
-    grep -q "Unknown option --json" /tmp/limux-postinst-probe.log
+    grep -qaF 'limux CLI' "$path" 2>/dev/null && return 1
+    grep -qaF 'dev.limux.linux' "$path" 2>/dev/null
+}
+
+# Archive-not-delete, pointed outward: rename rather than remove, so the user
+# can undo it. Never fatal -- a failed rename must not break `dpkg -i`.
+retire_legacy_path() {
+    path="$1"
+    [ -e "$path" ] || return 0
+
+    retired="${path}.limux-legacy-$(date -u +%Y%m%dT%H%M%SZ)"
+    if mv "$path" "$retired" 2>/dev/null; then
+        echo "Retired legacy Limux file (renamed, not deleted): $path -> $retired"
+    else
+        echo "WARNING: could not retire legacy Limux file, leaving it in place: $path" >&2
+    fi
+    return 0
 }
 
 ldconfig 2>/dev/null || true
-rm -f /usr/libexec/limux/limux
-rm -f /usr/local/libexec/limux/limux
-if is_legacy_limux_host /usr/local/bin/limux; then
-    rm -f /usr/local/bin/limux
+
+# Scoped to /usr only. A .deb maintainer script must NOT touch /usr/local:
+# that is Debian Policy, and /usr/local is exactly where a user's
+# source-built install lives -- an ordinary `dpkg -i` was silently
+# destroying it.
+if is_legacy_limux_host /usr/libexec/limux/limux; then
+    retire_legacy_path /usr/libexec/limux/limux
 fi
-rm -f /usr/share/applications/limux.desktop
-rm -f /usr/local/share/applications/limux.desktop
+# A filename this package never writes (it ships dev.limux.linux.desktop),
+# so it is a foreign/legacy leftover: rename, do not delete.
+retire_legacy_path /usr/share/applications/limux.desktop
 gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
 update-desktop-database /usr/share/applications 2>/dev/null || true
 appstreamcli refresh-cache --force 2>/dev/null || true
