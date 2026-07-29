@@ -85,3 +85,34 @@ newline-joined blob and `git cat-file -e` failed on the nonsense path. This is t
 zsh gotcha already recorded in `docs/LIMUX_ORPHAN_STAGING_MANIFEST_2026-07-29.md`, hit
 again by a different session four hours later. Caught only because a second reading
 disagreed with the first — a single measurement cannot reveal its own instrument error.
+
+## 7. H1 residual — explicit foreign `workspace_id` still bypasses the scoping (CRITICAL, open)
+
+Landed in #107 (`05836c4`): bare-surface-id disclosure is closed on `surface.read_text`,
+`debug.terminal.read_text`, `surface.trigger_flash`, `surface.send_text`,
+`surface.send_key`, `surface.clear_history`. **Not closed:** a caller who supplies an
+explicit `workspace_id` naming a foreign lane still resolves, because
+`resolve_surface_target_scoped`'s first branch only asks "does this surface belong to this
+workspace" — it never consults the scope. Rated CRITICAL by adversarial review.
+
+This is the honest ceiling of a dispatcher-side fix: the dispatcher has no notion of which
+workspace the **caller** is entitled to. Closing it is design-note **option (b)** —
+per-connection entitlement, where an agent presents its own `LIMUX_WORKSPACE_ID` as a claim
+at connect and the server rejects reads outside it. It **cannot key on uid**, because the
+operator (the one legitimate cross-workspace reader) shares the agents' uid. The operator's
+interactive connection needs a distinguishable "unclaimed = all-entitled" path.
+
+**Also unverified:** `surface.focus/close/move/reorder/drag_to_split/refresh` resolve via
+`find_surface_in_current_window` / `current_workspace_idx()` rather than
+`find_workspace_for_surface`, and were not traced end-to-end. Likely reachable through the
+same explicit-`workspace_id` bypass.
+
+### The lesson worth keeping from this one
+
+The first fix shipped with a stated justification — "management operations do not return
+content" — that was **false on inspection**: `SurfaceState::info` serializes `text`, so
+`surface.trigger_flash` returned the victim's whole scrollback for a flash-counter bump,
+a *cleaner* exfiltration primitive than the read method the fix was aimed at. It took an
+adversarial reviewer instructed to **refute** to surface that; the author's own tests all
+passed, because they tested the thing the author already believed. A security fix's stated
+rationale needs the same adversarial treatment as its code.
