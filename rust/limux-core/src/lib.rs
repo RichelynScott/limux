@@ -3701,10 +3701,53 @@ fn current_surface_id_for_workspace(state: &ControlState, workspace_id: u64) -> 
     pane.current_surface_id
 }
 
+/// Whether a surface lookup may fall back to scanning every workspace when the
+/// caller supplied a surface id but no workspace.
+///
+/// The global scan is how REPO_AUDIT H1 gets read: any same-user process that
+/// clears the uid gate can name a bare surface id and receive that surface from
+/// *any* lane. For operations that return terminal CONTENT that is an
+/// information-disclosure primitive, so those pass `WorkspaceScoped` and the
+/// scan is refused.
+///
+/// Management operations (rename, mark_unread, flash, …) keep `AnyWorkspace`
+/// deliberately: cross-workspace resolution by bare id is intentional, tested
+/// behavior there — see `dispatcher_handles_surface_and_tab_actions_with_workspace_resolution`,
+/// which switches workspaces specifically so id-only lookups must cross. Those
+/// operations do not return content, so they are not the disclosure vector.
+///
+/// What this does NOT close: an explicit `workspace_id` naming a foreign lane
+/// still resolves, because the dispatcher has no notion of which workspace the
+/// CALLER is entitled to. Closing that requires per-connection entitlement —
+/// option (b) in `docs/LIMUX_H1_WORKSPACE_ENTITLEMENT_DESIGN_2026-07-29.md` —
+/// and cannot key on uid, since the operator shares the agents' uid.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum SurfaceLookupScope {
+    /// Refuse the all-workspace scan; a bare surface id must be accompanied by
+    /// its workspace.
+    WorkspaceScoped,
+    /// Permit the all-workspace scan (pre-existing behavior).
+    AnyWorkspace,
+}
+
 fn resolve_surface_target(
     state: &ControlState,
     workspace_hint: Option<u64>,
     surface_hint: Option<u64>,
+) -> Result<(u64, u64), CommandError> {
+    resolve_surface_target_scoped(
+        state,
+        workspace_hint,
+        surface_hint,
+        SurfaceLookupScope::AnyWorkspace,
+    )
+}
+
+fn resolve_surface_target_scoped(
+    state: &ControlState,
+    workspace_hint: Option<u64>,
+    surface_hint: Option<u64>,
+    scope: SurfaceLookupScope,
 ) -> Result<(u64, u64), CommandError> {
     if let Some(surface_id) = surface_hint {
         if let Some(workspace_id) = workspace_hint {
@@ -3712,6 +3755,23 @@ fn resolve_surface_target(
                 return Ok((workspace_id, surface_id));
             }
             return Err(CommandError::not_found("surface not found in workspace"));
+        }
+        if scope == SurfaceLookupScope::WorkspaceScoped {
+            // Resolve a bare id ONLY within the focused workspace. Reading your
+            // own surface by id stays legal (the common case, and what the CLI
+            // does outside a pane); what is refused is the scan reaching into a
+            // DIFFERENT lane, which is the H1 disclosure vector.
+            let focused_workspace = focused_handles(state).map(|(workspace_id, ..)| workspace_id);
+            return match focused_workspace {
+                Some(workspace_id)
+                    if workspace_contains_surface(state, workspace_id, surface_id) =>
+                {
+                    Ok((workspace_id, surface_id))
+                }
+                _ => Err(CommandError::not_found(
+                    "surface not found in the focused workspace",
+                )),
+            };
         }
         if let Some(workspace_id) = find_workspace_for_surface(state, surface_id) {
             return Ok((workspace_id, surface_id));
@@ -5298,6 +5358,23 @@ fn handle_debug_command(
         "debug.terminal.read_text" => {
             let surface_id = optional_u64_param_any(params, &["surface_id", "id"])?;
             let text = if let Some(surface_id) = surface_id {
+                // Same disclosure vector as surface.read_text (REPO_AUDIT H1), by a
+                // shorter route: `list_surfaces()` spans every workspace, so a bare
+                // id returned content from any lane. Scope the by-id lookup to the
+                // focused workspace. The cursor integration already refuses this
+                // method client-side (integrations/cursor-limux/request-builder.test.js),
+                // but that is a client allowlist, not a server gate — the same
+                // client-side-only shape as dfb5d40.
+                let focused_workspace =
+                    focused_handles(state).map(|(workspace_id, ..)| workspace_id);
+                let in_scope = focused_workspace.is_some_and(|workspace_id| {
+                    workspace_contains_surface(state, workspace_id, surface_id)
+                });
+                if !in_scope {
+                    return Err(CommandError::not_found(
+                        "surface not found in the focused workspace",
+                    ));
+                }
                 state
                     .list_surfaces()
                     .unwrap_or_default()
@@ -6180,8 +6257,13 @@ fn handle_command(
             if lines == Some(0) {
                 return Err(CommandError::invalid_params("lines must be greater than 0"));
             }
-            let (workspace_id, surface_id) =
-                resolve_surface_target(state, workspace_id, surface_hint)?;
+            // Content read — refuse the all-workspace scan (REPO_AUDIT H1).
+            let (workspace_id, surface_id) = resolve_surface_target_scoped(
+                state,
+                workspace_id,
+                surface_hint,
+                SurfaceLookupScope::WorkspaceScoped,
+            )?;
             let surface = update_surface_metadata(state, workspace_id, surface_id, |_| {})
                 .ok_or_else(|| CommandError::not_found("surface not found"))?;
             Ok(json!({
@@ -7277,6 +7359,109 @@ mod tests {
             ))
             .await;
         assert_eq!(read.result.expect("read text")["text"], "two\nthree");
+    }
+
+    /// REPO_AUDIT H1 — same-user cross-lane surface disclosure.
+    ///
+    /// `surface.read_text` with a bare `surface_id` used to resolve through
+    /// `find_workspace_for_surface`, an all-workspace scan: any caller past the
+    /// uid gate could name another lane's surface id and receive its terminal
+    /// text. This asserts the cross-workspace read is refused while a bare-id
+    /// read of your OWN focused workspace still works.
+    ///
+    /// Load-bearing: pass `SurfaceLookupScope::AnyWorkspace` at the
+    /// `surface.read_text` call site (i.e. revert the fix) and the first
+    /// assertion fails, because the scan finds the foreign surface and returns
+    /// its text. Asserting only that the same-workspace read works would pass
+    /// against the vulnerable implementation.
+    #[tokio::test]
+    async fn surface_read_text_refuses_cross_workspace_surface_ids() {
+        let dispatcher = Dispatcher::new();
+
+        // Lane A: a surface holding a secret, in its own workspace.
+        let workspace_a = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-a" })))
+            .await;
+        let workspace_a_id = workspace_a.result.expect("workspace a")["workspace"]["id"]
+            .as_u64()
+            .expect("workspace a id");
+        let surface_a = dispatcher
+            .dispatch(request(
+                "surface.current",
+                json!({ "workspace_id": workspace_a_id }),
+            ))
+            .await;
+        let surface_a_id = surface_a.result.expect("surface a")["surface"]["id"]
+            .as_u64()
+            .expect("surface a id");
+        dispatcher
+            .dispatch(request(
+                "surface.send_text",
+                json!({ "surface_id": surface_a_id, "text": "LANE-A-SECRET" }),
+            ))
+            .await;
+
+        // Lane B becomes the focused workspace — B is now "us".
+        let workspace_b = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-b" })))
+            .await;
+        let workspace_b_id = workspace_b.result.expect("workspace b")["workspace"]["id"]
+            .as_u64()
+            .expect("workspace b id");
+
+        // From lane B, name lane A's surface id with no workspace_id.
+        let cross = dispatcher
+            .dispatch(request(
+                "surface.read_text",
+                json!({ "surface_id": surface_a_id }),
+            ))
+            .await;
+        assert!(
+            cross.result.is_none(),
+            "cross-workspace bare-id read should be refused, got: {:?}",
+            cross.result
+        );
+        if let Some(result) = &cross.result {
+            assert!(
+                !result["text"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("LANE-A-SECRET"),
+                "lane A's text leaked across workspaces"
+            );
+        }
+
+        // A bare-id read of our OWN focused workspace must still work.
+        let own = dispatcher
+            .dispatch(request(
+                "surface.current",
+                json!({ "workspace_id": workspace_b_id }),
+            ))
+            .await;
+        let own_surface_id = own.result.expect("surface b")["surface"]["id"]
+            .as_u64()
+            .expect("surface b id");
+        dispatcher
+            .dispatch(request(
+                "surface.send_text",
+                json!({ "surface_id": own_surface_id, "text": "OWN-LANE" }),
+            ))
+            .await;
+        let own_read = dispatcher
+            .dispatch(request(
+                "surface.read_text",
+                json!({ "surface_id": own_surface_id }),
+            ))
+            .await;
+        assert!(
+            own_read
+                .result
+                .expect("own-workspace read must still succeed")["text"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("OWN-LANE"),
+            "same-workspace bare-id read regressed"
+        );
     }
 
     #[tokio::test]
