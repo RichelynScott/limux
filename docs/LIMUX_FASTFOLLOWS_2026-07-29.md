@@ -47,3 +47,16 @@ partially reframes the historical "flaky exit-101 under load" pattern.
 
 Fix: read `std::env::var("CARGO_MANIFEST_DIR")` at build-script RUNTIME (cargo sets it for
 build-script execution too) — one line, makes the binary relocation-proof. **Lane: any.**
+
+## 5. Packaging deletes reach end-user machines as root (SEVERE — separate doc)
+
+Backlog #12 audit result, written up in full at
+`docs/LIMUX_PACKAGING_DELETE_AUDIT_2026-07-29.md`. Summary: of 24 delete calls in
+`scripts/package.sh`, the builder-scope ones are clean, but the **generated `install.sh`
+and the `.deb` `DEBIAN/postinst`** delete files in `/usr/local` **as root on an ordinary
+`dpkg -i`** — destroying a user's source-built install — and the legacy-host heuristic
+matches essentially any GTK binary named `limux`, which it executes before deleting. Same
+defect class as the rest of this cycle (delete where archive was correct), pointed outward.
+
+**Lane: limu** (owns install/packaging). The write-up is authorized; the shipped-behavior
+change is **operator-gated** because it alters what lands on user machines.
