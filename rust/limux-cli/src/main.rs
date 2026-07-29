@@ -1863,6 +1863,23 @@ const AGENT_HOOK_DEBUG_MAX_BYTES: u64 = 8 * 1024 * 1024;
 
 fn append_debug_line(path: &Path, bytes: &[u8]) -> Result<()> {
     use std::io::Write;
+    // Installed hooks from several sessions share the default state path, so
+    // two processes can reach a full log together: both stat, both rename —
+    // the loser either appends into a just-renamed path or renames the fresh
+    // active file over `.1`, discarding a retained generation. An exclusive
+    // lock on a sidecar (which itself never rotates) serializes rotate+append;
+    // it is released when `lock` drops at return, and by the OS if the holder
+    // dies mid-hold.
+    let mut lock_path = path.as_os_str().to_os_string();
+    lock_path.push(".lock");
+    let lock = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(PathBuf::from(lock_path))
+        .with_context(|| format!("failed to open rotation lock for {}", path.display()))?;
+    lock.lock()
+        .with_context(|| format!("failed to take rotation lock for {}", path.display()))?;
     rotate_debug_log_if_full(path, bytes.len() as u64)?;
     let mut file = fs::OpenOptions::new()
         .create(true)
@@ -10202,6 +10219,26 @@ mod agent_hook_debug_tests {
         assert!(
             total < written,
             "wrote {written} B and kept {total} B: the cap did nothing"
+        );
+    }
+
+    /// The rotation lock must actually be taken on the append path: this pins
+    /// the wiring by asserting the `.lock` sidecar exists after a write —
+    /// revert the locking in `append_debug_line` and this fails. Mutual
+    /// exclusion itself is the OS's advisory-lock guarantee; a reliable
+    /// concurrency-race test would be a timing assertion, which the review
+    /// checklist forbids forcing, so wiring is what gets pinned here.
+    #[test]
+    fn append_takes_the_rotation_lock_sidecar() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("agent-hook-debug.jsonl");
+        append_debug_line(&path, b"x\n").expect("append");
+
+        let mut lock_path = path.clone().into_os_string();
+        lock_path.push(".lock");
+        assert!(
+            PathBuf::from(lock_path).exists(),
+            "rotation lock sidecar was not created — locking is not wired into the append path"
         );
     }
 
