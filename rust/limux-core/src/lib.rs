@@ -6280,8 +6280,14 @@ fn handle_command(
             let surface_hint = optional_u64_param_any(params, &["surface_id", "id"])?;
             let text = required_string_param(params, "text")?;
             validate_terminal_text_param("surface.send_text text", &text)?;
-            let (workspace_id, surface_id) =
-                resolve_surface_target(state, workspace_id, surface_hint)?;
+            // Returns SurfaceInfo, which carries `text` — so this is a content
+            // path, not merely management: scope it (REPO_AUDIT H1).
+            let (workspace_id, surface_id) = resolve_surface_target_scoped(
+                state,
+                workspace_id,
+                surface_hint,
+                SurfaceLookupScope::WorkspaceScoped,
+            )?;
             let surface = apply_surface_text_input(state, workspace_id, surface_id, &text)?;
             Ok(json!({
                 "workspace_id": encode_handle_id(workspace_id),
@@ -6296,8 +6302,14 @@ fn handle_command(
             let workspace_id = optional_u64_param_any(params, &["workspace_id"])?;
             let surface_hint = optional_u64_param_any(params, &["surface_id", "id"])?;
             let key = required_string_param(params, "key")?;
-            let (workspace_id, surface_id) =
-                resolve_surface_target(state, workspace_id, surface_hint)?;
+            // Returns SurfaceInfo, which carries `text` — so this is a content
+            // path, not merely management: scope it (REPO_AUDIT H1).
+            let (workspace_id, surface_id) = resolve_surface_target_scoped(
+                state,
+                workspace_id,
+                surface_hint,
+                SurfaceLookupScope::WorkspaceScoped,
+            )?;
             let surface = apply_surface_key_input(state, workspace_id, surface_id, &key)?;
             Ok(json!({
                 "workspace_id": encode_handle_id(workspace_id),
@@ -6311,8 +6323,14 @@ fn handle_command(
             let params = params_object(params)?;
             let workspace_id = optional_u64_param_any(params, &["workspace_id"])?;
             let surface_hint = optional_u64_param_any(params, &["surface_id", "id"])?;
-            let (workspace_id, surface_id) =
-                resolve_surface_target(state, workspace_id, surface_hint)?;
+            // Returns SurfaceInfo, which carries `text` — so this is a content
+            // path, not merely management: scope it (REPO_AUDIT H1).
+            let (workspace_id, surface_id) = resolve_surface_target_scoped(
+                state,
+                workspace_id,
+                surface_hint,
+                SurfaceLookupScope::WorkspaceScoped,
+            )?;
             let surface = update_surface_metadata(state, workspace_id, surface_id, |surface| {
                 surface.flash_count = surface.flash_count.saturating_add(1)
             })
@@ -6330,8 +6348,14 @@ fn handle_command(
             let params = params_object(params)?;
             let workspace_id = optional_u64_param_any(params, &["workspace_id"])?;
             let surface_hint = optional_u64_param_any(params, &["surface_id", "id"])?;
-            let (workspace_id, surface_id) =
-                resolve_surface_target(state, workspace_id, surface_hint)?;
+            // Returns SurfaceInfo, which carries `text` — so this is a content
+            // path, not merely management: scope it (REPO_AUDIT H1).
+            let (workspace_id, surface_id) = resolve_surface_target_scoped(
+                state,
+                workspace_id,
+                surface_hint,
+                SurfaceLookupScope::WorkspaceScoped,
+            )?;
             let surface = update_surface_metadata(state, workspace_id, surface_id, |surface| {
                 surface.text.clear();
                 surface.unread = false;
@@ -7333,6 +7357,88 @@ mod tests {
             cleared.result.expect("clear history")["surface"]["text"],
             ""
         );
+    }
+
+    /// REPO_AUDIT H1, second disclosure family — found by adversarial review of
+    /// the first fix, which had claimed management operations "do not return
+    /// content." That claim was FALSE: `SurfaceInfo` carries `text` (see
+    /// `SurfaceState::info`), and `surface.trigger_flash` returns the whole
+    /// struct as `"surface"`. So a bare foreign `surface_id` returned the
+    /// victim's entire scrollback for the price of incrementing a flash counter
+    /// — a cleaner exfiltration primitive than `surface.read_text`, because it
+    /// reads as a UI nudge.
+    ///
+    /// `surface.send_text` / `surface.send_key` have the same shape and are
+    /// additionally cross-lane INPUT INJECTION. All are scoped now.
+    ///
+    /// Load-bearing: flip any of those call sites back to
+    /// `SurfaceLookupScope::AnyWorkspace` and this fails with the victim's text
+    /// in the assertion output.
+    #[tokio::test]
+    async fn management_ops_do_not_leak_foreign_surface_text() {
+        let dispatcher = Dispatcher::new();
+
+        let workspace_a = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "victim" })))
+            .await;
+        let workspace_a_id = workspace_a.result.expect("workspace a")["workspace"]["id"]
+            .as_u64()
+            .expect("workspace a id");
+        let surface_a = dispatcher
+            .dispatch(request(
+                "surface.current",
+                json!({ "workspace_id": workspace_a_id }),
+            ))
+            .await;
+        let surface_a_id = surface_a.result.expect("surface a")["surface"]["id"]
+            .as_u64()
+            .expect("surface a id");
+        dispatcher
+            .dispatch(request(
+                "surface.send_text",
+                json!({ "surface_id": surface_a_id, "text": "VICTIM-SCROLLBACK" }),
+            ))
+            .await;
+
+        // Focus moves to a second workspace — the attacker's lane.
+        dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "attacker" })))
+            .await;
+
+        for method in [
+            "surface.trigger_flash",
+            "surface.send_key",
+            "surface.clear_history",
+        ] {
+            let response = dispatcher
+                .dispatch(request(
+                    method,
+                    json!({ "surface_id": surface_a_id, "key": "a" }),
+                ))
+                .await;
+            if let Some(result) = &response.result {
+                let leaked = serde_json::to_string(result).unwrap_or_default();
+                assert!(
+                    !leaked.contains("VICTIM-SCROLLBACK"),
+                    "{method} leaked the victim's surface text across workspaces: {leaked}"
+                );
+            }
+        }
+
+        // send_text separately: it would both inject AND echo the scrollback back.
+        let injected = dispatcher
+            .dispatch(request(
+                "surface.send_text",
+                json!({ "surface_id": surface_a_id, "text": "INJECTED" }),
+            ))
+            .await;
+        if let Some(result) = &injected.result {
+            let leaked = serde_json::to_string(result).unwrap_or_default();
+            assert!(
+                !leaked.contains("VICTIM-SCROLLBACK"),
+                "surface.send_text leaked the victim's scrollback across workspaces: {leaked}"
+            );
+        }
     }
 
     #[tokio::test]
