@@ -1,8 +1,18 @@
 use std::path::PathBuf;
 
 fn main() {
-    // Find libghostty relative to the workspace root.
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // Find libghostty relative to the workspace root. CARGO_MANIFEST_DIR is
+    // read at build-script RUNTIME, not via `env!` at compile time: the
+    // compile-time form bakes the absolute checkout path into the build-script
+    // binary, and with a shared cargo target dir a binary compiled in an
+    // ephemeral worktree can later be selected from another checkout — it then
+    // resolves a path that no longer exists and fails "libghostty not found"
+    // while the library is present (observed 2026-07-29; see
+    // docs/LIMUX_FASTFOLLOWS_2026-07-29.md item 4).
+    let manifest_dir = PathBuf::from(
+        std::env::var_os("CARGO_MANIFEST_DIR")
+            .expect("cargo sets CARGO_MANIFEST_DIR when running build scripts"),
+    );
     let ghostty_root = manifest_dir.join("../../ghostty");
     let ghostty_lib = ghostty_root
         .join("zig-out/lib")
