@@ -7,6 +7,36 @@ effort. Written before an operator-initiated session restart.
 
 ---
 
+# ⚡⚡⚡ CURRENT STATE — 2026-07-29 11:20 EST. READ ONLY THIS BLOCK; everything below is history
+
+Compact SUCCEEDED this morning (vhdx 347.19→196.40 GiB, −150.79). Then huno found the
+drain resumed (agent DB churn; vhdx 196.40→202.28 by 10:46) and ran an operator-approved
+hibernation-off + `wsl --shutdown` + re-compact — if you are reading this fresh, that
+restart is why.
+
+## Open PRs — operator authorized: bot-review → merge on greenlight → cleanup
+| PR | Branch | State |
+|---|---|---|
+| **#102** | `limu/keep-last-reviewed-runtimes-20260729` (keep-last-N retention; tutu CONFIRMED-GOOD + fire PASS) | `@codex review` requested 11:15 EST |
+| **#103** | `fire/log-retention-and-cache-hygiene-20260728` (this branch) | `@codex review` requested; **still owes its own full check.sh** — limu's green run was MAIN-based and does NOT discharge the da8c108 gate (my corrected error, on-thread #599572 reply) |
+
+## Post-restart assignments (broadcast #599572-reply, queued in hcom for huno+limu)
+- **limu**: drive #102 → merge on greenlight → delete branch + verify/clean two stale 20260721 limu branches
+- **huno**: full `./scripts/check.sh` on THIS branch (the real da8c108 gate), post exit status to PR #103; then #103 bot fix loop with me
+- **tutu**: after both merge — ONE consolidation branch off fresh main (coordsurf FYI entries etc.) → PR → bot → merge → delete 6 coordsurf/huno-* branches → sweep 3 stale `.claude/worktrees/agent-*` → reconcile shared checkout to main → shared HANDOFF.md
+- **fire (me)**: merge judgment #103, operator synthesis
+
+## Freeze root-cause (operator question, answered)
+Whole-VM memory/swap+IO thrash from concurrent team builds + a 17.6GB ugrep — NOT limux,
+NOT WSLg. Standing directive: builds/tests announced + one-at-a-time; scoped searches only.
+
+## Still true
+- Orphan staging `~/.local/limux-ORPHAN-STAGING-20260729` (1.211 GiB, manifest in docs/) — operator alone destroys; Tier E needs their judgment
+- Backlogs: package.sh 24 pre-existing deletes; host-test SIGSEGV-under-load flake
+- No `git clean` here; no re-ignoring `archive/`; `~/.local/share/limux/**` untouched
+
+---
+
 # ⚡ UPDATE 14:50 EST — read this before §1; the sections below it are 09:05 state
 
 Operator chose **GO NOW** (relayed by `luhe`, #597087). `wsl --shutdown` may fire
