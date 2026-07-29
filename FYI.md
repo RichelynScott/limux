@@ -2100,7 +2100,7 @@ behalf of the absent build/release owner and the retired root-HANDOFF owner
 ## 2026-07-28 - Named session profiles: multiple independent restore states (huno)
 
 ### What
-- Shipped `--profile <name>` plus `limux profile list/save/rm`, giving the
+- Shipped `--profile <name>` plus `limux profile list/path/rm`, giving the
   operator multiple independent saved workspace sets instead of one global
   restore state. Merged as `93132ae` (PR #99), installed to the
   `preview:sessions` lane.
