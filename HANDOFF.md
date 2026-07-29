@@ -1,6 +1,11 @@
 # Limux — Directory State (session-agnostic)
 
-**Updated:** 2026-07-21 ~6:35 PM EDT by `tutu` (LIMUX_MGR)
+**Updated:** 2026-07-29 by `tutu` (LIMUX_MGR) — the 2026-07-21 restart **and** the
+2026-07-29 C:-space-crisis PR cycle are CLOSED: PRs #102 (retention) / #103 (hygiene)
+/ #104 (FYI consolidation) all squash-merged; coordsurf FYI+HANDOFF consolidated to
+main; six `coordsurf/huno-*` branches + three stale agent worktrees swept. Open limux
+items (item-1 read-screen cross-workspace, unknown-flag drop, review-checklist) live in
+`TUTU_HANDOFF.md` (§7).
 **Scope:** `/home/riche/MCPs/limux`
 **Purpose:** ONE file that tells ANY session — not just the current manager —
 what is going on in this directory. Read this first. Per-session detail lives in
@@ -9,8 +14,9 @@ the per-session handoffs listed in §7.
 > Supersedes the halo/Codex handoff of 2026-06-20. Halo is retired under the
 > fleet-wide Codex close-out. The original is preserved in git history —
 > `git show f3c95a5:HANDOFF.md` — which is its durable record; a convenience
-> copy also sits at `archive/HANDOFF_halo_2026-06-20.superseded.md`, but note
-> `archive/` is gitignored, so that copy is local-only.
+> copy also sits at `archive/HANDOFF_halo_2026-06-20.superseded.md`; `archive/` is
+> tracked (un-ignored by `61a0f36`), so that copy is durable in git too — though git
+> history remains the stale-proof record (its truth does not depend on ignore config).
 
 ---
 
@@ -326,7 +332,7 @@ about such an agent is then not evidence of death.
 | `TUTU_HANDOFF.md` | tutu (current LIMUX_MGR) | this session's detail |
 | `LIMU_HANDOFF.md` | limu (retired) | prior-lane history |
 | `LIFO_HANDOFF.md` | lifo (retired) | earlier lane; peer-owned, do not edit |
-| `git show f3c95a5:HANDOFF.md` | halo (retired) | the 2026-06-20 state, verbatim (git history is the durable copy; `archive/` is gitignored) |
+| `git show f3c95a5:HANDOFF.md` | halo (retired) | the 2026-06-20 state, verbatim (git history is the durable copy) |
 
 Lineage: lifo → limu → **tutu** (all 2026-07-21). Related lanes: `karo` =
 OMP_MGR (`~/Proj/oh-my-pi`), `nava`/`dino` = hcom, `reve` = fleet.
