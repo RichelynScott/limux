@@ -21,6 +21,8 @@ Options:
   --channel <channel>      Install launcher lane: legacy, stable, preview, preview:<id>
                            (default: legacy). Stable also promotes the plain
                            limux/limux-cli aliases; legacy remains explicit.
+  --keep-reviewed <count>  Keep newest reviewed installs per lane (default: 3;
+                           env: LIMUX_REVIEWED_KEEP_LAST)
   --desktop-entry          Install a user desktop entry under ~/.local/share/applications
   --no-desktop-entry       Do not install a desktop entry (default)
   --ghostty-share <path>   Ghostty runtime share dir containing shell-integration
@@ -98,6 +100,7 @@ manifest_out=""
 ghostty_share_override="${LIMUX_GHOSTTY_SHARE_DIR:-}"
 ghostty_terminfo_override="${LIMUX_GHOSTTY_TERMINFO_DIR:-}"
 allow_missing_ghostty="false"
+keep_reviewed="${LIMUX_REVIEWED_KEEP_LAST:-3}"
 
 parse_runtime_channel() {
     local raw="$1"
@@ -154,6 +157,11 @@ while [[ $# -gt 0 ]]; do
             runtime_channel="$(parse_runtime_channel "$2")"
             shift 2
             ;;
+        --keep-reviewed)
+            [[ $# -ge 2 ]] || die "--keep-reviewed requires a value"
+            keep_reviewed="$2"
+            shift 2
+            ;;
         --desktop-entry)
             desktop_entry="true"
             shift
@@ -195,6 +203,8 @@ case "$profile" in
     release|debug) ;;
     *) die "--profile must be release or debug, got: ${profile}" ;;
 esac
+[[ "$keep_reviewed" =~ ^[1-9][0-9]*$ ]] \
+    || die "--keep-reviewed must be a positive integer, got: ${keep_reviewed}"
 
 if [[ -z "$install_id" ]]; then
     install_id="$(git -C "$repo_root" rev-parse --short=12 HEAD 2>/dev/null || true)"
@@ -628,6 +638,7 @@ Desktop entry: ${desktop_entry}
 Launcher: ${bin_link_dir}/${launcher_name}
 CLI launcher: ${bin_link_dir}/${cli_launcher_name}
 Default aliases promoted: ${promote_default_aliases}
+Reviewed installs retained per lane: ${keep_reviewed}
 
 ## Source Artifacts
 
@@ -706,6 +717,18 @@ if [[ "$mode" == "apply" ]]; then
     )
 fi
 
+retention_args=(
+    "--${mode}"
+    "--reviewed-root" "${prefix}/limux-reviewed"
+    "--keep" "$keep_reviewed"
+    "--current-install-root" "$install_root"
+    "--current-created-utc" "$timestamp"
+    "--timestamp" "$timestamp"
+)
+retention_output="$(
+    bash "${script_dir}/prune-reviewed-runtimes.sh" "${retention_args[@]}"
+)"
+
 if [[ -n "$manifest_out" ]]; then
     printf '%s\n' "$manifest" > "$manifest_out"
 fi
@@ -713,6 +736,9 @@ fi
 log "Limux user-local install lane (${mode})"
 log ""
 log "$manifest"
+log ""
+log "Reviewed runtime retention:"
+log "$retention_output"
 log ""
 log "Planned actions:"
 for action in "${planned_actions[@]}"; do
