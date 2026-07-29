@@ -1854,8 +1854,16 @@ fn agent_hook_debug_dir() -> Option<PathBuf> {
         .or_else(|| dirs::home_dir().map(|home| home.join(".local/state/limux")))
 }
 
+/// Cap for `agent-hook-debug.jsonl`. This file had no bound of any kind and had
+/// reached 20.3 MiB / 73,926 lines by 2026-07-28 while still appending; the host
+/// log reached 25.8 GiB the same way before its own cap landed. One retained
+/// generation keeps enough recent context to debug a hook handoff while bounding
+/// total on-disk cost at roughly twice this value.
+const AGENT_HOOK_DEBUG_MAX_BYTES: u64 = 8 * 1024 * 1024;
+
 fn append_debug_line(path: &Path, bytes: &[u8]) -> Result<()> {
     use std::io::Write;
+    rotate_debug_log_if_full(path, bytes.len() as u64)?;
     let mut file = fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -1863,6 +1871,33 @@ fn append_debug_line(path: &Path, bytes: &[u8]) -> Result<()> {
         .with_context(|| format!("failed to open {}", path.display()))?;
     file.write_all(bytes)
         .with_context(|| format!("failed to append {}", path.display()))
+}
+
+/// Rotate `path` to `<path>.1` when appending `incoming` bytes would breach
+/// `AGENT_HOOK_DEBUG_MAX_BYTES`, replacing any previous retained generation so
+/// the cost stays at one active file plus one retained file.
+///
+/// A write larger than the cap is still written rather than dropped: losing
+/// telemetry is a worse failure than one oversized file, and the next write
+/// rotates it away.
+fn rotate_debug_log_if_full(path: &Path, incoming: u64) -> Result<()> {
+    let current = match fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => metadata.len(),
+        // Absent, or something we do not understand (dir, symlink to a device).
+        // Clobbering the latter would be worse than skipping the cap.
+        Ok(_) => return Ok(()),
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(error).with_context(|| format!("failed to stat {}", path.display()))
+        }
+    };
+    if current.saturating_add(incoming) <= AGENT_HOOK_DEBUG_MAX_BYTES {
+        return Ok(());
+    }
+    let mut retained = path.as_os_str().to_os_string();
+    retained.push(".1");
+    fs::rename(path, PathBuf::from(retained))
+        .with_context(|| format!("failed to rotate {}", path.display()))
 }
 
 fn limux_env_value(name: &str) -> Option<String> {
@@ -10114,6 +10149,103 @@ mod new_pane_tests {
                 "workspace_id": "workspace:manual",
                 "pane_id": "pane:77"
             })
+        );
+    }
+}
+
+#[cfg(test)]
+mod agent_hook_debug_tests {
+    use super::{append_debug_line, AGENT_HOOK_DEBUG_MAX_BYTES};
+    use std::fs;
+    use std::path::PathBuf;
+
+    /// The failure this exists to prevent: `append_debug_line` had no cap of any
+    /// kind, so the file grew to whatever total had ever been written through it
+    /// (20.3 MiB and climbing when this was found; the host log reached 25.8 GiB
+    /// the same way).
+    ///
+    /// The final assertion is what makes this load-bearing rather than
+    /// decorative: delete the `rotate_debug_log_if_full` call and `total` becomes
+    /// exactly `written`, so this fails. Asserting only "active <= cap" would
+    /// still pass against an unbounded implementation on the first write.
+    #[test]
+    fn debug_log_rotates_instead_of_growing_without_bound() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("agent-hook-debug.jsonl");
+
+        let chunk = vec![b'x'; 512 * 1024];
+        let writes = (AGENT_HOOK_DEBUG_MAX_BYTES / chunk.len() as u64) * 3;
+        for _ in 0..writes {
+            append_debug_line(&path, &chunk).expect("append");
+        }
+        let written = writes * chunk.len() as u64;
+
+        let active = fs::metadata(&path).expect("active log").len();
+        assert!(
+            active <= AGENT_HOOK_DEBUG_MAX_BYTES,
+            "active log {active} B exceeded cap {AGENT_HOOK_DEBUG_MAX_BYTES} B"
+        );
+
+        let mut retained_path = path.clone().into_os_string();
+        retained_path.push(".1");
+        let retained = fs::metadata(PathBuf::from(retained_path)).map_or(0, |meta| meta.len());
+        assert!(
+            retained <= AGENT_HOOK_DEBUG_MAX_BYTES,
+            "retained log {retained} B exceeded cap {AGENT_HOOK_DEBUG_MAX_BYTES} B"
+        );
+
+        let total = active + retained;
+        assert!(
+            total <= 2 * AGENT_HOOK_DEBUG_MAX_BYTES,
+            "total {total} B exceeded the one-active-plus-one-retained bound"
+        );
+        assert!(
+            total < written,
+            "wrote {written} B and kept {total} B: the cap did nothing"
+        );
+    }
+
+    /// A single write larger than the cap must still land. Dropping telemetry is
+    /// a worse failure than one oversized file, and the next write rotates it.
+    #[test]
+    fn oversized_single_write_is_not_dropped() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("agent-hook-debug.jsonl");
+
+        let chunk = vec![b'y'; (AGENT_HOOK_DEBUG_MAX_BYTES + 1024) as usize];
+        append_debug_line(&path, &chunk).expect("append");
+
+        assert_eq!(
+            fs::metadata(&path).expect("active log").len(),
+            chunk.len() as u64,
+            "an oversized first write must be written, not silently dropped"
+        );
+    }
+
+    /// Rotation must not lose the previous generation's contents, and must not
+    /// accumulate a third generation.
+    #[test]
+    fn rotation_retains_exactly_one_previous_generation() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("agent-hook-debug.jsonl");
+
+        let chunk = vec![b'z'; 1024 * 1024];
+        for _ in 0..20 {
+            append_debug_line(&path, &chunk).expect("append");
+        }
+
+        let mut retained_path = path.clone().into_os_string();
+        retained_path.push(".1");
+        assert!(
+            PathBuf::from(retained_path).exists(),
+            "expected one retained generation after exceeding the cap"
+        );
+
+        let mut third = path.clone().into_os_string();
+        third.push(".2");
+        assert!(
+            !PathBuf::from(third).exists(),
+            "rotation must replace the retained generation, not stack a third"
         );
     }
 }
