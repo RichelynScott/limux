@@ -6,7 +6,9 @@ logs/
 # NOTE: archive/ is deliberately NOT ignored. It is the archive-not-delete
 # destination, and `git clean -fdx` removes ignored in-tree paths — so ignoring
 # it would let the cleanup command destroy the directory that exists to make
-# deletions recoverable. A tracked archive is structurally immune to git clean.
+# deletions recoverable. Only files COMMITTED under archive/ survive git clean;
+# a file mv'd here but not yet staged is still untracked and `git clean -fdx`
+# WILL remove it — stage + verify every archive move immediately.
 # Regenerable build output must NOT be parked here; it gets its own ignored dir.
 *.tar.gz
 .worktrees/
