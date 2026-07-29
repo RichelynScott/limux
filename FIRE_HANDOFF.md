@@ -51,6 +51,47 @@ safe and still takes the inbox dirs. Both inboxes are now committed, but per the
 **fencepost** (below) that is mitigation, never closure — the behavioural control
 is the real one.
 
+---
+
+# ⚡ UPDATE 22:42 EST — first compact attempt FAILED; the hold still stands
+
+**The 2026-07-28 restart happened. The compact did NOT.** Destruction succeeded
+(staging root gone, ext4 in-use 201 → 157.75 GiB); the reclaim half did not.
+
+| | |
+|---|---|
+| `ext4.vhdx` | 372,797,079,552 B = **347.19 GiB** — unchanged |
+| ext4 in use | 157.75 GiB (statvfs — **read `Used`, do not derive from total−avail**) |
+| **Recoverable** | **189.44 GiB** — the largest it has ever been, because destruction freed 41 GiB inside |
+| C: free | 27G |
+
+**`--set-sparse` is HARD-BLOCKED on this host.** Not a race, not interop — WSL
+refuses it outright: *"Sparse VHD support is currently disabled due to potential
+data corruption… `Wsl/Service/E_INVALIDARG`"*. `--allow-unsafe` is the only sparse
+path and is **advised against** (Microsoft disabled it over real corruption
+reports). Three sessions theorised about a "silent" failure that was never silent;
+nobody asked what the command printed.
+
+**Console relay is `levu`'s** — diskpart with read-only attach (fails loud if the
+distro is up), Docker Desktop quit, Stopped-verify. I deferred; so did huno. Do
+**not** re-hand any set-sparse sequence.
+
+## ⚠️ A finding of mine in the fleet record is RETRACTED
+
+I reported that `read-screen` cannot distinguish a ghost pane from a nonexistent
+one. **Invalid.** `read-screen` has no `--pane` flag — only `--surface`. `--pane`
+parses and does nothing, so my "byte-identical" result was two runs of a command
+ignoring its input, plus a null case that matched both.
+
+The control that collapses it: **run the command with the target omitted; if the
+output matches, the input was never connected.** levu's probe matrix now runs that
+first. The real, evidence-backed anomaly is tutu's: explicit `--surface` returning
+**exit 0 with a different lane's content** via the documented focused-surface
+fallback.
+
+Ghost panes themselves are real (layout restored, no live terminals) and are
+**huno/tutu's lane**, deferred post-compact.
+
 ## Post-compact TODO, in priority order
 
 1. **huno's orphan tiers — 1.21 GiB across 15 snapshots**, deliberately held until
