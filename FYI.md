@@ -2096,3 +2096,69 @@ behalf of the absent build/release owner and the retired root-HANDOFF owner
 (halo). All prior launchers archived via mv, never rm.
 
 ### Related: PR #85 | main 3bf819f
+
+## 2026-07-28 - Named session profiles: multiple independent restore states (huno)
+
+### What
+- Shipped `--profile <name>` plus `limux profile list/path/rm`, giving the
+  operator multiple independent saved workspace sets instead of one global
+  restore state. Merged as `93132ae` (PR #99), installed to the
+  `preview:sessions` lane.
+- Reverted a first attempt (PR #92 -> revert #96) that was unreachable for
+  100% of installed users, then re-landed it correctly.
+- Added `rust/limux-cli/tests/launcher_route.rs` (5 tests) — the first tests in
+  this crate that invoke the real binary through a real installed-shape launcher.
+
+### Why
+- Starting a second limux instance either cloned every workspace from the last
+  shutdown or came up empty, with no way to keep a small, cheap set separate
+  from a large one. The operator wanted several named sets, and not to pay RAM
+  for workspaces they were not using.
+- **The P1 that forced the revert is the load-bearing lesson.** The first
+  implementation modelled *profile* and *channel* as one field. Every installed
+  launcher pins `--channel <lane>`, so an operator's `--profile work` arrived as
+  `--channel stable --profile work` and the code rejected it as contradictory
+  user input. The feature passed every unit test and could not be reached by any
+  real user.
+- A mutation proof could not have caught it. Mutation testing perturbs code the
+  tests already execute, and **no test entered the launcher route at all**. The
+  repo's revert-the-call-site rule catches decorative fixes; it does not catch a
+  route nobody tests. Hence: *test the route, not the parser*.
+
+### How
+- Two dimensions, read independently and never folded: **channel** = build lane,
+  supplied by the launcher; **profile** = session set, supplied by the operator.
+  `AGENTS.md` records why they must stay separate.
+- Socket: `$XDG_RUNTIME_DIR/limux/<lane>/profiles/<name>/limux.sock`.
+  Data: `<XDG_DATA_HOME>/limux/<lane>/profiles/<name>/session/session.json`.
+- Auto-assigned profiles claim their index with a non-blocking `flock`, replacing
+  a socket-probe that was check-then-act: the loser's bind failure is non-fatal,
+  so it would clobber the winner's `session.json`. Found independently by an
+  adversarial reviewer and by the design pass.
+- `sanitize_profile_id` rejects empty names and path traversal (`../escape`).
+
+### Impact
+- Operator's two live sessions captured as `main` (27 workspaces) and `second`
+  (6 workspaces), verified byte-identical on disk in two lanes.
+- **Known trap, mine, not yet fixed:** the same build was installed under two
+  lane names, `preview:profiles` and `preview:sessions`. Profiles are lane-scoped
+  by design, so `limux-preview-profiles profile list` reports *no saved profiles*
+  while `limux-preview-sessions profile list` shows both. The launcher whose name
+  says "profiles" is the empty one. Nothing in tracked docs yet names
+  `limux-preview-sessions` as the command to type.
+- **`profile list` inherited the systemic unknown-flag defect** flagged in
+  `docs/REPO_AUDIT_limux_2026-07-21.md:76` seven days earlier: `profile list
+  --xyzzy BOGUS` and `profile list --profile work` both exit 0 with the flag
+  silently ignored. Lower severity than H1 (no fallback into another lane's
+  data — the cost is confusion, not disclosure) but the identical root cause, and
+  it should be closed by the systemic Q1/T0.1 fix rather than a special case.
+
+### Related
+`93132ae` (PR #99) | revert `0400297` (PR #96) | tests `rust/limux-cli/tests/launcher_route.rs`
+
+## 2026-07-29 - WSL2 ext4.vhdx sparse-compaction (C: space reclaim)
+### What: Compacted the WSL2 ext4.vhdx to reclaim allocated-but-empty space during a C: drive space crisis.
+### Why: A .vhdx only grows — writes inside WSL expand it, deletes do not shrink it — so it had ratcheted to ~347 GiB allocated while only ~157 GiB was in use inside ext4; only an explicit compact reclaims.
+### How: Windows-side compaction after `wsl --shutdown` (composed Docker-quit + WSL-down fail-safe gate + read-only diskpart, byte-verified via Get-Clipboard).
+### Impact: ext4.vhdx 372,797,079,552 B (347.19 GiB) -> 210,887,507,968 B (196.40 GiB), -150.79 GiB; C: free ~22 GiB -> ~177 GiB. Verified by two independent readings (fire du/df + huno vhdx check).
+### Related: coordsurf FYI consolidation (this branch); limux cleared as a C: drain contributor (bounded host logging per #88/#90); active ratchet writers identified as codex/hcom/hermes DBs (owner-routed).
