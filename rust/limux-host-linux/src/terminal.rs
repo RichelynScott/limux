@@ -2636,11 +2636,17 @@ pub fn create_terminal(
         let scroll = gtk::EventControllerScroll::new(
             gtk::EventControllerScrollFlags::BOTH_AXES | gtk::EventControllerScrollFlags::DISCRETE,
         );
-        scroll.connect_scroll(move |ctrl, dx, dy| {
+        scroll.connect_scroll(move |_ctrl, dx, dy| {
             if let Some(surface) = *surface_cell.borrow() {
-                let mods = translate_mouse_mods(ctrl.current_event_state());
-                // GTK and Ghostty use opposite scroll conventions — negate both axes
-                unsafe { ghostty_surface_mouse_scroll(surface, -dx, -dy, mods) };
+                // GTK and Ghostty use opposite scroll conventions — negate both axes.
+                // The 4th arg is Ghostty's ScrollMods (precision/momentum), NOT keyboard
+                // mods. This controller delivers DISCRETE wheel ticks (no precision or
+                // momentum), so pass 0. Passing translate_mouse_mods here aliased the
+                // keyboard-mods byte onto ScrollMods: GHOSTTY_MODS_SHIFT = 1<<0 collides
+                // with ScrollMods.precision (bit 0), so Shift+wheel set precision=true —
+                // a discrete tick became a banked pixel delta discharged later as a
+                // phantom multi-row scroll burst (karo report 2026-07-29, LIFO_INBOX/).
+                unsafe { ghostty_surface_mouse_scroll(surface, -dx, -dy, 0) };
             }
             glib::Propagation::Stop
         });
