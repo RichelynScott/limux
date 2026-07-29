@@ -7,7 +7,16 @@ effort. Written before an operator-initiated session restart.
 
 ---
 
-# ⚡⚡⚡ CURRENT STATE — 2026-07-29 11:20 EST. READ ONLY THIS BLOCK; everything below is history
+# ⚡⚡⚡ CURRENT STATE — 2026-07-29 11:50 EST. READ ONLY THIS BLOCK; everything below is history
+
+**11:50 addendum:** Operator decision packet delivered:
+`docs/LIMUX_SPACE_CRISIS_PR_CYCLE_DECISION_PACKET_2026-07-29.html` (untracked on purpose —
+commit rides a later cycle commit). Pending operator picks: D1 orphan-destruction /
+D2 Docker vhdx / D3 untiered remainder — **nobody acts on these until the operator answers.**
+Consolidation ACCELERATED per operator: tutu builds + PRs the coordsurf consolidation off
+origin/main NOW (independent of #102/#103 — neither commits FYI.md). All lanes told to prep
+for context compaction (#599-thread). Edge-open of the packet delegated to niru (Codex —
+Fable browser-launch ban); operator clipboard fallback armed.
 
 Compact SUCCEEDED this morning (vhdx 347.19→196.40 GiB, −150.79). Then huno found the
 drain resumed (agent DB churn; vhdx 196.40→202.28 by 10:46) and ran an operator-approved
