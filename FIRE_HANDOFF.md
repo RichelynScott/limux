@@ -75,6 +75,32 @@ opening the canonical protocol doc and reading what Session-ID is *defined* to m
 did that for two rounds. When a check's validity rests on "X is impossible," the impossibility
 claim is a **spec question**, not a reasoning question — read the spec first.
 
+kazu retracted in the durable artifact (PR #202, `030e5bf`, both hub inbox copies byte-identical)
+rather than only on-thread, because that file was routed to the PAPA_GIT owner and would
+otherwise have sent them chasing two non-defects — arriving with *more* authority than the
+original, since it came from a second source. That is the **cited-is-not-verified** harm.
+
+### A NEW failure class, distinct from the instrument error above — worth carrying
+
+kazu named the mechanism: **"I verified the detector's MECHANISM and never its SEMANTICS."**
+The parser was checked to emit correct fields; what those fields *mean* was then asserted
+without opening the protocol that defines them. Both traps sat in the same twenty minutes of
+work and **only the parser one announced itself** (a wrong field is visible; a wrong meaning
+reads as fine).
+
+**This is why "vary the instrument until two readings agree" does NOT cover it.** Two
+independent readings of a semantically-misunderstood field will *agree* — and both be wrong.
+That control catches instrument error; only reading the spec catches meaning error. Today
+produced both, and conflating them would leave the second one unguarded.
+
+**Second-order, and the sharpest part:** kazu observed that labelling the form
+*"assumption-free"* is what made it dangerous — **a hedged claim invites checking; a claim
+labelled assumption-free tells the reader not to bother.** The confidence label actively
+suppressed the scrutiny the claim needed. Note the trade: my original form had a *known*
+limitation (it needs an allowlist of which names are Claude sessions); the replacement traded
+that for a *hidden* one and advertised the trade as an improvement. **Prefer a known
+limitation you can see over a hidden one you cannot.**
+
 **⚠️ The trap, and it is the important part:** the naive query **silently returns a false
 all-clear**. `%(trailers:key=...,valueonly)` emits a trailing newline, so each record splits
 across three lines and the Agent field is always empty — kazu's first run reported **ZERO
