@@ -30,7 +30,22 @@ code comments the intent explicitly at `agent_state.rs:87`: *"Unrecognized event
 an unknown event name would be worse — but it means an unrecognized `ask` produces no
 sidebar change and no error, i.e. exactly the symptom reported.
 
-## Possible zero-code mitigation — worth testing before building anything
+## ⚠️ ANSWERED 2026-07-30 — the zero-code mitigation below is RULED OUT
+
+`nara` (oh-my-pi, successor to `vimi`) answered the open question:
+**OMP does not call `limux hooks <agent> <event>` at all today.** Ask-wait is a local
+desktop toast + chirp only; `LIMUX_SESSION_DIR` / `LIMUX_CHANNEL` are used solely for
+scrollback preservation. Source: `FIRE_INBOX/FYI_FROM_nara_2026-07-30_ask-waiting-escalated-to-tutu.md`.
+
+**Consequence:** the `notification` mitigation in the next section **cannot apply** — there
+is no hook call to rename. Blocker 1 and Blocker 2 are therefore *both* live, and the work
+cannot be zero-code. The remaining shape is: **OMP adds hook emission**, and/or **limux adds
+`AgentKind::Omp`** — the decision `nara` escalated to `TUTU_INBOX/REQUEST_FROM_nara_2026-07-30_omp-ask-waiting-feature-decision.md`.
+
+The section below is kept as the reasoning that produced the question, not as a live
+recommendation.
+
+## Possible zero-code mitigation — SUPERSEDED, see the answer above
 
 `Notification` / `notification` is **already** a recognized needs-input trigger. If OMP can
 emit its ask-wait event to limux under an existing agent route with the event name
