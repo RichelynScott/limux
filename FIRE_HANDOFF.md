@@ -40,11 +40,31 @@ PAPA_GIT source **already disabled the shared global fallback at `b8d32f7`**; li
 hooks lacking stronger identity**, not every hooked repo automatically. The real question
 for any other repo is *"is its installed hook stale?"* — which must be checked, not assumed.
 
-**My proposed detector was also overstated.** I claimed a `Session-ID`/`Agent` mismatch
-flags misattribution with "zero false positives." limu's correction: a generic detector
-needs an **authoritative runtime mapping** — an arbitrary `Session-ID` string alone does not
-establish a runtime type, so you cannot conclude "Claude session-id + codex agent" without
-that mapping. The idea is still worth pursuing; the zero-FP claim was not earned.
+**The sharpest framing is kazu's, not mine: the fallback DEFEATS papa-git's designed
+fail-loud behavior.** The rule specifies a *loud commit refusal* on missing identity, never
+a silent drop. The global fallback converts that refusal into **silent misattribution** —
+strictly worse, because a refused commit is visible and a wrongly-stamped commit is
+permanent. kazu independently re-derived both commits and confirmed **their own
+`CLAUDE_SESSION_NAME` is also unset**, so the default path is broken for every session that
+doesn't pass explicit env — not just mine.
+
+**My detector: the idea survives, but BOTH my framings of it were wrong.** I claimed "zero
+false positives"; limu corrected that it needs an authoritative runtime mapping; **kazu then
+produced an assumption-free form that needs no mapping at all** — *one Session-ID appearing
+under BOTH runtime families is impossible regardless of naming.* Over **794 trailer-bearing
+commits / 45 days / 6 repos** it returns exactly three: **FIRE, PAPA_GIT_MGR, HCOM_MGR** —
+note the second, the attribution system's own manager identity is misattributed. My naive
+"Claude-name + codex-agent" form **would have false-positived** on LIFO and HAMO, which
+appear with codex agents *only* (consistently-named Codex sessions, correctly excluded by
+the assumption-free form).
+
+**⚠️ The trap, and it is the important part:** the naive query **silently returns a false
+all-clear**. `%(trailers:key=...,valueonly)` emits a trailing newline, so each record splits
+across three lines and the Agent field is always empty — kazu's first run reported **ZERO
+mismatches while the known-positive `55e1f99` sat inside the scanned range**.
+**`separator=%x20` fixes it.** It was caught only because they had a known positive to
+validate against. Never trust a detector that has not been run against a known positive; an
+all-clear from an unvalidated instrument is indistinguishable from a broken one.
 
 limu landed the forward corrective record at **`f223ff2`** (`Session-ID: HCOM_LIMU`, so
 their identity resolves correctly now) and rightly refused to rewrite pushed main. Owner
