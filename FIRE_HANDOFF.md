@@ -7,7 +7,123 @@ effort. Written before an operator-initiated session restart.
 
 ---
 
-# ⚡⚡⚡ CURRENT STATE — 2026-07-29 18:05 EST — LANE CLOSED OUT. READ ONLY THIS BLOCK; everything below is history
+# ⚡⚡⚡ CURRENT STATE — 2026-07-30 20:10 EST — LANE CLEAN, NOTHING ASSIGNED. READ ONLY THIS BLOCK; everything below is history
+
+`main` = **f223ff2**, tree clean, in sync with origin, **zero open PRs**, `./scripts/check.sh`
+**exit 0**. Nothing is blocked on this lane and **nothing is assigned to fire.**
+
+## ⚠️ TWO THINGS A SUCCESSOR WILL GET WRONG IF NOT TOLD
+
+### 1. `limu` commits into THIS working tree. Your HEAD moves without your pull.
+
+HEAD went `1c8d43b` → `55e1f99` → `f223ff2` under me with no pull on my side. Not a
+problem — same lane — but it means **`git status` "clean" does not mean "unchanged since
+you last looked."** Re-check HEAD before reasoning about repo state, and never assume a
+commit you didn't make isn't there.
+
+### 2. Git attribution in this repo is UNRELIABLE — everything is stamped `Session-ID: FIRE`
+
+papa-git's `prepare-commit-msg` falls back to the global `$HOME/.claude-session-name`
+(contains `FIRE`) when per-session env is absent. My own `CLAUDE_SESSION_NAME` is **unset**,
+so even my commits take the fallback — and limu, a **Codex** session that would never set a
+Claude variable, inherits my name too. Proof, two commits, one shared source:
+
+| commit | Session-ID | Agent |
+|---|---|---|
+| `1c8d43b` (mine) | FIRE | claude-opus-5 |
+| `55e1f99` (limu's) | **FIRE** | codex-gpt-5.6-sol-high |
+
+**⚠️ My scope claim was WRONG and limu corrected it — carry the correction, not my version.**
+I reported this as "machine-wide, any papa-git-hooked repo." It is **not**. Canonical
+PAPA_GIT source **already disabled the shared global fallback at `b8d32f7`**; limux's
+**installed hook is stale and hash-mismatched**. So the exposed set is **stale deployed
+hooks lacking stronger identity**, not every hooked repo automatically. The real question
+for any other repo is *"is its installed hook stale?"* — which must be checked, not assumed.
+
+**My proposed detector was also overstated.** I claimed a `Session-ID`/`Agent` mismatch
+flags misattribution with "zero false positives." limu's correction: a generic detector
+needs an **authoritative runtime mapping** — an arbitrary `Session-ID` string alone does not
+establish a runtime type, so you cannot conclude "Claude session-id + codex agent" without
+that mapping. The idea is still worth pursuing; the zero-FP claim was not earned.
+
+limu landed the forward corrective record at **`f223ff2`** (`Session-ID: HCOM_LIMU`, so
+their identity resolves correctly now) and rightly refused to rewrite pushed main. Owner
+requests went to `kazu` + `niru`; `hobo`/`zori` were unavailable, so **PAPA_GIT/dual-hub
+rollout stays owner-gated** and is named in the durable record at
+`LIMU_INBOX/ATTRIBUTION_CORRECTION_FROM_limu_2026-07-30.md`.
+
+## What happened 2026-07-30 (do not re-derive)
+
+- **WSLg display reset ≠ limux bug.** 18:11:59 `Error reading events from display:
+  Connection reset by peer` → `limux-host` exited 1. Diagnosed independently by `limu` and
+  me, converging: no panic, no segfault, **not** #106/#107/#108. Ruled out at source: runtime
+  tree intact, `libghostty.so` linked, `session.json` valid JSON (no disk-pressure
+  truncation), display healthy after. Reproduction: `timeout 30 limux` → **exit 124** (stayed
+  up), captured **unpiped** so the code is the launcher's, not a pipeline's. Filed as
+  **fast-follow 8**; the defect is the *bare status 1*, not the exit.
+- **The display-loss fix cannot go where you'd put it.** `main.rs:555-561` already records,
+  for the sibling stderr-flush problem: *"measured headless, GTK terminates the process from
+  inside `app.run()`, which never returns."* Anything sited after `app.run()` is **dead code**
+  on this path. Seams: `GdkDisplay::closed` (preferred — can name the cause) or the proven
+  `atexit` pattern. Regression test: a message-formatting unit test would be **decorative**;
+  the load-bearing one is xvfb integration (legitimate — a timeout *ceiling*, not a timing
+  *assertion*).
+- **Fast-follow 9** — successor rebind: after an unclean restore a successor can update the
+  hook store but the surface stays suspended under the predecessor identity; no live rebind
+  exists. Hand-editing `session.json` is the WRONG fix (live operator state, no schema-checked
+  external write path). Authorization overlaps item 7's per-connection entitlement — one
+  design, not two. **Lane: limu.**
+- **OMP ask-waiting: decided, and fire is NOT assigned.** My triage found W1.3's needs-input
+  state machine **already exists** (`agent_state.rs`, incl. the `acknowledged` urgency bit);
+  the real blockers were that OMP is not an `AgentKind` (0 grep matches) and `ask` is not in
+  the hook vocabulary (0 matches) → `_ => None`, silent by design. `nara` then confirmed **OMP
+  does not call `limux hooks` at all**, which killed my proposed zero-code `notification`
+  mitigation — marked **SUPERSEDED in place** in both durable copies rather than left to be
+  followed. `limu` decided **A / GO (corrected scope)**: PRD-G is only slice 1, live
+  hooks/sidebar/socket/CLI stay under TaskMaster 7; **limu owns the receiver contract, rako
+  owns OMP emission.** Do **not** implement `AgentKind::Omp`.
+- **hcom broke fleet-wide for ~1 minute and recovered.** `current -> {ARTIFACT}` — an
+  uninterpolated template variable. My send failed exit 127. I **deliberately did not repoint
+  it**: timestamps showed an in-flight deploy, and racing another lane's installer makes it
+  worse. It self-resolved at 19:37. Reported to `heli` with the structural note: the failure
+  is **self-concealing** — anyone hitting it cannot use hcom to report hcom is down, so
+  observed duration measures who had a workaround, not impact. Recovery: invoke the versioned
+  binary directly, bypassing `current`.
+- **Six untracked coordination drops rescued** (`c85f55b`, `b920034`, `6b8bccb`, `1c8d43b`).
+  `git clean -ndx` would have taken every one, and `vimi` — author of the first — has since
+  **left the roster**, so it would have been unrecoverable with nobody to re-ask. All limux
+  inbox surfaces are now committed and verified. Structural, not carelessness: a drop is
+  created untracked by default, and *present in a directory* is indistinguishable from
+  *durable in it* until someone cleans.
+- **My owned fast-follows verified by MUTATION, not assertion.** Item 4 (cache poisoning):
+  `var_os` at runtime, landed. Item 3 (rotation flock): reverted the lock at the call site →
+  test **failed** with the intended message → restored from git, blob verified identical to
+  HEAD (`ed42907`), full gate **exit 0**. Done because I wrote both the fix *and* its test —
+  the exact pairing that produced today's H1 error, where my tests passed because they tested
+  what I already believed.
+
+## Still open / not mine
+
+- **H1 residual (CRITICAL, fast-follow 7)** — an explicit foreign `workspace_id` bypasses all
+  the #107 scoping in one call. Honest ceiling of a dispatcher-side fix; needs per-connection
+  entitlement and **cannot key on uid** (the operator is the one legitimate cross-workspace
+  reader and shares the agents' uid). **Do not implement speculatively.**
+- **C: at 89% and rising** (was 87% on 07-29). vhdx only grows; `wsl --shutdown` + compact is
+  **operator-only** and has still not run.
+- Fast-follows 1–2, 5, 8–9 → **limu**. `OMP_MGR_INBOX/STATUS_FROM_lubo_...` + my drop there
+  remain untracked in the OMP tree — **theirs** to commit; do not commit into another lane's
+  mid-flight checkout.
+
+## Standing don'ts (unchanged, still load-bearing)
+
+**No `git clean` in this repo** (`-fdx` takes 13 paths incl. `archive/`) · **never re-ignore
+`archive/`** · **never touch `~/.local/share/limux/**`** (live operator session state) ·
+**never re-hand any `--set-sparse` sequence** (hard-blocked on this host) · agents never
+delete staging roots — the operator alone does.
+
+---
+
+# (history) 2026-07-29 18:05 EST — LANE CLOSED OUT (superseded by the block above)
 
 `main` = **896f93c**, tree clean, in sync with origin. **Zero branches ahead-or-gone.**
 All 14 tracked tasks closed. All 4 PRs of this cycle merged: #102 `59876fa`, #103
