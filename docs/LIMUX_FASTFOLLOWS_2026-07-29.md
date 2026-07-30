@@ -140,6 +140,34 @@ disk-pressure truncation; X display healthy after the event (`xdpyinfo :0` exit 
 Post-incident reproduction: `timeout 30 limux` returns **124**, i.e. it stayed up the full
 30 s — captured unpiped, so the exit code is the launcher's and not a pipeline's.
 
+### Where the fix must go (the codebase already measured this)
+
+**A diagnostic sited after `app.run()` is dead code on this path.** `rust/limux-host-linux/src/main.rs:555-561`
+already records the finding, for a sibling problem:
+
+> No flush call here on purpose. Exiting kills the bounded-log drain thread and discards
+> the pipe buffer, but a call sited after `app.run()` does not reliably cover that:
+> **measured headless, GTK terminates the process from inside `app.run()`, which never
+> returns.** The flush is registered with `atexit` inside `install_bounded_stderr` instead.
+
+So the message cannot be emitted where a reader would naturally put it. Two viable seams:
+a **`GdkDisplay::closed` handler** (fires with `is_error=true` while GTK is still up — the
+preferred seam, since it can name the cause), or the existing **`atexit`** pattern (already
+proven here, but blind to *why* the process is exiting). Prefer the former; fall back to
+the latter only to guarantee the line is flushed.
+
+**Regression-test feasibility (honest read, per the revert-the-call-site rule in
+`CLAUDE.md`):** a unit test over a message-formatting helper would be **decorative** — it
+would prove the helper works while nothing proves it is reached, which is exactly the shape
+that rule exists to reject. The load-bearing test is integration: bring the host up under
+the existing `scripts/xvfb-smoke-test.sh` harness, kill the display, and assert the
+actionable line appears in the log. That is legitimate under the escape hatch because it is
+a **timeout ceiling, not a timing assertion** — it returns the moment the line lands, and
+only elapses when the message genuinely never comes, which *is* the bug (same shape as
+`sink_failure_does_not_block_stderr_writers_while_read_end_stays_open`). If the seam turns
+out to have no injection point without a runtime refactor, **file the gap with mutation
+evidence instead of forcing a flaky gate.**
+
 Secondary: `limux doctor` reports `[warn] 4 stale sockets` (e.g. `limux-85224.sock`).
 **These are self-inflicted diagnostic debris, not incident evidence** — doctor reported
 `[ok] no stale Limux sockets found` *before* the reproduction above and `[warn] 4` after,
@@ -159,3 +187,29 @@ broken instrument was used to overturn the good one.** Prefer `pgrep -a` here. T
 the second measurement error in this doc's lifetime caught only because two readings
 disagreed — a single measurement still cannot reveal its own instrument error, and being
 the one who wrote that sentence in item 6 did not prevent committing it again.
+
+## 9. Successor rebind after an unclean restore has no supported control path (open)
+
+Surfaced by `limu` during the item-8 incident recovery (thread
+`limux-runtime-crash-20260730`). After the unclean restore, the live hcom successor
+(`limu`) **can** update the canonical Codex hook store to its real pane (264), but the
+running Limux surface stays **suspended under the predecessor identity** (`lifo`), because
+hot reconciliation requires the *same* session ID. The installed surface exposes **no
+supported live rebind or unsuspend control method**, so a successor that legitimately
+inherits a pane cannot claim it.
+
+The failure mode is quiet and therefore worth writing down: the hook store and the surface
+disagree, each is internally consistent, and nothing reports the divergence — the pane
+simply stays attributed to a session that is gone.
+
+**This needs an explicit successor-rebind design, not a workaround.** Hand-editing
+`session.json` is the obvious temptation and is the wrong move: it is live operator state
+(currently ~60 KB covering the real workspaces), there is no schema-checked write path for
+external editors, and a malformed write costs the operator every restored pane. `limu`
+correctly declined to do it. Any fix belongs in the control API — a rebind verb with the
+same authorization treatment the surface-scoping work in item 7 established, since claiming
+another session's pane is precisely a cross-lane authority question.
+
+**Lane: limu** (owns runtime/session-restore), with the control-surface authorization model
+overlapping item 7's per-connection entitlement design — worth solving together rather than
+twice.
