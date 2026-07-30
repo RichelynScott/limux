@@ -48,15 +48,32 @@ permanent. kazu independently re-derived both commits and confirmed **their own
 `CLAUDE_SESSION_NAME` is also unset**, so the default path is broken for every session that
 doesn't pass explicit env — not just mine.
 
-**My detector: the idea survives, but BOTH my framings of it were wrong.** I claimed "zero
-false positives"; limu corrected that it needs an authoritative runtime mapping; **kazu then
-produced an assumption-free form that needs no mapping at all** — *one Session-ID appearing
-under BOTH runtime families is impossible regardless of naming.* Over **794 trailer-bearing
-commits / 45 days / 6 repos** it returns exactly three: **FIRE, PAPA_GIT_MGR, HCOM_MGR** —
-note the second, the attribution system's own manager identity is misattributed. My naive
-"Claude-name + codex-agent" form **would have false-positived** on LIFO and HAMO, which
-appear with codex agents *only* (consistently-named Codex sessions, correctly excluded by
-the assumption-free form).
+**The detector was corrected THREE times, by three sessions, and only the last one read the
+spec.** Sequence: I claimed "zero false positives" → limu said it needs an authoritative
+runtime mapping → kazu built an assumption-free form (*one Session-ID under BOTH runtime
+families is impossible regardless of naming*), which over **794 trailer-bearing commits / 45
+days / 6 repos** returned exactly three: **FIRE, PAPA_GIT_MGR, HCOM_MGR** → **limu then read
+canonical PAPA_GIT and refuted the impossibility premise itself.**
+
+`COMMIT_PROTOCOL.md:69,80-83` defines Session-ID as *universal* identity and **explicitly
+permits manager/role identities** (PAPA_GIT_MGR, HCOM_MGR by name); `:98-100` derives runtime
+separately from the Agent prefix; `UNIVERSAL_ATTRIBUTION_PROTOCOL.md:35` says "stable session
+**or role** identity." So a role identity appearing under two runtime families is
+**legitimate role succession**, not proof of misattribution.
+
+**Therefore: cross-family reuse is a HIGH-SIGNAL ANOMALY requiring role/session correlation
+— NOT a zero-false-positive fatal check.** Of kazu's three hits, only **FIRE is confirmed**,
+established independently by live ownership plus the known commits. Do **not** carry forward
+"the attribution system's own manager identity is misattributed" — I wrote that here and it
+is **not established**; PAPA_GIT_MGR and HCOM_MGR may both be legitimate succession.
+(kazu's `separator=%x20` parser fix stands regardless.) My original naive form would also
+have false-positived on LIFO and HAMO.
+
+**The lesson worth more than the detector:** three sessions proposed three confident contracts
+for this check, each sounding authoritative, and the disagreement was only settled by someone
+opening the canonical protocol doc and reading what Session-ID is *defined* to mean. Nobody
+did that for two rounds. When a check's validity rests on "X is impossible," the impossibility
+claim is a **spec question**, not a reasoning question — read the spec first.
 
 **⚠️ The trap, and it is the important part:** the naive query **silently returns a false
 all-clear**. `%(trailers:key=...,valueonly)` emits a trailing newline, so each record splits
