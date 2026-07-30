@@ -116,3 +116,46 @@ a *cleaner* exfiltration primitive than the read method the fix was aimed at. It
 adversarial reviewer instructed to **refute** to surface that; the author's own tests all
 passed, because they tested the thing the author already believed. A security fix's stated
 rationale needs the same adversarial treatment as its code.
+
+## 8. A WSLg display reset exits the host with a bare status 1 and no actionable message
+
+Live incident 2026-07-30 18:11:59 (thread `limux-runtime-crash-20260730`, diagnosed
+independently by `limu` and `fire`, converging). WSLg reset the display
+(`Gdk-Message: Error reading events from display: Connection reset by peer`);
+`xdg-desktop-portal-gtk` failed on broken pipe and Weston re-established monitors at
+18:12:02. `limux-host` exited **1**. There is **no panic, no segfault, and no code
+regression** — #106/#107/#108 are not implicated.
+
+**The defect is the diagnostic, not the exit.** A GTK app generally cannot survive losing
+its display, so exiting is defensible; exiting with a bare `1` is not. The operator sees
+"the launcher exits, status 1" and cannot distinguish an environmental display reset from
+a Limux fault — which is exactly why this consumed two agent lanes. Emitting something
+like `limux: display connection lost (compositor reset) — relaunch limux` before exit
+turns a multi-lane investigation into a one-line read.
+
+Verified NOT causes (each checked at source, not assumed): stable runtime tree intact
+(`bin`/`lib`/`libexec`/`share`, `libghostty.so` 28.5 MB, correctly linked, `--help` exits
+0); `session.json` (60254 B) and `runtime-incarnation.json` both valid JSON — no
+disk-pressure truncation; X display healthy after the event (`xdpyinfo :0` exit 0).
+Post-incident reproduction: `timeout 30 limux` returns **124**, i.e. it stayed up the full
+30 s — captured unpiped, so the exit code is the launcher's and not a pipeline's.
+
+Secondary: `limux doctor` reports `[warn] 4 stale sockets` (e.g. `limux-85224.sock`).
+**These are self-inflicted diagnostic debris, not incident evidence** — doctor reported
+`[ok] no stale Limux sockets found` *before* the reproduction above and `[warn] 4` after,
+so the bounded test launches created them. Caught by `limu`, who declined to remove them
+without the normal no-loss gate. Worth noting as behavior: a host that is killed (here, by
+`timeout`) leaves its control sockets behind rather than cleaning up on signal.
+**Lane: limu** (owns runtime/install).
+
+### Instrument-error note (second instance in two days — same shape as item 6)
+
+While diagnosing, `fire` reported "no host process running" from
+`ps -eo pid,lstart,etime,stat,cmd | grep -i limux-host | grep -v grep`, which returned
+empty, and used that to "correct" `limux doctor`'s accurate `found 1 running host` as a
+false positive counting its own test launch. `pgrep -a limux-host` finds PID 65425
+immediately. **The doctor was right; the ps pipeline was the broken instrument, and the
+broken instrument was used to overturn the good one.** Prefer `pgrep -a` here. This is
+the second measurement error in this doc's lifetime caught only because two readings
+disagreed — a single measurement still cannot reveal its own instrument error, and being
+the one who wrote that sentence in item 6 did not prevent committing it again.
