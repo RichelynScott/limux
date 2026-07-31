@@ -62,6 +62,23 @@ Origin: a standing adversarial subagent — which **died three times and was
 nearly abandoned** before the run that found this. The value showed up on the
 pass that was hardest to justify continuing.
 
+## Shell mutation checklist — pipe and trap safety
+
+- [ ] **Capture, then filter.** When the command's exit status matters, use
+  `OUT=$(cmd); RC=$?`, then filter `OUT`. Never read `$?` after a pipeline as
+  the command's status.
+- [ ] **Avoid pipeline-status arrays.** Bash uses `${PIPESTATUS[0]}`; zsh uses
+  `${pipestatus[1]}`. Both are volatile: the next command used to inspect or
+  report them can replace their contents. Capture a scalar immediately, or
+  avoid the pipeline.
+- [ ] **Install restoration before mutation.** Use `trap 'restore' EXIT`; a
+  trailing `restore` line does not cover abort paths.
+- [ ] **Make the exit self-describing.** Before `exit "$RC"`, print the action,
+  target, and captured status so the restoration backstop is auditable.
+- [ ] **Lint the exact script in its target shell.** Run `bash -n` or `zsh -n`
+  as appropriate (and `shellcheck` for Bash scripts when available), including
+  the trap, restoration, and explicit-exit paths.
+
 ## The two-binary gotcha
 
 - `target/debug/limux` — the **GTK app** (`limux-host-linux`). Only
