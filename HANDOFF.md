@@ -1,14 +1,11 @@
 # Limux — Directory State (session-agnostic)
 
-**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — shared `main` after Merge #112
-(`83cb928` lineage; hygiene + #110/#111/#112 continuity). Open PR: **#109**
-(`bari/yield-abc` @ `7d9bfb4`) — unknown-flag reject, byte-safe `send`,
-display-loss diagnostic.
-TaskMaster reconciled; planned stale sockets + `/tmp` limux test debris archived
-(not deleted). Product backlog lives in `BARI_HANDOFF.md` and
-`docs/LIMUX_FASTFOLLOWS_2026-07-29.md` (not only `TUTU_HANDOFF.md`).
-Doctor now fully green (`stale_sockets` `[ok]`); historical leave-alone `52458`
-paths are **gone** (do not recreate/re-archive).
+**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — yields PR **#109 MERGED**
+(`de6d1db`; tip was `7d9bfb4`). Shared `main` carries TaskMaster #25/#33/#34.
+Continuity docs #110–#114 landed earlier today. Doctor fully green
+(`stale_sockets` `[ok]`); historical leave-alone `52458` paths gone.
+Product backlog remaining items live in `BARI_HANDOFF.md` and
+`docs/LIMUX_FASTFOLLOWS_2026-07-29.md`.
 
 **Scope:** `/home/riche/MCPs/limux`
 **Purpose:** ONE file that tells ANY session — not just the current manager —
@@ -24,11 +21,13 @@ the per-session handoffs listed in §7.
 
 ---
 
-## 1. STATUS — host healthy; hygiene closed; yields open as PR #109
+## 1. STATUS — host healthy; hygiene closed; yields merged (#109)
 
-**Open product PR:** [#109](https://github.com/RichelynScott/limux/pull/109) on
-`bari/yield-abc` tip `7d9bfb4` (TaskMaster #25/#33/#34). Shared `main` stays
-docs/hygiene-only until merge — product symbols live on the PR branch.
+**Yields MERGED:** [#109](https://github.com/RichelynScott/limux/pull/109) merge
+`de6d1db` (branch tip was `7d9bfb4`) — TaskMaster **#25/#33/#34** on `main`.
+Honest residual: Ghostty FFI PTY write not unit-proven; E2E =
+`scripts/xvfb-smoke-test.sh`. Reinstall of the running stable host is in
+progress / operator-gated separately from the git merge.
 
 
 **Host is UP.** Live control sockets remain
@@ -53,10 +52,10 @@ two stable listeners above, and `stale_sockets` is `[ok]`.
 only gate-verified and source-traced. Coordinate with the operator before poking
 live panes.
 
-**Open product work** is listed in `BARI_HANDOFF.md`: in-flight yields on
-PR #109 (#25/#33/#34), plus still-open H1 entitlement option (b),
-successor-rebind, prune fast-follows, live GUI verify, and OMP plan-review
-sidebar visibility as cmux-parity `7.3`.
+**Open product work** is listed in `BARI_HANDOFF.md` (still-open: CLAUDE.md
+cards, H1 entitlement option (b), successor-rebind, prune fast-follows, live
+GUI verify, OMP plan-review sidebar visibility as cmux-parity `7.3`). Yields
+#25/#33/#34 are merged.
 
 ---
 
@@ -117,7 +116,7 @@ Notable merges after the installed `c757056` tip (non-exhaustive; tip is
 
 | Item | State |
 |---|---|
-| **Unknown CLI flags / byte-safe send / display-loss** | IN FLIGHT on [PR #109](https://github.com/RichelynScott/limux/pull/109) tip `7d9bfb4` (TaskMaster **#33/#25/#34** done on PR tip; shared `main` TaskMaster still pre-merge). Honest residual: Ghostty FFI PTY write not unit-proven; E2E = `scripts/xvfb-smoke-test.sh`. |
+| **Unknown CLI flags / byte-safe send / display-loss** | ✅ MERGED via [PR #109](https://github.com/RichelynScott/limux/pull/109) (`de6d1db`). TaskMaster **#33/#25/#34** done on `main`. Honest residual: Ghostty FFI PTY write not unit-proven; E2E = `scripts/xvfb-smoke-test.sh`. Running install may still lag until stable reinstall. |
 | **CLAUDE.md checklist card lines** | OPEN — limux-local piece (`BARI_HANDOFF` still-open #4) |
 | **H1 residual CRITICAL** | OPEN — explicit foreign `workspace_id`; operator-gated option (b) (fast-follow §7) |
 | **Successor-rebind control path** | OPEN — unclean restore leaves suspended predecessor identity (fast-follow §9) |

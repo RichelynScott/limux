@@ -1,4 +1,4 @@
-# BARI_HANDOFF — bari (LIMUX_MGR) — 2026-07-31 resume (hygiene + yields PR)
+# BARI_HANDOFF — bari (LIMUX_MGR) — 2026-07-31 resume (yields merged)
 
 **Created by:** OMP (`bari` / LIMUX_MGR; session label may appear as `kero` in the GUI)
 **Date:** 2026-07-31 (UTC)
@@ -11,19 +11,19 @@
 
 ## Repo state snapshot (re-measured 2026-07-31)
 - Shared checkout: `/home/riche/MCPs/limux` on `main`, clean aside from untracked `.taskmaster/reports/`, synced with `origin/main`.
-- Shared `main` after Merge #112 (`83cb928` lineage; prior #111/`990b198`, #110/`e07dd2c`). Yields product tip: `7d9bfb4` on `bari/yield-abc`.
-- Open PRs: **#109** — https://github.com/RichelynScott/limux/pull/109
+- Shared `main` @ `de6d1db` (Merge #109 yields `de6d1db`; continuity #110–#114). Yields product symbols now on `main`.
+- Open PRs: **none** (yields #109 merged).
 - Installed runtime (unchanged by this packet): `limux-cli 0.2.3 (c757056d2539, release)` install-id `main-c757056d2539-adv-remediated-20260721` — **~50+ commits behind main** including #105–#108. Reinstall is **operator-gated**, not part of this packet.
 - Doctor re-check: launchers / processes / socket / `stale_sockets` / ghostty_resources all `[ok]` (exit 0). Historical leave-alone `52458` paths are gone; only live listeners are `stable/limux.sock` + `.cursor`.
 - Last known full Rust gate green from fire's closeout lane (docs-only continuity; `./scripts/check.sh` not re-run here).
 
 ## Open product backlog
-### In flight — PR #109 (`bari/yield-abc` @ `7d9bfb4`)
-1. ~~Reject unknown CLI flags before socket contact~~ → TaskMaster **#33** (done on PR tip).
-2. ~~Byte-safe `limux send` `--stdin`/`--file`~~ → TaskMaster **#25** (done on PR tip). **Honest residual:** Ghostty FFI PTY write not unit-proven; E2E = `scripts/xvfb-smoke-test.sh` (ScoutBridgeDelivery).
-3. ~~Display-loss exit diagnostic~~ → TaskMaster **#34** (done on PR tip; 34.3 via mutation evidence).
+### Merged — PR #109 (`de6d1db`; was `bari/yield-abc` @ `7d9bfb4`)
+1. ~~Reject unknown CLI flags before socket contact~~ → TaskMaster **#33** (done on `main`).
+2. ~~Byte-safe `limux send` `--stdin`/`--file`~~ → TaskMaster **#25** (done on `main`). **Honest residual:** Ghostty FFI PTY write not unit-proven; E2E = `scripts/xvfb-smoke-test.sh` (ScoutBridgeDelivery).
+3. ~~Display-loss exit diagnostic~~ → TaskMaster **#34** (done on `main`; 34.3 via mutation evidence). Running stable install may still lag until reinstall.
 
-### Still open (not in #109)
+### Still open
 4. Limux-local `CLAUDE.md` checklist card lines (`TUTU_HANDOFF` item-3).
 5. H1 residual CRITICAL — explicit foreign `workspace_id` (fast-follow §7 / `docs/LIMUX_H1_WORKSPACE_ENTITLEMENT_DESIGN_2026-07-29.md`) — operator-gated option (b).
 6. Successor-rebind control path (fast-follow §9).
