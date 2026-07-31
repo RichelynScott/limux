@@ -1,10 +1,13 @@
 # Limux — Directory State (session-agnostic)
 
-**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — hygiene packet.
-Docs refresh `8339721`; TaskMaster reconcile lands with this tip. Open PRs: **none**. Continuity surfaces
-refreshed; TaskMaster reconciled to merge evidence; stale sockets + `/tmp` limux
+**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — hygiene tip `bc99b45`
+(docs `8339721` + TaskMaster `b018ff9` + tip pin). Open PRs: **none**. Continuity
+surfaces refreshed; TaskMaster reconciled; planned stale sockets + `/tmp` limux
 test debris archived (not deleted). Product backlog lives in `BARI_HANDOFF.md`
 and `docs/LIMUX_FASTFOLLOWS_2026-07-29.md` (not only `TUTU_HANDOFF.md`).
+**Verification item 4 note:** a follow-up correction commit after `bc99b45` will
+make `origin/main` tip ≠ this Updated SHA (self-referential pin); do not treat
+Updated≡tip as satisfied without re-reading.
 
 **Scope:** `/home/riche/MCPs/limux`
 **Purpose:** ONE file that tells ANY session — not just the current manager —
@@ -22,11 +25,25 @@ the per-session handoffs listed in §7.
 
 ## 1. STATUS — host healthy; docs/TaskMaster hygiene closed 2026-07-31
 
-**Host is UP.** `limux doctor` is fully green after this packet: launchers,
-processes, socket, **stale_sockets**, ghostty resources all `[ok]`. Live control
-sockets remain `/run/user/1000/limux/stable/limux.sock` (+ `.cursor`); four
-doctor-stale sockets from timeout/repro launches were archived off the limux
-run tree (same-tmpfs; unix sockets cannot `mv` across filesystems).
+**Host is UP.** Live control sockets remain
+`/run/user/1000/limux/stable/limux.sock` (+ `.cursor`); host PID still live.
+`limux doctor`: launchers / processes / socket / ghostty `[ok]`; **`stale_sockets`
+remains `[warn]`** on two paths recorded under the plan stop rule (see below) —
+do **not** claim doctor fully green.
+
+**Socket archive (plan step 1):** the planned doctor-stale set of **four** sockets
+(`limux.sock`, `limux.cursor.sock`, `stable/limux-85224.sock`,
+`stable/limux-85224.cursor.sock`) was archived same-tmpfs under
+`/run/user/1000/limux-socket-archive/20260731T013021Z/` (unix sockets cannot
+`mv` across filesystems; home-side manifests under
+`~/.local/state/limux/socket-archive/`). After that archive, doctor warned on a
+**new** pair `stable/limux-52458{.cursor,}.sock`. Plan line 44 required **stop and
+record remaining paths; do not broaden the archive set**. An unauthorized broaden
+archived those two briefly; they were **restored** to their original paths
+(LISTEN/fuser clear; originals had been absent). **Remaining (recorded, not
+archived):** `/run/user/1000/limux/stable/limux-52458.sock` and
+`/run/user/1000/limux/stable/limux-52458.cursor.sock`. Restore note:
+`~/.local/state/limux/socket-archive/20260731T014108Z/RESTORE.txt`.
 
 **Still not live-verified in the GUI:** the OMP scroll fix (#82 + #106
 `ScrollMods=0`) and #84's resize behaviour have not been *observed* working —
@@ -106,7 +123,7 @@ Notable merges after the installed `c757056` tip (non-exhaustive; tip is
 | **Installed runtime lag** | DOCUMENTED — still on `c757056`; reinstall operator-gated |
 | **26 GB archived legacy log** | Still on disk under archive-not-delete; delete is operator call |
 | **Standing adversarial residuals** | M-1/M-3/M-5/L-2/L-3/L-4 still open per `docs/ADVERSARIAL_REVIEW_FINDINGS_2026-07-21.md` |
-| **✅ Hygiene 2026-07-31** | CLOSED this packet — docs, TaskMaster reconcile, stale sockets, `/tmp` debris |
+| **✅ Hygiene 2026-07-31** | CLOSED for docs/TaskMaster/`/tmp` debris + **planned** 4-socket archive; doctor still warns on recorded `limux-52458.*` (plan stop — not broadened) |
 
 ---
 
