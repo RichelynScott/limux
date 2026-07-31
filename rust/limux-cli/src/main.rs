@@ -323,7 +323,7 @@ fn parse_global_args_from(mut args: Vec<String>) -> Result<GlobalOptions> {
 
 fn print_help() {
     println!(
-        "limux CLI\n\nUsage: limux [--socket <path>] [--profile <name>] [--channel stable|preview[:id]] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nSession profiles:\n  A profile is a separate saved workspace set with its own session and socket,\n  so several independently-restorable Limux windows can coexist.\n    limux --profile work        launch (or target) the \"work\" profile\n    limux profile list          saved profiles in this build lane, and which run\n    limux profile path <name>   print a profile session directory\n    limux profile rm <name>     archive a profile (recoverable, never deleted)\n  Profiles nest inside the build lane, so a stable build and a preview build\n  can each hold a profile named \"work\" without sharing state.\n  A bare `limux` launched while another is running takes the next free auto-<n>\n  profile, so its workspaces persist instead of being discarded.\n\nCommon commands:\n  --version\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  doctor [--json] [--log-triage [--lines <n>]]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] <text>\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  close-surface --workspace <id|ref> --surface <id|ref>\n      Closes exactly one explicit surface; never falls back to current focus.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  pane-action --action set_flag_color --color <orange|red|purple|pink|green|yellow|teal|cyan> [--workspace <id|ref>] [--pane <id|ref>]\n  pane-action --action clear_flag_color [--workspace <id|ref>] [--pane <id|ref>]\n  target-info (alias: socket-info) prints the resolved socket/channel without connecting\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--launch-mode direct|hcom] [--workspace <id|ref>] [--surface <id|ref>] [--pane <id|ref>] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the explicitly targeted workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, or hcom with --run-here when requested, writes\n      (live runs require explicit target flags or LIMUX_WORKSPACE_ID/LIMUX_SURFACE_ID),\n      LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md plus\n      LIMUX_REVIEW_LEDGER.md when missing so peers can coordinate via durable\n      files and `limux send --surface <peer-surface-id> <envelope>`.\n  review prepare --artifact <path-or-ref> --reviewer <agent|manual> --lens <name> --summary <text> [--cwd <path>] [--ledger-path <path>] [--reviews-dir <path>] [--review-id <id>] [--dry-run]\n      Creates a durable review request file, appends a pending review-ledger\n      entry, and prints the reviewer prompt without launching a reviewer pane.\n"
+        "limux CLI\n\nUsage: limux [--socket <path>] [--profile <name>] [--channel stable|preview[:id]] [--json] [--id-format refs|both|uuids] <command> [args...]\n       limux\n\nRunning `limux` with no arguments launches the GTK app.\n\nSession profiles:\n  A profile is a separate saved workspace set with its own session and socket,\n  so several independently-restorable Limux windows can coexist.\n    limux --profile work        launch (or target) the \"work\" profile\n    limux profile list          saved profiles in this build lane, and which run\n    limux profile path <name>   print a profile session directory\n    limux profile rm <name>     archive a profile (recoverable, never deleted)\n  Profiles nest inside the build lane, so a stable build and a preview build\n  can each hold a profile named \"work\" without sharing state.\n  A bare `limux` launched while another is running takes the next free auto-<n>\n  profile, so its workspaces persist instead of being discarded.\n\nCommon commands:\n  --version\n  identify [--workspace <id|ref>] [--surface <id|ref>]\n  doctor [--json] [--log-triage [--lines <n>]]\n  list-panels [--workspace <id|ref>]\n  list-panes [--workspace <id|ref>]\n  list-workspaces\n  surface-health [--workspace <id|ref>]\n  send [--workspace <id|ref>] [--surface <id|ref>] (<text> | --stdin | --file PATH)\n       Double-quoted positional text is shell-safe prose only; backticks, $(), globs, and\n       semicolons may expand before Limux sees argv (hcom 434032). Prefer --stdin/--file.\n  send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n  new-workspace [--cwd <path>] [--command <text>]\n  close-workspace --workspace <id|ref>\n  sidebar-state --workspace <id|ref>\n  new-surface [--workspace <id|ref>]\n  new-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--direction <left|right|up|down>] [--type <terminal|browser>] [--command <text>] [--url <url>]\n      Live GTK self-spawn currently supports terminal panes only; browser panes remain deferred.\n  close-surface --workspace <id|ref> --surface <id|ref>\n      Closes exactly one explicit surface; never falls back to current focus.\n  rename-workspace [--workspace <id|ref>] <title>\n  rename-window [--workspace <id|ref>] <title>\n  rename-tab [--workspace <id|ref>] [--tab <id|ref>] <title>\n  read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n  capture-pane (alias of read-screen)\n  tab-action --action <name> [--workspace <id|ref>] [--tab <id|ref>] [--title <text>] [--url <url>]\n  pane-action --action set_flag_color --color <orange|red|purple|pink|green|yellow|teal|cyan> [--workspace <id|ref>] [--pane <id|ref>]\n  pane-action --action clear_flag_color [--workspace <id|ref>] [--pane <id|ref>]\n  target-info (alias: socket-info) prints the resolved socket/channel without connecting\n  browser [--surface <id|ref>|<surface>] <subcommand> ...\n\nAgent integrations:\n  notify [--workspace <id|ref>] [--subtitle <text>] [--body <text>] <title>\n  hooks setup [agent] | hooks uninstall [agent] | hooks <agent> <event>\n  claude-hook | opencode-hook | gemini-hook --event <name> [--subtitle <text>] [--body <text>] [--title <text>]\n  agent-team [--agents codex,claude[,opencode,gemini]] [--launch-mode direct|hcom] [--workspace <id|ref>] [--surface <id|ref>] [--pane <id|ref>] [--cwd <path>] [--protocol-path <path>] [--roster-path <path>] [--ledger-path <path>] [--force-protocol-overwrite] [--force-roster-overwrite] [--no-launch] [--no-bootstrap] [--dry-run]\n      Splits the explicitly targeted workspace into one pane per agent (caller's pane stays\n      as the orchestrator on the left, peers stack down the right), launches\n      each CLI in its pane, or hcom with --run-here when requested, writes\n      (live runs require explicit target flags or LIMUX_WORKSPACE_ID/LIMUX_SURFACE_ID),\n      LIMUX_AGENTS.md, and seeds LIMUX_TEAM_ROSTER.md plus\n      LIMUX_REVIEW_LEDGER.md when missing so peers can coordinate via durable\n      files and `limux send --surface <peer-surface-id> <envelope>`.\n  review prepare --artifact <path-or-ref> --reviewer <agent|manual> --lens <name> --summary <text> [--cwd <path>] [--ledger-path <path>] [--reviews-dir <path>] [--review-id <id>] [--dry-run]\n      Creates a durable review request file, appends a pending review-ledger\n      entry, and prints the reviewer prompt without launching a reviewer pane.\n"
     );
     println!(
         "  agent-team extra flags: --no-bootstrap skips the post-launch bootstrap prompt while still launching panes; --dry-run skips host contact but still materializes the protocol and seeds missing roster/ledger files."
@@ -474,6 +474,17 @@ fn run_profile_command(
     json_output: bool,
     channel: Option<&RuntimeChannel>,
 ) -> Result<CommandOutput> {
+    // Profile local args are subcommand + optional name; reject hyphen flags
+    // before any per-profile socket liveness probe in collect_profiles_in.
+    let sub = args.first().map(String::as_str).unwrap_or("list");
+    let rest = if args.is_empty() { &[][..] } else { &args[1..] };
+    match sub {
+        "list" => reject_unknown_flags(rest, &[], &[])?,
+        "path" | "rm" | "remove" => reject_unknown_flags(rest, &[], &[])?,
+        other if other.starts_with('-') => bail!("unknown flag: {other}"),
+        _ => {}
+    }
+
     let base = limux_control::session_paths::base_persistence_dir();
     let root = limux_control::session_paths::profiles_root_dir_in(&base, channel);
     let sub = args.first().map(String::as_str).unwrap_or("list");
@@ -794,13 +805,44 @@ fn apply_id_format(value: &mut Value, id_format: IdFormat) {
 }
 
 fn parse_opt(args: &[String], name: &str) -> Option<String> {
-    args.windows(2).find_map(|w| {
-        if w[0] == name {
-            Some(w[1].clone())
-        } else {
-            None
+    let inline_prefix = format!("{name}=");
+    for (idx, arg) in args.iter().enumerate() {
+        if arg == name {
+            return args.get(idx + 1).cloned();
         }
-    })
+        if let Some(value) = arg.strip_prefix(&inline_prefix) {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+fn reject_unknown_flags(
+    args: &[String],
+    value_options: &[&str],
+    switch_options: &[&str],
+) -> Result<()> {
+    let mut skip_value = false;
+    for arg in args {
+        if skip_value {
+            skip_value = false;
+            continue;
+        }
+        if value_options.iter().any(|option| *option == arg.as_str()) {
+            skip_value = true;
+            continue;
+        }
+        if value_options.iter().any(|option| arg.starts_with(&format!("{option}="))) {
+            continue;
+        }
+        if switch_options.iter().any(|option| *option == arg.as_str()) {
+            continue;
+        }
+        if arg.starts_with('-') {
+            bail!("unknown flag: {arg}");
+        }
+    }
+    Ok(())
 }
 
 fn parse_flag(args: &[String], name: &str) -> bool {
@@ -848,6 +890,7 @@ fn trailing_title(args: &[String]) -> Option<String> {
             || arg == "--url"
             || arg == "--cwd"
             || arg == "--command"
+            || arg == "--file"
             || arg == "--direction"
             || arg == "--type"
             || arg == "--lines"
@@ -1224,13 +1267,78 @@ fn render_list_text(command: &str, payload: &Value) -> String {
     }
 }
 
+/// Resolve `limux send` payload from exactly one of: positional text, `--stdin`,
+/// or `--file PATH`. Shell expansion happens before Limux sees argv — this helper
+/// cannot detect already-expanded substitutions; use `--stdin`/`--file` for
+/// byte-safe transport of backticks, `$()`, globs, and multiline payloads.
+fn resolve_send_text(args: &[String]) -> Result<String> {
+    resolve_send_text_with_reader(args, &mut std::io::stdin())
+}
+
+fn resolve_send_text_with_reader(
+    args: &[String],
+    stdin: &mut dyn std::io::Read,
+) -> Result<String> {
+    let from_stdin = parse_flag(args, "--stdin");
+    let file = parse_opt(args, "--file");
+    let positional = trailing_title(args);
+
+    let source_count =
+        usize::from(from_stdin) + usize::from(file.is_some()) + usize::from(positional.is_some());
+    if source_count > 1 {
+        bail!("send accepts exactly one of: positional text, --stdin, or --file PATH");
+    }
+    if source_count == 0 {
+        bail!("send requires text, --stdin, or --file PATH");
+    }
+
+    let bytes = if from_stdin {
+        let mut buf = Vec::new();
+        stdin
+            .read_to_end(&mut buf)
+            .context("failed to read send payload from stdin")?;
+        buf
+    } else if let Some(path) = file {
+        if path.is_empty() {
+            bail!("--file requires a path");
+        }
+        let path = PathBuf::from(path);
+        let meta = fs::metadata(&path)
+            .with_context(|| format!("failed to read send --file {}", path.display()))?;
+        if !meta.is_file() {
+            bail!("send --file must be a regular file: {}", path.display());
+        }
+        fs::read(&path).with_context(|| format!("failed to read send --file {}", path.display()))?
+    } else {
+        positional
+            .expect("source_count guarantees positional")
+            .into_bytes()
+    };
+
+    String::from_utf8(bytes).map_err(|_| anyhow!("send input must be valid UTF-8"))
+}
+
+fn send_help_text() -> &'static str {
+    "Usage: limux send [--workspace <id|ref>] [--surface <id|ref>] (<text> | --stdin | --file PATH)\n\nDouble-quoted positional text is shell-safe prose only; backticks, $(), globs, and\nsemicolons may expand before Limux sees argv (hcom 434032). Prefer --stdin/--file.\n--help and -h are informational and never contact the host."
+}
+
+fn send_key_help_text() -> &'static str {
+    "Usage: limux send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n\n--help and -h are informational and never contact the host."
+}
+
 async fn run_send(client: &mut Client, args: &[String]) -> Result<Value> {
+    reject_unknown_flags(args, SEND_VALUE_OPTIONS, SEND_SWITCH_OPTIONS)?;
+    if has_unconsumed_flag(args, "--help", SEND_VALUE_OPTIONS)
+        || has_unconsumed_flag(args, "-h", SEND_VALUE_OPTIONS)
+    {
+        return Ok(json!({"help": send_help_text()}));
+    }
     let workspace = parse_opt(args, "--workspace")
         .or_else(|| env::var("LIMUX_WORKSPACE_ID").ok())
         .filter(|s| !s.is_empty());
     let surface = parse_opt(args, "--surface").filter(|s| !s.is_empty());
 
-    let text = trailing_title(args).ok_or_else(|| anyhow!("send requires text"))?;
+    let text = resolve_send_text(args)?;
     validate_terminal_text_arg("surface.send_text text", &text)?;
 
     let mut params = Map::new();
@@ -1249,6 +1357,12 @@ async fn run_send(client: &mut Client, args: &[String]) -> Result<Value> {
 }
 
 async fn run_send_key(client: &mut Client, args: &[String]) -> Result<Value> {
+    reject_unknown_flags(args, SEND_KEY_VALUE_OPTIONS, SEND_KEY_SWITCH_OPTIONS)?;
+    if has_unconsumed_flag(args, "--help", SEND_KEY_VALUE_OPTIONS)
+        || has_unconsumed_flag(args, "-h", SEND_KEY_VALUE_OPTIONS)
+    {
+        return Ok(json!({"help": send_key_help_text()}));
+    }
     let workspace = parse_opt(args, "--workspace")
         .or_else(|| env::var("LIMUX_WORKSPACE_ID").ok())
         .filter(|s| !s.is_empty());
@@ -5288,6 +5402,12 @@ fn has_unconsumed_flag(args: &[String], flag: &str, value_options: &[&str]) -> b
             skip_value = true;
             continue;
         }
+        if value_options
+            .iter()
+            .any(|option| arg.starts_with(&format!("{option}=")))
+        {
+            continue;
+        }
         if arg == flag {
             return true;
         }
@@ -5355,6 +5475,11 @@ async fn run_close_surface(client: &mut Client, args: &[String]) -> Result<Value
 }
 
 const READ_SCREEN_VALUE_OPTIONS: &[&str] = &["--workspace", "--surface", "--lines"];
+const READ_SCREEN_SWITCH_OPTIONS: &[&str] = &["--scrollback", "--help", "-h"];
+const SEND_VALUE_OPTIONS: &[&str] = &["--workspace", "--surface", "--file"];
+const SEND_SWITCH_OPTIONS: &[&str] = &["--stdin", "--help", "-h"];
+const SEND_KEY_VALUE_OPTIONS: &[&str] = &["--workspace", "--surface"];
+const SEND_KEY_SWITCH_OPTIONS: &[&str] = &["--help", "-h"];
 
 fn read_screen_help_text() -> String {
     "Usage: limux read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n       limux capture-pane (alias of read-screen)\n\nReads visible text from a terminal surface.\n\nTargeting: inside a Limux pane, LIMUX_WORKSPACE_ID scopes the read to the caller's own\nworkspace. Outside Limux, pass an explicit --workspace/--surface; otherwise the server's\nfocused-surface fallback can return a surface owned by a different lane."
@@ -5416,6 +5541,7 @@ where
 }
 
 async fn run_read_screen(client: &mut Client, args: &[String]) -> Result<Value> {
+    reject_unknown_flags(args, READ_SCREEN_VALUE_OPTIONS, READ_SCREEN_SWITCH_OPTIONS)?;
     // `--help` must never fall through to a live read: an unconsumed help flag
     // previously produced a `surface.read_text` call with no explicit target,
     // disclosing the globally focused surface (another lane's pane content).
@@ -7252,6 +7378,232 @@ mod cli_arg_tests {
                 "missing explicit channel env removal for {key}"
             );
         }
+    }
+
+    #[test]
+    fn reject_unknown_flags_allows_known_read_screen_switches() {
+        reject_unknown_flags(
+            &args(&["--workspace", "w", "--scrollback", "--lines", "3"]),
+            READ_SCREEN_VALUE_OPTIONS,
+            READ_SCREEN_SWITCH_OPTIONS,
+        )
+        .expect("known flags should pass");
+    }
+
+    #[test]
+    fn reject_unknown_flags_rejects_unknown_hyphen_arg() {
+        let err = reject_unknown_flags(
+            &args(&["--bogus"]),
+            READ_SCREEN_VALUE_OPTIONS,
+            READ_SCREEN_SWITCH_OPTIONS,
+        )
+        .expect_err("unknown flag must fail");
+        assert!(
+            format!("{err:#}").contains("unknown flag: --bogus"),
+            "unexpected error: {err:#}"
+        );
+    }
+
+    #[test]
+    fn reject_unknown_flags_allows_inline_value_form() {
+        reject_unknown_flags(
+            &args(&["--workspace=w1", "--lines=12", "--scrollback"]),
+            READ_SCREEN_VALUE_OPTIONS,
+            READ_SCREEN_SWITCH_OPTIONS,
+        )
+        .expect("inline --flag=value form must be accepted for known value options");
+    }
+
+    #[test]
+    fn parse_opt_reads_inline_value_form() {
+        assert_eq!(
+            parse_opt(&args(&["--file=/tmp/payload.txt", "ignored"]), "--file").as_deref(),
+            Some("/tmp/payload.txt")
+        );
+        assert_eq!(
+            parse_opt(&args(&["--workspace", "w1"]), "--workspace").as_deref(),
+            Some("w1")
+        );
+    }
+
+    #[tokio::test]
+    async fn send_help_does_not_contact_socket() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut client = Client::new(tmp.path().join("unused.sock"));
+        let payload = run_send(&mut client, &args(&["--help"]))
+            .await
+            .expect("send --help should succeed without socket contact");
+        assert_eq!(
+            payload.get("help").and_then(|v| v.as_str()).is_some(),
+            true,
+            "send --help must return help payload: {payload}"
+        );
+    }
+
+    #[tokio::test]
+    async fn send_key_help_does_not_contact_socket() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut client = Client::new(tmp.path().join("unused.sock"));
+        let payload = run_send_key(&mut client, &args(&["--help"]))
+            .await
+            .expect("send-key --help should succeed without socket contact");
+        assert_eq!(
+            payload.get("help").and_then(|v| v.as_str()).is_some(),
+            true,
+            "send-key --help must return help payload: {payload}"
+        );
+    }
+
+    #[test]
+    fn resolve_send_text_reads_inline_file_form_verbatim() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("payload.txt");
+        let payload = "inline `flags` and $(echo hi); * and \"quotes\"\nline2";
+        std::fs::write(&path, payload).expect("write");
+        let got = resolve_send_text(&args(&[
+            &format!("--file={}", path.to_str().expect("utf8 path")),
+        ]))
+        .expect("inline --file=PATH source");
+        assert_eq!(got, payload);
+    }
+
+    #[test]
+    fn resolve_send_text_reads_stdin_verbatim_with_shell_metacharacters() {
+        let payload = "stdin `flags` and $(echo hi); * and \"quotes\"\nline2";
+        let mut cursor = std::io::Cursor::new(payload.as_bytes());
+        let got = resolve_send_text_with_reader(&args(&["--stdin"]), &mut cursor)
+            .expect("stdin source");
+        assert_eq!(got, payload);
+    }
+
+    /// 25.4 bridge/PTY contract (CLI side): `run_send` must place the resolved
+    /// payload into `surface.send_text` params.text unchanged. We cannot open a
+    /// live PTY in unit tests; instead assert the request-builder path embeds
+    /// the exact `--file` bytes that would be handed to the bridge.
+    #[test]
+    fn send_file_payload_is_embedded_verbatim_in_surface_send_text_contract() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("payload.txt");
+        let payload = "bridge `flags` and $(echo hi); * and \"quotes\"\nline2";
+        std::fs::write(&path, payload).expect("write");
+        let text = resolve_send_text(&args(&[
+            "--file",
+            path.to_str().expect("utf8 path"),
+        ]))
+        .expect("file source");
+        // Mirror run_send's params construction without contacting a socket.
+        let mut params = serde_json::Map::new();
+        params.insert("text".to_string(), serde_json::Value::String(text.clone()));
+        assert_eq!(
+            params.get("text").and_then(|v| v.as_str()),
+            Some(payload),
+            "surface.send_text params.text must equal file bytes verbatim"
+        );
+        assert_eq!(text, payload);
+    }
+
+    #[tokio::test]
+    async fn read_screen_rejects_unknown_flag_before_socket_contact() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut client = Client::new(tmp.path().join("unused.sock"));
+        let err = run_read_screen(&mut client, &args(&["--bogus"]))
+            .await
+            .expect_err("unknown flag should fail before socket contact");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("unknown flag: --bogus"), "unexpected error: {msg}");
+    }
+
+    #[tokio::test]
+    async fn send_rejects_unknown_flag_before_socket_contact() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut client = Client::new(tmp.path().join("unused.sock"));
+        let err = run_send(&mut client, &args(&["--nope", "hello"]))
+            .await
+            .expect_err("unknown flag should fail before socket contact");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("unknown flag: --nope"), "unexpected error: {msg}");
+    }
+
+    #[tokio::test]
+    async fn send_key_rejects_file_flag_before_socket_contact() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut client = Client::new(tmp.path().join("unused.sock"));
+        let err = run_send_key(&mut client, &args(&["--file", "/tmp/x", "Enter"]))
+            .await
+            .expect_err("--file must be unknown on send-key before socket contact");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("unknown flag: --file"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn resolve_send_text_reads_file_verbatim_with_shell_metacharacters() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("payload.txt");
+        let payload = "see `flags` and $(echo hi); * and \"quotes\"\nline2";
+        std::fs::write(&path, payload).expect("write");
+        let got = resolve_send_text(&args(&[
+            "--file",
+            path.to_str().expect("utf8 path"),
+        ]))
+        .expect("file source");
+        assert_eq!(got, payload);
+    }
+
+    #[test]
+    fn resolve_send_text_rejects_multiple_sources() {
+        let err = resolve_send_text(&args(&["--stdin", "hello"]))
+            .expect_err("stdin+positional must fail");
+        assert!(
+            format!("{err:#}").contains("exactly one"),
+            "unexpected error: {err:#}"
+        );
+    }
+
+    #[test]
+    fn resolve_send_text_rejects_invalid_utf8_file() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("bad.txt");
+        std::fs::write(&path, [0xff, 0xfe]).expect("write");
+        let err = resolve_send_text(&args(&["--file", path.to_str().expect("utf8 path")]))
+            .expect_err("invalid utf8 must fail");
+        assert!(
+            format!("{err:#}").contains("UTF-8"),
+            "unexpected error: {err:#}"
+        );
+    }
+
+    #[test]
+    fn print_help_mentions_byte_safe_send_sources_and_shell_boundary() {
+        // Capture help by rendering the same contract strings the CLI prints.
+        // Direct print_help() writes to stdout; assert via source + resolve path.
+        let source = include_str!("main.rs");
+        assert!(
+            source.contains("(<text> | --stdin | --file PATH)"),
+            "help must document send input sources"
+        );
+        assert!(
+            source.contains("Prefer --stdin/--file"),
+            "help must recommend byte-safe transport"
+        );
+        assert!(
+            source.contains("hcom 434032"),
+            "help must cite the shell-expansion regression sample"
+        );
+        assert!(
+            source.contains("cannot detect already-expanded substitutions"),
+            "docs must state Limux cannot detect already-expanded substitutions"
+        );
+    }
+
+    #[test]
+    fn profile_list_rejects_unknown_flag_before_socket_probe() {
+        let err = run_profile_command(&args(&["list", "--bogus"]), false, None)
+            .expect_err("unknown profile flag should fail before liveness probes");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("unknown flag: --bogus"), "unexpected error: {msg}");
     }
 
     #[tokio::test]

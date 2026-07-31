@@ -2320,6 +2320,41 @@ mod tests {
     }
 
     #[test]
+    fn surface_send_text_route_preserves_shell_metacharacters_verbatim() {
+        // 25.4: prove the bridge does not reinterpret backticks / $() / quotes /
+        // semicolons / globs / newlines before handing text to SendText (PTY paste).
+        let payload = "see `flags` and $(echo hi); * and \"quotes\"\nline2";
+        let request = json!({
+            "id": 1,
+            "method": "surface.send_text",
+            "params": {
+                "workspace_id": "codex",
+                "surface_id": "surface:4:tab",
+                "text": payload
+            }
+        })
+        .to_string();
+
+        let response = dispatch_request(&request, &|command| match command {
+            ControlCommand::SendText {
+                target,
+                surface_hint,
+                text,
+                reply,
+            } => {
+                assert_eq!(target, WorkspaceTarget::Name("codex".to_string()));
+                assert_eq!(surface_hint.as_deref(), Some("surface:4:tab"));
+                assert_eq!(text, payload, "bridge must preserve send text verbatim");
+                let _ = reply.send(Ok(json!({ "ok": true })));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        });
+
+        assert_eq!(response.error, None);
+        assert!(response.result.is_some());
+    }
+
+    #[test]
     fn surface_send_text_route_rejects_disallowed_terminal_control_before_dispatch() {
         let request = json!({
             "id": 1,

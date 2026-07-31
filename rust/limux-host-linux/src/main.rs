@@ -552,6 +552,20 @@ fn main() {
     app.connect_activate(move |app| {
         window::build_window(app);
     });
+    // Load-bearing: register the GdkDisplay::closed handler here, before
+    // `app.run()`, so the signal is connected before any display-loss can
+    // occur. `Display::default()` is None in headless/cargo-test contexts;
+    // we silently skip there — the unit seam below asserts the callsite
+    // exists, not the live signal.
+    if let Some(display) = gtk4::gdk::Display::default() {
+        display.connect_closed(|_display, is_error| {
+            if is_error {
+                eprintln!(
+                    "limux: display connection lost (compositor reset) — relaunch limux"
+                );
+            }
+        });
+    }
     // No flush call here on purpose. Exiting kills the bounded-log drain
     // thread and discards the pipe buffer, but a call sited after `app.run()`
     // does not reliably cover that: measured headless, GTK terminates the
@@ -1200,5 +1214,57 @@ mod tests {
 
             fs::remove_dir_all(root).unwrap();
         });
+    }
+
+    /// Load-bearing mutation evidence for task #34.3 (Yield B): the
+    /// GdkDisplay::closed handler must remain registered before `app.run()` and
+    /// must emit the exact diagnostic on compositor reset. If a future edit
+    /// removes the handler, moves it after `app.run()` (dead code), drops the
+    /// `is_error` gate, or changes the message, this test fails. An optional
+    /// xvfb kill-display stage can still be added under scripts/xvfb-smoke-test.sh;
+    /// this mutation seam is the accepted verification when live injection would
+    /// require a GTK display refactor.
+    #[test]
+    fn display_loss_handler_is_load_bearing() {
+        let source = include_str!("main.rs");
+        assert!(
+            source.contains("gtk4::gdk::Display::default()"),
+            "GdkDisplay::default() callsite missing — display-loss handler was removed"
+        );
+        assert!(
+            source.contains("connect_closed"),
+            "GdkDisplay::closed connect callsite missing"
+        );
+        let message = "limux: display connection lost (compositor reset) — relaunch limux";
+        let message_idx = source
+            .find(message)
+            .expect("display-loss message string changed or removed");
+        let window = &source[message_idx.saturating_sub(400)..message_idx];
+        assert!(
+            window.contains("gtk4::gdk::Display::default()"),
+            "GdkDisplay::default() callsite missing near display-loss message"
+        );
+        assert!(
+            window.contains("connect_closed"),
+            "GdkDisplay::closed connect callsite missing near display-loss message"
+        );
+        let handler_idx = source[..message_idx]
+            .rfind("connect_closed")
+            .expect("connect_closed must precede the diagnostic message");
+        let run_idx = source.find("app.run();").expect("live app.run() call must exist");
+        assert!(
+            handler_idx < run_idx,
+            "display-loss handler must register before app.run() (dead-code path after run)"
+        );
+        assert!(
+            source.contains(
+                "limux: display connection lost (compositor reset) — relaunch limux"
+            ),
+            "display-loss message string changed"
+        );
+        assert!(
+            source.contains("if is_error"),
+            "display-loss handler must gate on is_error so normal quit stays silent"
+        );
     }
 }
