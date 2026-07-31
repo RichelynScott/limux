@@ -117,10 +117,9 @@ Notable merges after the installed `c757056` tip (non-exhaustive; tip is
 
 | Item | State |
 |---|---|
-| **Unknown CLI flags** | OPEN — reject before socket contact (`TUTU_HANDOFF` item-2 / `BARI_HANDOFF` #1) |
-| **CLAUDE.md checklist card lines** | OPEN — limux-local piece (`BARI_HANDOFF` #2) |
+| **Unknown CLI flags / byte-safe send / display-loss** | IN FLIGHT on [PR #109](https://github.com/RichelynScott/limux/pull/109) tip `7d9bfb4` (TaskMaster **#33/#25/#34** done on PR tip; shared `main` TaskMaster still pre-merge). Honest residual: Ghostty FFI PTY write not unit-proven; E2E = `scripts/xvfb-smoke-test.sh`. |
+| **CLAUDE.md checklist card lines** | OPEN — limux-local piece (`BARI_HANDOFF` still-open #4) |
 | **H1 residual CRITICAL** | OPEN — explicit foreign `workspace_id`; operator-gated option (b) (fast-follow §7) |
-| **Display-loss exit diagnostic** | OPEN — bare status 1 on WSLg display reset (fast-follow §8) |
 | **Successor-rebind control path** | OPEN — unclean restore leaves suspended predecessor identity (fast-follow §9) |
 | **Prune `--keep` cap + TOCTOU** | OPEN — limu lane (fast-follow §1–§2) |
 | **Live GUI verify** | OPEN — OMP scroll + #84 resize still never operator-observed |
@@ -128,7 +127,7 @@ Notable merges after the installed `c757056` tip (non-exhaustive; tip is
 | **Installed runtime lag** | DOCUMENTED — still on `c757056`; reinstall operator-gated |
 | **26 GB archived legacy log** | Still on disk under archive-not-delete; delete is operator call |
 | **Standing adversarial residuals** | M-1/M-3/M-5/L-2/L-3/L-4 still open per `docs/ADVERSARIAL_REVIEW_FINDINGS_2026-07-21.md` |
-| **✅ Hygiene 2026-07-31** | CLOSED for docs/TaskMaster/`/tmp` debris + **planned** 4-socket archive; doctor still warns on recorded `limux-52458.*` (plan stop — not broadened) |
+| **✅ Hygiene 2026-07-31** | CLOSED — docs/TaskMaster/`/tmp` debris + planned 4-socket archive; doctor fully green (`stale_sockets` `[ok]`); historical `52458` paths gone |
 
 ---
 
