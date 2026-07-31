@@ -1,13 +1,12 @@
 # Limux — Directory State (session-agnostic)
 
-**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — hygiene tip `bc99b45`
-(docs `8339721` + TaskMaster `b018ff9` + tip pin). Open PRs: **none**. Continuity
-surfaces refreshed; TaskMaster reconciled; planned stale sockets + `/tmp` limux
-test debris archived (not deleted). Product backlog lives in `BARI_HANDOFF.md`
-and `docs/LIMUX_FASTFOLLOWS_2026-07-29.md` (not only `TUTU_HANDOFF.md`).
-**Verification item 4 note:** a follow-up correction commit after `bc99b45` will
-make `origin/main` tip ≠ this Updated SHA (self-referential pin); do not treat
-Updated≡tip as satisfied without re-reading.
+**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — after hygiene tip `5649457`.
+Open PR: **#109** (`bari/yield-abc` @ `7d9bfb4`) — unknown-flag reject, byte-safe
+`send`, display-loss diagnostic. Continuity surfaces refreshed earlier today;
+TaskMaster reconciled; planned stale sockets + `/tmp` limux test debris archived
+(not deleted). Product backlog lives in `BARI_HANDOFF.md` and
+`docs/LIMUX_FASTFOLLOWS_2026-07-29.md` (not only `TUTU_HANDOFF.md`).
+**Do not** re-archive leave-alone `52458` sockets.
 
 **Scope:** `/home/riche/MCPs/limux`
 **Purpose:** ONE file that tells ANY session — not just the current manager —
@@ -23,7 +22,12 @@ the per-session handoffs listed in §7.
 
 ---
 
-## 1. STATUS — host healthy; docs/TaskMaster hygiene closed 2026-07-31
+## 1. STATUS — host healthy; hygiene closed; yields open as PR #109
+
+**Open product PR:** [#109](https://github.com/RichelynScott/limux/pull/109) on
+`bari/yield-abc` tip `7d9bfb4` (TaskMaster #25/#33/#34). Shared `main` stays
+docs/hygiene-only until merge — product symbols live on the PR branch.
+
 
 **Host is UP.** Live control sockets remain
 `/run/user/1000/limux/stable/limux.sock` (+ `.cursor`); host PID still live.
