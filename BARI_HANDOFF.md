@@ -1,25 +1,12 @@
-# BARI_HANDOFF — bari (LIMUX_MGR) — 2026-07-31 resume (H1 residuals plan parked)
+# BARI_HANDOFF — bari (LIMUX_MGR) — 2026-07-31 resume (H1 A+B verified; next Slice C)
 
-## Slice A complete (2026-07-31T23:42Z)
-
-- Landed on #124 @ `c62713f`: `claim_or_allow_explicit` + natural-first tests.
-- Verify: `cargo test -p limux-core --lib` (55 ok).
-- Still PARTIAL: B/C/E/D open. Do **not** mark H1 CLOSED.
-- Resume checklist: merge #124 as PARTIAL when operator accepts → Slice B PR `bari/h1-entitlement-live-wireup-YYYYMMDD`.
-- Constraints unchanged: no host bounce of 860496; no disclosure probes; default Off.
-
-
-**Created by:** OMP (`bari` / LIMUX_MGR; session label may appear as `kero` in the GUI)
-**Date:** 2026-07-31 (UTC)
-**Purpose:** Current per-session resume surface (see `HANDOFF.md` §7). Read after `HANDOFF.md`.
-
-## Slice B opened (2026-07-31)
-
-- OPEN [#128](https://github.com/RichelynScott/limux/pull/128) @ `f55cb2b` on `bari/h1-entitlement-live-wireup-20260731` (stacked on #124/`c62713f`).
-- Live accept path + FFI now honor `LIMUX_ENTITLEMENT` via per-connection / process claim cells; default still **Off**.
-- #124 left OPEN (operator chose Slice B only — no PARTIAL merge this turn).
-- Next: merge #128 (and optionally #124 PARTIAL) → **Slice C** GTK `workspace_index_for_target`; ask E before D/default.
-- Host PID **860496** untouched; no disclosure probes.
+## A+B verified (2026-07-31T23:58Z)
+- **A** on #124 @ `c62713f`: `claim_or_allow_explicit` + natural-first tests. `cargo test -p limux-core --lib entitlement_` → 8 passed (entitlement filter 18 passed).
+- **B** OPEN [#128](https://github.com/RichelynScott/limux/pull/128) @ `f55cb2b`: `from_env` + per-conn cell + `dispatch_with_entitlement` in `limux-control` server/ffi. `cargo test -p limux-control --test entitlement_wireup` → 2 passed. MERGEABLE/CLEAN. B contains A tip.
+- #124 also MERGEABLE/CLEAN @ `c62713f` — PARTIAL only; not H1-closed.
+- Live host PID **860496** / `main-15ccb28ed4a8-matched-20260731` untouched; doctor ok.
+- Authoritative plan: `local://limux-h1-residuals-plan.md` (also `docs/LIMUX_H1_RESIDUALS_PLAN_2026-07-31.md`).
+- **Resume:** operator pick merge #124/#128 vs stack C on `f55cb2b`; then execute **Slice C** (GTK `workspace_index_for_target`). Ask **E** before D/default flip.
 
 ## Identity
 - **`bari`** = `LIMUX_MGR` (this OMP session; docs/TaskMaster/hygiene owner for this packet).

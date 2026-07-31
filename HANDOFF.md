@@ -2,46 +2,12 @@
 
 
 <!-- bari slice-A sync 2026-07-31T23:42Z -->
-## Slice A status (2026-07-31)
+## H1 A+B status (2026-07-31T23:58Z)
+- **#124** @ `c62713f` — Slice A claim-first verified (PARTIAL).
+- **#128** @ `f55cb2b` — Slice B live wire-up verified, OPEN/MERGEABLE (default still Off).
+- Plan: `local://limux-h1-residuals-plan.md` / `docs/LIMUX_H1_RESIDUALS_PLAN_2026-07-31.md`.
+- **Next:** Slice **C** GTK after operator merge pick; then E → D. Host 860496 leave alone.
 
-- **#124** tip `c62713f` — RequireClaim **claim-first** fix landed (`claim_or_allow_explicit`).
-- `cargo test -p limux-core --lib` → 55 passed.
-- PR comment: https://github.com/RichelynScott/limux/pull/124#issuecomment-5148371165
-- Label remains **PARTIAL**. Next: Slice **B** (live `from_env` + per-conn cell) on a stacked/separate PR after operator accepts PARTIAL merge of #124, then C → E → D.
-- Plan: `'/home/riche/.omp/agent/sessions/-MCPs-limux/2026-07-31T01-29-19-501Z_019fb5ca-438d-7000-8b5d-5f1e6ed6f532/local/limux-h1-residuals-plan.md'` / `docs/LIMUX_H1_RESIDUALS_PLAN_2026-07-31.md`
-- Live host PID **860496** untouched; default still **Off**.
-
-**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — H1 Slice B OPEN #128; plan parked for
-plan-mode resume (slices A–E). Prior Wave2 docs sync after #121–#123 on `main`
-(merge lineage #109/`de6d1db`, #116/`e8e19c9`, #121/`8143513`, #122/`a501a8f`,
-#123/`7df751a`, #125/`98106c1`; continuity #110–#120). **PR #124 OPEN** (H1
-option (b) PARTIAL default-off scaffold — not merged; review
-https://github.com/RichelynScott/limux/pull/124#issuecomment-5148324767).
-**Next packet:** execute `docs/LIMUX_H1_RESIDUALS_PLAN_2026-07-31.md`
-(also `local://limux-h1-residuals-plan.md` /
-`/tmp/limux-wave-briefs/reports/H1-residuals-plan.md`). Start at **Slice A**
-(RequireClaim first-claim fix on #124). Do **not** bounce live host; do **not**
-claim H1 closed until plan §9 acceptance.
-**Stable install + live host:** `main-15ccb28ed4a8-matched-20260731` (CLI/host SHA matched).
-Host restart completed after peer ack; `limux doctor: ok`. Shared `main` tip carries
-TaskMaster #25/#33/#34 plus Wave2 prune/rebind/cards; live install is still the
-pre-#122/#123 matched tree (no bounce yet). Historical leave-alone `52458` paths gone.
-Product backlog remaining items live in `BARI_HANDOFF.md` and
-`docs/LIMUX_FASTFOLLOWS_2026-07-29.md`.
-
-**Scope:** `/home/riche/MCPs/limux`
-**Purpose:** ONE file that tells ANY session — not just the current manager —
-what is going on in this directory. Read this first. Per-session detail lives in
-the per-session handoffs listed in §7.
-
-> Supersedes the halo/Codex handoff of 2026-06-20. Halo is retired under the
-> fleet-wide Codex close-out. The original is preserved in git history —
-> `git show f3c95a5:HANDOFF.md` — which is its durable record; a convenience
-> copy also sits at `archive/HANDOFF_halo_2026-06-20.superseded.md`; `archive/` is
-> tracked (un-ignored by `61a0f36`), so that copy is durable in git too — though git
-> history remains the stale-proof record (its truth does not depend on ignore config).
-
----
 
 ## 1. STATUS — host healthy; hygiene closed; yields merged; restart done
 
