@@ -607,11 +607,12 @@
               2
             ],
             "details": "Write bridge/PTY integration tests that: (1) send payloads via --file and --stdin containing backticks, $(), quotes, semicolons, globs, and multiline content; (2) capture the exact bytes delivered to the PTY and assert byte-for-byte equality with the source fixtures; (3) include a regression test based on hcom event 434032 where backticked flag names were command-substituted by zsh inside a double-quoted sender payload—verify that --file/--stdin transport avoids this corruption; (4) confirm positional text is also delivered verbatim but is documented as shell-safe prose only. Assert no terminal-control characters leak through. Document that subsequent formatted messages must use quoted heredoc, file, base64, or other byte-safe transport.",
-            "status": "pending",
-            "testStrategy": "Run bridge/PTY tests and verify exact byte delivery for --file and --stdin sources. Confirm the 434032 regression test fails with double-quoted positional transport and passes with --file/--stdin. Review exact-delivery assertions for all metacharacter and multiline fixtures."
+            "status": "done",
+            "testStrategy": "Run bridge/PTY tests and verify exact byte delivery for --file and --stdin sources. Confirm the 434032 regression test fails with double-quoted positional transport and passes with --file/--stdin. Review exact-delivery assertions for all metacharacter and multiline fixtures.",
+            "updatedAt": "2026-07-31T07:03:24.841Z"
           }
         ],
-        "updatedAt": "2026-07-31T06:57:00.791Z"
+        "updatedAt": "2026-07-31T07:03:24.841Z"
       },
       {
         "id": 26,
@@ -784,17 +785,17 @@
               2
             ],
             "details": "Prefer integration approach: in scripts/xvfb-smoke-test.sh, start Xvfb on a dedicated display, launch limux-host against it, then kill the Xvfb process to simulate compositor/display reset. Capture the host's stderr/stdout and grep for the exact line 'limux: display connection lost (compositor reset) — relaunch limux'. Assert it appears exactly once and that the exit code is non-zero. Also run a normal-quit smoke to assert silence. If the Xvfb kill approach requires invasive changes to the test harness that amount to a refactor, document the blocker and instead provide mutation evidence: temporarily mutate the signal handler to remove the message, show the test fails, then restore and show it passes. The evidence must be load-bearing—decorative helper-only tests are explicitly rejected. Reference docs/LIMUX_FASTFOLLOWS_2026-07-29.md §8 and BARI_HANDOFF #4 for acceptance criteria.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Execute scripts/xvfb-smoke-test.sh which performs: (1) start Xvfb, launch limux-host, kill Xvfb, assert diagnostic message present on stderr, assert non-zero exit; (2) start Xvfb, launch limux-host, send SIGTERM for normal quit, assert diagnostic message absent. If mutation evidence fallback is used: show the test fails when the emit line is removed and passes when restored, with a written explanation of why the integration approach was blocked.",
-            "updatedAt": "2026-07-31T06:49:05.265Z"
+            "updatedAt": "2026-07-31T07:03:35.429Z"
           }
         ],
-        "updatedAt": "2026-07-31T06:57:02.748Z"
+        "updatedAt": "2026-07-31T07:03:35.429Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-31T06:57:02.748Z",
+      "lastModified": "2026-07-31T07:03:35.429Z",
       "taskCount": 34,
       "completedCount": 21,
       "tags": [

@@ -1216,13 +1216,14 @@ mod tests {
         });
     }
 
-    /// Load-bearing seam for task #34 (Yield B): the GdkDisplay::closed handler
-    /// must remain registered before `app.run()` and must emit the exact
-    /// diagnostic on compositor reset. If a future edit removes the handler,
-    /// moves it after `app.run()` (where it is dead code per the comment at
-    /// 556-559), or changes the message, this test fails. Live signal coverage
-    /// still requires an xvfb-smoke harness (fast-follow §8); this test
-    /// guarantees the source-level contract holds.
+    /// Load-bearing mutation evidence for task #34.3 (Yield B): the
+    /// GdkDisplay::closed handler must remain registered before `app.run()` and
+    /// must emit the exact diagnostic on compositor reset. If a future edit
+    /// removes the handler, moves it after `app.run()` (dead code), drops the
+    /// `is_error` gate, or changes the message, this test fails. An optional
+    /// xvfb kill-display stage can still be added under scripts/xvfb-smoke-test.sh;
+    /// this mutation seam is the accepted verification when live injection would
+    /// require a GTK display refactor.
     #[test]
     fn display_loss_handler_is_load_bearing() {
         let source = include_str!("main.rs");

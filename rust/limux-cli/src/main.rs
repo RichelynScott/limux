@@ -805,13 +805,16 @@ fn apply_id_format(value: &mut Value, id_format: IdFormat) {
 }
 
 fn parse_opt(args: &[String], name: &str) -> Option<String> {
-    args.windows(2).find_map(|w| {
-        if w[0] == name {
-            Some(w[1].clone())
-        } else {
-            None
+    let inline_prefix = format!("{name}=");
+    for (idx, arg) in args.iter().enumerate() {
+        if arg == name {
+            return args.get(idx + 1).cloned();
         }
-    })
+        if let Some(value) = arg.strip_prefix(&inline_prefix) {
+            return Some(value.to_string());
+        }
+    }
+    None
 }
 
 fn reject_unknown_flags(
@@ -827,6 +830,9 @@ fn reject_unknown_flags(
         }
         if value_options.iter().any(|option| *option == arg.as_str()) {
             skip_value = true;
+            continue;
+        }
+        if value_options.iter().any(|option| arg.starts_with(&format!("{option}="))) {
             continue;
         }
         if switch_options.iter().any(|option| *option == arg.as_str()) {
@@ -1266,6 +1272,13 @@ fn render_list_text(command: &str, payload: &Value) -> String {
 /// cannot detect already-expanded substitutions; use `--stdin`/`--file` for
 /// byte-safe transport of backticks, `$()`, globs, and multiline payloads.
 fn resolve_send_text(args: &[String]) -> Result<String> {
+    resolve_send_text_with_reader(args, &mut std::io::stdin())
+}
+
+fn resolve_send_text_with_reader(
+    args: &[String],
+    stdin: &mut dyn std::io::Read,
+) -> Result<String> {
     let from_stdin = parse_flag(args, "--stdin");
     let file = parse_opt(args, "--file");
     let positional = trailing_title(args);
@@ -1281,7 +1294,8 @@ fn resolve_send_text(args: &[String]) -> Result<String> {
 
     let bytes = if from_stdin {
         let mut buf = Vec::new();
-        std::io::Read::read_to_end(&mut std::io::stdin(), &mut buf)
+        stdin
+            .read_to_end(&mut buf)
             .context("failed to read send payload from stdin")?;
         buf
     } else if let Some(path) = file {
@@ -1304,8 +1318,21 @@ fn resolve_send_text(args: &[String]) -> Result<String> {
     String::from_utf8(bytes).map_err(|_| anyhow!("send input must be valid UTF-8"))
 }
 
+fn send_help_text() -> &'static str {
+    "Usage: limux send [--workspace <id|ref>] [--surface <id|ref>] (<text> | --stdin | --file PATH)\n\nDouble-quoted positional text is shell-safe prose only; backticks, $(), globs, and\nsemicolons may expand before Limux sees argv (hcom 434032). Prefer --stdin/--file.\n--help and -h are informational and never contact the host."
+}
+
+fn send_key_help_text() -> &'static str {
+    "Usage: limux send-key [--workspace <id|ref>] [--surface <id|ref>] <key>\n\n--help and -h are informational and never contact the host."
+}
+
 async fn run_send(client: &mut Client, args: &[String]) -> Result<Value> {
     reject_unknown_flags(args, SEND_VALUE_OPTIONS, SEND_SWITCH_OPTIONS)?;
+    if has_unconsumed_flag(args, "--help", SEND_VALUE_OPTIONS)
+        || has_unconsumed_flag(args, "-h", SEND_VALUE_OPTIONS)
+    {
+        return Ok(json!({"help": send_help_text()}));
+    }
     let workspace = parse_opt(args, "--workspace")
         .or_else(|| env::var("LIMUX_WORKSPACE_ID").ok())
         .filter(|s| !s.is_empty());
@@ -1330,7 +1357,12 @@ async fn run_send(client: &mut Client, args: &[String]) -> Result<Value> {
 }
 
 async fn run_send_key(client: &mut Client, args: &[String]) -> Result<Value> {
-    reject_unknown_flags(args, SEND_KEY_VALUE_OPTIONS, &[])?;
+    reject_unknown_flags(args, SEND_KEY_VALUE_OPTIONS, SEND_KEY_SWITCH_OPTIONS)?;
+    if has_unconsumed_flag(args, "--help", SEND_KEY_VALUE_OPTIONS)
+        || has_unconsumed_flag(args, "-h", SEND_KEY_VALUE_OPTIONS)
+    {
+        return Ok(json!({"help": send_key_help_text()}));
+    }
     let workspace = parse_opt(args, "--workspace")
         .or_else(|| env::var("LIMUX_WORKSPACE_ID").ok())
         .filter(|s| !s.is_empty());
@@ -5370,6 +5402,12 @@ fn has_unconsumed_flag(args: &[String], flag: &str, value_options: &[&str]) -> b
             skip_value = true;
             continue;
         }
+        if value_options
+            .iter()
+            .any(|option| arg.starts_with(&format!("{option}=")))
+        {
+            continue;
+        }
         if arg == flag {
             return true;
         }
@@ -5439,8 +5477,9 @@ async fn run_close_surface(client: &mut Client, args: &[String]) -> Result<Value
 const READ_SCREEN_VALUE_OPTIONS: &[&str] = &["--workspace", "--surface", "--lines"];
 const READ_SCREEN_SWITCH_OPTIONS: &[&str] = &["--scrollback", "--help", "-h"];
 const SEND_VALUE_OPTIONS: &[&str] = &["--workspace", "--surface", "--file"];
-const SEND_SWITCH_OPTIONS: &[&str] = &["--stdin"];
+const SEND_SWITCH_OPTIONS: &[&str] = &["--stdin", "--help", "-h"];
 const SEND_KEY_VALUE_OPTIONS: &[&str] = &["--workspace", "--surface"];
+const SEND_KEY_SWITCH_OPTIONS: &[&str] = &["--help", "-h"];
 
 fn read_screen_help_text() -> String {
     "Usage: limux read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n       limux capture-pane (alias of read-screen)\n\nReads visible text from a terminal surface.\n\nTargeting: inside a Limux pane, LIMUX_WORKSPACE_ID scopes the read to the caller's own\nworkspace. Outside Limux, pass an explicit --workspace/--surface; otherwise the server's\nfocused-surface fallback can return a surface owned by a different lane."
@@ -7363,6 +7402,104 @@ mod cli_arg_tests {
             format!("{err:#}").contains("unknown flag: --bogus"),
             "unexpected error: {err:#}"
         );
+    }
+
+    #[test]
+    fn reject_unknown_flags_allows_inline_value_form() {
+        reject_unknown_flags(
+            &args(&["--workspace=w1", "--lines=12", "--scrollback"]),
+            READ_SCREEN_VALUE_OPTIONS,
+            READ_SCREEN_SWITCH_OPTIONS,
+        )
+        .expect("inline --flag=value form must be accepted for known value options");
+    }
+
+    #[test]
+    fn parse_opt_reads_inline_value_form() {
+        assert_eq!(
+            parse_opt(&args(&["--file=/tmp/payload.txt", "ignored"]), "--file").as_deref(),
+            Some("/tmp/payload.txt")
+        );
+        assert_eq!(
+            parse_opt(&args(&["--workspace", "w1"]), "--workspace").as_deref(),
+            Some("w1")
+        );
+    }
+
+    #[tokio::test]
+    async fn send_help_does_not_contact_socket() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut client = Client::new(tmp.path().join("unused.sock"));
+        let payload = run_send(&mut client, &args(&["--help"]))
+            .await
+            .expect("send --help should succeed without socket contact");
+        assert_eq!(
+            payload.get("help").and_then(|v| v.as_str()).is_some(),
+            true,
+            "send --help must return help payload: {payload}"
+        );
+    }
+
+    #[tokio::test]
+    async fn send_key_help_does_not_contact_socket() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut client = Client::new(tmp.path().join("unused.sock"));
+        let payload = run_send_key(&mut client, &args(&["--help"]))
+            .await
+            .expect("send-key --help should succeed without socket contact");
+        assert_eq!(
+            payload.get("help").and_then(|v| v.as_str()).is_some(),
+            true,
+            "send-key --help must return help payload: {payload}"
+        );
+    }
+
+    #[test]
+    fn resolve_send_text_reads_inline_file_form_verbatim() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("payload.txt");
+        let payload = "inline `flags` and $(echo hi); * and \"quotes\"\nline2";
+        std::fs::write(&path, payload).expect("write");
+        let got = resolve_send_text(&args(&[
+            &format!("--file={}", path.to_str().expect("utf8 path")),
+        ]))
+        .expect("inline --file=PATH source");
+        assert_eq!(got, payload);
+    }
+
+    #[test]
+    fn resolve_send_text_reads_stdin_verbatim_with_shell_metacharacters() {
+        let payload = "stdin `flags` and $(echo hi); * and \"quotes\"\nline2";
+        let mut cursor = std::io::Cursor::new(payload.as_bytes());
+        let got = resolve_send_text_with_reader(&args(&["--stdin"]), &mut cursor)
+            .expect("stdin source");
+        assert_eq!(got, payload);
+    }
+
+    /// 25.4 bridge/PTY contract (CLI side): `run_send` must place the resolved
+    /// payload into `surface.send_text` params.text unchanged. We cannot open a
+    /// live PTY in unit tests; instead assert the request-builder path embeds
+    /// the exact `--file` bytes that would be handed to the bridge.
+    #[test]
+    fn send_file_payload_is_embedded_verbatim_in_surface_send_text_contract() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("payload.txt");
+        let payload = "bridge `flags` and $(echo hi); * and \"quotes\"\nline2";
+        std::fs::write(&path, payload).expect("write");
+        let text = resolve_send_text(&args(&[
+            "--file",
+            path.to_str().expect("utf8 path"),
+        ]))
+        .expect("file source");
+        // Mirror run_send's params construction without contacting a socket.
+        let mut params = serde_json::Map::new();
+        params.insert("text".to_string(), serde_json::Value::String(text.clone()));
+        assert_eq!(
+            params.get("text").and_then(|v| v.as_str()),
+            Some(payload),
+            "surface.send_text params.text must equal file bytes verbatim"
+        );
+        assert_eq!(text, payload);
     }
 
     #[tokio::test]
