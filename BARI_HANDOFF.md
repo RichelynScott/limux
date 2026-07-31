@@ -1,5 +1,14 @@
 # BARI_HANDOFF — bari (LIMUX_MGR) — 2026-07-31 resume (H1 residuals plan parked)
 
+## Slice A complete (2026-07-31T23:42Z)
+
+- Landed on #124 @ `c62713f`: `claim_or_allow_explicit` + natural-first tests.
+- Verify: `cargo test -p limux-core --lib` (55 ok).
+- Still PARTIAL: B/C/E/D open. Do **not** mark H1 CLOSED.
+- Resume checklist: merge #124 as PARTIAL when operator accepts → Slice B PR `bari/h1-entitlement-live-wireup-YYYYMMDD`.
+- Constraints unchanged: no host bounce of 860496; no disclosure probes; default Off.
+
+
 **Created by:** OMP (`bari` / LIMUX_MGR; session label may appear as `kero` in the GUI)
 **Date:** 2026-07-31 (UTC)
 **Purpose:** Current per-session resume surface (see `HANDOFF.md` §7). Read after `HANDOFF.md`.

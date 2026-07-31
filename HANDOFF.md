@@ -1,5 +1,16 @@
 # Limux — Directory State (session-agnostic)
 
+
+<!-- bari slice-A sync 2026-07-31T23:42Z -->
+## Slice A status (2026-07-31)
+
+- **#124** tip `c62713f` — RequireClaim **claim-first** fix landed (`claim_or_allow_explicit`).
+- `cargo test -p limux-core --lib` → 55 passed.
+- PR comment: https://github.com/RichelynScott/limux/pull/124#issuecomment-5148371165
+- Label remains **PARTIAL**. Next: Slice **B** (live `from_env` + per-conn cell) on a stacked/separate PR after operator accepts PARTIAL merge of #124, then C → E → D.
+- Plan: `'/home/riche/.omp/agent/sessions/-MCPs-limux/2026-07-31T01-29-19-501Z_019fb5ca-438d-7000-8b5d-5f1e6ed6f532/local/limux-h1-residuals-plan.md'` / `docs/LIMUX_H1_RESIDUALS_PLAN_2026-07-31.md`
+- Live host PID **860496** untouched; default still **Off**.
+
 **Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — H1 residuals plan parked for
 plan-mode resume (slices A–E). Prior Wave2 docs sync after #121–#123 on `main`
 (merge lineage #109/`de6d1db`, #116/`e8e19c9`, #121/`8143513`, #122/`a501a8f`,

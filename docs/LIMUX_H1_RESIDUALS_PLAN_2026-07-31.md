@@ -1,6 +1,6 @@
 # Limux H1 residuals plan — #124 follow-through (A–E)
 
-**Status:** READY FOR PLAN-MODE EXECUTION (not started)
+**Status:** Slice A LANDED on #124 @ `c62713f` (2026-07-31). B–E remain. Still PARTIAL.
 **Author:** bari / LIMUX_MGR
 **Date:** 2026-07-31
 **Trigger:** Operator directed: address all #124 residuals, update docs/handoff, prepare for compaction; resume next session via hcom in plan mode.
@@ -233,7 +233,7 @@ Do **not** combine A+C or B+default-flip.
 ## 9. Acceptance for "H1 CLOSED"
 
 All must be true:
-- [ ] Slice A merged
+- [x] Slice A pushed on #124 (`c62713f`); merge pending operator PARTIAL ack
 - [ ] Slice B merged (env actually honored; default still Off)
 - [ ] Slice C merged (GTK path entitled; §1c claimed resolution)
 - [ ] Slice E decided and recorded
