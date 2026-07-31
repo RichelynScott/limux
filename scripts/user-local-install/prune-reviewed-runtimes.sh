@@ -34,6 +34,7 @@ die() {
 mode="dry-run"
 reviewed_root=""
 keep_count="3"
+settle_proc_rescan_seconds="${SETTLE_PRUNE_PROC_RESCAN_SECONDS:-1}"
 current_install_root=""
 current_created_utc=""
 archive_timestamp=""
@@ -85,6 +86,10 @@ done
 
 [[ -n "$reviewed_root" ]] || die "--reviewed-root is required"
 [[ "$keep_count" =~ ^[1-9][0-9]*$ ]] || die "--keep must be a positive integer"
+[[ "${#keep_count}" -le 6 ]] \
+    || die "--keep must be at most 6 digits (got ${keep_count}); cap prevents bash (( )) overflow which would retain every install instead of the requested N"
+[[ "$settle_proc_rescan_seconds" =~ ^[0-9]+$ ]] \
+    || die "SETTLE_PRUNE_PROC_RESCAN_SECONDS must be a non-negative integer"
 
 if [[ -z "$archive_timestamp" ]]; then
     archive_timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -262,16 +267,51 @@ done
 
 proc_scan_ambiguous="false"
 current_uid="$(id -u)"
-for proc_dir in /proc/[0-9]*; do
-    [[ -d "$proc_dir" ]] || continue
+
+protect_candidate_from_process() {
+    local proc_dir="$1"
+    local proc_uid proc_state exe_target exe_basename proc_comm
+    local inspect_cmdline="false"
+    local index arg arg_target
+    local -a proc_argv=()
+
+    [[ -d "$proc_dir" ]] || return 0
     proc_uid="$(stat -c '%u' "$proc_dir" 2>/dev/null || true)"
-    [[ "$proc_uid" == "$current_uid" ]] || continue
+    [[ "$proc_uid" == "$current_uid" ]] || return 0
 
     proc_state="$(awk '{print $3}' "${proc_dir}/stat" 2>/dev/null || true)"
-    [[ "$proc_state" != "Z" ]] || continue
-    [[ -n "$proc_state" ]] || continue
+    [[ "$proc_state" != "Z" ]] || return 0
+    [[ -n "$proc_state" ]] || return 0
 
     exe_target="$(readlink -- "${proc_dir}/exe" 2>/dev/null || true)"
+    exe_basename="${exe_target% (deleted)}"
+    exe_basename="${exe_basename##*/}"
+    if [[ -z "$exe_target" || "$exe_target" == *" (deleted)" ]]; then
+        inspect_cmdline="true"
+    else
+        case "$exe_basename" in
+            bash|sh|dash)
+                inspect_cmdline="true"
+                ;;
+        esac
+    fi
+
+    # A wrapper process still points /proc/<pid>/exe at its shell until exec.
+    # Match each absolute argv path against candidate roots before pruning.
+    if [[ "$inspect_cmdline" == "true" && -r "${proc_dir}/cmdline" ]]; then
+        mapfile -d "" -t proc_argv < "${proc_dir}/cmdline" 2>/dev/null || true
+        for arg in "${proc_argv[@]}"; do
+            [[ "$arg" == /* ]] || continue
+            arg_target="$(realpath -m -- "$arg")"
+            for index in "${!candidate_paths[@]}"; do
+                if path_is_within "$arg_target" "${candidate_paths[$index]}"; then
+                    protected_reasons["${candidate_rel_paths[$index]}"]="active-process:${proc_dir#/proc/}:cmdline-match"
+                    return 0
+                fi
+            done
+        done
+    fi
+
     if [[ -z "$exe_target" ]]; then
         proc_comm="$(cat "${proc_dir}/comm" 2>/dev/null || true)"
         case "$proc_comm" in
@@ -279,7 +319,7 @@ for proc_dir in /proc/[0-9]*; do
                 proc_scan_ambiguous="true"
                 ;;
         esac
-        continue
+        return 0
     fi
     exe_target="${exe_target% (deleted)}"
     exe_target="$(realpath -m -- "$exe_target")"
@@ -289,7 +329,20 @@ for proc_dir in /proc/[0-9]*; do
             protected_reasons["${candidate_rel_paths[$index]}"]="active-process:${proc_dir#/proc/}"
         fi
     done
-done
+}
+
+scan_reviewed_runtime_processes() {
+    local proc_dir
+    for proc_dir in /proc/[0-9]*; do
+        protect_candidate_from_process "$proc_dir"
+    done
+}
+
+scan_reviewed_runtime_processes
+if [[ "$settle_proc_rescan_seconds" != "0" ]]; then
+    sleep "$settle_proc_rescan_seconds"
+    scan_reviewed_runtime_processes
+fi
 
 declare -A lane_seen=()
 declare -a lanes=()
