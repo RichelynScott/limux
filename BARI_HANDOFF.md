@@ -1,4 +1,4 @@
-# BARI_HANDOFF — bari (LIMUX_MGR) — 2026-07-31 resume (yields merged + reinstalled)
+# BARI_HANDOFF — bari (LIMUX_MGR) — 2026-07-31 resume (yields merged; host restart gated)
 
 **Created by:** OMP (`bari` / LIMUX_MGR; session label may appear as `kero` in the GUI)
 **Date:** 2026-07-31 (UTC)
@@ -13,7 +13,7 @@
 - Shared checkout: `/home/riche/MCPs/limux` on `main`, clean aside from untracked `.taskmaster/reports/`, synced with `origin/main`.
 - Shared `main` carries Merge #109 (`de6d1db`) + continuity #110–#115. Yields product symbols on `main`.
 - Open PRs: **none** (yields #109 merged).
-- Installed runtime: `limux-cli 0.2.3 (de6d1db8a21a, release)` install-id `main-46ab49ded66f-yields-20260731` channel=stable — live host matches this tree.
+- Installed CLI: `limux-cli 0.2.3 (e8e19c9c7150, release)` install-id `main-e8e19c9c7150-helpprint-20260731`. Live host PID still on `main-46ab49ded66f-yields-20260731` — restart **gated** on OMP/peer checkpoint.
 - Doctor re-check: launchers / processes / socket / `stale_sockets` / ghostty_resources all `[ok]` (exit 0). Historical leave-alone `52458` paths are gone; only live listeners are `stable/limux.sock` + `.cursor`.
 - Last known full Rust gate green from fire's closeout lane (docs-only continuity; `./scripts/check.sh` not re-run here).
 
@@ -36,6 +36,11 @@
 - TaskMaster reconcile of shipped defects + add OMP waiting-visibility subtask under cmux-parity task 7.
 - Planned 4 doctor-stale sockets archived same-tmpfs under `/run/user/1000/limux-socket-archive/20260731T013021Z/` (cross-fs `mv` fails for unix sockets). Unauthorized post-warn archive of `limux-52458.*` was **restored** then later disappeared on their own; doctor `stale_sockets` is now `[ok]` — do not recreate.
 - `/tmp` limux test debris archived under `~/.archive/limux/tmp-debris-*` (archive-not-delete).
+
+## Restart gate (open)
+- New stable tree is installed and linked (`main-e8e19c9c7150-helpprint-20260731`).
+- Live host remains on yields tree until **all current sessions (esp. OMP)** checkpoint and ack a Limux restart.
+- After acks: SIGTERM host PID, launch `~/.local/bin/limux-stable`, confirm `limux doctor` green (CLI/host SHA match).
 
 ## Discipline
 - Ephemeral worktree for main commits (never branch-switch the shared checkout while peers may be live).
