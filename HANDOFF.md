@@ -1,8 +1,9 @@
 # Limux — Directory State (session-agnostic)
 
-**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — shared `main` @ `990b198`
-(after hygiene + #110/#111 handoff continuity). Open PR: **#109** (`bari/yield-abc` @
-`7d9bfb4`) — unknown-flag reject, byte-safe `send`, display-loss diagnostic.
+**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — shared `main` after Merge #112
+(`83cb928` lineage; hygiene + #110/#111/#112 continuity). Open PR: **#109**
+(`bari/yield-abc` @ `7d9bfb4`) — unknown-flag reject, byte-safe `send`,
+display-loss diagnostic.
 TaskMaster reconciled; planned stale sockets + `/tmp` limux test debris archived
 (not deleted). Product backlog lives in `BARI_HANDOFF.md` and
 `docs/LIMUX_FASTFOLLOWS_2026-07-29.md` (not only `TUTU_HANDOFF.md`).
@@ -72,10 +73,11 @@ sidebar visibility as cmux-parity `7.3`.
 
 ## 3. WHAT IS MERGED ON MAIN
 
-main @ `990b198` (Merge PR #111 doctor-green handoff sync; prior #110 at
-`e07dd2c`; hygiene lineage via `5649457` / `bc99b45` / `b018ff9`) — last known
-full Rust gate green from fire's closeout lane (`./scripts/check.sh` exit 0).
-Docs-only continuity does not re-run the Rust gate.
+main after Merge #112 (`83cb928` = docs SHA sync; prior #111/`990b198`,
+#110/`e07dd2c`; hygiene via `5649457` / `bc99b45` / `b018ff9`). Continuity
+commits intentionally cite the merge lineage rather than their own tip SHA.
+Last known full Rust gate green from fire's closeout lane (`./scripts/check.sh`
+exit 0). Docs-only continuity does not re-run the Rust gate.
 
 > ## PR #92 (named session profiles) — merged, reverted, re-landed (history)
 >

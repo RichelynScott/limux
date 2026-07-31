@@ -11,7 +11,7 @@
 
 ## Repo state snapshot (re-measured 2026-07-31)
 - Shared checkout: `/home/riche/MCPs/limux` on `main`, clean aside from untracked `.taskmaster/reports/`, synced with `origin/main`.
-- Shared `main` tip: `990b198` (Merge #111; prior #110 at `e07dd2c`). Yields product tip: `7d9bfb4` on `bari/yield-abc`.
+- Shared `main` after Merge #112 (`83cb928` lineage; prior #111/`990b198`, #110/`e07dd2c`). Yields product tip: `7d9bfb4` on `bari/yield-abc`.
 - Open PRs: **#109** — https://github.com/RichelynScott/limux/pull/109
 - Installed runtime (unchanged by this packet): `limux-cli 0.2.3 (c757056d2539, release)` install-id `main-c757056d2539-adv-remediated-20260721` — **~50+ commits behind main** including #105–#108. Reinstall is **operator-gated**, not part of this packet.
 - Doctor re-check: launchers / processes / socket / `stale_sockets` / ghostty_resources all `[ok]` (exit 0). Historical leave-alone `52458` paths are gone; only live listeners are `stable/limux.sock` + `.cursor`.
