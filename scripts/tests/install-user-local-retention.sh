@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export SETTLE_PRUNE_PROC_RESCAN_SECONDS=0
+
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 test_root="${TMPDIR:-/tmp}/limux-reviewed-retention-test-${$}-${RANDOM}"
 fixture_repo="${test_root}/repo"
@@ -229,5 +231,69 @@ grep -F $'legacy-3\t' "$global_manifest" >/dev/null \
     || fail "global retention manifest did not append the second prune run"
 grep -F $'preview/blue/blue-1\t' "$global_manifest" >/dev/null \
     || fail "global retention manifest omitted the preview archival"
+
+# --keep and the installer-facing --keep-reviewed must reject values that
+# overflow bash arithmetic before retention selection can invert its meaning.
+overflow_keep=99999999999999999999
+if prune_cap_output="$(
+    bash "${fixture_script_dir}/prune-reviewed-runtimes.sh" \
+        --dry-run \
+        --reviewed-root "$reviewed_root" \
+        --keep "$overflow_keep" \
+        --current-install-root "${reviewed_root}/stable/current" \
+        --timestamp 20260729T120002Z \
+        2>&1
+)"; then
+    fail "--keep accepted an overflow-class value"
+fi
+grep -F -- '--keep must be at most 6 digits' <<<"$prune_cap_output" >/dev/null \
+    || fail "--keep did not report the 6-digit cap"
+
+if installer_cap_output="$(
+    bash "${fixture_script_dir}/install-user-local.sh" \
+        --dry-run \
+        --profile debug \
+        --prefix "$fixture_prefix" \
+        --install-id cap-check \
+        --channel stable \
+        --keep-reviewed "$overflow_keep" \
+        --ghostty-share "${fixture_repo}/ghostty/share/ghostty" \
+        --ghostty-terminfo "${fixture_repo}/terminfo" \
+        2>&1
+)"; then
+    fail "--keep-reviewed accepted an overflow-class value"
+fi
+grep -F -- '--keep-reviewed must be at most 6 digits' <<<"$installer_cap_output" >/dev/null \
+    || fail "--keep-reviewed did not report the 6-digit cap"
+
+# A wrapper's interpreter is the process executable until it execs limux-cli.
+# Its cmdline must protect the old install during this startup window.
+cmdline_install="${reviewed_root}/legacy-wrapper"
+write_install_info "$cmdline_install" legacy-wrapper legacy 20260507T000000Z
+cat > "${cmdline_install}/bin/limux-legacy" <<'EOF_CMDLINE_WRAPPER'
+#!/usr/bin/env bash
+sleep "$1" &
+wait
+EOF_CMDLINE_WRAPPER
+chmod 755 "${cmdline_install}/bin/limux-legacy"
+bash "${cmdline_install}/bin/limux-legacy" 30 &
+cmdline_pid="$!"
+cmdline_prune_output="$(
+    bash "${fixture_script_dir}/prune-reviewed-runtimes.sh" \
+        --apply \
+        --reviewed-root "$reviewed_root" \
+        --keep 1 \
+        --current-install-root "${reviewed_root}/stable/current" \
+        --timestamp 20260729T120003Z
+)"
+kill "$cmdline_pid"
+wait "$cmdline_pid" 2>/dev/null || true
+assert_exists "$cmdline_install"
+grep -F "KEEP lane=legacy path=legacy-wrapper" <<<"$cmdline_prune_output" \
+    | grep -F ":cmdline-match" >/dev/null \
+    || fail "cmdline wrapper was not reported as protected"
+if grep -F $'legacy-wrapper\t' "$global_manifest" >/dev/null; then
+    fail "cmdline-protected install was appended to the archival manifest"
+fi
 
 printf 'install-user-local-retention: PASS\n'

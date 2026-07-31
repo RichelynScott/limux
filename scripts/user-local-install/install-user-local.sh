@@ -205,6 +205,8 @@ case "$profile" in
 esac
 [[ "$keep_reviewed" =~ ^[1-9][0-9]*$ ]] \
     || die "--keep-reviewed must be a positive integer, got: ${keep_reviewed}"
+[[ "${#keep_reviewed}" -le 6 ]] \
+    || die "--keep-reviewed must be at most 6 digits (got: ${keep_reviewed})"
 
 if [[ -z "$install_id" ]]; then
     install_id="$(git -C "$repo_root" rev-parse --short=12 HEAD 2>/dev/null || true)"
