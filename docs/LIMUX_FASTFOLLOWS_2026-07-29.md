@@ -8,6 +8,8 @@ All were triaged fast-follow (P2, none blocking) during the merge cycle.
 
 ## 1. prune-reviewed-runtimes: bound `--keep` count before Bash arithmetic
 
+> **Status: CLOSED** by PR #122 (`a501a8f`) — 6-digit `--keep` cap + retention regression.
+
 Bot P2 on #102 (merged `59876fa`). `--keep-reviewed`/`--keep` validates digits-only, but
 a value beyond Bash's signed 64-bit range wraps negative in the retention comparison — an
 absurdly large keep-count retains ZERO candidates and archives every unprotected install,
@@ -15,6 +17,8 @@ the opposite of the request. Fix: reject values above a sane cap (e.g. >6 digits
 validation time. **Lane: limu.**
 
 ## 2. prune-reviewed-runtimes: interpreter-startup TOCTOU in the active-process scan
+
+> **Status: CLOSED** by PR #122 (`a501a8f`) — cmdline fallback when `/proc/<pid>/exe` races interpreter startup.
 
 Bot P2 on #102. If an old installed launcher has just started concurrently with an
 upgrade, `/proc/<pid>/exe` points at `/usr/bin/bash` until the launcher execs
@@ -94,6 +98,11 @@ disagreed with the first — a single measurement cannot reveal its own instrume
 
 ## 7. H1 residual — explicit foreign `workspace_id` still bypasses the scoping (CRITICAL, open)
 
+> **Status: PARTIAL scaffold only** — OPEN PR #124 (`2c8ad7c`) adds default-off
+> `limux-core` entitlement (`LIMUX_ENTITLEMENT=off`). **Not a security close:** GTK
+> `window.rs` / `workspace_index_for_target`, `workspace.{current,list,select}`, and the
+> operator-vs-agent signal decision remain. Do not merge #124 as “H1 done”.
+
 Landed in #107 (`05836c4`): bare-surface-id disclosure is closed on `surface.read_text`,
 `debug.terminal.read_text`, `surface.trigger_flash`, `surface.send_text`,
 `surface.send_key`, `surface.clear_history`. **Not closed:** a caller who supplies an
@@ -124,6 +133,8 @@ passed, because they tested the thing the author already believed. A security fi
 rationale needs the same adversarial treatment as its code.
 
 ## 8. A WSLg display reset exits the host with a bare status 1 and no actionable message
+
+> **Status: CLOSED** by PR #109 / TaskMaster #34 (`de6d1db` lineage) — display-loss exit diagnostic.
 
 Live incident 2026-07-30 18:11:59 (thread `limux-runtime-crash-20260730`, diagnosed
 independently by `limu` and `fire`, converging). WSLg reset the display
@@ -195,6 +206,9 @@ disagreed — a single measurement still cannot reveal its own instrument error,
 the one who wrote that sentence in item 6 did not prevent committing it again.
 
 ## 9. Successor rebind after an unclean restore has no supported control path (open)
+
+> **Status: CLOSED** by PR #123 (`7df751a`) — `surface.rebind_session` (+ layout_state /
+> control_bridge / window wiring). On `main`; live matched install may still lag until rebuild.
 
 Surfaced by `limu` during the item-8 incident recovery (thread
 `limux-runtime-crash-20260730`). After the unclean restore, the live hcom successor
