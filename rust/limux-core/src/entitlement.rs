@@ -23,10 +23,12 @@
 //!   sends a `workspace_id`** — this is the design-doc framing the B-scout
 //!   flags as the dangerous seam.
 //! - [`EntitlementMode::RequireClaim`] — fail-closed. An unclaimed
-//!   connection is **rejected** on every read. The only way in is to
-//!   present a `workspace_id` and be claimed to it. This is the only option
-//!   that does not silently fail open on a misconfigured agent. Recommended
-//!   default once the operator-vs-agent signal is settled.
+//!   connection is **rejected** on reads that lack an explicit
+//!   `workspace_id`. Presenting an explicit `workspace_id` binds the sticky
+//!   claim (claim-first via [`ConnectionEntitlement::claim_or_allow_explicit`])
+//!   and subsequent requests must stay on that workspace. This is the only
+//!   option that does not silently fail open on a misconfigured agent.
+//!   Recommended default once the operator-vs-agent signal is settled.
 //!
 //! # Wire-up
 //!
@@ -212,6 +214,31 @@ impl ConnectionEntitlement {
         self.config.mode == EntitlementMode::RequireClaim
             && self.claimed.load(Ordering::Acquire) == UNCLAIMED
     }
+
+    /// Explicit-`workspace_id` path: claim first, then allow.
+    ///
+    /// Call this from handlers that received an **explicit** `workspace_id`
+    /// (or workspace hint). Ordering matters under
+    /// [`RequireClaim`](EntitlementMode::RequireClaim):
+    /// [`allows_workspace`](Self::allows_workspace) returns `false` while
+    /// unclaimed, so checking allow *before* [`record_claim`](Self::record_claim)
+    /// creates a first-claim chicken-and-egg. This helper:
+    ///
+    /// - short-circuits to `Ok(())` when the mode is not enforcing;
+    /// - when unclaimed + enforcing: **`record_claim` first** (binds), then
+    ///   the request is allowed for that id;
+    /// - when already claimed: `Ok(())` iff the claim matches `workspace_id`,
+    ///   else `Err(existing_claim)`.
+    ///
+    /// Do **not** call this for bare surface ids, focused-workspace
+    /// fallbacks, or §1c management helpers — those stay check-only and
+    /// must not auto-bind a sticky claim.
+    pub fn claim_or_allow_explicit(&self, workspace_id: u64) -> Result<(), u64> {
+        if !self.config.is_enforcing() {
+            return Ok(());
+        }
+        self.record_claim(workspace_id)
+    }
 }
 
 #[cfg(test)]
@@ -307,6 +334,29 @@ mod tests {
         assert_eq!(err, 7, "the existing claim is returned for audit");
         // Re-asserting the same workspace is legal.
         assert!(ent.record_claim(7).is_ok());
+    }
+
+    #[test]
+    fn claim_or_allow_explicit_binds_natural_first_claim_under_require_claim() {
+        let ent = ConnectionEntitlement::new(cfg(EntitlementMode::RequireClaim));
+        assert!(!ent.allows_workspace(7), "precondition: unclaimed denied");
+        ent.claim_or_allow_explicit(7)
+            .expect("natural first explicit workspace_id must bind");
+        assert_eq!(ent.claimed_workspace(), Some(7));
+        assert!(ent.allows_workspace(7));
+        assert_eq!(
+            ent.claim_or_allow_explicit(8).expect_err("foreign after claim"),
+            7
+        );
+        assert!(ent.claim_or_allow_explicit(7).is_ok());
+    }
+
+    #[test]
+    fn claim_or_allow_explicit_is_noop_when_off() {
+        let ent = ConnectionEntitlement::new(cfg(EntitlementMode::Off));
+        assert!(ent.claim_or_allow_explicit(42).is_ok());
+        assert!(ent.claimed_workspace().is_none());
+        assert!(ent.allows_workspace(99));
     }
 
     /// Two clones of `ConnectionEntitlement` share the same claim cell —

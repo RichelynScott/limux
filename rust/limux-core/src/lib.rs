@@ -3686,10 +3686,9 @@ fn check_focused_workspace_against_claim(
 /// into via `with_workspace_scope` (or thread into a sub-resolution). Same
 /// semantics as the explicit-`workspace_hint` branch of
 /// `resolve_surface_target_scoped`: under Off it is a no-op; under
-/// UnclaimedAllEntitled / RequireClaim it refuses any workspace the
-/// connection is not allowed to access, refuses a switch that would change
-/// a sticky claim, and records the claim when the workspace is allowed
-/// and the connection is still unclaimed.
+/// UnclaimedAllEntitled / RequireClaim it uses claim-or-allow (record the
+/// sticky claim first when still unclaimed, then refuse any later foreign
+/// workspace). Bare / focused paths stay check-only and do not auto-claim.
 ///
 /// This is the explicit-`workspace_id` analogue of
 /// `check_focused_workspace_against_claim`. Both run in sequence in the
@@ -3709,20 +3708,14 @@ fn gate_workspace_id_param(
         // workspace, which the §1c helper already gated. Nothing to claim.
         return Ok(());
     };
-    if !entitlement.allows_workspace(workspace_id) {
-        return Err(CommandError::permission_denied(
-            "workspace not entitled to this connection",
-        ));
-    }
-    if let Some(claimed) = entitlement.claimed_workspace() {
-        if claimed != workspace_id {
-            return Err(CommandError::permission_denied(
-                "workspace not entitled to this connection",
-            ));
-        }
-    }
-    let _ = entitlement.record_claim(workspace_id);
-    Ok(())
+    // Claim-first under RequireClaim: allows_workspace is false while
+    // unclaimed, so checking allow before record_claim would deny the
+    // natural first explicit workspace_id forever.
+    entitlement
+        .claim_or_allow_explicit(workspace_id)
+        .map_err(|_| {
+            CommandError::permission_denied("workspace not entitled to this connection")
+        })
 }
 
 fn workspace_row(
@@ -3914,22 +3907,15 @@ fn resolve_surface_target_scoped(
 
     if let Some(surface_id) = surface_hint {
         if let Some(workspace_id) = workspace_hint {
-            if !entitlement.allows_workspace(workspace_id) {
+            // Explicit workspace_id: claim-or-allow first. Under
+            // RequireClaim an unclaimed connection must be able to bind
+            // on this natural first presentation; allow-then-claim was
+            // a chicken-and-egg that permanently denied first claim.
+            if entitlement.claim_or_allow_explicit(workspace_id).is_err() {
                 return Err(CommandError::permission_denied(
                     "workspace not entitled to this connection",
                 ));
             }
-            // Stickiness: a connection that already claimed a different
-            // workspace cannot ride a foreign `workspace_id` to it.
-            if let Some(claimed) = entitlement.claimed_workspace() {
-                if claimed != workspace_id {
-                    return Err(CommandError::permission_denied(
-                        "workspace not entitled to this connection",
-                    ));
-                }
-            }
-            // Record the claim on first explicit workspace_id.
-            let _ = entitlement.record_claim(workspace_id);
             if workspace_contains_surface(state, workspace_id, surface_id) {
                 return Ok((workspace_id, surface_id));
             }
@@ -3990,12 +3976,11 @@ fn resolve_surface_target_scoped(
     }
 
     if let Some(workspace_id) = workspace_hint {
-        if !entitlement.allows_workspace(workspace_id) {
+        if entitlement.claim_or_allow_explicit(workspace_id).is_err() {
             return Err(CommandError::permission_denied(
                 "workspace not entitled to this connection",
             ));
         }
-        let _ = entitlement.record_claim(workspace_id);
         let surface_id = current_surface_id_for_workspace(state, workspace_id)
             .ok_or_else(|| CommandError::not_found("workspace/surface not found"))?;
         return Ok((workspace_id, surface_id));
@@ -9126,6 +9111,67 @@ mod tests {
         );
     }
 
+    /// Natural first-claim under RequireClaim: an unclaimed connection
+    /// that presents an explicit `workspace_id` (no prior out-of-band
+    /// `record_claim`) must bind and succeed; a subsequent foreign
+    /// `workspace_id` must be refused. This is the chicken-and-egg fix
+    /// for allow-before-claim ordering.
+    #[tokio::test]
+    async fn entitlement_require_claim_natural_first_workspace_id_binds() {
+        let dispatcher = Dispatcher::new();
+        let lane_a = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-a" }))).await;
+        let lane_a_id = lane_a.result.expect("a")["workspace"]["id"].as_u64().unwrap();
+        let lane_b = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-b" }))).await;
+        let lane_b_id = lane_b.result.expect("b")["workspace"]["id"].as_u64().unwrap();
+        let lane_a_surface = dispatcher
+            .dispatch(request("surface.current", json!({ "workspace_id": lane_a_id })))
+            .await;
+        let lane_a_surface_id = lane_a_surface.result.expect("a s")["surface"]["id"]
+            .as_u64().unwrap();
+        let lane_b_surface = dispatcher
+            .dispatch(request("surface.current", json!({ "workspace_id": lane_b_id })))
+            .await;
+        let lane_b_surface_id = lane_b_surface.result.expect("b s")["surface"]["id"]
+            .as_u64().unwrap();
+        let ent = ConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::RequireClaim,
+        });
+        assert!(
+            ent.claimed_workspace().is_none(),
+            "fresh connection must start unclaimed"
+        );
+
+        // Natural first claim — no prior record_claim.
+        let first = dispatcher.dispatch_with_entitlement(
+            request("surface.read_text", json!({
+                "workspace_id": lane_a_id,
+                "surface_id": lane_a_surface_id,
+            })),
+            &ent,
+        );
+        assert!(
+            first.error.is_none(),
+            "natural first explicit workspace_id must succeed; got: {:?}",
+            first.error
+        );
+        assert!(first.result.is_some(), "natural first claim must return a result");
+        assert_eq!(ent.claimed_workspace(), Some(lane_a_id));
+
+        // Subsequent foreign workspace_id must fail; claim stays sticky.
+        let foreign = dispatcher.dispatch_with_entitlement(
+            request("surface.read_text", json!({
+                "workspace_id": lane_b_id,
+                "surface_id": lane_b_surface_id,
+            })),
+            &ent,
+        );
+        let err = foreign.error.as_ref().expect("foreign after claim must be denied");
+        assert_eq!(err.code, -32011, "PermissionDenied; got code {}", err.code);
+        assert_eq!(ent.claimed_workspace(), Some(lane_a_id));
+    }
+
     /// B.md §3 #8 — `operator_signal_mode_flag`. The mode flag flips
     /// `Unclaimed` between all-entitled (UnclaimedAllEntitled) and
     /// reject-cross-workspace (RequireClaim), so the fail-open vs
@@ -9180,9 +9226,13 @@ mod tests {
         );
         let err = closed_read.error.as_ref().expect("RequireClaim: unclaimed must be denied");
         assert_eq!(err.code, -32011, "PermissionDenied; got code {}", err.code);
+        assert!(
+            closed_ent.claimed_workspace().is_none(),
+            "bare-id deny must not auto-claim"
+        );
 
-        // Fail-CLOSED: claim binds, then the same request succeeds.
-        closed_ent.record_claim(lane_b_id).expect("claim binds");
+        // Fail-CLOSED natural first claim: explicit workspace_id binds
+        // through dispatch (no out-of-band record_claim).
         let closed_read2 = dispatcher.dispatch_with_entitlement(
             request("surface.read_text", json!({
                 "workspace_id": lane_b_id,
@@ -9192,9 +9242,10 @@ mod tests {
         );
         assert!(
             closed_read2.error.is_none(),
-            "RequireClaim after claim must succeed; got: {:?}",
+            "RequireClaim natural first explicit workspace_id must succeed; got: {:?}",
             closed_read2.error
         );
+        assert_eq!(closed_ent.claimed_workspace(), Some(lane_b_id));
 
         // Sanity: a Claimed(W) connection in RequireClaim mode cannot
         // read W' even after the first claim.
