@@ -1,6 +1,6 @@
 # Limux — Directory State (session-agnostic)
 
-**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — yields **#109 MERGED** + stable reinstall `main-46ab49ded66f-yields-20260731` (sha `de6d1db`). Continuity #110–#115 landed; doctor green.
+**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — #109 yields + #116 help-print on `main`. CLI install `main-e8e19c9c7150-helpprint-20260731`; **live host still on** `main-46ab49ded66f-yields-20260731` until OMP/peers checkpoint for restart.
 (`de6d1db`; tip was `7d9bfb4`). Shared `main` carries TaskMaster #25/#33/#34.
 Continuity docs #110–#114 landed earlier today. Doctor fully green
 (`stale_sockets` `[ok]`); historical leave-alone `52458` paths gone.
