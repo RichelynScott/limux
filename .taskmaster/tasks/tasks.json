@@ -562,7 +562,7 @@
         "description": "Prevent recurring message corruption by documenting shell expansion at first use and adding byte-safe stdin/file sources to limux send.",
         "details": "Move the existing shell-boundary warning beside CLI help and the first limux send examples. Label double-quoted inline text as shell-safe prose only. Add mutually exclusive positional text, --stdin, and --file PATH input sources; validate UTF-8 and preserve existing terminal-control rejection. Add parser/help tests and bridge/PTY exact-delivery tests using backticks, dollar-paren substitution text, quotes, semicolons, globs, and multiline fixtures. Do not claim Limux can detect command substitution already performed by the shell. Coordinate accepted wording with hcom and global-config owners after a frozen source commit.\n<info added on 2026-07-12T23:07:57.017Z>\nFresh real-world recurrence: hcom event 434032 lost intended option tokens because backticked flag names were command-substituted by zsh inside a double-quoted sender payload before hcom received argv. Niru reported command-not-found errors and no state changes in correction event 434092; Temp1 independently observed the delivered gap in event 434101. Use 434032 as a regression sample. Subsequent formatted messages must use quoted heredoc, file, base64, or other byte-safe transport.\n</info added on 2026-07-12T23:07:57.017Z>",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "high",
         "subtasks": [
@@ -611,7 +611,7 @@
             "testStrategy": "Run bridge/PTY tests and verify exact byte delivery for --file and --stdin sources. Confirm the 434032 regression test fails with double-quoted positional transport and passes with --file/--stdin. Review exact-delivery assertions for all metacharacter and multiline fixtures."
           }
         ],
-        "updatedAt": "2026-07-31T06:48:43.325Z"
+        "updatedAt": "2026-07-31T06:57:00.791Z"
       },
       {
         "id": 26,
@@ -749,7 +749,7 @@
         "description": "When GTK/WSLg resets the display, limux-host currently exits with bare status 1. Emit limux: display connection lost (compositor reset) — relaunch limux via GdkDisplay::closed(is_error) (preferred) or atexit fallback so operators can distinguish environmental display loss from Limux faults.",
         "details": "Source: docs/LIMUX_FASTFOLLOWS_2026-07-29.md §8 / BARI_HANDOFF #4 / limux-runtime-crash-20260730. Constraint: a message after app.run() is dead code (GTK terminates inside run). Prefer GdkDisplay::closed with is_error=true; normal quit must NOT emit. Acceptance: (1) load-bearing callsite emits the documented line on display error; (2) normal exit silent; (3) verification prefers xvfb kill-display integration under scripts/xvfb-smoke-test.sh; if no injection point without refactor, file mutation evidence instead of decorative helper-only tests. Out of scope: reinstall/restart, claiming to survive display loss.",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "high",
         "subtasks": [
@@ -789,14 +789,14 @@
             "updatedAt": "2026-07-31T06:49:05.265Z"
           }
         ],
-        "updatedAt": "2026-07-31T06:49:05.265Z"
+        "updatedAt": "2026-07-31T06:57:02.748Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-31T06:49:05.265Z",
+      "lastModified": "2026-07-31T06:57:02.748Z",
       "taskCount": 34,
-      "completedCount": 19,
+      "completedCount": 21,
       "tags": [
         "master"
       ],
