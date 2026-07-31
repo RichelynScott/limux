@@ -1,0 +1,37 @@
+{
+	"meta": {
+		"generatedAt": "2026-07-31T06:31:57.512Z",
+		"tasksAnalyzed": 3,
+		"totalTasks": 34,
+		"analysisCount": 3,
+		"thresholdScore": 5,
+		"projectName": "Limux",
+		"usedResearch": false
+	},
+	"complexityAnalysis": [
+		{
+			"taskId": 25,
+			"taskTitle": "Add byte-safe Limux send input sources and shell-boundary guidance",
+			"complexityScore": 7,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "Break into: (1) docs/shell-boundary warning relocation and wording coordination with hcom/global-config owners; (2) implement mutually-exclusive positional/--stdin/--file input parser with UTF-8 validation and terminal-control rejection in the CLI; (3) add parser and help unit tests with metacharacter/multiline fixtures; (4) add bridge/PTY exact-delivery integration tests with hcom 434032 regression sample. Maintain strict byte-safety guarantees and avoid claiming post-expansion detection capability.",
+			"reasoning": "This task combines documentation changes, CLI parser extensions with mutual exclusivity logic, UTF-8 validation, preservation of existing terminal-control rejection, and comprehensive testing across both unit and integration (bridge/PTY) layers. The need to coordinate wording with external teams (hcom, global-config) and the inclusion of a real-world regression scenario (hcom event 434032) add organizational and testing complexity. The parser and help/doc changes are moderately complex, but the bridge/PTY exact-delivery tests require careful fixture design with shell metacharacters and multiline content."
+		},
+		{
+			"taskId": 33,
+			"taskTitle": "Reject unknown CLI flags before socket contact",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break into: (1) implement reject_unknown_flags(args, allowed) helper with per-command allowed sets source-enumerated from parse_opt calls, plus comprehensive unit tests; (2) wire the helper into each target command's dispatch path (read-screen, capture-pane, send, send-key, profile list) before Client::send_request/connect, ensuring user-facing error messages; (3) add a callsite-dependent regression test using a nonexistent socket path to prove the unknown-flag error fires before any socket connection attempt.",
+			"reasoning": "The task is well-scoped: a shared helper function, per-command allowed flag sets, wiring at callsites before socket contact, and a regression test proving callsite dependency. The implementation is straightforward but requires careful source enumeration of each command's allowed flags and ensuring the validation occurs before any socket connection. The callsite-dependent regression test adds some testing sophistication, but the overall complexity is moderate."
+		},
+		{
+			"taskId": 34,
+			"taskTitle": "Emit actionable diagnostic when display connection is lost",
+			"complexityScore": 6,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break into: (1) wire GdkDisplay::closed signal with is_error=true in host-linux to emit the exact diagnostic line, registering the handler before app.run(); (2) ensure normal quit paths (SIGTERM, app.quit, window destroy) do NOT emit the diagnostic, adding guards or flags to distinguish is_error=true from normal shutdown; (3) add load-bearing verification via xvfb kill-display smoke test or mutation evidence proving the message appears on display loss and is absent on normal exit.",
+			"reasoning": "This task involves GTK signal handling (GdkDisplay::closed with is_error distinction), which requires understanding GTK lifecycle constraints—messages after app.run() are dead code since GTK terminates inside run(). The preferred integration test (killing Xvfb) may be difficult to wire without test harness refactoring, potentially requiring a mutation-evidence fallback. Ensuring normal quit is silent while only display errors emit the diagnostic adds careful guard logic. The complexity is moderate but involves platform-specific GTK behavior and testing challenges."
+		}
+	]
+}

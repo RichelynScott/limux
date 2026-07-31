@@ -562,10 +562,53 @@
         "description": "Prevent recurring message corruption by documenting shell expansion at first use and adding byte-safe stdin/file sources to limux send.",
         "details": "Move the existing shell-boundary warning beside CLI help and the first limux send examples. Label double-quoted inline text as shell-safe prose only. Add mutually exclusive positional text, --stdin, and --file PATH input sources; validate UTF-8 and preserve existing terminal-control rejection. Add parser/help tests and bridge/PTY exact-delivery tests using backticks, dollar-paren substitution text, quotes, semicolons, globs, and multiline fixtures. Do not claim Limux can detect command substitution already performed by the shell. Coordinate accepted wording with hcom and global-config owners after a frozen source commit.\n<info added on 2026-07-12T23:07:57.017Z>\nFresh real-world recurrence: hcom event 434032 lost intended option tokens because backticked flag names were command-substituted by zsh inside a double-quoted sender payload before hcom received argv. Niru reported command-not-found errors and no state changes in correction event 434092; Temp1 independently observed the delivered gap in event 434101. Use 434032 as a regression sample. Subsequent formatted messages must use quoted heredoc, file, base64, or other byte-safe transport.\n</info added on 2026-07-12T23:07:57.017Z>",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "high",
-        "subtasks": []
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Add shell-boundary warning beside CLI help and first limux send examples in docs",
+            "description": "Move the existing shell-boundary warning so it appears beside the CLI help text and the first `limux send` usage examples. Label double-quoted inline text as shell-safe prose only and warn that backticks, $(), quotes, semicolons, and globs may be expanded by the shell before Limux receives argv. Reference hcom event 434032 as a regression example.",
+            "dependencies": [],
+            "details": "Locate the current shell-boundary warning in docs and move it adjacent to the CLI help section and the first `limux send` examples. Add explicit wording: double-quoted inline positional text is shell-safe prose only; shell expansions (backticks, $(), quotes, semicolons, globs, multiline) are performed by the shell before Limux receives argv, so Limux cannot detect or reverse them. Recommend quoted heredoc, --file, --stdin, or base64 for byte-safe transport. Do NOT claim Limux detects already-expanded substitutions. Coordinate accepted wording with hcom and global-config owners after a frozen source commit.",
+            "status": "pending",
+            "testStrategy": "Review help output and docs to verify the warning is adjacent to the first send examples. Verify no claim that Limux can detect post-expansion content. Cross-check with hcom and global-config owners for accepted wording."
+          },
+          {
+            "id": 2,
+            "title": "Implement mutually exclusive positional|--stdin|--file input parser with UTF-8 and terminal-control rejection",
+            "description": "Add three mutually exclusive input sources to `limux send`: positional text, `--stdin`, and `--file PATH`. Validate UTF-8 encoding for all sources and preserve existing terminal-control character rejection. Reject ambiguous combinations of input flags.",
+            "dependencies": [],
+            "details": "Extend the `limux send` argument parser to accept: (1) positional TEXT, (2) `--stdin` flag to read from standard input, (3) `--file PATH` to read from a file. Enforce mutual exclusivity: if more than one source is provided, return a parser error. After reading bytes from any source, validate UTF-8 and reject invalid sequences. Preserve the existing terminal-control rejection logic (e.g., control characters that manipulate terminals). For `--file PATH`, validate PATH exists, is readable, and is a regular file. Ensure error messages are clear and actionable. Do not alter existing positional-text behavior beyond mutual-exclusivity checks.",
+            "status": "pending",
+            "testStrategy": "Unit tests: positional-only, --stdin-only, --file-only each succeed. Mutual exclusivity: every two-source combination returns a parser error. Invalid UTF-8 input from each source is rejected. Terminal-control characters are rejected from all sources. Missing/unreadable/non-regular --file paths are rejected."
+          },
+          {
+            "id": 3,
+            "title": "Add parser and help unit tests with shell metacharacter and multiline fixtures",
+            "description": "Create unit tests for the parser and help output covering backticks, dollar-paren substitution text, quotes, semicolons, globs, and multiline fixtures. Verify that help text documents the shell-boundary warning and that the parser correctly accepts/rejects inputs containing these metacharacters via each input source.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Add unit tests asserting: (1) help output contains the shell-boundary warning near send examples; (2) positional text containing backticks, $(), quotes, semicolons, globs, and multiline content is accepted as-is (since the shell has already delivered it); (3) --stdin and --file deliver the same metacharacter content verbatim without any expansion or interpretation; (4) invalid UTF-8 and terminal-control bytes are rejected for all sources. Use fixture strings with backticks (`echo hi`), $((1+1)), $HOME, single and double quotes, semicolons, globs (*, ?), and multiline text with newlines and tabs. Assert error messages for mutual-exclusivity violations and invalid paths.",
+            "status": "pending",
+            "testStrategy": "Run unit tests and confirm all parser paths and help-text assertions pass. Verify fixtures include backticks, $(), quotes, semicolons, globs, and multiline content for each input source. Confirm help-text warning is present and correctly positioned."
+          },
+          {
+            "id": 4,
+            "title": "Add bridge/PTY exact-delivery tests proving --file and --stdin deliver verbatim",
+            "description": "Add integration tests using the bridge/PTY layer that prove `--file` and `--stdin` deliver content verbatim to the terminal, including backticks, $(), quotes, semicolons, globs, and multiline fixtures. Use hcom event 434032 as a regression sample demonstrating that byte-safe transport avoids command-substitution corruption.",
+            "dependencies": [
+              2
+            ],
+            "details": "Write bridge/PTY integration tests that: (1) send payloads via --file and --stdin containing backticks, $(), quotes, semicolons, globs, and multiline content; (2) capture the exact bytes delivered to the PTY and assert byte-for-byte equality with the source fixtures; (3) include a regression test based on hcom event 434032 where backticked flag names were command-substituted by zsh inside a double-quoted sender payload—verify that --file/--stdin transport avoids this corruption; (4) confirm positional text is also delivered verbatim but is documented as shell-safe prose only. Assert no terminal-control characters leak through. Document that subsequent formatted messages must use quoted heredoc, file, base64, or other byte-safe transport.",
+            "status": "pending",
+            "testStrategy": "Run bridge/PTY tests and verify exact byte delivery for --file and --stdin sources. Confirm the 434032 regression test fails with double-quoted positional transport and passes with --file/--stdin. Review exact-delivery assertions for all metacharacter and multiline fixtures."
+          }
+        ],
+        "updatedAt": "2026-07-31T06:32:02.490Z"
       },
       {
         "id": 26,
@@ -649,18 +692,107 @@
         "priority": "high",
         "subtasks": [],
         "updatedAt": "2026-07-31T01:36:35.631Z"
+      },
+      {
+        "id": 33,
+        "title": "Reject unknown CLI flags before socket contact",
+        "description": "Fail closed on unrecognized flags for read-screen/capture-pane/send/send-key/profile list (and siblings that silently scan parse_opt) BEFORE opening the control socket. Stops silent no-ops like --pane on read-screen and prevents unknown flags from contacting the live host.",
+        "details": "Source: TUTU_HANDOFF item-2 / BARI_HANDOFF #1 / REPO_AUDIT. Root cause: parse_opt scans for known names and ignores everything else; commands then open the socket. Implementation: shared reject_unknown_flags(args, allowed) helper; per-command allowed sets enumerated from source; wire before Client connect; clear error naming the unknown flag and the command. Acceptance: (1) limux read-screen --xyzzy and limux send --pane x exit non-zero without socket contact (prove with nonexistent --socket path still failing on unknown flag first); (2) known flags unchanged; (3) revert of callsite fails a regression test (not helper-only). Scope does NOT include H1 entitlement or live disclosure probes.",
+        "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement reject_unknown_flags helper with unit tests",
+            "description": "Create a shared helper function that validates CLI arguments against a per-command allowed set and rejects unknown flags with a clear error naming both the unknown flag and the command. Include comprehensive unit tests.",
+            "dependencies": [],
+            "details": "Implement reject_unknown_flags(args, allowed) in the limux-cli codebase. The function should scan parsed args for any flag not in the allowed set and return/throw a clear error: 'Unknown flag --<flag> for <command>'. Enumerate per-command allowed sets from source by inspecting each command's parse_opt calls (scout anchor: parse_opt 796+). Allowed sets must be source-enumerated, not guessed. Write unit tests covering: (a) valid flags pass, (b) single unknown flag rejected with correct error message, (c) multiple unknown flags all reported, (d) empty args passes, (e) empty allowed set rejects all flags. Tests must be runnable via the project's existing test runner.",
+            "status": "pending",
+            "testStrategy": "Unit tests for reject_unknown_flags: assert valid flags return nil/no-error, assert unknown flags produce error containing both the flag name and command name, assert edge cases (empty args, empty allowed set, mixed known/unknown). Run with project test runner and verify all pass."
+          },
+          {
+            "id": 2,
+            "title": "Wire pre-dispatch flag validation before Client::send_request for all target commands",
+            "description": "Integrate reject_unknown_flags callsite validation for read-screen, capture-pane, send, send-key, and profile list commands. Wire the validation BEFORE any Client connect/send_request call so unknown flags never trigger socket contact.",
+            "dependencies": [
+              1
+            ],
+            "details": "For each target command (read-screen, capture-pane, send, send-key, profile list, and siblings identified via parse_opt scan), add a reject_unknown_flags(args, ALLOWED_SET) call immediately before the Client connect path. Scout anchors: run_send 1227+, execute_command ~6450, Client connect 154-157. The validation must occur before Client::send_request or any socket connection attempt. Use the per-command allowed sets enumerated in subtask 1. Ensure the error propagates as a non-zero exit with a user-facing message. Do NOT alter behavior for known flags — only reject unknowns. Verify that the callsite is in the command dispatch path, not just the helper, so removing the callsite would cause a regression.",
+            "status": "pending",
+            "testStrategy": "Manual and automated tests: run 'limux read-screen --xyzzy' and confirm non-zero exit with error naming the flag and command. Run 'limux send --pane x' and confirm same. Confirm known flags like 'limux read-screen --socket /path' still work unchanged. Inspect code to verify validation is before Client connect call site."
+          },
+          {
+            "id": 3,
+            "title": "Add revert-callsite regression test proving unknown flag fails before socket contact",
+            "description": "Write a regression test that proves unknown flags are rejected before any socket connection is attempted. The test must use a nonexistent socket path to prove the unknown flag error takes priority over socket connection failure. The test must fail if the reject_unknown_flags callsite is removed.",
+            "dependencies": [
+              2
+            ],
+            "details": "Create a regression test that: (1) Sets a nonexistent --socket path (e.g., /tmp/nonexistent-limux-test.sock). (2) Runs 'limux read-screen --xyzzy --socket /tmp/nonexistent-limux-test.sock'. (3) Asserts the command exits non-zero. (4) Asserts the error message names the unknown flag (--xyzzy) and command (read-screen), NOT a socket connection error. (5) Runs 'limux send --pane x --socket /tmp/nonexistent-limux-test.sock' and asserts the same. This proves the flag validation fires before the socket connect attempt. Critically, the test must be callsite-dependent: if a developer removes the reject_unknown_flags call from the dispatch path, this test must fail (not just the helper unit tests). This ensures the protection is wired at the callsite, not just in the helper library. Run the test in CI.",
+            "status": "pending",
+            "testStrategy": "Regression test: run both commands with nonexistent socket and unknown flag, assert exit code non-zero, assert error message mentions unknown flag (not socket/connection error). Then temporarily comment out the reject_unknown_flags callsite and confirm the test fails (proving callsite dependency). Restore callsite and confirm test passes. Document the revert scenario in the test comments."
+          }
+        ],
+        "updatedAt": "2026-07-31T06:32:02.508Z"
+      },
+      {
+        "id": 34,
+        "title": "Emit actionable diagnostic when display connection is lost",
+        "description": "When GTK/WSLg resets the display, limux-host currently exits with bare status 1. Emit limux: display connection lost (compositor reset) — relaunch limux via GdkDisplay::closed(is_error) (preferred) or atexit fallback so operators can distinguish environmental display loss from Limux faults.",
+        "details": "Source: docs/LIMUX_FASTFOLLOWS_2026-07-29.md §8 / BARI_HANDOFF #4 / limux-runtime-crash-20260730. Constraint: a message after app.run() is dead code (GTK terminates inside run). Prefer GdkDisplay::closed with is_error=true; normal quit must NOT emit. Acceptance: (1) load-bearing callsite emits the documented line on display error; (2) normal exit silent; (3) verification prefers xvfb kill-display integration under scripts/xvfb-smoke-test.sh; if no injection point without refactor, file mutation evidence instead of decorative helper-only tests. Out of scope: reinstall/restart, claiming to survive display loss.",
+        "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement display-loss message and GdkDisplay::closed signal registration in host-linux",
+            "description": "Wire the GdkDisplay::closed signal with is_error=true to emit the documented diagnostic line 'limux: display connection lost (compositor reset) — relaunch limux' from the load-bearing callsite in the host-linux code. Do not place any message after app.run() since GTK terminates inside run().",
+            "dependencies": [],
+            "details": "In the host-linux source, connect to the GdkDisplay::closed signal on the default display. When the signal fires with is_error=true, print or log the exact message: 'limux: display connection lost (compositor reset) — relaunch limux'. This must be the load-bearing callsite that GTK actually reaches before termination. Investigate the existing display initialization code to find where the GdkDisplay is obtained and connect the signal handler there. If a direct injection point is not available without significant refactor, consider the atexit fallback, but the GdkDisplay::closed approach is strongly preferred. The message must go to stderr or the existing logging mechanism so operators can capture it. Ensure the handler is registered before app.run() is invoked.",
+            "status": "pending",
+            "testStrategy": "Unit test or integration check that verifies the signal handler is connected on the GdkDisplay and that when closed(is_error=true) fires, the documented message is emitted to the expected output stream. Use g_signal_connect inspection or a mock display object if feasible. If the code path cannot be unit-tested due to GTK lifecycle constraints, document this for the verification subtask."
+          },
+          {
+            "id": 2,
+            "title": "Ensure normal quit path is silent and does not emit the display-loss diagnostic",
+            "description": "Verify and enforce that the normal application quit flow—triggered by user action or graceful shutdown—does NOT emit the display connection lost message. Only the is_error=true path on GdkDisplay::closed should produce the diagnostic.",
+            "dependencies": [
+              1
+            ],
+            "details": "Review the GdkDisplay::closed signal semantics: GTK fires closed with is_error=false on normal shutdown and is_error=true on display loss (e.g., compositor reset, WSLg restart). Ensure the signal handler or any atexit fallback checks is_error and only emits when true. Audit all other exit paths—window close, quit menu action, signal handlers for SIGTERM/SIGINT—to confirm none of them print the diagnostic line. Add a guard or condition so that a normal app.quit() or window destroy does not trigger the message. If an atexit fallback is used, it must distinguish normal exit from display-error exit, which may require setting a flag in the closed handler before GTK terminates.",
+            "status": "pending",
+            "testStrategy": "Run the application under Xvfb and trigger a normal quit (e.g., send SIGTERM or call app.quit()). Capture stderr/stdout and assert the diagnostic message 'limux: display connection lost' does NOT appear. Contrast with the display-loss scenario in subtask 3 to confirm the message only appears on is_error=true."
+          },
+          {
+            "id": 3,
+            "title": "Add load-bearing verification via xvfb kill-display smoke test or mutation evidence",
+            "description": "Create or extend scripts/xvfb-smoke-test.sh to kill the Xvfb display while the limux-host is running and verify the diagnostic message appears. If no injection point exists without a larger refactor, fall back to mutation evidence proving the load-bearing callsite produces the message.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Prefer integration approach: in scripts/xvfb-smoke-test.sh, start Xvfb on a dedicated display, launch limux-host against it, then kill the Xvfb process to simulate compositor/display reset. Capture the host's stderr/stdout and grep for the exact line 'limux: display connection lost (compositor reset) — relaunch limux'. Assert it appears exactly once and that the exit code is non-zero. Also run a normal-quit smoke to assert silence. If the Xvfb kill approach requires invasive changes to the test harness that amount to a refactor, document the blocker and instead provide mutation evidence: temporarily mutate the signal handler to remove the message, show the test fails, then restore and show it passes. The evidence must be load-bearing—decorative helper-only tests are explicitly rejected. Reference docs/LIMUX_FASTFOLLOWS_2026-07-29.md §8 and BARI_HANDOFF #4 for acceptance criteria.",
+            "status": "pending",
+            "testStrategy": "Execute scripts/xvfb-smoke-test.sh which performs: (1) start Xvfb, launch limux-host, kill Xvfb, assert diagnostic message present on stderr, assert non-zero exit; (2) start Xvfb, launch limux-host, send SIGTERM for normal quit, assert diagnostic message absent. If mutation evidence fallback is used: show the test fails when the emit line is removed and passes when restored, with a written explanation of why the integration approach was blocked."
+          }
+        ],
+        "updatedAt": "2026-07-31T06:32:02.519Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-31T01:36:37.662Z",
-      "taskCount": 32,
+      "lastModified": "2026-07-31T06:32:02.519Z",
+      "taskCount": 34,
       "completedCount": 18,
       "tags": [
         "master"
       ],
       "created": "2026-07-16T00:27:19.811Z",
-      "updated": "2026-07-21T16:05:26.735Z",
+      "updated": "2026-07-31T06:26:34.043Z",
       "description": "Tasks for master context"
     }
   },
