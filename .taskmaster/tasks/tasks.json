@@ -608,10 +608,11 @@
         "description": "Operator-reported HIGH-priority UX defect (2026-07-19): terminal/session text word-wrapping behaves erratically when a pane/surface width changes (split, resize, workspace layout change). Extremely aggravating in daily use. Investigate the reflow path on width/column change in the Ghostty surface + GTK pane resize handling (rust/limux-host-linux/src/window.rs, pane.rs, terminal.rs). Repro: change a pane width and observe mis-wrapped/stale-column output. Deliver a root-cause + fix + regression test. No existing task covered this specifically.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [],
         "priority": "high",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-07-31T01:36:33.096Z"
       },
       {
         "id": 30,
@@ -631,11 +632,11 @@
         "description": "Complete the no-loss manager succession from lifo to limu, consolidate active handoff and inbox surfaces, reconcile TaskMaster/open PR/worktree/branch state, and publish an evidence-cited repository audit.",
         "details": "Preserve inherited Task 29 RED-state work on pushed limu branch 7e0eb07. Build exact owner and disposition maps before cleanup. Do not delete or rewrite historical artifacts; archive or preserve them. Keep PR close/merge, retained worktree removal, and destructive build-artifact cleanup operator-gated. Acceptance: LIMU_HANDOFF and LIMU_INBOX are durable, repo audit names grades and priorities with file-line evidence, every open PR/worktree/dirty artifact has an owner/disposition, and main canonical verification remains green.",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "high",
         "subtasks": [],
-        "updatedAt": "2026-07-21T15:58:34.968Z"
+        "updatedAt": "2026-07-31T01:36:37.662Z"
       },
       {
         "id": 32,
@@ -643,17 +644,18 @@
         "description": "Operator-reported HIGH defect: while OMP runs inside a Limux pane, the viewport repeatedly jumps to the bottom and flashes, preventing scrollback reading.",
         "details": "Evidence is in LIMU_INBOX/BUG_FROM_tutu_2026-07-21_omp-pane-scroll-yank-flash.md after inbox adoption. Treat the header-refresh-to-scrollbar-feedback theory as unproven: local PR #59 added the header, while scrollbar commit fc23ac2 is an older 2026-05-10 ancestor whose subject references a different #59. Reproduce first, measure cadence against terminal output/header refresh, trace GTK Adjustment value-changed and Ghostty scroll state, and add a RED regression test before implementation. Consider a bounded header gate only if the causal check supports it. Acceptance: operator can scroll up during active OMP output without yank/flash, no regression to follow-output behavior, targeted terminal tests and canonical gate pass, and live Limux smoke is recorded.",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [],
         "priority": "high",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-07-31T01:36:35.631Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-21T15:58:34.968Z",
+      "lastModified": "2026-07-31T01:36:37.662Z",
       "taskCount": 32,
-      "completedCount": 15,
+      "completedCount": 18,
       "tags": [
         "master"
       ],
@@ -788,6 +790,15 @@
             "dependencies": [],
             "parentTaskId": 7,
             "parentId": "7"
+          },
+          {
+            "id": 3,
+            "title": "Make OMP plan-review and ask waits visible in the workspace sidebar",
+            "description": "After the native PRD-G live path is wired, add OMP as a first-class receiver-only agent family and map operator-wait lifecycle events into Limux NeedsInput/Running/Idle state so a background OMP workspace awaiting plan review or an ask answer is identifiable from the left sidebar without opening every workspace.",
+            "details": "Operator evidence: /mnt/c/Users/riche/Downloads/SCREENSHOTS/Screenshot 2026-07-30 205145.png (1889×1034). Observed: the active workspace was limux, the waiting session tab was kero [omp], and its pane showed Plan Review / Plan mode - next step; the left sidebar row had no ?, !, dot, badge, count, INPUT label, or child session row tying kero to the wait. Existing colored row treatments and stars appeared on multiple workspaces, so neither uniquely identified the waiting workspace; the distinct question sound is operator-reported, not pixel evidence. Reuse rust/limux-host-linux/src/agent_state.rs (AgentState::NeedsInput, AgentStateStore::workspace_needs_attention, SurfaceAgentRecord::acknowledged) and finish the deferred native wiring named in its module header: hook ingress, host state-store consumption, targeted sidebar rendering, surface.agent_event socket exposure, agents-status CLI exposure, eviction, and production-path verification. In rust/limux-host-linux/src/window.rs, extend build_sidebar_row and parallel the existing apply_workspace_unread_widgets / clear_workspace_unread_widgets path with a separate needs-input visual channel; do not repurpose row highlight colors or the generic unread dot. Exact visual contract: render a compact circular amber ? badge immediately left of the existing favorite star whenever the workspace aggregate state is NeedsInput. Use a filled amber badge while workspace_needs_attention is true and an outlined amber badge after focus acknowledges urgency; focus must never remove the ? while state remains NeedsInput. Hide it only when the last waiting surface leaves NeedsInput. Tooltip/accessibility: Waiting for input — <session label> when one label is known, <N> sessions waiting for input when multiple wait, otherwise Workspace waiting for input. Keep the badge visible in expanded, compact, and tiny sidebar modes, selected or unselected, light or dark theme. Extend both host and CLI AgentKind vocabularies with receiver-only OMP identity. Limux must not install or mutate OMP configuration; OMP owns hook emission after the receiver contract lands. The receiver contract must cover plan-proposal/plan-review waiting as well as ask waiting, and explicit answer/resume and cancel/end events must clear the waiting state. Preserve the ratified decision in LIMU_INBOX/RESPONSE_FROM_limu_2026-07-30_omp-ask-waiting-abc-decision.md: no impersonating an existing agent family and no generic notification mitigation.\n\nOrdering: starts only after task 7's native PRD-G ingress/sidebar/socket/CLI slice is live. OMP-side emission is cross-repo follow-up owned by the OMP lane, not part of this Limux subtask.\n\nAcceptance criteria:\n1. A background OMP pane awaiting plan review or ask input renders a circular amber ? badge immediately left of its workspace favorite star within 2 seconds; the operator can identify the workspace without opening it.\n2. The badge is visible in expanded, compact, and tiny sidebar modes, selected or unselected, and remains distinguishable from active selection, generic unread/completion, favorites, hover/focus, and manual row-highlight colors in light and dark themes.\n3. While any surface remains NeedsInput the badge persists: filled when unacknowledged, outlined after workspace focus acknowledges urgency. Answer/resume and cancel/end remove their waits; the badge disappears only after the last wait clears, and completion never uses the ? badge.\n4. Tooltip and accessible name identify the waiting session when one is known, report the count when multiple sessions wait, and otherwise read Workspace waiting for input. Existing sidebar labels, stars, colors, unread dot, and row layout remain intact.\n5. End-to-end verification drives the production hook → socket/control → host state store → sidebar path under Xvfb for both plan-review and ask waiting, proves filled→outlined→absent transitions, and proves the callsite is load-bearing; pure AgentStateStore unit tests are insufficient.",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 7
           }
         ],
         "updatedAt": "2026-07-07T08:44:38.881Z"
@@ -887,7 +898,7 @@
         "testStrategy": "Run `cargo test -p limux-core render_version_line`, `cargo test -p limux-cli version`, `cargo test -p limux-host-linux version`. Run `cargo check -p limux-cli` and `cargo check -p limux-host-linux` to ensure no build errors.",
         "priority": "high",
         "dependencies": [],
-        "status": "in-progress",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -901,7 +912,7 @@
             "parentId": "1"
           }
         ],
-        "updatedAt": "2026-07-10T20:15:01.550Z"
+        "updatedAt": "2026-07-31T01:36:49.083Z"
       },
       {
         "id": 2,
@@ -932,9 +943,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-07-10T20:15:01.550Z",
+      "lastModified": "2026-07-31T01:36:49.083Z",
       "taskCount": 3,
-      "completedCount": 2,
+      "completedCount": 3,
       "tags": [
         "product-hygiene"
       ],
@@ -1035,9 +1046,9 @@
         "dependencies": [
           1
         ],
-        "status": "review",
+        "status": "done",
         "subtasks": [],
-        "updatedAt": "2026-07-21T09:45:25.870Z"
+        "updatedAt": "2026-07-31T01:36:50.655Z"
       },
       {
         "id": 3,
@@ -1049,9 +1060,9 @@
         "dependencies": [
           1
         ],
-        "status": "review",
+        "status": "done",
         "subtasks": [],
-        "updatedAt": "2026-07-21T09:45:25.882Z"
+        "updatedAt": "2026-07-31T01:36:44.700Z"
       },
       {
         "id": 4,
@@ -1103,9 +1114,9 @@
       "updated": "2026-07-16T06:21:38.947Z",
       "description": "Tasks for limux-resource-crash-20260716 context",
       "version": "1.0.0",
-      "lastModified": "2026-07-21T09:45:25.882Z",
+      "lastModified": "2026-07-31T01:36:44.700Z",
       "taskCount": 6,
-      "completedCount": 1,
+      "completedCount": 3,
       "tags": [
         "limux-resource-crash-20260716"
       ]
