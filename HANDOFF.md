@@ -26,15 +26,17 @@ the per-session handoffs listed in §7.
 **Yields MERGED:** [#109](https://github.com/RichelynScott/limux/pull/109) merge
 `de6d1db` (branch tip was `7d9bfb4`) — TaskMaster **#25/#33/#34** on `main`.
 Honest residual: Ghostty FFI PTY write not unit-proven; E2E =
-`scripts/xvfb-smoke-test.sh`. **Stable reinstall complete:** install-id
-`main-46ab49ded66f-yields-20260731` (build sha `de6d1db8a21a`); live host PID
-serves that tree. Follow-up: send/send-key `--help` human printing (not bare OK).
+`scripts/xvfb-smoke-test.sh`. **CLI reinstalled** to
+`main-e8e19c9c7150-helpprint-20260731` (#116). **Live host still on**
+`main-46ab49ded66f-yields-20260731` — `limux doctor` currently fails CLI/host
+SHA mismatch by design. **Restart is gated:** wait for OMP/other live sessions
+to checkpoint and ack before bouncing the host.
 
 
-**Host is UP.** Live control sockets remain
+**Host is UP** (yields tree). Live control sockets remain
 `/run/user/1000/limux/stable/limux.sock` (+ `.cursor`); host PID still live.
-`limux doctor` (re-checked 2026-07-31): launchers / processes / socket /
-`stale_sockets` / ghostty all `[ok]` — doctor exit 0.
+Doctor: launchers/stale_sockets/ghostty `[ok]`; processes warn + socket fail
+until coordinated restart onto the helpprint install.
 
 **Socket archive (plan step 1, historical):** the planned doctor-stale set of
 **four** sockets (`limux.sock`, `limux.cursor.sock`, `stable/limux-85224.sock`,
