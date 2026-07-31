@@ -1,4 +1,4 @@
-# BARI_HANDOFF — bari (LIMUX_MGR) — 2026-07-31 hygiene resume
+# BARI_HANDOFF — bari (LIMUX_MGR) — 2026-07-31 resume (hygiene + yields PR)
 
 **Created by:** OMP (`bari` / LIMUX_MGR; session label may appear as `kero` in the GUI)
 **Date:** 2026-07-31 (UTC)
@@ -11,21 +11,25 @@
 
 ## Repo state snapshot (re-measured 2026-07-31)
 - Shared checkout: `/home/riche/MCPs/limux` on `main`, clean, synced with `origin/main`.
-- Tip at hygiene start: `ef4d376` (`docs(handoff): record the mechanism-vs-semantics failure class`).
-- Open PRs: **none** (`gh pr list --state open` → `[]`).
+- Shared `main` tip: `5649457` (hygiene). Yields product tip: `7d9bfb4` on `bari/yield-abc`.
+- Open PRs: **#109** — https://github.com/RichelynScott/limux/pull/109
 - Installed runtime (unchanged by this packet): `limux-cli 0.2.3 (c757056d2539, release)` install-id `main-c757056d2539-adv-remediated-20260721` — **~50+ commits behind main** including #105–#108. Reinstall is **operator-gated**, not part of this packet.
 - Doctor after hygiene: launchers / processes / socket / ghostty_resources `[ok]`; **`stale_sockets` warn** on recorded remaining paths `/run/user/1000/limux/stable/limux-52458.sock` and `…/limux-52458.cursor.sock` (plan line 44 stop — do not broaden). Hygiene tip SHA `bc99b45`.
 - Last known full gate green from fire's closeout lane (docs-only packet; `./scripts/check.sh` not re-run here).
 
-## Open product backlog (do **not** implement in the hygiene packet)
-1. Reject unknown CLI flags before socket contact (`TUTU_HANDOFF` item-2).
-2. Limux-local `CLAUDE.md` checklist card lines (item-3).
-3. H1 residual CRITICAL — explicit foreign `workspace_id` (fast-follow §7 / `docs/LIMUX_H1_WORKSPACE_ENTITLEMENT_DESIGN_2026-07-29.md`) — operator-gated option (b).
-4. Display-loss exit diagnostic (fast-follow §8).
-5. Successor-rebind control path (fast-follow §9).
-6. Prune `--keep` cap + prune TOCTOU (fast-follow §1–§2) — limu lane.
-7. Live GUI verify of OMP scroll + #84 resize (still never operator-observed).
-8. OMP plan-review / ask waiting must visibly identify the background workspace in the left sidebar; track as cmux-parity task **7.3**, ordered after native PRD-G live wiring. Source screenshot: `/mnt/c/Users/riche/Downloads/SCREENSHOTS/Screenshot 2026-07-30 205145.png`; ratified decision: `LIMU_INBOX/RESPONSE_FROM_limu_2026-07-30_omp-ask-waiting-abc-decision.md`.
+## Open product backlog
+### In flight — PR #109 (`bari/yield-abc` @ `7d9bfb4`)
+1. ~~Reject unknown CLI flags before socket contact~~ → TaskMaster **#33** (done on PR tip).
+2. ~~Byte-safe `limux send` `--stdin`/`--file`~~ → TaskMaster **#25** (done on PR tip). **Honest residual:** Ghostty FFI PTY write not unit-proven; E2E = `scripts/xvfb-smoke-test.sh` (ScoutBridgeDelivery).
+3. ~~Display-loss exit diagnostic~~ → TaskMaster **#34** (done on PR tip; 34.3 via mutation evidence).
+
+### Still open (not in #109)
+4. Limux-local `CLAUDE.md` checklist card lines (`TUTU_HANDOFF` item-3).
+5. H1 residual CRITICAL — explicit foreign `workspace_id` (fast-follow §7 / `docs/LIMUX_H1_WORKSPACE_ENTITLEMENT_DESIGN_2026-07-29.md`) — operator-gated option (b).
+6. Successor-rebind control path (fast-follow §9).
+7. Prune `--keep` cap + prune TOCTOU (fast-follow §1–§2) — limu lane.
+8. Live GUI verify of OMP scroll + #84 resize (still never operator-observed).
+9. OMP plan-review / ask waiting must visibly identify the background workspace in the left sidebar; track as cmux-parity task **7.3**, ordered after native PRD-G live wiring. Source screenshot: `/mnt/c/Users/riche/Downloads/SCREENSHOTS/Screenshot 2026-07-30 205145.png`; ratified decision: `LIMU_INBOX/RESPONSE_FROM_limu_2026-07-30_omp-ask-waiting-abc-decision.md`.
 
 ## Hygiene this packet closed
 - Docs refresh: `HANDOFF.md`, this file, `TUTU_HANDOFF.md` successor banner, fast-follow §3–§5 CLOSED banners.
