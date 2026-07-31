@@ -1,9 +1,10 @@
 # Limux — Directory State (session-agnostic)
 
-**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — #109 yields + #116 help-print on `main`. CLI install `main-e8e19c9c7150-helpprint-20260731`; **live host still on** `main-46ab49ded66f-yields-20260731` until OMP/peers checkpoint for restart.
-(`de6d1db`; tip was `7d9bfb4`). Shared `main` carries TaskMaster #25/#33/#34.
-Continuity docs #110–#114 landed earlier today. Doctor fully green
-(`stale_sockets` `[ok]`); historical leave-alone `52458` paths gone.
+**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — #109 yields + #116 help-print on `main`
+(merge lineage #109/`de6d1db`, #116/`e8e19c9`; continuity #110–#118).
+**Stable install + live host:** `main-15ccb28ed4a8-matched-20260731` (CLI/host SHA matched).
+Host restart completed after peer ack; `limux doctor: ok`. Shared `main` carries
+TaskMaster #25/#33/#34. Historical leave-alone `52458` paths gone.
 Product backlog remaining items live in `BARI_HANDOFF.md` and
 `docs/LIMUX_FASTFOLLOWS_2026-07-29.md`.
 
@@ -21,22 +22,19 @@ the per-session handoffs listed in §7.
 
 ---
 
-## 1. STATUS — host healthy; hygiene closed; yields merged (#109)
+## 1. STATUS — host healthy; hygiene closed; yields merged; restart done
 
 **Yields MERGED:** [#109](https://github.com/RichelynScott/limux/pull/109) merge
 `de6d1db` (branch tip was `7d9bfb4`) — TaskMaster **#25/#33/#34** on `main`.
 Honest residual: Ghostty FFI PTY write not unit-proven; E2E =
-`scripts/xvfb-smoke-test.sh`. **CLI reinstalled** to
-`main-e8e19c9c7150-helpprint-20260731` (#116). **Live host still on**
-`main-46ab49ded66f-yields-20260731` — `limux doctor` currently fails CLI/host
-SHA mismatch by design. **Restart is gated:** wait for OMP/other live sessions
-to checkpoint and ack before bouncing the host.
+`scripts/xvfb-smoke-test.sh`. Help-print [#116](https://github.com/RichelynScott/limux/pull/116)
+(`e8e19c9`) landed. **Matched stable install** `main-15ccb28ed4a8-matched-20260731`
+is live for **both** CLI and host (PID **860496** as of bounce). `limux doctor: ok`
+(launchers / processes / socket / stale_sockets / ghostty_resources).
 
-
-**Host is UP** (yields tree). Live control sockets remain
-`/run/user/1000/limux/stable/limux.sock` (+ `.cursor`); host PID still live.
-Doctor: launchers/stale_sockets/ghostty `[ok]`; processes warn + socket fail
-until coordinated restart onto the helpprint install.
+**Host is UP** (matched tree). Live control sockets remain
+`/run/user/1000/limux/stable/limux.sock` (+ `.cursor`). Restart gate **closed**
+after peer `ack-ready-for-limux-restart` + operator go-ahead.
 
 **Socket archive (plan step 1, historical):** the planned doctor-stale set of
 **four** sockets (`limux.sock`, `limux.cursor.sock`, `stable/limux-85224.sock`,
