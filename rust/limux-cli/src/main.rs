@@ -1330,7 +1330,7 @@ async fn run_send(client: &mut Client, args: &[String]) -> Result<Value> {
 }
 
 async fn run_send_key(client: &mut Client, args: &[String]) -> Result<Value> {
-    reject_unknown_flags(args, SEND_VALUE_OPTIONS, &[])?;
+    reject_unknown_flags(args, SEND_KEY_VALUE_OPTIONS, &[])?;
     let workspace = parse_opt(args, "--workspace")
         .or_else(|| env::var("LIMUX_WORKSPACE_ID").ok())
         .filter(|s| !s.is_empty());
@@ -5440,6 +5440,7 @@ const READ_SCREEN_VALUE_OPTIONS: &[&str] = &["--workspace", "--surface", "--line
 const READ_SCREEN_SWITCH_OPTIONS: &[&str] = &["--scrollback", "--help", "-h"];
 const SEND_VALUE_OPTIONS: &[&str] = &["--workspace", "--surface", "--file"];
 const SEND_SWITCH_OPTIONS: &[&str] = &["--stdin"];
+const SEND_KEY_VALUE_OPTIONS: &[&str] = &["--workspace", "--surface"];
 
 fn read_screen_help_text() -> String {
     "Usage: limux read-screen [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]\n       limux capture-pane (alias of read-screen)\n\nReads visible text from a terminal surface.\n\nTargeting: inside a Limux pane, LIMUX_WORKSPACE_ID scopes the read to the caller's own\nworkspace. Outside Limux, pass an explicit --workspace/--surface; otherwise the server's\nfocused-surface fallback can return a surface owned by a different lane."
@@ -7384,6 +7385,20 @@ mod cli_arg_tests {
             .expect_err("unknown flag should fail before socket contact");
         let msg = format!("{err:#}");
         assert!(msg.contains("unknown flag: --nope"), "unexpected error: {msg}");
+    }
+
+    #[tokio::test]
+    async fn send_key_rejects_file_flag_before_socket_contact() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut client = Client::new(tmp.path().join("unused.sock"));
+        let err = run_send_key(&mut client, &args(&["--file", "/tmp/x", "Enter"]))
+            .await
+            .expect_err("--file must be unknown on send-key before socket contact");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("unknown flag: --file"),
+            "unexpected error: {msg}"
+        );
     }
 
     #[test]
