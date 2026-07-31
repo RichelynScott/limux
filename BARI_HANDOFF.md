@@ -13,6 +13,14 @@
 **Date:** 2026-07-31 (UTC)
 **Purpose:** Current per-session resume surface (see `HANDOFF.md` §7). Read after `HANDOFF.md`.
 
+## Slice B opened (2026-07-31)
+
+- OPEN [#128](https://github.com/RichelynScott/limux/pull/128) @ `f55cb2b` on `bari/h1-entitlement-live-wireup-20260731` (stacked on #124/`c62713f`).
+- Live accept path + FFI now honor `LIMUX_ENTITLEMENT` via per-connection / process claim cells; default still **Off**.
+- #124 left OPEN (operator chose Slice B only — no PARTIAL merge this turn).
+- Next: merge #128 (and optionally #124 PARTIAL) → **Slice C** GTK `workspace_index_for_target`; ask E before D/default.
+- Host PID **860496** untouched; no disclosure probes.
+
 ## Identity
 - **`bari`** = `LIMUX_MGR` (this OMP session; docs/TaskMaster/hygiene owner for this packet).
 - **`limu`** = possible `LIMUX_CODEX_MGR` when live (stale at hygiene time; may co-claim the Codex lane when active).
