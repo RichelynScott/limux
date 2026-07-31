@@ -5,17 +5,30 @@ use std::sync::{Mutex, OnceLock};
 use limux_protocol::{parse_v1_command_envelope, V2Request};
 use tokio::runtime::{Builder, Runtime};
 
-use crate::{current_build_info, Dispatcher};
+use crate::{current_build_info, ConnectionEntitlement, Dispatcher, EntitlementConfig};
 
-static DISPATCHER_CELL: OnceLock<Mutex<Option<Dispatcher>>> = OnceLock::new();
+struct FfiControl {
+    dispatcher: Dispatcher,
+    entitlement: ConnectionEntitlement,
+}
+
+static CONTROL_CELL: OnceLock<Mutex<Option<FfiControl>>> = OnceLock::new();
 static RUNTIME_CELL: OnceLock<Mutex<Option<Runtime>>> = OnceLock::new();
 
-fn dispatcher_slot() -> &'static Mutex<Option<Dispatcher>> {
-    DISPATCHER_CELL.get_or_init(|| Mutex::new(None))
+fn control_slot() -> &'static Mutex<Option<FfiControl>> {
+    CONTROL_CELL.get_or_init(|| Mutex::new(None))
 }
 
 fn runtime_slot() -> &'static Mutex<Option<Runtime>> {
     RUNTIME_CELL.get_or_init(|| Mutex::new(None))
+}
+
+fn new_control() -> FfiControl {
+    FfiControl {
+        dispatcher: Dispatcher::with_build_info(current_build_info()),
+        // One process-scoped claim cell for the FFI caller; mode from env.
+        entitlement: ConnectionEntitlement::new(EntitlementConfig::from_env()),
+    }
 }
 
 fn parse_request(input: &str) -> Result<V2Request, ()> {
@@ -35,19 +48,19 @@ pub extern "C" fn limux_control_init() -> i32 {
         Err(_) => return 1,
     };
 
-    let dispatcher = Dispatcher::with_build_info(current_build_info());
+    let control = new_control();
 
     let mut runtime_guard = match runtime_slot().lock() {
         Ok(guard) => guard,
         Err(_) => return 1,
     };
-    let mut dispatcher_guard = match dispatcher_slot().lock() {
+    let mut control_guard = match control_slot().lock() {
         Ok(guard) => guard,
         Err(_) => return 1,
     };
 
     *runtime_guard = Some(runtime);
-    *dispatcher_guard = Some(dispatcher);
+    *control_guard = Some(control);
     0
 }
 
@@ -76,26 +89,30 @@ pub unsafe extern "C" fn limux_control_dispatch(message_ptr: *const u8, message_
         Ok(guard) => guard,
         Err(_) => return 1,
     };
-    let mut dispatcher_guard = match dispatcher_slot().lock() {
+    let mut control_guard = match control_slot().lock() {
         Ok(guard) => guard,
         Err(_) => return 1,
     };
 
-    if runtime_guard.is_none() || dispatcher_guard.is_none() {
+    if runtime_guard.is_none() || control_guard.is_none() {
         *runtime_guard = Builder::new_multi_thread().enable_all().build().ok();
-        *dispatcher_guard = Some(Dispatcher::with_build_info(current_build_info()));
+        *control_guard = Some(new_control());
     }
 
     let runtime = match runtime_guard.as_mut() {
         Some(runtime) => runtime,
         None => return 1,
     };
-    let dispatcher = match dispatcher_guard.as_ref() {
-        Some(dispatcher) => dispatcher,
+    let control = match control_guard.as_ref() {
+        Some(control) => control,
         None => return 1,
     };
 
-    let response = runtime.block_on(dispatcher.dispatch(request));
+    let response = runtime.block_on(async {
+        control
+            .dispatcher
+            .dispatch_with_entitlement(request, &control.entitlement)
+    });
     if response.error.is_some() {
         3
     } else {
@@ -105,8 +122,8 @@ pub unsafe extern "C" fn limux_control_dispatch(message_ptr: *const u8, message_
 
 #[unsafe(no_mangle)]
 pub extern "C" fn limux_control_shutdown() {
-    if let Ok(mut dispatcher_guard) = dispatcher_slot().lock() {
-        *dispatcher_guard = None;
+    if let Ok(mut control_guard) = control_slot().lock() {
+        *control_guard = None;
     }
     if let Ok(mut runtime_guard) = runtime_slot().lock() {
         *runtime_guard = None;
@@ -121,7 +138,7 @@ mod tests {
     fn ffi_init_dispatch_shutdown_roundtrip() {
         assert_eq!(limux_control_init(), 0);
 
-        let message = b"{\"id\":\"ffi-1\",\"method\":\"system.ping\",\"params\":{}}";
+        let message = br#"{"id":"ffi-1","method":"system.ping","params":{}}"#;
         assert_eq!(
             unsafe { limux_control_dispatch(message.as_ptr(), message.len()) },
             0
