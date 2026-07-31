@@ -148,6 +148,10 @@ const ROUTES: &[RouteEntry] = &[
         class: RouteClass::Wave1Mutation,
     },
     RouteEntry {
+        method: "surface.rebind_session",
+        class: RouteClass::Wave1Mutation,
+    },
+    RouteEntry {
         method: "workspace.reorder",
         class: RouteClass::Wave1Mutation,
     },
@@ -220,6 +224,7 @@ const WIRED_WAVE1_MUTATIONS: &[&str] = &[
     "surface.split",
     "surface.focus",
     "surface.close",
+    "surface.rebind_session",
 ];
 
 impl RouteClass {
