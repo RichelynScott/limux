@@ -1,10 +1,13 @@
 # Limux — Directory State (session-agnostic)
 
-**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — #109 yields + #116 help-print on `main`
-(merge lineage #109/`de6d1db`, #116/`e8e19c9`; continuity #110–#119).
+**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — Wave2 docs sync after #121–#123 on `main`
+(merge lineage #109/`de6d1db`, #116/`e8e19c9`, #121/`8143513`, #122/`a501a8f`,
+#123/`7df751a`; continuity #110–#120). **PR #124 OPEN** (H1 option (b) PARTIAL
+default-off scaffold — not merged).
 **Stable install + live host:** `main-15ccb28ed4a8-matched-20260731` (CLI/host SHA matched).
-Host restart completed after peer ack; `limux doctor: ok`. Shared `main` carries
-TaskMaster #25/#33/#34. Historical leave-alone `52458` paths gone.
+Host restart completed after peer ack; `limux doctor: ok`. Shared `main` tip carries
+TaskMaster #25/#33/#34 plus Wave2 prune/rebind/cards; live install is still the
+pre-#122/#123 matched tree (no bounce yet). Historical leave-alone `52458` paths gone.
 Product backlog remaining items live in `BARI_HANDOFF.md` and
 `docs/LIMUX_FASTFOLLOWS_2026-07-29.md`.
 
@@ -53,10 +56,11 @@ two stable listeners above, and `stale_sockets` is `[ok]`.
 only gate-verified and source-traced. Coordinate with the operator before poking
 live panes.
 
-**Open product work** is listed in `BARI_HANDOFF.md` (still-open: CLAUDE.md
-cards, H1 entitlement option (b), successor-rebind, prune fast-follows, live
-GUI verify, OMP plan-review sidebar visibility as cmux-parity `7.3`). Yields
-#25/#33/#34 are merged.
+**Open product work** is listed in `BARI_HANDOFF.md` (still-open: H1 security
+guarantee / GTK follow-up behind OPEN [#124](https://github.com/RichelynScott/limux/pull/124),
+live GUI verify, OMP plan-review sidebar visibility as cmux-parity `7.3`).
+Yields #25/#33/#34 and Wave2 cards/prune/rebind (#121–#123) are merged on `main`.
+Live host remains on matched install `15ccb28ed4a8` until a fresh restart ack.
 
 ---
 
@@ -65,7 +69,7 @@ GUI verify, OMP plan-review sidebar visibility as cmux-parity `7.3`). Yields
 | | Value |
 |---|---|
 | **Installed + running** | `limux-cli 0.2.3 (15ccb28ed4a8, release)` — clean, no `-dirty`; install-id `main-15ccb28ed4a8-matched-20260731`, channel `stable`. Live host PID **860496** under the same tree (`libexec/limux-host`). |
-| **Contains** | Yields #109 (`de6d1db` / TaskMaster #25/#33/#34) + help-print #116 (`e8e19c9`) on source SHA `15ccb28ed4a8`, plus prior reviewed merges through that tip (including #105–#108 family). CLI/host SHA match; `limux doctor: ok`. |
+| **Contains** | Yields #109 (`de6d1db` / TaskMaster #25/#33/#34) + help-print #116 (`e8e19c9`) on source SHA `15ccb28ed4a8`, plus prior reviewed merges through that tip (including #105–#108 family). CLI/host SHA match; `limux doctor: ok`. Shared `main` is ahead at `7df751a` with #121–#123 (cards/prune/rebind) **not yet** in this live install. |
 | **Honest residual (not a SHA lag)** | Ghostty FFI PTY write path is **not** unit-proven; E2E evidence remains `scripts/xvfb-smoke-test.sh` (ScoutBridgeDelivery). Do not claim unit-proven FFI PTY. |
 | **Previous launchers / installs** | archived via `mv` (not `rm`), including older `main-c757056d2539-adv-remediated-20260721`, yields `main-46ab49ded66f-yields-20260731`, and helpprint `main-e8e19c9c7150-helpprint-20260731` under `~/.local/limux-reviewed/` / archive trees. |
 
@@ -101,12 +105,18 @@ Notable merges on `main` through the matched install source tip `15ccb28`
 | #106 `51d9e97` | Discrete wheel `ScrollMods=0` |
 | #107 `05836c4` | Surface content reads scoped to focused workspace (H1 partial) |
 | #108 `2cceb95` | Packaging: stop deleting `/usr/local` as root; rename-not-delete |
-| fast-follows doc | `docs/LIMUX_FASTFOLLOWS_2026-07-29.md` — §3–§5 CLOSED; §1–§2, §7–§9 OPEN |
+| #121 `8143513` | Docs: CLAUDE.md shell mutation checklist cards |
+| #122 `a501a8f` | Prune `--keep` 6-digit cap + cmdline TOCTOU fallback |
+| #123 `7df751a` | `surface.rebind_session` successor-rebind verb |
+| #124 (OPEN) | H1 option (b) entitlement scaffold — PARTIAL / default-off; GTK + signal TBD |
+| fast-follows doc | `docs/LIMUX_FASTFOLLOWS_2026-07-29.md` — §1–§5 + §9 CLOSED; §7 residual OPEN (#124 PARTIAL scaffold only); §8 closed earlier via yields |
 
 ### Mechanism notes still worth keeping (abbrev.)
 
 1. **H1 — cross-lane disclosure.** Partial close in #107; **residual CRITICAL**
-   remains for explicit foreign `workspace_id` (fast-follow §7 / design note).
+   remains for GTK/`window.rs` + operator-signal (fast-follow §7). Core scaffold is
+   OPEN as [#124](https://github.com/RichelynScott/limux/pull/124) behind
+   `LIMUX_ENTITLEMENT=off` — do not claim H1 closed.
 2. **OMP scrollbar peg/flash.** Layout-sibling width flip; #82 layout-neutral +
    #106 ScrollMods. Live GUI observe still outstanding.
 3. **#84 sub-cell resize deferral.** Gate-verified; live observe outstanding.
@@ -118,10 +128,10 @@ Notable merges on `main` through the matched install source tip `15ccb28`
 | Item | State |
 |---|---|
 | **Unknown CLI flags / byte-safe send / display-loss** | ✅ MERGED via [PR #109](https://github.com/RichelynScott/limux/pull/109) (`de6d1db`). TaskMaster **#33/#25/#34** done on `main`. Honest residual: Ghostty FFI PTY write not unit-proven; E2E = `scripts/xvfb-smoke-test.sh`. Live matched install `main-15ccb28ed4a8-matched-20260731` includes these yields. |
-| **CLAUDE.md checklist card lines** | OPEN — limux-local piece (`BARI_HANDOFF` still-open #4) |
-| **H1 residual CRITICAL** | OPEN — explicit foreign `workspace_id`; operator-gated option (b) (fast-follow §7) |
-| **Successor-rebind control path** | OPEN — unclean restore leaves suspended predecessor identity (fast-follow §9) |
-| **Prune `--keep` cap + TOCTOU** | OPEN — limu lane (fast-follow §1–§2) |
+| **CLAUDE.md checklist card lines** | ✅ MERGED via [PR #121](https://github.com/RichelynScott/limux/pull/121) (`8143513`) |
+| **H1 residual CRITICAL** | OPEN — [#124](https://github.com/RichelynScott/limux/pull/124) PARTIAL default-off scaffold only; GTK bridge + `workspace.{current,list,select}` + operator-signal still required (fast-follow §7) |
+| **Successor-rebind control path** | ✅ MERGED via [PR #123](https://github.com/RichelynScott/limux/pull/123) (`7df751a`) — `surface.rebind_session` on `main`; not yet in live matched install |
+| **Prune `--keep` cap + TOCTOU** | ✅ MERGED via [PR #122](https://github.com/RichelynScott/limux/pull/122) (`a501a8f`); not yet in live matched install |
 | **Live GUI verify** | OPEN — OMP scroll + #84 resize still never operator-observed |
 | **OMP plan-review / ask sidebar visibility** | OPEN — cmux-parity **7.3** after native PRD-G wiring; decision `LIMU_INBOX/RESPONSE_FROM_limu_2026-07-30_omp-ask-waiting-abc-decision.md` |
 | **Installed runtime lag** | ✅ CLOSED — bounced to matched install `main-15ccb28ed4a8-matched-20260731` (CLI/host SHA `15ccb28ed4a8`; doctor green) |
