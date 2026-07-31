@@ -10,9 +10,9 @@
 - **`kero`** appears only as the historical OMP session label in the 2026-07-30 plan-review screenshot evidence — not a second manager identity.
 
 ## Repo state snapshot (re-measured 2026-07-31)
-- Shared checkout: `/home/riche/MCPs/limux` on `main`, clean aside from untracked `.taskmaster/reports/`, synced with `origin/main`.
-- Shared `main` carries Merge #109 (`de6d1db`) + continuity #110–#115. Yields product symbols on `main`.
-- Open PRs: **none** (yields #109 merged).
+- Shared checkout: `/home/riche/MCPs/limux` on `main`, synced with `origin/main`; allowed dirt only untracked `AUTOPILOT_LOG.md` + research scouts (leave unstaged).
+- Shared `main` carries Merge #109 (`de6d1db`) + help-print #116 (`e8e19c9`) + continuity #110–#119. Yields product symbols on `main`.
+- Open PRs: **none** at last measure (yields #109 merged; this continuity docs PR may be open momentarily).
 - Installed CLI + live host: install-id `main-15ccb28ed4a8-matched-20260731` (lineage #109 yields + #116 help-print; source SHA `15ccb28ed4a8`). Host PID **860496** under that tree after coordinated bounce.
 - Doctor re-check: launchers / processes / socket / `stale_sockets` / ghostty_resources all `[ok]` (exit 0). Historical leave-alone `52458` paths are gone; only live listeners are `stable/limux.sock` + `.cursor`.
 - Last known full Rust gate green from fire's closeout lane (docs-only continuity; `./scripts/check.sh` not re-run here).
@@ -21,7 +21,7 @@
 ### Merged — PR #109 (`de6d1db`; was `bari/yield-abc` @ `7d9bfb4`)
 1. ~~Reject unknown CLI flags before socket contact~~ → TaskMaster **#33** (done on `main`).
 2. ~~Byte-safe `limux send` `--stdin`/`--file`~~ → TaskMaster **#25** (done on `main`). **Honest residual:** Ghostty FFI PTY write not unit-proven; E2E = `scripts/xvfb-smoke-test.sh` (ScoutBridgeDelivery).
-3. ~~Display-loss exit diagnostic~~ → TaskMaster **#34** (done on `main`; 34.3 via mutation evidence). Stable reinstall complete (`main-46ab49ded66f-yields-20260731`).
+3. ~~Display-loss exit diagnostic~~ → TaskMaster **#34** (done on `main`; 34.3 via mutation evidence). Matched stable reinstall complete (`main-15ccb28ed4a8-matched-20260731`; superseded interim yields/helpprint installs).
 
 ### Still open
 4. Limux-local `CLAUDE.md` checklist card lines (`TUTU_HANDOFF` item-3).
