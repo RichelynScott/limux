@@ -11,7 +11,7 @@
 - Plan: `'/home/riche/.omp/agent/sessions/-MCPs-limux/2026-07-31T01-29-19-501Z_019fb5ca-438d-7000-8b5d-5f1e6ed6f532/local/limux-h1-residuals-plan.md'` / `docs/LIMUX_H1_RESIDUALS_PLAN_2026-07-31.md`
 - Live host PID **860496** untouched; default still **Off**.
 
-**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — H1 residuals plan parked for
+**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — H1 Slice B OPEN #128; plan parked for
 plan-mode resume (slices A–E). Prior Wave2 docs sync after #121–#123 on `main`
 (merge lineage #109/`de6d1db`, #116/`e8e19c9`, #121/`8143513`, #122/`a501a8f`,
 #123/`7df751a`, #125/`98106c1`; continuity #110–#120). **PR #124 OPEN** (H1
