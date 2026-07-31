@@ -1,6 +1,6 @@
 # Limux — Directory State (session-agnostic)
 
-**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — yields PR **#109 MERGED**
+**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — yields **#109 MERGED** + stable reinstall `main-46ab49ded66f-yields-20260731` (sha `de6d1db`). Continuity #110–#115 landed; doctor green.
 (`de6d1db`; tip was `7d9bfb4`). Shared `main` carries TaskMaster #25/#33/#34.
 Continuity docs #110–#114 landed earlier today. Doctor fully green
 (`stale_sockets` `[ok]`); historical leave-alone `52458` paths gone.
@@ -26,8 +26,9 @@ the per-session handoffs listed in §7.
 **Yields MERGED:** [#109](https://github.com/RichelynScott/limux/pull/109) merge
 `de6d1db` (branch tip was `7d9bfb4`) — TaskMaster **#25/#33/#34** on `main`.
 Honest residual: Ghostty FFI PTY write not unit-proven; E2E =
-`scripts/xvfb-smoke-test.sh`. Reinstall of the running stable host is in
-progress / operator-gated separately from the git merge.
+`scripts/xvfb-smoke-test.sh`. **Stable reinstall complete:** install-id
+`main-46ab49ded66f-yields-20260731` (build sha `de6d1db8a21a`); live host PID
+serves that tree. Follow-up: send/send-key `--help` human printing (not bare OK).
 
 
 **Host is UP.** Live control sockets remain

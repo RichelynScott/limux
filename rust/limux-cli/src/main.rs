@@ -6623,6 +6623,8 @@ async fn execute_command(client: &mut Client, opts: &GlobalOptions) -> Result<Co
             let payload = run_send(client, args).await?;
             if opts.json_output {
                 CommandOutput::Json(payload)
+            } else if let Some(help) = get_string(&payload, &["help"]) {
+                CommandOutput::Text(help)
             } else {
                 let handle = handle_from_payload(&payload, "surface_id", "surface_ref");
                 CommandOutput::Text(format!("OK {}", handle.trim()))
@@ -6632,6 +6634,8 @@ async fn execute_command(client: &mut Client, opts: &GlobalOptions) -> Result<Co
             let payload = run_send_key(client, args).await?;
             if opts.json_output {
                 CommandOutput::Json(payload)
+            } else if let Some(help) = get_string(&payload, &["help"]) {
+                CommandOutput::Text(help)
             } else {
                 let handle = handle_from_payload(&payload, "surface_id", "surface_ref");
                 CommandOutput::Text(format!("OK {}", handle.trim()))
@@ -7452,6 +7456,22 @@ mod cli_arg_tests {
             true,
             "send-key --help must return help payload: {payload}"
         );
+    }
+
+    #[test]
+    fn send_and_send_key_help_payloads_expose_help_string_for_dispatch() {
+        // Dispatch prints `get_string(payload, ["help"])` for human output. Returning
+        // only an empty/missing help key would regress to bare "OK".
+        let send_help = send_help_text();
+        assert!(send_help.contains("limux send"));
+        assert!(send_help.contains("--stdin"));
+        assert!(send_help.contains("--file"));
+        let send_key_help = send_key_help_text();
+        assert!(send_key_help.contains("limux send-key"));
+        let send_payload = serde_json::json!({"help": send_help});
+        let key_payload = serde_json::json!({"help": send_key_help});
+        assert_eq!(get_string(&send_payload, &["help"]).as_deref(), Some(send_help));
+        assert_eq!(get_string(&key_payload, &["help"]).as_deref(), Some(send_key_help));
     }
 
     #[test]
