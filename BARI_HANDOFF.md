@@ -1,4 +1,4 @@
-# BARI_HANDOFF — bari (LIMUX_MGR) — 2026-07-31 resume (yields merged)
+# BARI_HANDOFF — bari (LIMUX_MGR) — 2026-07-31 resume (yields merged + reinstalled)
 
 **Created by:** OMP (`bari` / LIMUX_MGR; session label may appear as `kero` in the GUI)
 **Date:** 2026-07-31 (UTC)
@@ -11,9 +11,9 @@
 
 ## Repo state snapshot (re-measured 2026-07-31)
 - Shared checkout: `/home/riche/MCPs/limux` on `main`, clean aside from untracked `.taskmaster/reports/`, synced with `origin/main`.
-- Shared `main` @ `de6d1db` (Merge #109 yields `de6d1db`; continuity #110–#114). Yields product symbols now on `main`.
+- Shared `main` carries Merge #109 (`de6d1db`) + continuity #110–#115. Yields product symbols on `main`.
 - Open PRs: **none** (yields #109 merged).
-- Installed runtime (unchanged by this packet): `limux-cli 0.2.3 (c757056d2539, release)` install-id `main-c757056d2539-adv-remediated-20260721` — **~50+ commits behind main** including #105–#108. Reinstall is **operator-gated**, not part of this packet.
+- Installed runtime: `limux-cli 0.2.3 (de6d1db8a21a, release)` install-id `main-46ab49ded66f-yields-20260731` channel=stable — live host matches this tree.
 - Doctor re-check: launchers / processes / socket / `stale_sockets` / ghostty_resources all `[ok]` (exit 0). Historical leave-alone `52458` paths are gone; only live listeners are `stable/limux.sock` + `.cursor`.
 - Last known full Rust gate green from fire's closeout lane (docs-only continuity; `./scripts/check.sh` not re-run here).
 
@@ -21,7 +21,7 @@
 ### Merged — PR #109 (`de6d1db`; was `bari/yield-abc` @ `7d9bfb4`)
 1. ~~Reject unknown CLI flags before socket contact~~ → TaskMaster **#33** (done on `main`).
 2. ~~Byte-safe `limux send` `--stdin`/`--file`~~ → TaskMaster **#25** (done on `main`). **Honest residual:** Ghostty FFI PTY write not unit-proven; E2E = `scripts/xvfb-smoke-test.sh` (ScoutBridgeDelivery).
-3. ~~Display-loss exit diagnostic~~ → TaskMaster **#34** (done on `main`; 34.3 via mutation evidence). Running stable install may still lag until reinstall.
+3. ~~Display-loss exit diagnostic~~ → TaskMaster **#34** (done on `main`; 34.3 via mutation evidence). Stable reinstall complete (`main-46ab49ded66f-yields-20260731`).
 
 ### Still open
 4. Limux-local `CLAUDE.md` checklist card lines (`TUTU_HANDOFF` item-3).
