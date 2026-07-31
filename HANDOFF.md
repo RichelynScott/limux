@@ -1,9 +1,16 @@
 # Limux — Directory State (session-agnostic)
 
-**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — Wave2 docs sync after #121–#123 on `main`
+**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — H1 residuals plan parked for
+plan-mode resume (slices A–E). Prior Wave2 docs sync after #121–#123 on `main`
 (merge lineage #109/`de6d1db`, #116/`e8e19c9`, #121/`8143513`, #122/`a501a8f`,
-#123/`7df751a`; continuity #110–#120). **PR #124 OPEN** (H1 option (b) PARTIAL
-default-off scaffold — not merged).
+#123/`7df751a`, #125/`98106c1`; continuity #110–#120). **PR #124 OPEN** (H1
+option (b) PARTIAL default-off scaffold — not merged; review
+https://github.com/RichelynScott/limux/pull/124#issuecomment-5148324767).
+**Next packet:** execute `docs/LIMUX_H1_RESIDUALS_PLAN_2026-07-31.md`
+(also `local://limux-h1-residuals-plan.md` /
+`/tmp/limux-wave-briefs/reports/H1-residuals-plan.md`). Start at **Slice A**
+(RequireClaim first-claim fix on #124). Do **not** bounce live host; do **not**
+claim H1 closed until plan §9 acceptance.
 **Stable install + live host:** `main-15ccb28ed4a8-matched-20260731` (CLI/host SHA matched).
 Host restart completed after peer ack; `limux doctor: ok`. Shared `main` tip carries
 TaskMaster #25/#33/#34 plus Wave2 prune/rebind/cards; live install is still the
@@ -109,6 +116,7 @@ Notable merges on `main` through the matched install source tip `15ccb28`
 | #122 `a501a8f` | Prune `--keep` 6-digit cap + cmdline TOCTOU fallback |
 | #123 `7df751a` | `surface.rebind_session` successor-rebind verb |
 | #124 (OPEN) | H1 option (b) entitlement scaffold — PARTIAL / default-off; GTK + signal TBD |
+| H1 residuals plan | `docs/LIMUX_H1_RESIDUALS_PLAN_2026-07-31.md` — slices A–E (first-claim → live wire-up → GTK → discovery → operator-signal); resume in plan mode |
 | fast-follows doc | `docs/LIMUX_FASTFOLLOWS_2026-07-29.md` — §1–§5 + §9 CLOSED; §7 residual OPEN (#124 PARTIAL scaffold only); §8 closed earlier via yields |
 
 ### Mechanism notes still worth keeping (abbrev.)
@@ -129,7 +137,7 @@ Notable merges on `main` through the matched install source tip `15ccb28`
 |---|---|
 | **Unknown CLI flags / byte-safe send / display-loss** | ✅ MERGED via [PR #109](https://github.com/RichelynScott/limux/pull/109) (`de6d1db`). TaskMaster **#33/#25/#34** done on `main`. Honest residual: Ghostty FFI PTY write not unit-proven; E2E = `scripts/xvfb-smoke-test.sh`. Live matched install `main-15ccb28ed4a8-matched-20260731` includes these yields. |
 | **CLAUDE.md checklist card lines** | ✅ MERGED via [PR #121](https://github.com/RichelynScott/limux/pull/121) (`8143513`) |
-| **H1 residual CRITICAL** | OPEN — [#124](https://github.com/RichelynScott/limux/pull/124) PARTIAL default-off scaffold only; GTK bridge + `workspace.{current,list,select}` + operator-signal still required (fast-follow §7) |
+| **H1 residual CRITICAL** | OPEN — [#124](https://github.com/RichelynScott/limux/pull/124) PARTIAL default-off scaffold only; execution plan `docs/LIMUX_H1_RESIDUALS_PLAN_2026-07-31.md` (A first-claim → B live wire-up → C GTK → E signal → D discovery); do not claim CLOSED until plan §9 |
 | **Successor-rebind control path** | ✅ MERGED via [PR #123](https://github.com/RichelynScott/limux/pull/123) (`7df751a`) — `surface.rebind_session` on `main`; not yet in live matched install |
 | **Prune `--keep` cap + TOCTOU** | ✅ MERGED via [PR #122](https://github.com/RichelynScott/limux/pull/122) (`a501a8f`); not yet in live matched install |
 | **Live GUI verify** | OPEN — OMP scroll + #84 resize still never operator-observed |
