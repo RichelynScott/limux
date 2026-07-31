@@ -147,6 +147,22 @@ pub struct SurfaceCloseRequest {
     pub surface_id: Option<String>,
 }
 
+/// Parser-level contract for the `surface.rebind_session` route (Lane-C, Wave-2).
+///
+/// The verb rewrites the persisted `RestorableAgentState.session_id` for a
+/// named surface so a successor hcom session can claim a surface that the
+/// predecessor left stranded. The runtime does NOT auto-resume the agent;
+/// the operator can still trigger `/resume` afterwards if desired.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SurfaceRebindSessionRequest {
+    pub target: WorkspaceTarget,
+    pub surface_id: String,
+    pub old_session_id: String,
+    pub new_session_id: String,
+    pub hcom_name: Option<String>,
+    pub clear_suspension: bool,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PaneResizeDirection {
     Left,
@@ -205,6 +221,13 @@ pub enum ControlCommand {
     },
     CloseSurface {
         request: SurfaceCloseRequest,
+        reply: mpsc::Sender<BridgeResult>,
+    },
+    /// Lane-C, Wave-2: rewrite the persisted agent's `session_id` on a single
+    /// surface so a successor hcom session can claim a surface left stranded
+    /// by its predecessor (typically after `UncleanRestore`).
+    RebindSurfaceSession {
+        request: SurfaceRebindSessionRequest,
         reply: mpsc::Sender<BridgeResult>,
     },
     ListSurfaces {
@@ -295,6 +318,7 @@ impl ControlCommand {
             | Self::SplitSurface { reply, .. }
             | Self::FocusSurface { reply, .. }
             | Self::CloseSurface { reply, .. }
+            | Self::RebindSurfaceSession { reply, .. }
             | Self::ListSurfaces { reply, .. }
             | Self::CurrentSurface { reply, .. }
             | Self::SurfaceHealth { reply, .. }
@@ -845,6 +869,68 @@ fn parse_surface_close_request(
     })
 }
 
+fn parse_surface_rebind_session_request(
+    params: &Map<String, Value>,
+) -> Result<SurfaceRebindSessionRequest, BridgeError> {
+    let surface_id = optional_surface_ref_handle(
+        params,
+        &["surface_id", "surface", "id"],
+        "surface.rebind_session",
+    )?
+    .ok_or_else(|| {
+        BridgeError::invalid_params(
+            "surface.rebind_session requires surface_id/surface/id",
+        )
+    })?;
+    let old_session_id = params
+        .get("old_session_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            BridgeError::invalid_params(
+                "surface.rebind_session requires old_session_id",
+            )
+        })?
+        .to_string();
+    let new_session_id = params
+        .get("new_session_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            BridgeError::invalid_params(
+                "surface.rebind_session requires new_session_id",
+            )
+        })?
+        .to_string();
+    let hcom_name = params
+        .get("agent")
+        .and_then(Value::as_object)
+        .and_then(|agent| agent.get("hcom_name"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let clear_suspension = match params.get("clear_suspension") {
+        None | Some(Value::Null) => true,
+        Some(Value::Bool(value)) => *value,
+        Some(_) => {
+            return Err(BridgeError::invalid_params(
+                "surface.rebind_session clear_suspension must be a boolean",
+            ));
+        }
+    };
+    Ok(SurfaceRebindSessionRequest {
+        target: parse_optional_workspace_target_without_id(params, true)?,
+        surface_id,
+        old_session_id,
+        new_session_id,
+        hcom_name,
+        clear_suspension,
+    })
+}
+
 fn parse_pane_action_request(
     params: &Map<String, Value>,
 ) -> Result<PaneActionRequest, BridgeError> {
@@ -1114,6 +1200,44 @@ fn handle_method(
             };
             let (reply, rx) = mpsc::channel();
             (ControlCommand::CloseSurface { request, reply }, rx)
+        }
+        "surface.rebind_session" => {
+            if crate::control_registry::wave1_mutations_disabled() {
+                return error_response(
+                    id,
+                    BridgeError::new(
+                        UNKNOWN_METHOD_CODE,
+                        format!(
+                            "Wave-1 mutation route disabled by {WAVE1_MUTATION_KILL_SWITCH_ENV}: {method}"
+                        ),
+                    ),
+                );
+            }
+            if let Err(error) = ensure_only_params(
+                method,
+                params,
+                &[
+                    "workspace_id",
+                    "id",
+                    "name",
+                    "index",
+                    "surface_id",
+                    "surface",
+                    "id",
+                    "old_session_id",
+                    "new_session_id",
+                    "agent",
+                    "clear_suspension",
+                ],
+            ) {
+                return error_response(id, error);
+            }
+            let request = match parse_surface_rebind_session_request(params) {
+                Ok(request) => request,
+                Err(error) => return error_response(id, error),
+            };
+            let (reply, rx) = mpsc::channel();
+            (ControlCommand::RebindSurfaceSession { request, reply }, rx)
         }
         "cursor.pane_create_empty" => {
             let request = match parse_cursor_pane_create_empty_request(params) {
@@ -2317,6 +2441,164 @@ mod tests {
 
         assert_eq!(response.error, None);
         assert!(response.result.is_some());
+    }
+
+    #[test]
+    fn surface_rebind_session_route_queues_command_when_kill_switch_is_clear() {
+        let _env_guard =
+            EnvVarGuard::clear(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV);
+        let response = dispatch_request(
+            r#"{"id":1,"method":"surface.rebind_session","params":{"workspace_id":"workspace:dev","surface_id":"surface:9:tab","old_session_id":"old-sess","new_session_id":"new-sess","agent":{"hcom_name":"limu"}}}"#,
+            &|command| match command {
+                ControlCommand::RebindSurfaceSession { request, reply } => {
+                    assert_eq!(
+                        request.target,
+                        WorkspaceTarget::Handle("workspace:dev".to_string())
+                    );
+                    assert_eq!(request.surface_id, "9:tab");
+                    assert_eq!(request.old_session_id, "old-sess");
+                    assert_eq!(request.new_session_id, "new-sess");
+                    assert_eq!(request.hcom_name.as_deref(), Some("limu"));
+                    assert!(request.clear_suspension);
+                    let _ = reply.send(Ok(json!({
+                        "ok": true,
+                        "surface_id": "9:tab",
+                        "surface_ref": "surface:9:tab",
+                        "saved": true,
+                    })));
+                }
+                other => panic!("unexpected command: {other:?}"),
+            },
+        );
+
+        assert_eq!(response.error, None);
+        let result = response
+            .result
+            .expect("surface.rebind_session should return a result");
+        assert_eq!(result["surface_ref"], "surface:9:tab");
+        assert_eq!(result["saved"], true);
+    }
+
+    #[test]
+    fn surface_rebind_session_rejects_missing_old_session_id() {
+        let _env_guard =
+            EnvVarGuard::clear(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV);
+        let response = dispatch_request(
+            r#"{"id":1,"method":"surface.rebind_session","params":{"surface_id":"surface:9:tab","new_session_id":"new-sess"}}"#,
+            &|command| {
+                panic!("missing old_session_id should not dispatch: {command:?}")
+            },
+        );
+
+        assert_eq!(response.result, None);
+        let error = response.error.expect("invalid params");
+        assert_eq!(error.code, INVALID_PARAMS_CODE);
+        assert!(error.message.contains("old_session_id"));
+    }
+
+    #[test]
+    fn surface_rebind_session_rejects_missing_new_session_id() {
+        let _env_guard =
+            EnvVarGuard::clear(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV);
+        let response = dispatch_request(
+            r#"{"id":1,"method":"surface.rebind_session","params":{"surface_id":"surface:9:tab","old_session_id":"old-sess"}}"#,
+            &|command| {
+                panic!("missing new_session_id should not dispatch: {command:?}")
+            },
+        );
+
+        assert_eq!(response.result, None);
+        let error = response.error.expect("invalid params");
+        assert_eq!(error.code, INVALID_PARAMS_CODE);
+        assert!(error.message.contains("new_session_id"));
+    }
+
+    #[test]
+    fn surface_rebind_session_rejects_unknown_params() {
+        let _env_guard =
+            EnvVarGuard::clear(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV);
+        let response = dispatch_request(
+            r#"{"id":1,"method":"surface.rebind_session","params":{"surface_id":"surface:9:tab","old_session_id":"old","new_session_id":"new","shell":"rm -rf /"}}"#,
+            &|command| {
+                panic!("unknown params should not dispatch: {command:?}")
+            },
+        );
+
+        assert_eq!(response.result, None);
+        let error = response.error.expect("invalid params");
+        assert_eq!(error.code, INVALID_PARAMS_CODE);
+        assert!(error.message.contains("shell"));
+    }
+
+    #[test]
+    fn surface_rebind_session_clear_suspension_false_is_preserved() {
+        let _env_guard =
+            EnvVarGuard::clear(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV);
+        let response = dispatch_request(
+            r#"{"id":1,"method":"surface.rebind_session","params":{"surface_id":"surface:9:tab","old_session_id":"old-sess","new_session_id":"new-sess","clear_suspension":false}}"#,
+            &|command| match command {
+                ControlCommand::RebindSurfaceSession { request, reply } => {
+                    assert!(!request.clear_suspension);
+                    let _ = reply.send(Ok(json!({"ok": true})));
+                }
+                other => panic!("unexpected command: {other:?}"),
+            },
+        );
+
+        assert_eq!(response.error, None);
+    }
+
+    #[test]
+    fn surface_rebind_session_is_hidden_when_wave1_kill_switch_is_set() {
+        let _env_guard =
+            EnvVarGuard::set(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV, "1");
+
+        let capabilities = dispatch_request(
+            r#"{"id":1,"method":"system.capabilities","params":{}}"#,
+            &|command| panic!("system.capabilities should not dispatch: {command:?}"),
+        );
+        let methods = capabilities.result.expect("capabilities result")["methods"]
+            .as_array()
+            .expect("methods array")
+            .clone();
+        assert!(
+            !methods
+                .iter()
+                .any(|entry| entry == "surface.rebind_session"),
+            "surface.rebind_session should be hidden when Wave-1 mutations are disabled"
+        );
+
+        let response = dispatch_request(
+            r#"{"id":1,"method":"surface.rebind_session","params":{"surface_id":"surface:9:tab","old_session_id":"old","new_session_id":"new"}}"#,
+            &|command| panic!(
+                "disabled surface.rebind_session should not dispatch: {command:?}"
+            ),
+        );
+        assert_eq!(response.result, None);
+        let error = response.error.expect("disabled route error");
+        assert_eq!(error.code, UNKNOWN_METHOD_CODE);
+        assert!(error
+            .message
+            .contains(crate::control_registry::WAVE1_MUTATION_KILL_SWITCH_ENV));
+    }
+
+    #[test]
+    fn surface_rebind_session_restricted_surface_blocks_unknown_method() {
+        // Lane-C scope check: under Cursor-restricted surface, only allowlisted
+        // methods get through; rebind_session must be refused as scope_denied
+        // (it is an operator verb, not a Cursor sandbox verb).
+        let response = dispatch_restricted_request(
+            r#"{"id":1,"method":"surface.rebind_session","params":{"surface_id":"surface:9:tab","old_session_id":"old","new_session_id":"new"}}"#,
+            &|command| panic!(
+                "restricted surface.rebind_session should not dispatch: {command:?}"
+            ),
+        );
+        assert_eq!(response.result, None);
+        let error = response.error.expect("restricted error");
+        assert_eq!(error.code, UNKNOWN_METHOD_CODE);
+        assert!(error
+            .message
+            .contains("restricted Limux method is not allowlisted"));
     }
 
     #[test]

@@ -286,7 +286,7 @@ impl RestorableAgentKind {
         }
     }
 
-    fn store_name(self) -> &'static str {
+    pub fn store_name(self) -> &'static str {
         self.name()
     }
 }
@@ -361,6 +361,94 @@ impl RestorableAgentState {
             AgentSuspensionReason::UserChoice => "Agent resume is paused".to_string(),
         })
     }
+
+    /// Rewrite the persisted agent's session identity to a successor's id.
+    ///
+    /// Lane-C of Wave-2 (`surface.rebind_session`): the running host identified a
+    /// successor hcom session and wants to claim the surface that the predecessor
+    /// left stranded (typically with `suspension_reason = UncleanRestore`).
+    ///
+    /// The method enforces the single precondition that §9 of LIMUX_FASTFOLLOWS
+    /// names — `old_session_id` must currently equal `self.session_id`, and the
+    /// suspension reason must be operator-resumable. `PressureGating` is the
+    /// runtime's, not the operator's: a rebind cannot clear it.
+    ///
+    /// Returns the previous `session_id` on success so the caller can rename the
+    /// matching hook-store key.
+    pub fn rebind_session(
+        &mut self,
+        old_session_id: &str,
+        new_session_id: &str,
+        hcom_name: Option<&str>,
+        clear_suspension: bool,
+        now_seconds: f64,
+    ) -> Result<String, RebindError> {
+        if self.session_id != old_session_id {
+            return Err(RebindError::OldSessionMismatch {
+                expected: old_session_id.to_string(),
+                actual: self.session_id.clone(),
+            });
+        }
+        if let Some(reason) = self.suspension_reason {
+            if !matches!(
+                reason,
+                AgentSuspensionReason::UncleanRestore
+                    | AgentSuspensionReason::Cancelled
+                    | AgentSuspensionReason::UserChoice
+            ) {
+                return Err(RebindError::SuspensionNotResumable(reason));
+            }
+        }
+        if new_session_id.is_empty() {
+            return Err(RebindError::EmptyNewSession);
+        }
+        let previous = std::mem::replace(&mut self.session_id, new_session_id.to_string());
+        if clear_suspension {
+            self.suspension_reason = None;
+            self.suspended_at = None;
+        }
+        if let Some(name) = hcom_name {
+            if !name.trim().is_empty() {
+                let launch = self
+                    .launch_command
+                    .get_or_insert_with(AgentLaunchCommandState::empty);
+                if !launch.environment.contains_key("HCOM_NAME") {
+                    launch.environment.insert("HCOM_NAME".to_string(), name.to_string());
+                } else if launch
+                    .environment
+                    .get("HCOM_NAME")
+                    .map(|existing| existing != name)
+                    .unwrap_or(true)
+                {
+                    launch
+                        .environment
+                        .insert("HCOM_NAME".to_string(), name.to_string());
+                }
+                launch.captured_at = Some(now_seconds);
+            }
+        }
+        self.hook_updated_at = Some(now_seconds);
+        Ok(previous)
+    }
+}
+
+impl AgentLaunchCommandState {
+    fn empty() -> Self {
+        Self {
+            executable: String::new(),
+            arguments: Vec::new(),
+            cwd: None,
+            environment: BTreeMap::new(),
+            captured_at: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RebindError {
+    OldSessionMismatch { expected: String, actual: String },
+    SuspensionNotResumable(AgentSuspensionReason),
+    EmptyNewSession,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -494,6 +582,115 @@ pub fn persistence_dir() -> PathBuf {
         RuntimeChannel::from_env().as_ref(),
         limux_control::socket_path::profile_from_env().as_deref(),
     )
+}
+
+/// Persisted `<agent>-hook-sessions.json` record owned by the CLI's
+/// `AgentHookSessionStore`. The host keeps a structural mirror so the rebind
+/// verb can rename a key atomically without taking a runtime dep on
+/// `limux-cli`; the format is the single-source-of-truth across both crates.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+pub struct HookSessionRecordMirror {
+    pub session_id: String,
+    pub workspace_id: String,
+    pub surface_id: String,
+    #[serde(default)]
+    pub cwd: Option<String>,
+    #[serde(default)]
+    pub pid: Option<u32>,
+    #[serde(default)]
+    pub launch_command: Option<AgentLaunchCommandRecordMirror>,
+    pub updated_at: f64,
+}
+
+/// Mirror of the CLI's `AgentLaunchCommandRecord` (matches by JSON shape).
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+pub struct AgentLaunchCommandRecordMirror {
+    pub executable: String,
+    pub arguments: Vec<String>,
+    #[serde(default)]
+    pub cwd: Option<String>,
+    #[serde(default)]
+    pub environment: BTreeMap<String, String>,
+    pub captured_at: f64,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+struct HookSessionFileMirror {
+    version: u32,
+    #[serde(default)]
+    sessions: BTreeMap<String, HookSessionRecordMirror>,
+}
+
+impl RestorableAgentKind {
+    /// Filename of the per-kind hook store (`<store_name>-hook-sessions.json`).
+    pub fn hook_store_filename(self) -> String {
+        format!("{}-hook-sessions.json", self.store_name())
+    }
+}
+
+/// Result of [`rename_hook_session_in_disk`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum HookRenameOutcome {
+    /// The key was successfully renamed and the file rewritten atomically.
+    Renamed,
+    /// No record existed under `old`; nothing was written.
+    OldNotFound,
+    /// A record already exists under `new`; the rename was rejected to avoid
+    /// overwriting the successor's first hook event with a stale payload.
+    NewAlreadyExists,
+    /// The hook store file did not exist for this kind; nothing to rename.
+    StoreMissing,
+}
+
+/// Rename a session_id key in `<kind>-hook-sessions.json` so the successor
+/// hcom session inherits the predecessor's hook record.
+///
+/// This is the host-side counterpart of the CLI's `AgentHookSessionStore`:
+/// both read and write the same `<agent>-hook-sessions.json` file (schema
+/// v1, `sessions: { <session_id>: HookSessionRecord }`). The rebind verb
+/// uses this helper to keep the in-memory `RestorableAgentIndex` and the
+/// persisted `session.json` in agreement so the next `snapshot_session_state`
+/// does not revert the rebind.
+pub fn rename_hook_session_in_disk(
+    kind: RestorableAgentKind,
+    dir: &Path,
+    old: &str,
+    new: &str,
+) -> Result<HookRenameOutcome, std::io::Error> {
+    if old == new {
+        return Ok(HookRenameOutcome::Renamed);
+    }
+    let path = dir.join(kind.hook_store_filename());
+    if !path.exists() {
+        return Ok(HookRenameOutcome::StoreMissing);
+    }
+    let raw = fs::read_to_string(&path)?;
+    let mut file: HookSessionFileMirror = match serde_json::from_str(&raw) {
+        Ok(file) => file,
+        Err(_) => return Ok(HookRenameOutcome::StoreMissing),
+    };
+    if file.version == 0 {
+        file.version = 1;
+    }
+    let Some(mut record) = file.sessions.remove(old) else {
+        return Ok(HookRenameOutcome::OldNotFound);
+    };
+    if file.sessions.contains_key(new) {
+        // Put it back so the file is unchanged on disk.
+        file.sessions.insert(old.to_string(), record);
+        return Ok(HookRenameOutcome::NewAlreadyExists);
+    }
+    record.session_id = new.to_string();
+    file.sessions.insert(new.to_string(), record);
+    let temp = path.with_extension(format!("json.{}.tmp", std::process::id()));
+    let json = serde_json::to_vec_pretty(&file)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&temp, json)?;
+    fs::rename(&temp, &path)?;
+    Ok(HookRenameOutcome::Renamed)
 }
 
 // On-disk layout lives in `limux_control::session_paths` so the host and the
@@ -903,9 +1100,13 @@ impl RestorableAgentIndex {
         }
         index
     }
-
-    #[cfg(test)]
-    fn agent_for_surface(
+    /// Look up the live `RestorableAgentState` for a `(workspace, pane, tab)` triple.
+    ///
+    /// Returns the most recent observation the index has for the surface, or
+    /// `None` if no hook has ever observed it. Used by `surface.rebind_session`
+    /// to validate that the caller's `old_session_id` still matches the
+    /// persisted hook identity before rewriting `session.json`.
+    pub fn agent_for_surface(
         &self,
         workspace_id: &str,
         pane_id: Option<u32>,
@@ -1103,7 +1304,7 @@ pub fn seed_legacy_unclean_suspension_baseline(
     }
 }
 
-fn agent_hook_state_dir() -> PathBuf {
+pub fn agent_hook_state_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("LIMUX_AGENT_HOOK_STATE_DIR") {
         return PathBuf::from(dir);
     }
@@ -3420,5 +3621,376 @@ mod tests {
             launch.environment.get("HCOM_NAME").map(String::as_str),
             Some("lifo")
         );
+    }
+
+    #[test]
+    fn rebind_session_clears_unclean_restore_and_returns_previous_id() {
+        let mut agent = RestorableAgentState {
+            kind: RestorableAgentKind::Codex,
+            session_id: "old-sess".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            launch_command: None,
+            restore_on_startup: false,
+            suspension_reason: Some(AgentSuspensionReason::UncleanRestore),
+            suspended_at: Some(12.0),
+            hook_updated_at: Some(8.0),
+            hook_observation_initialized: true,
+        };
+        let previous = agent
+            .rebind_session(
+                "old-sess",
+                "new-sess",
+                Some("limu"),
+                true,
+                99.0,
+            )
+            .expect("rebind should succeed");
+        assert_eq!(previous, "old-sess");
+        assert_eq!(agent.session_id, "new-sess");
+        assert_eq!(agent.suspension_reason, None);
+        assert_eq!(agent.suspended_at, None);
+        assert_eq!(agent.hook_updated_at, Some(99.0));
+        let launch = agent.launch_command.as_ref().expect("launch should be set");
+        assert_eq!(launch.environment.get("HCOM_NAME").map(String::as_str), Some("limu"));
+        assert_eq!(launch.captured_at, Some(99.0));
+    }
+
+    #[test]
+    fn rebind_session_rejects_old_session_id_mismatch() {
+        let mut agent = RestorableAgentState {
+            kind: RestorableAgentKind::Codex,
+            session_id: "actual".to_string(),
+            cwd: None,
+            launch_command: None,
+            restore_on_startup: true,
+            suspension_reason: Some(AgentSuspensionReason::UncleanRestore),
+            suspended_at: Some(1.0),
+            hook_updated_at: None,
+            hook_observation_initialized: false,
+        };
+        let error = agent
+            .rebind_session("expected", "new", None, true, 0.0)
+            .expect_err("mismatch should fail");
+        assert_eq!(
+            error,
+            RebindError::OldSessionMismatch {
+                expected: "expected".to_string(),
+                actual: "actual".to_string(),
+            }
+        );
+        assert_eq!(agent.session_id, "actual");
+        assert_eq!(
+            agent.suspension_reason,
+            Some(AgentSuspensionReason::UncleanRestore)
+        );
+    }
+
+    #[test]
+    fn rebind_session_rejects_pressure_gating() {
+        let mut agent = RestorableAgentState {
+            kind: RestorableAgentKind::Hermes,
+            session_id: "old".to_string(),
+            cwd: None,
+            launch_command: None,
+            restore_on_startup: true,
+            suspension_reason: Some(AgentSuspensionReason::PressureGating),
+            suspended_at: Some(1.0),
+            hook_updated_at: None,
+            hook_observation_initialized: false,
+        };
+        let error = agent
+            .rebind_session("old", "new", None, true, 0.0)
+            .expect_err("pressure gating should refuse");
+        assert_eq!(
+            error,
+            RebindError::SuspensionNotResumable(AgentSuspensionReason::PressureGating)
+        );
+        assert_eq!(agent.session_id, "old");
+    }
+
+    #[test]
+    fn rebind_session_allows_cancelled_and_user_choice_suspension() {
+        for reason in [
+            AgentSuspensionReason::Cancelled,
+            AgentSuspensionReason::UserChoice,
+        ] {
+            let mut agent = RestorableAgentState {
+                kind: RestorableAgentKind::Claude,
+                session_id: "old".to_string(),
+                cwd: None,
+                launch_command: None,
+                restore_on_startup: false,
+                suspension_reason: Some(reason),
+                suspended_at: Some(1.0),
+                hook_updated_at: None,
+                hook_observation_initialized: false,
+            };
+            agent
+                .rebind_session("old", "new", None, true, 2.0)
+                .expect("Cancelled/UserChoice should be resumable");
+            assert_eq!(agent.session_id, "new");
+            assert_eq!(agent.suspension_reason, None);
+            assert_eq!(agent.suspended_at, None);
+        }
+    }
+
+    #[test]
+    fn rebind_session_clear_suspension_false_keeps_existing_reason() {
+        let mut agent = RestorableAgentState {
+            kind: RestorableAgentKind::Codex,
+            session_id: "old".to_string(),
+            cwd: None,
+            launch_command: None,
+            restore_on_startup: false,
+            suspension_reason: Some(AgentSuspensionReason::Cancelled),
+            suspended_at: Some(3.0),
+            hook_updated_at: Some(1.0),
+            hook_observation_initialized: true,
+        };
+        agent
+            .rebind_session("old", "new", None, false, 5.0)
+            .expect("rebind should succeed even when keep-suspension is set");
+        assert_eq!(agent.session_id, "new");
+        assert_eq!(
+            agent.suspension_reason,
+            Some(AgentSuspensionReason::Cancelled)
+        );
+        assert_eq!(agent.suspended_at, Some(3.0));
+        assert_eq!(agent.hook_updated_at, Some(5.0));
+    }
+
+    #[test]
+    fn rebind_session_rejects_empty_new_session_id() {
+        let mut agent = RestorableAgentState {
+            kind: RestorableAgentKind::Codex,
+            session_id: "old".to_string(),
+            cwd: None,
+            launch_command: None,
+            restore_on_startup: true,
+            suspension_reason: None,
+            suspended_at: None,
+            hook_updated_at: None,
+            hook_observation_initialized: false,
+        };
+        let error = agent
+            .rebind_session("old", "", None, true, 0.0)
+            .expect_err("empty new_session_id should fail");
+        assert_eq!(error, RebindError::EmptyNewSession);
+    }
+
+    #[test]
+    fn rebind_session_overrides_hcom_name_when_launch_already_has_one() {
+        let mut environment = BTreeMap::new();
+        environment.insert("HCOM_NAME".to_string(), "lifo".to_string());
+        let mut agent = RestorableAgentState {
+            kind: RestorableAgentKind::Codex,
+            session_id: "old".to_string(),
+            cwd: None,
+            launch_command: Some(AgentLaunchCommandState {
+                executable: "codex".to_string(),
+                arguments: vec!["codex".to_string()],
+                cwd: None,
+                environment,
+                captured_at: Some(1.0),
+            }),
+            restore_on_startup: true,
+            suspension_reason: Some(AgentSuspensionReason::UncleanRestore),
+            suspended_at: Some(1.0),
+            hook_updated_at: None,
+            hook_observation_initialized: false,
+        };
+        agent
+            .rebind_session("old", "new", Some("limu"), true, 10.0)
+            .expect("rebind should override HCOM_NAME");
+        let launch = agent.launch_command.as_ref().expect("launch retained");
+        assert_eq!(
+            launch.environment.get("HCOM_NAME").map(String::as_str),
+            Some("limu")
+        );
+        assert_eq!(launch.captured_at, Some(10.0));
+    }
+
+    #[test]
+    fn rebind_session_no_op_when_idempotent() {
+        let mut agent = RestorableAgentState {
+            kind: RestorableAgentKind::Codex,
+            session_id: "same".to_string(),
+            cwd: None,
+            launch_command: None,
+            restore_on_startup: true,
+            suspension_reason: Some(AgentSuspensionReason::UncleanRestore),
+            suspended_at: Some(1.0),
+            hook_updated_at: Some(5.0),
+            hook_observation_initialized: true,
+        };
+        // No mut path needed; double-call rebind with old==new must succeed.
+        assert_eq!(
+            agent.rebind_session("same", "same", None, true, 0.0),
+            Ok("same".to_string()),
+            "rebind with identical ids should return Ok(prev)"
+        );
+    }
+
+    #[test]
+    fn rename_hook_session_in_disk_renames_key_atomically() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("codex-hook-sessions.json");
+        let initial = serde_json::json!({
+            "version": 1,
+            "sessions": {
+                "old-sess": {
+                    "session_id": "old-sess",
+                    "workspace_id": "workspace-a",
+                    "surface_id": "42:tab-a",
+                    "cwd": "/tmp/project",
+                    "pid": 1234u32,
+                    "launch_command": null,
+                    "updated_at": 12.5
+                },
+                "other": {
+                    "session_id": "other",
+                    "workspace_id": "workspace-b",
+                    "surface_id": "99:tab-b",
+                    "cwd": null,
+                    "pid": null,
+                    "launch_command": null,
+                    "updated_at": 13.0
+                }
+            }
+        })
+        .to_string();
+        fs::write(&path, initial).expect("write initial");
+
+        let outcome = rename_hook_session_in_disk(
+            RestorableAgentKind::Codex,
+            dir.path(),
+            "old-sess",
+            "new-sess",
+        )
+        .expect("rename should succeed");
+        assert_eq!(outcome, HookRenameOutcome::Renamed);
+
+        let raw = fs::read_to_string(&path).expect("read rewritten file");
+        let decoded: serde_json::Value = serde_json::from_str(&raw).expect("parse rewritten");
+        assert!(decoded["sessions"]["new-sess"].is_object());
+        assert!(decoded["sessions"]["old-sess"].is_null());
+        assert_eq!(decoded["sessions"]["new-sess"]["session_id"], "new-sess");
+        assert_eq!(decoded["sessions"]["other"]["session_id"], "other");
+        assert_eq!(decoded["version"], 1);
+    }
+
+    #[test]
+    fn rename_hook_session_in_disk_reports_old_not_found() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("codex-hook-sessions.json");
+        fs::write(
+            &path,
+            serde_json::json!({
+                "version": 1,
+                "sessions": {}
+            })
+            .to_string(),
+        )
+        .expect("write empty");
+        let outcome = rename_hook_session_in_disk(
+            RestorableAgentKind::Codex,
+            dir.path(),
+            "missing",
+            "new",
+        )
+        .expect("rename should not error");
+        assert_eq!(outcome, HookRenameOutcome::OldNotFound);
+    }
+
+    #[test]
+    fn rename_hook_session_in_disk_reports_new_already_exists_and_leaves_file_untouched() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("codex-hook-sessions.json");
+        let initial = serde_json::json!({
+            "version": 1,
+            "sessions": {
+                "old-sess": {
+                    "session_id": "old-sess",
+                    "workspace_id": "workspace-a",
+                    "surface_id": "42:tab-a",
+                    "cwd": null,
+                    "pid": null,
+                    "launch_command": null,
+                    "updated_at": 1.0
+                },
+                "new-sess": {
+                    "session_id": "new-sess",
+                    "workspace_id": "workspace-a",
+                    "surface_id": "42:tab-a",
+                    "cwd": null,
+                    "pid": null,
+                    "launch_command": null,
+                    "updated_at": 99.0
+                }
+            }
+        })
+        .to_string();
+        fs::write(&path, initial).expect("write initial");
+
+        let outcome = rename_hook_session_in_disk(
+            RestorableAgentKind::Codex,
+            dir.path(),
+            "old-sess",
+            "new-sess",
+        )
+        .expect("rename should not error on collision");
+        assert_eq!(outcome, HookRenameOutcome::NewAlreadyExists);
+
+        // The file must be byte-identical because we put the old key back.
+        let raw = fs::read_to_string(&path).expect("read");
+        let decoded: serde_json::Value = serde_json::from_str(&raw).expect("parse");
+        assert!(decoded["sessions"]["old-sess"].is_object());
+        assert!(decoded["sessions"]["new-sess"].is_object());
+    }
+
+    #[test]
+    fn rename_hook_session_in_disk_is_a_no_op_when_old_equals_new() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("codex-hook-sessions.json");
+        fs::write(
+            &path,
+            serde_json::json!({
+                "version": 1,
+                "sessions": {
+                    "same": {
+                        "session_id": "same",
+                        "workspace_id": "workspace-a",
+                        "surface_id": "42:tab-a",
+                        "cwd": null,
+                        "pid": null,
+                        "launch_command": null,
+                        "updated_at": 1.0
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .expect("write initial");
+        let outcome = rename_hook_session_in_disk(
+            RestorableAgentKind::Codex,
+            dir.path(),
+            "same",
+            "same",
+        )
+        .expect("rename with same id should not error");
+        assert_eq!(outcome, HookRenameOutcome::Renamed);
+    }
+
+    #[test]
+    fn rename_hook_session_in_disk_reports_store_missing_when_file_absent() {
+        let dir = tempdir().expect("tempdir");
+        let outcome = rename_hook_session_in_disk(
+            RestorableAgentKind::Codex,
+            dir.path(),
+            "old",
+            "new",
+        )
+        .expect("rename should not error on missing file");
+        assert_eq!(outcome, HookRenameOutcome::StoreMissing);
     }
 }

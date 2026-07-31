@@ -21,7 +21,8 @@ use limux_protocol::validate_terminal_text_payload;
 use crate::app_config;
 use crate::control_bridge::{
     BridgeError, ControlCommand, PaneActionKind, PaneCreateDirection as BridgePaneCreateDirection,
-    PaneCreateType, PaneResizeDirection as BridgePaneResizeDirection, WorkspaceTarget,
+    PaneCreateType, PaneResizeDirection as BridgePaneResizeDirection, SurfaceRebindSessionRequest,
+    WorkspaceTarget,
 };
 use crate::keybind_editor;
 use crate::layout_state::{
@@ -942,6 +943,96 @@ fn resolve_surface_target(
         tab_id,
         surface,
     })
+}
+
+/// Walk a workspace's persisted `LayoutNodeState` looking for the tab that owns
+/// the named surface and apply the rebind to its `RestorableAgentState`.
+///
+/// Returns `true` via `mutated` when a matching tab was found and the rebind
+/// succeeded. If the precondition fails (`RebindError`), it is reported via
+/// `error_out` and `mutated` stays `false`.
+fn rebind_in_layout(
+    layout: &mut layout_state::LayoutNodeState,
+    workspace_id: &str,
+    tab_id: &str,
+    request: &SurfaceRebindSessionRequest,
+    now_seconds: f64,
+    mutated: &mut bool,
+    error_out: &mut Option<layout_state::RebindError>,
+) {
+    if error_out.is_some() || *mutated {
+        return;
+    }
+    match layout {
+        layout_state::LayoutNodeState::Pane(pane) => {
+            for tab in &mut pane.tabs {
+                if tab.id != tab_id {
+                    continue;
+                }
+                let layout_state::TabContentState::Terminal { agent, .. } = &mut tab.content
+                else {
+                    continue;
+                };
+                let Some(agent_state) = agent.as_mut() else {
+                    return;
+                };
+                match agent_state.rebind_session(
+                    &request.old_session_id,
+                    &request.new_session_id,
+                    request.hcom_name.as_deref(),
+                    request.clear_suspension,
+                    now_seconds,
+                ) {
+                    Ok(_) => {
+                        *mutated = true;
+                        let _ = workspace_id; // surface_id already validated upstream
+                    }
+                    Err(error) => *error_out = Some(error),
+                }
+                return;
+            }
+        }
+        layout_state::LayoutNodeState::Split(split) => {
+            rebind_in_layout(
+                &mut split.start,
+                workspace_id,
+                tab_id,
+                request,
+                now_seconds,
+                mutated,
+                error_out,
+            );
+            rebind_in_layout(
+                &mut split.end,
+                workspace_id,
+                tab_id,
+                request,
+                now_seconds,
+                mutated,
+                error_out,
+            );
+        }
+    }
+}
+
+/// Map a [`layout_state::RebindError`] to the wire-level [`BridgeError`].
+fn rebind_error_to_bridge(error: layout_state::RebindError) -> BridgeError {
+    match error {
+        layout_state::RebindError::OldSessionMismatch { expected, actual } => {
+            BridgeError::not_found(format!(
+                "old_session_id mismatch: expected {expected}, found {actual}"
+            ))
+        }
+        layout_state::RebindError::SuspensionNotResumable(reason) => BridgeError::conflict(
+            format!(
+                "suspension_reason {} is not operator-resumable",
+                reason.name()
+            ),
+        ),
+        layout_state::RebindError::EmptyNewSession => {
+            BridgeError::invalid_params("surface.rebind_session new_session_id must not be empty")
+        }
+    }
 }
 
 fn apply_pane_resize_target(
@@ -6055,6 +6146,129 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 );
             }
             send_surface_response_after_settle(state.clone(), None, reply, response);
+        }
+        ControlCommand::RebindSurfaceSession { request, reply } => {
+            let resolved = match resolve_surface_target(
+                state,
+                &request.target,
+                Some(&request.surface_id),
+            ) {
+                Ok(resolved) => resolved,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
+            };
+            let surface_id = resolved.surface.surface_id.clone();
+            let workspace_id = resolved.workspace_id.clone();
+            let now_seconds = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs_f64())
+                .unwrap_or(0.0);
+
+            // Validate the surface against the live hook index before touching
+            // disk: a stale `old_session_id` must never silently overwrite the
+            // successor's first hook event.
+            let index = layout_state::RestorableAgentIndex::load();
+            let pane_id_hint = Some(resolved.surface.pane_id);
+            let live = index.agent_for_surface(
+                &workspace_id,
+                pane_id_hint,
+                &resolved.tab_id,
+            );
+            let live_agent = match live {
+                Some(agent) => agent,
+                None => {
+                    let _ = reply.send(Err(BridgeError::not_found(
+                        "no live hook record on this surface",
+                    )));
+                    return;
+                }
+            };
+            let agent_kind = live_agent.kind;
+            if live_agent.session_id != request.old_session_id {
+                let _ = reply.send(Err(BridgeError::not_found(
+                    "old_session_id does not match the live hook identity",
+                )));
+                return;
+            }
+            // Idempotent no-op: rebind to the same id is an early success.
+            if request.old_session_id == request.new_session_id {
+                let _ = reply.send(Ok(serde_json::json!({
+                    "ok": true,
+                    "surface_id": surface_id,
+                    "surface_ref": format!("surface:{surface_id}"),
+                    "workspace_id": workspace_id,
+                    "old_session_id": request.old_session_id,
+                    "new_session_id": request.new_session_id,
+                    "saved": true,
+                    "no_op": true,
+                })));
+                return;
+            }
+
+            // 1. Rename the on-disk hook store entry so the next
+            //    RestorableAgentIndex::load() observes the successor identity.
+            let hook_dir = layout_state::agent_hook_state_dir();
+            let rename_result = layout_state::rename_hook_session_in_disk(
+                agent_kind,
+                &hook_dir,
+                &request.old_session_id,
+                &request.new_session_id,
+            );
+
+            // 2. Mutate the persisted `RestorableAgentState` for this surface.
+            let mut session = layout_state::load_session().state;
+            let mut mutated = false;
+            let mut rebind_err: Option<layout_state::RebindError> = None;
+            if let Some(workspace) = session
+                .workspaces
+                .iter_mut()
+                .find(|ws| ws.id.as_deref() == Some(workspace_id.as_str()))
+            {
+                rebind_in_layout(
+                    &mut workspace.layout,
+                    &workspace_id,
+                    &resolved.tab_id,
+                    &request,
+                    now_seconds,
+                    &mut mutated,
+                    &mut rebind_err,
+                );
+            }
+            if let Some(error) = rebind_err {
+                let bridge_err = rebind_error_to_bridge(error);
+                let _ = reply.send(Err(bridge_err));
+                return;
+            }
+            if !mutated {
+                // The surface has no persisted `RestorableAgentState` yet;
+                // surface the same diagnostic the parser would.
+                let _ = reply.send(Err(BridgeError::not_found(
+                    "no persisted RestorableAgentState on this surface",
+                )));
+                return;
+            }
+            if let Err(error) = layout_state::save_session_atomic(&session) {
+                let _ = reply.send(Err(BridgeError::internal(format!(
+                    "surface.rebind_session failed to persist session.json: {error}"
+                ))));
+                return;
+            }
+            request_session_save(state);
+            let _ = rename_result; // best-effort; response below reports it
+            let _ = reply.send(Ok(serde_json::json!({
+                "ok": true,
+                "surface_id": surface_id,
+                "surface_ref": format!("surface:{surface_id}"),
+                "workspace_id": workspace_id,
+                "old_session_id": request.old_session_id,
+                "new_session_id": request.new_session_id,
+                "saved": true,
+                "hook_store_outcome": format!("{:?}", rename_result.unwrap_or(
+                    layout_state::HookRenameOutcome::StoreMissing,
+                )),
+            })));
         }
         ControlCommand::CreatePane { request, reply } => {
             if !matches!(request.pane_type, PaneCreateType::Terminal) {
