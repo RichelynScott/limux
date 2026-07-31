@@ -1,5 +1,11 @@
 # TUTU_HANDOFF — tutu (LIMUX_MGR) — 2026-07-29 cycle-close state
 
+> **Successor banner (2026-07-31):** the tutu LIMUX_MGR cycle is closed.
+> Current resume surface is `BARI_HANDOFF.md` (`bari` = LIMUX_MGR).
+> Keep the OPEN section below — item-2 / item-3 / H1 remain accurate backlog;
+> do not treat this file as the live manager handoff.
+
+
 **Created by:** Claude Code (tutu / LIMUX_MGR · cd1a39d7)
 **Date:** 2026-07-29 (EST)
 **Purpose:** Per-session resume surface (HANDOFF.md §7). State after the 2026-07-29 C:-space-crisis PR cycle + the H1 security static-trace. A successor LIMUX_MGR resumes from here.

@@ -25,6 +25,8 @@ or also matching `/proc/<pid>/cmdline` against launcher paths. **Lane: limu.**
 
 ## 3. agent-hook debug log rotation: serialize across concurrent hook processes
 
+> **Status: CLOSED** by PR #105 (`a520e4d`).
+
 Bot P2 on #103 (merged `457638a`), rotation near `rust/limux-cli/src/main.rs:1866`. Two
 hook subprocesses can both stat a full active log before either rotates; the loser can hit
 NotFound and skip its append, or rename the recreated active file over `.1` and discard a
@@ -32,6 +34,8 @@ retained generation. Bounded consequence (a lost debug-log generation) — hence
 fast-follow. Fix: flock the rotation critical section. **Lane: fire.**
 
 ## 4. limux-ghostty-sys: shared-target cache poisoning via compile-time CARGO_MANIFEST_DIR
+
+> **Status: CLOSED** by PR #105 (`rust/limux-ghostty-sys/build.rs` now uses `std::env::var_os("CARGO_MANIFEST_DIR")`).
 
 Found during the 2026-07-29 gate runs (two deterministic exit-101s). `build.rs` reads
 `env!("CARGO_MANIFEST_DIR")` at COMPILE time, baking the absolute checkout path into the
@@ -49,6 +53,8 @@ Fix: read `std::env::var("CARGO_MANIFEST_DIR")` at build-script RUNTIME (cargo s
 build-script execution too) — one line, makes the binary relocation-proof. **Lane: any.**
 
 ## 5. Packaging deletes reach end-user machines as root (SEVERE — separate doc)
+
+> **Status: CLOSED** by PR #108 (`2cceb95`).
 
 Backlog #12 audit result, written up in full at
 `docs/LIMUX_PACKAGING_DELETE_AUDIT_2026-07-29.md`. Summary: of 24 delete calls in

@@ -1,11 +1,11 @@
 # Limux — Directory State (session-agnostic)
 
-**Updated:** 2026-07-29 by `tutu` (LIMUX_MGR) — the 2026-07-21 restart **and** the
-2026-07-29 C:-space-crisis PR cycle are CLOSED: PRs #102 (retention) / #103 (hygiene)
-/ #104 (FYI consolidation) all squash-merged; coordsurf FYI+HANDOFF consolidated to
-main; six `coordsurf/huno-*` branches + three stale agent worktrees swept. Open limux
-items (item-1 read-screen cross-workspace, unknown-flag drop, review-checklist) live in
-`TUTU_HANDOFF.md` (§7).
+**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — hygiene packet. main @ `ef4d376`
+(+ this packet's docs/TaskMaster commits). Open PRs: **none**. Continuity surfaces
+refreshed; TaskMaster reconciled to merge evidence; stale sockets + `/tmp` limux
+test debris archived (not deleted). Product backlog lives in `BARI_HANDOFF.md`
+and `docs/LIMUX_FASTFOLLOWS_2026-07-29.md` (not only `TUTU_HANDOFF.md`).
+
 **Scope:** `/home/riche/MCPs/limux`
 **Purpose:** ONE file that tells ANY session — not just the current manager —
 what is going on in this directory. Read this first. Per-session detail lives in
@@ -20,22 +20,23 @@ the per-session handoffs listed in §7.
 
 ---
 
-## 1. STATUS — restart DONE, host healthy (was the top operator item)
+## 1. STATUS — host healthy; docs/TaskMaster hygiene closed 2026-07-31
 
-**The 2026-07-21 restart happened.** As of **2026-07-25 ~3:57 PM EDT** the host
-is **UP** on the installed `c757056` build (2 host processes), and **`limux
-doctor` is fully green** — launchers, processes, socket, stale-sockets, ghostty
-resources all `[ok]`. The launcher-drift `[fail]` cleared on restart exactly as
-predicted.
+**Host is UP.** `limux doctor` is fully green after this packet: launchers,
+processes, socket, **stale_sockets**, ghostty resources all `[ok]`. Live control
+sockets remain `/run/user/1000/limux/stable/limux.sock` (+ `.cursor`); four
+doctor-stale sockets from timeout/repro launches were archived off the limux
+run tree (same-tmpfs; unix sockets cannot `mv` across filesystems).
 
-So the seven reviewed PRs (#81–#87) are **live**. The OMP scrollbar root-cause
-fix is running.
+**Still not live-verified in the GUI:** the OMP scroll fix (#82 + #106
+`ScrollMods=0`) and #84's resize behaviour have not been *observed* working —
+only gate-verified and source-traced. Coordinate with the operator before poking
+live panes.
 
-**Still not live-verified in the GUI:** the OMP scroll fix and #84's resize
-behaviour have not been *observed* working — only gate-verified and source-traced.
-The host is now up, so verification is possible, but it means interacting with
-the operator's live panes — coordinate with the operator + `karo` (OMP_MGR)
-before poking the running host.
+**Open product work** is listed in `BARI_HANDOFF.md` (unknown-flag reject, H1
+entitlement option (b), display-loss diagnostic, successor-rebind, prune
+fast-follows, OMP plan-review sidebar visibility as cmux-parity `7.3`). This
+hygiene packet does **not** implement those.
 
 ---
 
@@ -44,185 +45,49 @@ before poking the running host.
 | | Value |
 |---|---|
 | **Installed + running** | `limux-cli 0.2.3 (c757056d2539, release)` — clean, no `-dirty`; install-id `main-c757056d2539-adv-remediated-20260721`, channel `stable` |
-| **Contains** | The SEVEN reviewed PRs #81–#87 (adversarial-review remediation included) |
-| **NOT in the running build** | #88/#90 (bounded-logging) merged to main *after* this install. They are internal logging fixes; #88 alone was regressive but #90 fixed it. Reinstalling from main would pick them up — but there is no pressing reason to, and it would cost the operator a restart. Leave until there is one. |
+| **Contains** | The reviewed PRs through the 2026-07-21 adversarial remediation (#81–#87 family on that install) |
+| **NOT in the running build** | Everything merged after `c757056`, including #88/#90 (bounded-logging), #105 (hook-log flock + ghostty `CARGO_MANIFEST_DIR` runtime read), #106 (wheel ScrollMods), #107 (H1 surface scoping), #108 (packaging rename-not-delete). **~50+ commits behind main.** Reinstall is operator-gated — documenting the lag is in scope; reinstall/restart is not part of this packet. |
 | **Previous launchers** | archived via `mv` (not `rm`) at `~/.local/limux-reviewed/archive/20260721T223224Z/` |
 
 ---
 
 ## 3. WHAT IS MERGED ON MAIN
 
-main @ `fc40cf5` — gate green: `./scripts/check.sh` exit 0, **660 passed / 0
-failed / 0 ignored**, clippy `-D warnings` + fmt clean. (The previously-ignored
-fd test was deleted with the unreachable fd layer in #90.)
+main @ `ef4d376` (hygiene tip parent) — last known full gate green from fire's
+closeout lane (`./scripts/check.sh` exit 0). Docs-only hygiene does not re-run
+the Rust gate.
 
-> ## 🔴 PR #92 (named session profiles) — MERGED, then P1'd, now BEING REVERTED
+> ## PR #92 (named session profiles) — merged, reverted, re-landed (history)
 >
-> **Timeline:** reviewed → APPROVED (tutu code + levu boundary) → merged `4e625bf`
-> → **huno installed it and found a P1** → tutu decided REVERT → **revert = PR #96
-> (`e157c90`), tree-verified clean by tutu** (`e157c90^{tree}` == `400dc36^{tree}`,
-> the exact pre-#92 tree) + levu boundary-cleared. Merges once huno adds levu's
-> trailer. **Note:** the revert branch is based on `4e625bf` (pre-#95), so a normal
-> merge PRESERVES tutu's #95 boundary-lint fix (different files) — post-revert main
-> = pre-#92 tree PLUS #95, which is correct. WIP of the corrected orthogonal design
-> is preserved on `fix/profile-channel-orthogonal` (`803eeb1`) — nothing lost.
->
-> **THE P1 (tutu-reproduced from a clean `limux-cli` build):** the feature is
-> **unreachable through every installed launcher.** Launchers pin `--channel <lane>`,
-> so `limux --profile work` arrives as `--channel <lane> --profile work`, and huno's
-> conflict-detection (channel + profile modeled as the SAME field) fires:
-> `Error: conflicting channel selection`. `--profile work` works only via the raw
-> binary with no launcher channel. Opt-in + non-regressive (`limux` without
-> `--profile` is unaffected), but the feature as merged cannot be reached the way
-> users invoke it.
->
-> **THE MISS, and it is the session's whole theme one level up:** 9/9 mutations +
-> two reviewers + three rounds, all against source (`parse_global_args_from` / raw
-> binary) — **none ran the installed artifact.** Revert-the-call-site at the LAUNCHER
-> level: proved the flag is WIRED, never proved it is REACHABLE. tutu's APPROVE shares
-> the miss — reviewed isolation, never ran the launcher.
->
-> **RE-LAND REQUIREMENTS (tutu's steer, all agreed):** (1) orthogonal model —
-> `--channel` = build lane (launcher), `--profile` = session set (user), nested
-> `<channel>/profiles/<name>`; (2) **MANDATORY** test that invokes through a
-> GENERATED LAUNCHER, not the raw binary — the actual coverage gap; (3) **NEW
-> security surface: `<channel>` is now a path component** → must go through the same
-> allowlist sanitizer as the profile name (tutu's to clear — levu flagged it's limux
-> security, not hcom boundary); (4) rework conflict-detection to let launcher-channel
-> + user-profile coexist. **levu's f3aeb84 boundary clearance does NOT carry to the
-> re-land** — fresh boundary review from scratch (layout_state.rs re-trips the gate).
->
-> **Why revert not fix-forward:** an unreachable-via-launcher feature is not shipped;
-> leaving it makes main dishonest. And the layout change is free ONLY while zero
-> profiles exist — revert keeps that window open; fix-forward can close it silently.
-> All the good work (HIGH-1 flock fix, sanitizer, O_CLOEXEC correction) re-lands.
->
-> **✅ RE-LAND = PR #99 (`feat/session-profiles-v2`, off post-revert main) — tutu CODE
-> APPROVE + channel sanitizer CLEARED + **levu boundary CLEARED** = BOTH review gates green;
-> MERGE-READY. Head is now `72b8f14` (c61ba07 + a 1-line Cargo.lock `dirs` direct-dep add;
-> source byte-identical, so clearances carried — tutu re-verified). **Operator decides merge
-> + install.** Orthogonal design (channel = build lane / launcher-supplied;
-> profile = session set / user-supplied, read independently; nested `<lane>/profiles/<name>`,
-> composed in one place so host+CLI can't disagree). All three of tutu's non-negotiables in,
-> and tutu **revert-verified** the two owned surfaces: (1) **channel-as-path-segment sanitizer**
-> — same allowlist as profile names, no production bypass (all `Preview`/`Profile` construction
-> sanitizes at parse; raw-string ones are test-only), traversal test covers `..`/`/`/empty/`.`/NUL
-> on both dimensions, and disabling it fails the test; (2) **generated-launcher test** —
-> `limux-cli/tests/launcher_route.rs` runs a real installer-shaped launcher → real binary
-> (the route, not the parser), 5/5 pass, and injecting M0 (the single-field conflict that
-> forced the revert) fails 3/5 — the P1's coverage gap is closed. Suites green 182/0
-> (limux-control + limux-cli). Evidence caveat: host-crate tests (ghostty) not run — flock +
-> O_CLOEXEC carried forward from #92's adversarial review, huno reports 9/9 (incl. M3/M8 that
-> initially survived, then covered). `#92`/`f3aeb84` clearances are DEAD — do not cite them.
->
-> ---
->
-> **Original review record (accurate history — the review happened; only reachability
-> was missed):** Head was `dce730a`; `limux-control` security crate byte-unchanged
-> across head moves.
->
-> - **HIGH-1 (found + fixed): auto-profile allocation data-loss TOCTOU.** The
->   original allocator was check-then-bind (probe socket free → adopt `auto-N`),
->   with a huge window between allocation (`main.rs:444`) and socket bind
->   (`window.rs:3219`); the loser's bind-fail is non-fatal (`control_bridge.rs:1664`)
->   so it kept running on the contended profile and clobbered the winner's
->   `session.json` → workspaces silently lost. **huno found it independently, and
->   tutu's adversary found the identical race** — two lenses converged. Fixed with
->   `AutoProfileClaim`: an flock (`LOCK_EX|LOCK_NB`) reservation taken at allocation
->   time, held for process life, `O_CLOEXEC`/`O_NOFOLLOW`/0600, runtime-dir. tutu
->   source-verified the fix closes the race at root (covers the pre-bind window the
->   probe can't see). **Evidence caveat:** tutu did NOT execute the host-crate flock
->   test (fresh-worktree ghostty unbuilt; safe workaround tripped the rm-guard near
->   huno's live checkout). Rests on source review + test read + deductive
->   load-bearingness + huno's reported pass/M4b-fail + the adversary's confirmation.
-> - **LOW-2 (DISPOSED at `dce730a` — accepted, not silent):** `profile rm`
->   check-then-rename TOCTOU. huno correctly declined to partial-flock it (an
->   auto-only claim would *look* fixed while silently leaving named profiles racy)
->   and instead made it LOUD: a second liveness check after the rename reports
->   `started_during_removal` (JSON) + a warning with the exact `mv` restore command.
->   Accepted as documented. Full every-profile-claim fix is a separate design change,
->   deliberately not folded in.
-> - **O_CLOEXEC decorative-test correction (at `dce730a`):** tutu's fork+exec catch
->   surfaced that huno's explicit `libc::O_CLOEXEC` was redundant (Rust `OpenOptions`
->   sets it by default on Linux — **tutu confirmed by executing a standalone probe**)
->   so the mutation reverting the flag was decorative. huno fixed the test to verify
->   the *property* (`F_GETFD` FD_CLOEXEC assertion + behavioral spawn-child-non-inherit),
->   which an actively-clear-`FD_CLOEXEC` mutation catches. Mutation proof 9/9. Lesson:
->   a mutation-tested guard is still decorative if the property is supplied by a
->   platform DEFAULT you didn't measure — test the property, not your line.
-> - **Cleared** (tutu's hands + adversary, falsified each): sanitizer allowlist,
->   mode-derived owner_only (#86 intact), 0600 load-bearing, no socket↔session
->   drift, single-source-of-truth via `session_paths`, `profile rm` archive-not-delete
->   + sanitized path. Test quality: adversary reverted 4/7 (all failed), tutu
->   reverted the 0600 pin (failed) — no decorative tests.
-> - **Still open (acknowledged, not blockers):** launcher-drift reasoned-not-proven-live;
->   `doctor` does not enumerate profiles (tutu's design call, documented gap).
-> - **🔴 BOUNDARY-GATE DESIGN DEFECT (levu found, tutu owns — `scripts/boundary-lint.sh`):**
->   The script's header + failure message advertise a `boundary-reviewed` LABEL path
->   that is **documented twice, implemented zero times** (`grep gh|labels boundary-lint.sh`
->   → no matches). The only working satisfaction path is the `Boundary-Review: hcom`
->   trailer — but adding it moves HEAD, invalidating the SHA-scoped clearance (the
->   "trailer trap" huno found). levu's analysis (which I agree with): trailer coupling
->   to history is a fail-CLOSED safety property; a label decouples → survives force-push
->   → stale-clearance hazard, invisible (no SHA). **Fix direction:** (1) remove or
->   implement the label path (minimum: stop advertising a remedy that can't work),
->   (2) document trailer-LAST as the workflow. **Gating question:** DP-7 is
->   operator-ratified — verify whether the label path was intended policy (→ operator
->   decision) or a doc error (→ tutu doc-fix) before changing what satisfies the gate.
-> - **Merge path:** code-ready; gates on levu's boundary-lint (DP-7 — `layout_state.rs`
->   path-gate). Full verdict + checklist sent to huno via hcom.
+> **Past tense:** #92 merged, hit a launcher-reachability P1, was **reverted via
+> PR #96**, then **re-landed as PR #99** (orthogonal channel/profile model +
+> generated-launcher test + channel-as-path sanitizer). Do not treat the old
+> "BEING REVERTED" framing as current work. See git history around `4e625bf` /
+> `e157c90` / #99 for the full review record if needed.
 
-| PR | Content |
+Notable merges after the installed `c757056` tip (non-exhaustive; tip is
+`ef4d376`):
+
+| PR / commit | Content |
 |---|---|
-| #81 `70689b4` | limu's stranded audit + `LIMU_INBOX` + TaskMaster reconciliation |
-| #82 `08abec1` | H1 cross-lane disclosure · `hook_session_id` misattribution · **OMP scrollbar peg/flash root cause** · PR #58 attestation salvage |
-| #83 `a5c0f98` | PR #67 renderer backend diagnostics rebuilt + socket-mode P2 |
-| #84 `f2b0a79` | TaskMaster #29 sub-cell resize deferral (word-wrap on width change) |
-| #85 `3bf819f` | TaskMaster #33 build dirty-marker — untracked files no longer mark builds dirty |
-| #86 `c757056` | Adversarial remediation: H-1 read-screen surface scoping · M-2 foreign-repo provenance guard · M-4 socket-mode fail-open · L-1 pipe-pane empty stream · send-key honest diagnosis |
-| #87 `149e283` | Durable record of the adversarial findings |
-| #88 `d8e7648` | Bounded host logging: **A1 GUI-hang** · P2 stderr-fd · A2 silent cap. Shipped a shutdown data-loss regression — **fixed by #90**. |
-| #90 `51e8144` | **Fixes #88's regression.** H1 stderr-loss-at-exit (flush barrier + `atexit`) · H2 installer `O_CLOEXEC` test · **H3 deleted ~90 lines of unreachable `unsafe` fd code** · M2 detach guard. 660/0/**0** |
-| #89 `9f469c1` | Three-state build-provenance test (closes the #33 gap) |
+| #81–#87 | Stranded audit, H1/scrollbar/resize/dirty-marker, adversarial remediation |
+| #88 / #90 | Bounded host logging + #88 regression fix |
+| #89 | Three-state build-provenance test |
+| #99 | Session profiles v2 re-land (post-#96 revert of #92) |
+| #102–#104 | Retention / hygiene / FYI consolidation (2026-07-29 space-crisis cycle) |
+| #105 `a520e4d` | Agent-hook log rotation flock + ghostty build-script relocation-proof |
+| #106 `51d9e97` | Discrete wheel `ScrollMods=0` |
+| #107 `05836c4` | Surface content reads scoped to focused workspace (H1 partial) |
+| #108 `2cceb95` | Packaging: stop deleting `/usr/local` as root; rename-not-delete |
+| fast-follows doc | `docs/LIMUX_FASTFOLLOWS_2026-07-29.md` — §3–§5 CLOSED; §1–§2, §7–§9 OPEN |
 
-### The five defects, with mechanism (not just names)
+### Mechanism notes still worth keeping (abbrev.)
 
-1. **H1 — cross-lane information disclosure.** `read-screen --help` fell through
-   to `surface.read_text` with no target; the server's global-focus fallback
-   returned *another agent's pane content, including in-flight command text*.
-   `read-screen` was also the only one of read-screen/send/send-key with **no
-   `LIMUX_WORKSPACE_ID` fallback**, so it defaulted to global focus
-   unconditionally. Corroborated by reve's 2026-07-19 incident.
-2. **`hook_session_id` misattribution.** Preferred ambient `CLAUDE_SESSION_ID`
-   over the payload's own `transcript_path`, and `limux_env_value` walks
-   **ancestor process env** — so hook events for session A were attributed to
-   whoever invoked the CLI. Decision recorded: **payload-first**. This also
-   repaired a **non-deterministic quality gate** (the test passed under Codex,
-   failed under Claude — which is why limu's audit recorded 597 passing while
-   `CLAUDE.md` warned the same test failed; *both were correct*).
-3. **OMP scrollbar peg/flash.** The scrollbar is a **layout sibling** of the
-   terminal (`root.append(&overlay); root.append(&scrollbar)` in a horizontal
-   Box). In GTK4 an invisible box child gets **zero allocation**, so every
-   `total > len` flip changed GLArea width by ~13px → `connect_resize` →
-   `ghostty_surface_set_size` → **column change** → reflow — and reflow moves a
-   scrolled-back viewport to the active area. Ghostty's own comment on that
-   path: *"this effectively pulls down scrollback"* — the operator's verbatim
-   symptom. **limux-specific**: upstream ghostty uses `GtkScrolledWindow`
-   overlay scrolling, which is layout-neutral by construction. Fix: layout
-   participation is decided by config only; scroll state varies opacity and
-   hit-testing only.
-4. **PR #67 socket-mode P2.** The preview runner passed an inherited
-   `LIMUX_SOCKET_MODE`/`CMUX_SOCKET_MODE` into the host, but its probe CLIs are
-   children of the **runner**, so `is_descendant` rejected every probe and
-   healthy backends were misreported unhealthy. Now cleared + forced
-   `localUser`.
-5. **#33 build dirty-marker.** `build.rs` computed dirtiness from
-   `git status --porcelain`, which counts **untracked** files — so a clean
-   release build was stamped `-dirty` because of one untracked peer-owned docs
-   HTML. A second, latent defect in the same code: `command_stdout` folds empty
-   output into `None`, making the `"false"` arm unreachable, so a clean tree
-   reported `unknown` rather than *verified clean*. Both fixed; verified by
-   execution in three tree states.
+1. **H1 — cross-lane disclosure.** Partial close in #107; **residual CRITICAL**
+   remains for explicit foreign `workspace_id` (fast-follow §7 / design note).
+2. **OMP scrollbar peg/flash.** Layout-sibling width flip; #82 layout-neutral +
+   #106 ScrollMods. Live GUI observe still outstanding.
+3. **#84 sub-cell resize deferral.** Gate-verified; live observe outstanding.
 
 ---
 
@@ -230,22 +95,18 @@ fd test was deleted with the unreachable fd layer in #90.)
 
 | Item | State |
 |---|---|
-| **Restart** | 🔴 operator — §1 |
-| **🔴 26 GB of logs — operator decision** | `~/.local/state/limux/logs/limux-host.log` was **26 GB** — the legacy *unbounded* log (pre-bounded-logging; current code writes `limux-host.current.log`, and the codebase references that old name only as a test fixture called `legacy_incident`). Verified stale + unheld, then **archived via `mv`** to `logs/archive/limux-host.log.legacy-unbounded-superseded-20260721`. Live logs are now **112 KB**. **It still occupies 26 GB — deleting it is the operator's call** (archive-not-delete floor). Relevant to the C-drive-space lane. |
-| **M1 — retained logs never pruned** | Real but **not yet triggered**: production is 64 MiB active / **10** retained / 640 MiB total, and the `retained/` dir does not exist yet (count 0). At the limit `rotate_managed_active` returns `StderrFallback`, so host logging degrades rather than erroring — and `doctor` does not check the retained budget. Needs ~640 MiB of host stderr to bite. |
-| **Live verification** | Nothing below has been seen working in a running GUI. After restart, verify the OMP scroll fix and #84's resize behavior. For #84, `strace -e ioctl` `TIOCSWINSZ` counts on a slow split-drag (before/after) settles its one unverified claim. |
-| **Standing adversarial review** | ✅ **RAN** (4th attempt). Found 3 HIGH / 5 MED / 4 LOW. Full record: **`docs/ADVERSARIAL_REVIEW_FINDINGS_2026-07-21.md`**. H-1/H-2/M-2/M-4/L-1 fixed in PR #86; M-1, M-3, M-5, L-2/L-3/L-4 **still open**. |
-| **⚠ Test theater (highest-value remediation)** | The reviewer **reverted each fix and re-ran the suite**: **4 of the 5 behavioural fixes in the installed build survive a full revert with a green suite.** Pure-logic helpers are tested; the wiring that uses them is not. Only `hook_session_id` ordering and #84's grid predicate fail on revert. |
-| **✅ STANDING CHECK — adopt this** | **Revert the call site (not the helper), re-run the suite, confirm something fails. If nothing does, the test is decorative.** Any fix shaped "extract a helper, call it from one site" has this hole by default — the helper test proves the helper works, nothing proves it is *reached*. Generalized with the hcom lane, which found the identical shape in a release it had already shipped. |
-| **Mutation-verified as load-bearing** | H-1 read-screen scoping (revert → 1 fail) · M-4 socket fail-open (revert → 1 fail) · A1 GUI-hang (revert → 2 fail + a real **15.00s** writer hang) · send-key `enter`→`Return` (revert → 1 fail) · #84 grid predicate · `hook_session_id` ordering. |
-| **✅ CLOSED — #33 test gap** | Found by running the standing check on my *own* work: #33 shipped with **no test**, so reverting `-uno` left the suite green. Closed by PR #89 (`9f469c1`), which pins the three-state semantics — `"false"` → `Some(false)` *verified clean*, `"unknown"`/absent → `None` *cannot attest*, `-dirty` only for `Some(true)`. Mutation-verified. Deliberately avoids `from_compile_env` (it calls `install_info_near_current_exe()`, which would make a provenance test depend on what sits beside the test binary — the same flake class as the old `hook_session_id` test). |
-| **M-1 — scrollbar fix has a live residual path** | The fix's own test comment claims *"config is constant for the surface lifetime"*. **False** — `GHOSTTY_ACTION_RELOAD_CONFIG` stores `CURRENT_SCROLLBAR_ENABLED` at runtime. A config reload while scrolled back still drops the scrollbar out of layout → GLArea widens → column change → viewport reset. **This is the operator's own scroll-yank symptom, via the one remaining path.** |
-| **PR #86** | ✅ **MERGED** `c757056`. DP-7 boundary review was **granted by two independent reviewers** (`gire` + `nava`), both of whom reproduced the false positive rather than taking my word; `boundary-reviewed` label applied. NOT self-certified even though HCOM_MGR was stale and the operator directive would have permitted it. |
-| **Boundary-lint narrowing** | Tracked by the hcom lane, deliberately **not** shipped. Note for whoever picks it up: the obvious `grep -Ew` fix is a **trap** — `_` is a word constituent, so `-w` would break the `HCOM_` prefix token and silently disable most of the gate. Prefix / identifier / bare-word tokens each need different treatment. |
-| **PR #68 / #88 bounded logging** | ✅ **MERGED** `d8e7648` — all three fixes (A1 GUI-hang, P2 fd hijack, A2 silent cap). Gate green, **655 passed / 1 ignored**. ⚠️ **NOT INSTALLED**: it is `unsafe` fd manipulation with no adversarial review, so a review is running before it reaches the daily driver. See §5. |
-| **reve new-pane incident** | Needs a **v0.2.3 retest**; filed against legacy 0.2.2. `LIFO_INBOX/INCIDENT_FROM_reve_2026-07-19_*.md` |
-| **nava design question** | hcom-TUI × Limux symbiosis. Design owner = the Limux manager. §6 has the ratified shape + a correction. |
-| **ghostty wheel/mouse-reporting** | Wheel events eaten with **no alt-screen gate** (`Surface.zig:3601-3621`). Vendored ghostty is **read-only — do NOT patch**. karo advised checking the shift+wheel escape hatch first. An upstream issue must **not** be filed externally without operator approval. |
+| **Unknown CLI flags** | OPEN — reject before socket contact (`TUTU_HANDOFF` item-2 / `BARI_HANDOFF` #1) |
+| **CLAUDE.md checklist card lines** | OPEN — limux-local piece (`BARI_HANDOFF` #2) |
+| **H1 residual CRITICAL** | OPEN — explicit foreign `workspace_id`; operator-gated option (b) (fast-follow §7) |
+| **Display-loss exit diagnostic** | OPEN — bare status 1 on WSLg display reset (fast-follow §8) |
+| **Successor-rebind control path** | OPEN — unclean restore leaves suspended predecessor identity (fast-follow §9) |
+| **Prune `--keep` cap + TOCTOU** | OPEN — limu lane (fast-follow §1–§2) |
+| **Live GUI verify** | OPEN — OMP scroll + #84 resize still never operator-observed |
+| **OMP plan-review / ask sidebar visibility** | OPEN — cmux-parity **7.3** after native PRD-G wiring; decision `LIMU_INBOX/RESPONSE_FROM_limu_2026-07-30_omp-ask-waiting-abc-decision.md` |
+| **Installed runtime lag** | DOCUMENTED — still on `c757056`; reinstall operator-gated |
+| **26 GB archived legacy log** | Still on disk under archive-not-delete; delete is operator call |
+| **Standing adversarial residuals** | M-1/M-3/M-5/L-2/L-3/L-4 still open per `docs/ADVERSARIAL_REVIEW_FINDINGS_2026-07-21.md` |
+| **✅ Hygiene 2026-07-31** | CLOSED this packet — docs, TaskMaster reconcile, stale sockets, `/tmp` debris |
 
 ---
 
@@ -329,13 +190,16 @@ about such an agent is then not evidence of death.
 
 | File | Whose | Contains |
 |---|---|---|
-| `TUTU_HANDOFF.md` | tutu (current LIMUX_MGR) | this session's detail |
-| `LIMU_HANDOFF.md` | limu (retired) | prior-lane history |
+| `BARI_HANDOFF.md` | **bari (current LIMUX_MGR)** | live resume surface — open backlog + hygiene closeout |
+| `TUTU_HANDOFF.md` | tutu (historical) | 2026-07-29 cycle-close; OPEN item-2/3/H1 still accurate; successor banner points here → bari |
+| `FIRE_HANDOFF.md` | fire (historical / adjacent lane) | space-crisis + fast-follow authoring; attribution FIRE fallback notes |
+| `LIMU_HANDOFF.md` | limu (historical; may co-claim Codex lane when active) | prior Codex-lane history |
 | `LIFO_HANDOFF.md` | lifo (retired) | earlier lane; peer-owned, do not edit |
 | `git show f3c95a5:HANDOFF.md` | halo (retired) | the 2026-06-20 state, verbatim (git history is the durable copy) |
 
-Lineage: lifo → limu → **tutu** (all 2026-07-21). Related lanes: `karo` =
-OMP_MGR (`~/Proj/oh-my-pi`), `nava`/`dino` = hcom, `reve` = fleet.
+Lineage: lifo → limu → tutu → **bari** (2026-07-31). Related lanes: `karo` /
+`rako` = OMP, `nava`/`dino` = hcom, `reve` = fleet. `limu` may still co-claim
+`LIMUX_CODEX_MGR` when active (non-superseding).
 
 **Active goal (unchanged from halo, still correct):** improving Limux as the
 tool the operator actually uses. The old Project Isolation Lab / VM goal is NOT
@@ -384,7 +248,7 @@ this repo's workstream.
   in M files") and `cargo test` collapses to a single summary line. If you need
   raw output use `awk`/`sed`/`tail`, and note `--type`/`--include` may not reach
   the real binary.
-- **papa-git**: `export CLAUDE_SESSION_NAME=TUTU_LIMUX_MGR CLAUDE_AGENT=claude`
+- **papa-git**: `export CLAUDE_SESSION_NAME=BARI_LIMUX_MGR CLAUDE_AGENT=claude`
   in *every* bash call that commits — it does not persist between tool calls,
   and lowercase names are REFUSED (`^[A-Z0-9_-]{1,50}$`).
 - **Beware `cmd | tail -N` in a background job** — only the tail is saved, so
