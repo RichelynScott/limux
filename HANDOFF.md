@@ -1,7 +1,7 @@
 # Limux — Directory State (session-agnostic)
 
-**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — hygiene packet. main @ `8339721`
-(docs refresh; TaskMaster reconcile follows in the next commit). Open PRs: **none**. Continuity surfaces
+**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — hygiene packet.
+Docs refresh `8339721`; TaskMaster reconcile lands with this tip. Open PRs: **none**. Continuity surfaces
 refreshed; TaskMaster reconciled to merge evidence; stale sockets + `/tmp` limux
 test debris archived (not deleted). Product backlog lives in `BARI_HANDOFF.md`
 and `docs/LIMUX_FASTFOLLOWS_2026-07-29.md` (not only `TUTU_HANDOFF.md`).
