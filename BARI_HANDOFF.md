@@ -10,12 +10,12 @@
 - **`kero`** appears only as the historical OMP session label in the 2026-07-30 plan-review screenshot evidence — not a second manager identity.
 
 ## Repo state snapshot (re-measured 2026-07-31)
-- Shared checkout: `/home/riche/MCPs/limux` on `main`, clean, synced with `origin/main`.
-- Shared `main` tip: `5649457` (hygiene). Yields product tip: `7d9bfb4` on `bari/yield-abc`.
+- Shared checkout: `/home/riche/MCPs/limux` on `main`, clean aside from untracked `.taskmaster/reports/`, synced with `origin/main`.
+- Shared `main` tip: `e07dd2c` (Merge #110). Yields product tip: `7d9bfb4` on `bari/yield-abc`.
 - Open PRs: **#109** — https://github.com/RichelynScott/limux/pull/109
 - Installed runtime (unchanged by this packet): `limux-cli 0.2.3 (c757056d2539, release)` install-id `main-c757056d2539-adv-remediated-20260721` — **~50+ commits behind main** including #105–#108. Reinstall is **operator-gated**, not part of this packet.
-- Doctor after hygiene: launchers / processes / socket / ghostty_resources `[ok]`; **`stale_sockets` warn** on recorded remaining paths `/run/user/1000/limux/stable/limux-52458.sock` and `…/limux-52458.cursor.sock` (plan line 44 stop — do not broaden). Hygiene tip SHA `bc99b45`.
-- Last known full gate green from fire's closeout lane (docs-only packet; `./scripts/check.sh` not re-run here).
+- Doctor re-check: launchers / processes / socket / `stale_sockets` / ghostty_resources all `[ok]` (exit 0). Historical leave-alone `52458` paths are gone; only live listeners are `stable/limux.sock` + `.cursor`.
+- Last known full Rust gate green from fire's closeout lane (docs-only continuity; `./scripts/check.sh` not re-run here).
 
 ## Open product backlog
 ### In flight — PR #109 (`bari/yield-abc` @ `7d9bfb4`)
@@ -34,7 +34,7 @@
 ## Hygiene this packet closed
 - Docs refresh: `HANDOFF.md`, this file, `TUTU_HANDOFF.md` successor banner, fast-follow §3–§5 CLOSED banners.
 - TaskMaster reconcile of shipped defects + add OMP waiting-visibility subtask under cmux-parity task 7.
-- Planned 4 doctor-stale sockets archived same-tmpfs under `/run/user/1000/limux-socket-archive/20260731T013021Z/` (cross-fs `mv` fails for unix sockets). Unauthorized post-warn archive of `limux-52458.*` was **restored**; those two remain and are recorded, not re-archived.
+- Planned 4 doctor-stale sockets archived same-tmpfs under `/run/user/1000/limux-socket-archive/20260731T013021Z/` (cross-fs `mv` fails for unix sockets). Unauthorized post-warn archive of `limux-52458.*` was **restored** then later disappeared on their own; doctor `stale_sockets` is now `[ok]` — do not recreate.
 - `/tmp` limux test debris archived under `~/.archive/limux/tmp-debris-*` (archive-not-delete).
 
 ## Discipline

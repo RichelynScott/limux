@@ -1,12 +1,13 @@
 # Limux — Directory State (session-agnostic)
 
-**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — after hygiene tip `5649457`.
-Open PR: **#109** (`bari/yield-abc` @ `7d9bfb4`) — unknown-flag reject, byte-safe
-`send`, display-loss diagnostic. Continuity surfaces refreshed earlier today;
+**Updated:** 2026-07-31 by `bari` (LIMUX_MGR) — shared `main` @ `e07dd2c`
+(after hygiene + #110 handoff merge). Open PR: **#109** (`bari/yield-abc` @
+`7d9bfb4`) — unknown-flag reject, byte-safe `send`, display-loss diagnostic.
 TaskMaster reconciled; planned stale sockets + `/tmp` limux test debris archived
 (not deleted). Product backlog lives in `BARI_HANDOFF.md` and
 `docs/LIMUX_FASTFOLLOWS_2026-07-29.md` (not only `TUTU_HANDOFF.md`).
-**Do not** re-archive leave-alone `52458` sockets.
+Doctor now fully green (`stale_sockets` `[ok]`); historical leave-alone `52458`
+paths are **gone** (do not recreate/re-archive).
 
 **Scope:** `/home/riche/MCPs/limux`
 **Purpose:** ONE file that tells ANY session — not just the current manager —
@@ -31,33 +32,30 @@ docs/hygiene-only until merge — product symbols live on the PR branch.
 
 **Host is UP.** Live control sockets remain
 `/run/user/1000/limux/stable/limux.sock` (+ `.cursor`); host PID still live.
-`limux doctor`: launchers / processes / socket / ghostty `[ok]`; **`stale_sockets`
-remains `[warn]`** on two paths recorded under the plan stop rule (see below) —
-do **not** claim doctor fully green.
+`limux doctor` (re-checked 2026-07-31): launchers / processes / socket /
+`stale_sockets` / ghostty all `[ok]` — doctor exit 0.
 
-**Socket archive (plan step 1):** the planned doctor-stale set of **four** sockets
-(`limux.sock`, `limux.cursor.sock`, `stable/limux-85224.sock`,
+**Socket archive (plan step 1, historical):** the planned doctor-stale set of
+**four** sockets (`limux.sock`, `limux.cursor.sock`, `stable/limux-85224.sock`,
 `stable/limux-85224.cursor.sock`) was archived same-tmpfs under
 `/run/user/1000/limux-socket-archive/20260731T013021Z/` (unix sockets cannot
 `mv` across filesystems; home-side manifests under
-`~/.local/state/limux/socket-archive/`). After that archive, doctor warned on a
-**new** pair `stable/limux-52458{.cursor,}.sock`. Plan line 44 required **stop and
-record remaining paths; do not broaden the archive set**. An unauthorized broaden
-archived those two briefly; they were **restored** to their original paths
-(LISTEN/fuser clear; originals had been absent). **Remaining (recorded, not
-archived):** `/run/user/1000/limux/stable/limux-52458.sock` and
-`/run/user/1000/limux/stable/limux-52458.cursor.sock`. Restore note:
-`~/.local/state/limux/socket-archive/20260731T014108Z/RESTORE.txt`.
+`~/.local/state/limux/socket-archive/`). After that archive, doctor briefly warned
+on `stable/limux-52458{.cursor,}.sock`. Plan line 44 required **stop and record;
+do not broaden**. An unauthorized broaden archived those two briefly; they were
+**restored** (`RESTORE.txt` under `…/20260731T014108Z/`). As of the later
+continuity re-check those `52458` paths are **absent**, live sockets are only the
+two stable listeners above, and `stale_sockets` is `[ok]`.
 
 **Still not live-verified in the GUI:** the OMP scroll fix (#82 + #106
 `ScrollMods=0`) and #84's resize behaviour have not been *observed* working —
 only gate-verified and source-traced. Coordinate with the operator before poking
 live panes.
 
-**Open product work** is listed in `BARI_HANDOFF.md` (unknown-flag reject, H1
-entitlement option (b), display-loss diagnostic, successor-rebind, prune
-fast-follows, OMP plan-review sidebar visibility as cmux-parity `7.3`). This
-hygiene packet does **not** implement those.
+**Open product work** is listed in `BARI_HANDOFF.md`: in-flight yields on
+PR #109 (#25/#33/#34), plus still-open H1 entitlement option (b),
+successor-rebind, prune fast-follows, live GUI verify, and OMP plan-review
+sidebar visibility as cmux-parity `7.3`.
 
 ---
 
@@ -74,8 +72,9 @@ hygiene packet does **not** implement those.
 
 ## 3. WHAT IS MERGED ON MAIN
 
-main @ `ef4d376` (hygiene tip parent) — last known full gate green from fire's
-closeout lane (`./scripts/check.sh` exit 0). Docs-only hygiene does not re-run
+main @ `e07dd2c` (Merge PR #110 handoff continuity; hygiene lineage via
+`5649457` / `bc99b45` / `b018ff9`) — last known full Rust gate green from fire's
+closeout lane (`./scripts/check.sh` exit 0). Docs-only continuity does not re-run
 the Rust gate.
 
 > ## PR #92 (named session profiles) — merged, reverted, re-landed (history)
