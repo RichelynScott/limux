@@ -8,6 +8,10 @@ use limux_protocol::{validate_terminal_text_payload, V2Request, V2Response};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
+pub mod entitlement;
+
+pub use entitlement::{ConnectionEntitlement, EntitlementConfig, EntitlementMode};
+
 const COMMANDS: &[&str] = &[
     "system.ping",
     "system.identify",
@@ -3282,12 +3286,51 @@ impl Dispatcher {
     pub async fn dispatch(&self, request: V2Request) -> V2Response {
         self.dispatch_sync(request)
     }
+
+    /// Dispatch a request with a per-connection entitlement context. When
+    /// the connection is enforcing (UnclaimedAllEntitled or RequireClaim),
+    /// the entitlement gates in `resolve_surface_target_scoped` and the
+    /// §1c management handlers fire. Under Off (the default), this is
+    /// functionally equivalent to `dispatch` and the `entitlement` is never
+    /// consulted for the gate decision.
+    ///
+    /// The connection-owned `ConnectionEntitlement` is `Clone` (an Arc
+    /// shares the claim cell), so the same value may be re-used across
+    /// requests on a single connection.
+    pub fn dispatch_with_entitlement(
+        &self,
+        request: V2Request,
+        entitlement: &ConnectionEntitlement,
+    ) -> V2Response {
+        let mut state = self
+            .state
+            .lock()
+            .expect("control state lock should not be poisoned");
+        dispatch_request_with_entitlement(&mut state, request, entitlement)
+    }
 }
 
 fn dispatch_request(state: &mut ControlState, request: V2Request) -> V2Response {
     let response_id = request.id.clone();
 
     match handle_command(state, &request.method, &request.params) {
+        Ok(result) => V2Response::success(response_id, result),
+        Err(error) => V2Response::error(response_id, error.code, error.message, error.data),
+    }
+}
+
+/// Like `dispatch_request`, but with a per-connection entitlement threaded
+/// through `handle_command`. The default-off flag means the entitlement is
+/// consulted only when it is configured to enforce; otherwise the path is
+/// a no-op pass-through.
+fn dispatch_request_with_entitlement(
+    state: &mut ControlState,
+    request: V2Request,
+    entitlement: &ConnectionEntitlement,
+) -> V2Response {
+    let response_id = request.id.clone();
+
+    match handle_command_with_entitlement(state, &request.method, &request.params, entitlement) {
         Ok(result) => V2Response::success(response_id, result),
         Err(error) => V2Response::error(response_id, error.code, error.message, error.data),
     }
@@ -3322,6 +3365,15 @@ impl CommandError {
         Self {
             code: -32009,
             message: message.into(),
+            data: None,
+        }
+    }
+
+    fn permission_denied(message: impl Into<String>) -> Self {
+        let message: String = message.into();
+        Self {
+            code: -32011,
+            message: format!("permission_denied: {message}"),
             data: None,
         }
     }
@@ -3580,6 +3632,92 @@ fn focused_payload(state: &ControlState) -> Value {
     }
 }
 
+/// §1c gate (REPO_AUDIT H1): the management handlers
+/// (`surface.focus` / `close` / `move` / `reorder` / `drag_to_split` /
+/// `refresh` / `split`) resolve a bare `surface_id` against the currently
+/// focused window, not via `resolve_surface_target_scoped`. Each returns
+/// `"surface": surface`, and `SurfaceState::info` carries `text`, so under
+/// a claimed connection an agent must not be able to read another lane's
+/// scrollback by `workspace.select(W')` + `surface.focus(<id in W'>)`.
+///
+/// This helper is **check-only**: it consults the connection's claim
+/// against the focused workspace id and returns `Err(permission_denied)`
+/// when the focused workspace is not the claim. It does NOT call
+/// `record_claim` — these handlers take no `workspace_id` and a sticky
+/// claim must bind on an explicit `workspace_id`, not on a focused
+/// workspace read.
+///
+/// Under `EntitlementMode::Off` the helper short-circuits to `Ok(())` so
+/// the behavior is identical to pre-patch. Under the unclaimed path of
+/// `UnclaimedAllEntitled` it returns `Ok(())` (operator path; the
+/// design-doc framing). Under `RequireClaim` an unclaimed connection is
+/// refused outright.
+fn check_focused_workspace_against_claim(
+    state: &ControlState,
+    entitlement: &ConnectionEntitlement,
+) -> Result<(), CommandError> {
+    if !entitlement.config().is_enforcing() {
+        return Ok(());
+    }
+    let focused_workspace_id = match focused_handles(state) {
+        Some((workspace_id, ..)) => workspace_id,
+        None => return Ok(()), // No focused surface; downstream returns not_found.
+    };
+    if entitlement.requires_claim() {
+        // RequireClaim: an unclaimed connection has no business reading
+        // ANY focused surface, even within its own (implicit) workspace.
+        return Err(CommandError::permission_denied(
+            "connection must present a workspace_id under require-claim",
+        ));
+    }
+    if let Some(claimed) = entitlement.claimed_workspace() {
+        if focused_workspace_id != claimed {
+            return Err(CommandError::permission_denied(
+                "focused workspace is not the connection's claimed workspace",
+            ));
+        }
+    }
+    // Unclaimed + UnclaimedAllEntitled: operator path, focused workspace
+    // is fine. (Off mode already returned above.)
+    Ok(())
+}
+
+/// Gate an explicit `workspace_id` parameter that a handler will switch
+/// into via `with_workspace_scope` (or thread into a sub-resolution). Same
+/// semantics as the explicit-`workspace_hint` branch of
+/// `resolve_surface_target_scoped`: under Off it is a no-op; under
+/// UnclaimedAllEntitled / RequireClaim it uses claim-or-allow (record the
+/// sticky claim first when still unclaimed, then refuse any later foreign
+/// workspace). Bare / focused paths stay check-only and do not auto-claim.
+///
+/// This is the explicit-`workspace_id` analogue of
+/// `check_focused_workspace_against_claim`. Both run in sequence in the
+/// split / create / health / pane.list / surface.list etc. paths: the
+/// focused gate first (so a claimed agent on W cannot ride the focus
+/// into W'), then this gate (so a foreign explicit `workspace_id` is
+/// refused before `with_workspace_scope` switches the focus).
+fn gate_workspace_id_param(
+    workspace_id: Option<u64>,
+    entitlement: &ConnectionEntitlement,
+) -> Result<(), CommandError> {
+    if !entitlement.config().is_enforcing() {
+        return Ok(());
+    }
+    let Some(workspace_id) = workspace_id else {
+        // No explicit workspace_id — the handler falls back to the focused
+        // workspace, which the §1c helper already gated. Nothing to claim.
+        return Ok(());
+    };
+    // Claim-first under RequireClaim: allows_workspace is false while
+    // unclaimed, so checking allow before record_claim would deny the
+    // natural first explicit workspace_id forever.
+    entitlement
+        .claim_or_allow_explicit(workspace_id)
+        .map_err(|_| {
+            CommandError::permission_denied("workspace not entitled to this connection")
+        })
+}
+
 fn workspace_row(
     index: usize,
     selected_id: u64,
@@ -3734,12 +3872,14 @@ fn resolve_surface_target(
     state: &ControlState,
     workspace_hint: Option<u64>,
     surface_hint: Option<u64>,
+    entitlement: &ConnectionEntitlement,
 ) -> Result<(u64, u64), CommandError> {
     resolve_surface_target_scoped(
         state,
         workspace_hint,
         surface_hint,
         SurfaceLookupScope::AnyWorkspace,
+        entitlement,
     )
 }
 
@@ -3748,20 +3888,69 @@ fn resolve_surface_target_scoped(
     workspace_hint: Option<u64>,
     surface_hint: Option<u64>,
     scope: SurfaceLookupScope,
+    entitlement: &ConnectionEntitlement,
 ) -> Result<(u64, u64), CommandError> {
+    // Per-connection entitlement gate — REPO_AUDIT H1 residual. The default-off
+    // LIMUX_ENTITLEMENT flag (EntitlementMode::Off) makes every check short-
+    // circuit to true, so the behavior is identical to pre-patch until the
+    // operator flips the flag. When enforcement is on:
+    //
+    // - explicit workspace_id under a foreign claim is refused with
+    //   PermissionDenied (the regression-of-record for the residual);
+    // - the focused-workspace fallback only resolves a bare surface id
+    //   inside the connection's claimed workspace, never the focused one;
+    // - the bare-id scan is also refused for any non-Off mode that is
+    //   claimed — the global scan is the disclosure primitive #107 already
+    //   closed for content ops, and option (b) keeps it closed for
+    //   management ops as well.
+    let _ = entitlement; // referenced; the real checks live below.
+
     if let Some(surface_id) = surface_hint {
         if let Some(workspace_id) = workspace_hint {
+            // Explicit workspace_id: claim-or-allow first. Under
+            // RequireClaim an unclaimed connection must be able to bind
+            // on this natural first presentation; allow-then-claim was
+            // a chicken-and-egg that permanently denied first claim.
+            if entitlement.claim_or_allow_explicit(workspace_id).is_err() {
+                return Err(CommandError::permission_denied(
+                    "workspace not entitled to this connection",
+                ));
+            }
             if workspace_contains_surface(state, workspace_id, surface_id) {
                 return Ok((workspace_id, surface_id));
             }
             return Err(CommandError::not_found("surface not found in workspace"));
         }
         if scope == SurfaceLookupScope::WorkspaceScoped {
-            // Resolve a bare id ONLY within the focused workspace. Reading your
-            // own surface by id stays legal (the common case, and what the CLI
-            // does outside a pane); what is refused is the scan reaching into a
-            // DIFFERENT lane, which is the H1 disclosure vector.
+            // Resolve a bare id ONLY within the focused workspace — AND
+            // only when the focused workspace matches the connection's
+            // claim. A connection in a foreign lane must not ride the
+            // focused-workspace fallback into another agent's data.
             let focused_workspace = focused_handles(state).map(|(workspace_id, ..)| workspace_id);
+            if let Some(claimed) = entitlement.claimed_workspace() {
+                match focused_workspace {
+                    Some(workspace_id) if workspace_id == claimed => {
+                        if workspace_contains_surface(state, workspace_id, surface_id) {
+                            return Ok((workspace_id, surface_id));
+                        }
+                        return Err(CommandError::not_found(
+                            "surface not found in the claimed workspace",
+                        ));
+                    }
+                    _ => return Err(CommandError::permission_denied(
+                        "focused workspace is not the connection's claimed workspace",
+                    )),
+                }
+            }
+            // Unclaimed connection under WorkspaceScoped: the prior #107
+            // behavior (focused-workspace confinement) stands, except in
+            // RequireClaim mode where the unclaimed read is refused
+            // outright so the operator-vs-agent signal is auditable.
+            if entitlement.requires_claim() {
+                return Err(CommandError::permission_denied(
+                    "connection must present a workspace_id under require-claim",
+                ));
+            }
             return match focused_workspace {
                 Some(workspace_id)
                     if workspace_contains_surface(state, workspace_id, surface_id) =>
@@ -3774,17 +3963,49 @@ fn resolve_surface_target_scoped(
             };
         }
         if let Some(workspace_id) = find_workspace_for_surface(state, surface_id) {
+            // AnyWorkspace scope (management ops). Even here, the bare-id
+            // scan must not be allowed to reach into a foreign claim.
+            if !entitlement.allows_workspace(workspace_id) {
+                return Err(CommandError::permission_denied(
+                    "surface not entitled to this connection",
+                ));
+            }
             return Ok((workspace_id, surface_id));
         }
         return Err(CommandError::not_found("surface not found"));
     }
 
     if let Some(workspace_id) = workspace_hint {
+        if entitlement.claim_or_allow_explicit(workspace_id).is_err() {
+            return Err(CommandError::permission_denied(
+                "workspace not entitled to this connection",
+            ));
+        }
         let surface_id = current_surface_id_for_workspace(state, workspace_id)
             .ok_or_else(|| CommandError::not_found("workspace/surface not found"))?;
         return Ok((workspace_id, surface_id));
     }
 
+    // No surface_hint, no workspace_hint — the focused-surface fallback.
+    // Under a claimed connection this only resolves to the claimed
+    // workspace's focused surface; under an unclaimed connection in
+    // Off/UnclaimedAllEntitled mode the prior behavior stands.
+    if let Some(claimed) = entitlement.claimed_workspace() {
+        let focused = focused_handles(state);
+        return match focused {
+            Some((workspace_id, _, _, surface_id)) if workspace_id == claimed => {
+                Ok((workspace_id, surface_id))
+            }
+            _ => Err(CommandError::permission_denied(
+                "focused workspace is not the connection's claimed workspace",
+            )),
+        };
+    }
+    if entitlement.requires_claim() {
+        return Err(CommandError::permission_denied(
+            "connection must present a workspace_id under require-claim",
+        ));
+    }
     let (workspace_id, _, _, surface_id) =
         focused_handles(state).ok_or_else(|| CommandError::not_found("surface not found"))?;
     Ok((workspace_id, surface_id))
@@ -5441,6 +5662,21 @@ fn handle_command(
     method: &str,
     params: &Value,
 ) -> Result<Value, CommandError> {
+    handle_command_with_entitlement(state, method, params, &ConnectionEntitlement::new(EntitlementConfig { mode: EntitlementMode::Off }))
+}
+
+/// Entitlement-aware entry point. Default-off: when `entitlement` is
+/// `EntitlementMode::Off` the path is functionally identical to
+/// `handle_command`. When enforcing, every call site that uses
+/// `resolve_surface_target_scoped` (or its caller `resolve_surface_target`)
+/// threads `entitlement` so the gate fires; the §1c management set
+/// additionally consults the claim vs. the focused workspace.
+fn handle_command_with_entitlement(
+    state: &mut ControlState,
+    method: &str,
+    params: &Value,
+    entitlement: &ConnectionEntitlement,
+) -> Result<Value, CommandError> {
     match method {
         "system.ping" => Ok(json!({ "pong": true })),
         "system.identify" => {
@@ -5782,6 +6018,7 @@ fn handle_command(
         "pane.list" => {
             let params = params_object(params)?;
             let workspace_id = optional_u64_param_any(params, &["workspace_id"])?;
+            gate_workspace_id_param(workspace_id, entitlement)?;
             with_workspace_scope(state, workspace_id, |scoped| {
                 let panes = scoped
                     .list_panes()
@@ -5799,6 +6036,7 @@ fn handle_command(
             let params = params_object(params)?;
             let workspace_id = optional_u64_param_any(params, &["workspace_id"])?;
             let pane_id = optional_u64_param_any(params, &["pane_id", "id"])?;
+            gate_workspace_id_param(workspace_id, entitlement)?;
             with_workspace_scope(state, workspace_id, |scoped| {
                 let surfaces = scoped
                     .list_surfaces_for_pane(pane_id)
@@ -5843,6 +6081,7 @@ fn handle_command(
                     ));
                 }
             };
+            gate_workspace_id_param(workspace_id, entitlement)?;
             with_workspace_scope(state, workspace_id, |scoped| {
                 let pane = scoped
                     .set_pane_flag_color(pane_id, flag_color.clone())
@@ -5873,6 +6112,7 @@ fn handle_command(
                 contract.command.clone(),
             );
 
+            gate_workspace_id_param(contract.workspace_id, entitlement)?;
             with_workspace_scope(state, contract.workspace_id, |scoped| {
                 let pane = scoped
                     .create_pane(title)
@@ -6003,6 +6243,7 @@ fn handle_command(
         "surface.list" => {
             let params = params_object(params)?;
             let workspace_id = optional_u64_param_any(params, &["workspace_id"])?;
+            gate_workspace_id_param(workspace_id, entitlement)?;
             with_workspace_scope(state, workspace_id, |scoped| {
                 let surfaces = scoped
                     .list_surfaces()
@@ -6020,6 +6261,7 @@ fn handle_command(
         "surface.current" => {
             let params = params_object(params)?;
             let workspace_id = optional_u64_param_any(params, &["workspace_id"])?;
+            gate_workspace_id_param(workspace_id, entitlement)?;
             with_workspace_scope(state, workspace_id, |scoped| {
                 let surface = scoped
                     .current_surface()
@@ -6040,6 +6282,7 @@ fn handle_command(
             let panel_type =
                 optional_string_param(params, "type")?.unwrap_or_else(|| "terminal".to_string());
             let url = optional_string_param(params, "url")?;
+            gate_workspace_id_param(workspace_id, entitlement)?;
             with_workspace_scope(state, workspace_id, |scoped| {
                 let surface = scoped
                     .create_surface(title)
@@ -6059,11 +6302,14 @@ fn handle_command(
         }
         "surface.split" => {
             let params = params_object(params)?;
+
+            check_focused_workspace_against_claim(state, entitlement)?;
             let workspace_id = optional_u64_param_any(params, &["workspace_id"])?;
             let source_surface_id = optional_u64_param_any(params, &["surface_id", "id"])?;
             let direction =
                 optional_string_param(params, "direction")?.unwrap_or_else(|| "right".to_string());
             let title = optional_string_param(params, "title")?;
+            gate_workspace_id_param(workspace_id, entitlement)?;
             with_workspace_scope(state, workspace_id, |scoped| {
                 let source_pane_id = source_surface_id
                     .and_then(|surface_id| {
@@ -6086,6 +6332,8 @@ fn handle_command(
         }
         "surface.focus" => {
             let params = params_object(params)?;
+
+            check_focused_workspace_against_claim(state, entitlement)?;
             let surface_id = optional_u64_param_any(params, &["surface_id", "id"])?
                 .ok_or_else(|| CommandError::invalid_params("surface_id is required"))?;
             let surface = state
@@ -6101,6 +6349,8 @@ fn handle_command(
         }
         "surface.close" => {
             let params = params_object(params)?;
+
+            check_focused_workspace_against_claim(state, entitlement)?;
             let surface_id = optional_u64_param_any(params, &["surface_id", "id"])?;
             let surface = state
                 .close_surface(surface_id)
@@ -6115,6 +6365,8 @@ fn handle_command(
         }
         "surface.move" => {
             let params = params_object(params)?;
+
+            check_focused_workspace_against_claim(state, entitlement)?;
             let surface_id = optional_u64_param_any(params, &["surface_id", "id"])?
                 .ok_or_else(|| CommandError::invalid_params("surface_id is required"))?;
             let target_pane_id = optional_u64_param_any(params, &["target_pane_id", "pane_id"])?
@@ -6135,6 +6387,8 @@ fn handle_command(
         }
         "surface.reorder" => {
             let params = params_object(params)?;
+
+            check_focused_workspace_against_claim(state, entitlement)?;
             let surface_id = optional_u64_param_any(params, &["surface_id", "id"])?
                 .ok_or_else(|| CommandError::invalid_params("surface_id is required"))?;
             let index = optional_index_param(params, "index")?;
@@ -6178,6 +6432,8 @@ fn handle_command(
         }
         "surface.drag_to_split" => {
             let params = params_object(params)?;
+
+            check_focused_workspace_against_claim(state, entitlement)?;
             let surface_id = optional_u64_param_any(params, &["surface_id", "id"])?
                 .ok_or_else(|| CommandError::invalid_params("surface_id is required"))?;
             let title = optional_string_param(params, "title")?;
@@ -6194,6 +6450,8 @@ fn handle_command(
         }
         "surface.refresh" => {
             let params = params_object(params)?;
+
+            check_focused_workspace_against_claim(state, entitlement)?;
             let surface_id = optional_u64_param_any(params, &["surface_id", "id"])?;
             let surface = state
                 .update_surface(surface_id, |surface| {
@@ -6210,6 +6468,7 @@ fn handle_command(
             let params = params_object(params)?;
             let workspace_id = optional_u64_param_any(params, &["workspace_id"])?;
             let surface_id = optional_u64_param_any(params, &["surface_id", "id"])?;
+            gate_workspace_id_param(workspace_id, entitlement)?;
             with_workspace_scope(state, workspace_id, |scoped| {
                 let focused_surface = focused_handles(scoped).map(|(_, _, _, id)| id);
                 let surfaces = if let Some(id) = surface_id {
@@ -6263,6 +6522,7 @@ fn handle_command(
                 workspace_id,
                 surface_hint,
                 SurfaceLookupScope::WorkspaceScoped,
+                entitlement,
             )?;
             let surface = update_surface_metadata(state, workspace_id, surface_id, |_| {})
                 .ok_or_else(|| CommandError::not_found("surface not found"))?;
@@ -6287,6 +6547,7 @@ fn handle_command(
                 workspace_id,
                 surface_hint,
                 SurfaceLookupScope::WorkspaceScoped,
+                entitlement,
             )?;
             let surface = apply_surface_text_input(state, workspace_id, surface_id, &text)?;
             Ok(json!({
@@ -6309,6 +6570,7 @@ fn handle_command(
                 workspace_id,
                 surface_hint,
                 SurfaceLookupScope::WorkspaceScoped,
+                entitlement,
             )?;
             let surface = apply_surface_key_input(state, workspace_id, surface_id, &key)?;
             Ok(json!({
@@ -6330,6 +6592,7 @@ fn handle_command(
                 workspace_id,
                 surface_hint,
                 SurfaceLookupScope::WorkspaceScoped,
+                entitlement,
             )?;
             let surface = update_surface_metadata(state, workspace_id, surface_id, |surface| {
                 surface.flash_count = surface.flash_count.saturating_add(1)
@@ -6355,6 +6618,7 @@ fn handle_command(
                 workspace_id,
                 surface_hint,
                 SurfaceLookupScope::WorkspaceScoped,
+                entitlement,
             )?;
             let surface = update_surface_metadata(state, workspace_id, surface_id, |surface| {
                 surface.text.clear();
@@ -6377,7 +6641,7 @@ fn handle_command(
             let surface_hint = optional_u64_param_any(params, &["surface_id", "id"])?;
             let title = optional_string_param(params, "title")?;
             let (workspace_id, surface_id) =
-                resolve_surface_target(state, workspace_hint, surface_hint)?;
+                resolve_surface_target(state, workspace_hint, surface_hint, entitlement)?;
 
             let updated = update_surface_metadata(state, workspace_id, surface_id, |surface| {
                 apply_named_surface_action(surface, &action_key, title.as_deref())
@@ -6452,6 +6716,7 @@ fn handle_command(
             let params = params_object(params)?;
             let workspace_id = optional_u64_param_any(params, &["workspace_id"])?;
             let source_surface_id = optional_u64_param_any(params, &["surface_id", "id"])?;
+            gate_workspace_id_param(workspace_id, entitlement)?;
             with_workspace_scope(state, workspace_id, |scoped| {
                 let focused_surface_id =
                     focused_handles(scoped).map(|(_, _, _, surface_id)| surface_id);
@@ -6807,7 +7072,7 @@ fn handle_command(
             let tab_hint = optional_u64_param_any(params, &["tab_id", "surface_id", "id"])?;
             let title = optional_string_param(params, "title")?;
             let (workspace_id, surface_id) =
-                resolve_surface_target(state, workspace_hint, tab_hint)?;
+                resolve_surface_target(state, workspace_hint, tab_hint, entitlement)?;
 
             let updated = update_surface_metadata(state, workspace_id, surface_id, |surface| {
                 apply_named_surface_action(surface, &action_key, title.as_deref())
@@ -7084,7 +7349,7 @@ mod tests {
             ("current surface", dangling_surface, "current_surface_id"),
         ] {
             let mut state = ControlState::default();
-            let err = match state.import_snapshot(snapshot) {
+        let err = match state.import_snapshot(snapshot) {
                 Ok(_) => panic!("{label} should be rejected"),
                 Err(err) => err,
             };
@@ -7104,8 +7369,7 @@ mod tests {
         assert_eq!(ping.result.expect("ping result")["pong"], true);
 
         let identify = dispatcher
-            .dispatch(request("system.identify", json!({})))
-            .await;
+            .dispatch(request("system.identify", json!({}))).await;
         let identify_result = identify.result.expect("identify result");
         assert_eq!(identify_result["name"], "limux-control");
         assert_eq!(identify_result["pid"], std::process::id());
@@ -7118,8 +7382,7 @@ mod tests {
             .contains(&std::process::id().to_string()));
 
         let capabilities = dispatcher
-            .dispatch(request("system.capabilities", json!({})))
-            .await;
+            .dispatch(request("system.capabilities", json!({}))).await;
         let capabilities_result = capabilities.result.expect("capabilities result");
         for key in ["commands", "methods"] {
             assert!(capabilities_result[key]
@@ -7255,16 +7518,14 @@ mod tests {
         let dispatcher = Dispatcher::new();
 
         let created_workspace = dispatcher
-            .dispatch(request("workspace.create", json!({ "name": "dev" })))
-            .await;
+            .dispatch(request("workspace.create", json!({ "name": "dev" }))).await;
         assert_eq!(
             created_workspace.result.expect("workspace result")["workspace"]["name"],
             "dev"
         );
 
         let previous = dispatcher
-            .dispatch(request("workspace.previous", json!({})))
-            .await;
+            .dispatch(request("workspace.previous", json!({}))).await;
         assert_eq!(
             previous.result.expect("workspace previous")["workspace"]["name"],
             "main"
@@ -7282,8 +7543,7 @@ mod tests {
         );
 
         let window = dispatcher
-            .dispatch(request("window.create", json!({ "title": "shell" })))
-            .await;
+            .dispatch(request("window.create", json!({ "title": "shell" }))).await;
         assert_eq!(
             window.result.expect("window create")["window"]["title"],
             "shell"
@@ -7304,8 +7564,7 @@ mod tests {
         let dispatcher = Dispatcher::new();
 
         let new_surface = dispatcher
-            .dispatch(request("surface.create", json!({ "title": "agent" })))
-            .await;
+            .dispatch(request("surface.create", json!({ "title": "agent" }))).await;
         let surface_id = new_surface.result.expect("surface create")["surface"]["id"]
             .as_u64()
             .expect("surface id");
@@ -7330,8 +7589,7 @@ mod tests {
         assert_eq!(read.result.expect("read text")["text"], "hello");
 
         let split = dispatcher
-            .dispatch(request("surface.split", json!({ "title": "split" })))
-            .await;
+            .dispatch(request("surface.split", json!({ "title": "split" }))).await;
         let split_pane_id = split.result.expect("split")["surface"]["pane_id"]
             .as_u64()
             .expect("pane id");
@@ -7379,8 +7637,7 @@ mod tests {
         let dispatcher = Dispatcher::new();
 
         let workspace_a = dispatcher
-            .dispatch(request("workspace.create", json!({ "name": "victim" })))
-            .await;
+            .dispatch(request("workspace.create", json!({ "name": "victim" }))).await;
         let workspace_a_id = workspace_a.result.expect("workspace a")["workspace"]["id"]
             .as_u64()
             .expect("workspace a id");
@@ -7402,8 +7659,7 @@ mod tests {
 
         // Focus moves to a second workspace — the attacker's lane.
         dispatcher
-            .dispatch(request("workspace.create", json!({ "name": "attacker" })))
-            .await;
+            .dispatch(request("workspace.create", json!({ "name": "attacker" }))).await;
 
         for method in [
             "surface.trigger_flash",
@@ -7445,8 +7701,7 @@ mod tests {
     async fn dispatcher_applies_surface_read_text_line_limit() {
         let dispatcher = Dispatcher::new();
         let new_surface = dispatcher
-            .dispatch(request("surface.create", json!({ "title": "reader" })))
-            .await;
+            .dispatch(request("surface.create", json!({ "title": "reader" }))).await;
         let surface_id = new_surface.result.expect("surface create")["surface"]["id"]
             .as_u64()
             .expect("surface id");
@@ -7486,8 +7741,7 @@ mod tests {
 
         // Lane A: a surface holding a secret, in its own workspace.
         let workspace_a = dispatcher
-            .dispatch(request("workspace.create", json!({ "name": "lane-a" })))
-            .await;
+            .dispatch(request("workspace.create", json!({ "name": "lane-a" }))).await;
         let workspace_a_id = workspace_a.result.expect("workspace a")["workspace"]["id"]
             .as_u64()
             .expect("workspace a id");
@@ -7509,8 +7763,7 @@ mod tests {
 
         // Lane B becomes the focused workspace — B is now "us".
         let workspace_b = dispatcher
-            .dispatch(request("workspace.create", json!({ "name": "lane-b" })))
-            .await;
+            .dispatch(request("workspace.create", json!({ "name": "lane-b" }))).await;
         let workspace_b_id = workspace_b.result.expect("workspace b")["workspace"]["id"]
             .as_u64()
             .expect("workspace b id");
@@ -7591,8 +7844,7 @@ mod tests {
         );
 
         let surfaces = dispatcher
-            .dispatch(request("pane.surfaces", json!({})))
-            .await;
+            .dispatch(request("pane.surfaces", json!({}))).await;
         assert_eq!(
             surfaces.result.expect("surface list")["surfaces"][0]["pane_flag_color"],
             "purple"
@@ -7604,7 +7856,7 @@ mod tests {
                 json!({ "action": "set_flag_color", "color": "chartreuse" }),
             ))
             .await;
-        assert_eq!(invalid.error.expect("invalid color").code, -32602);
+        assert_eq!(invalid.error.as_ref().expect("invalid color").code, -32602);
 
         let clear = dispatcher
             .dispatch(request(
@@ -7632,8 +7884,7 @@ mod tests {
 
         let command = format!("touch {}\n", marker.to_string_lossy());
         let sent = dispatcher
-            .dispatch(request("surface.send_text", json!({ "text": command })))
-            .await;
+            .dispatch(request("surface.send_text", json!({ "text": command }))).await;
         assert!(sent.result.is_some(), "send_text should succeed");
         assert!(marker.exists(), "touch command should create marker file");
         let _ = std::fs::remove_file(marker);
@@ -7650,7 +7901,7 @@ mod tests {
             ))
             .await;
 
-        let error = sent.error.expect("escape should be rejected");
+        let error = sent.error.as_ref().expect("escape should be rejected");
         assert_eq!(error.code, -32602);
         assert!(error.message.contains("surface.send_text text"));
         assert!(error.message.contains("U+001B"));
@@ -7662,8 +7913,7 @@ mod tests {
         let text = "<agent-msg>\n\t<request>ok</request>\r\n</agent-msg>\n";
 
         let sent = dispatcher
-            .dispatch(request("surface.send_text", json!({ "text": text })))
-            .await;
+            .dispatch(request("surface.send_text", json!({ "text": text }))).await;
 
         assert!(sent.error.is_none(), "multiline message should be accepted");
         assert!(sent.result.is_some(), "send_text should succeed");
@@ -7674,10 +7924,9 @@ mod tests {
         let dispatcher = Dispatcher::new();
 
         let created = dispatcher
-            .dispatch(request("pane.create", json!({ "command": "codex\u{7}" })))
-            .await;
+            .dispatch(request("pane.create", json!({ "command": "codex\u{7}" }))).await;
 
-        let error = created.error.expect("BEL should be rejected");
+        let error = created.error.as_ref().expect("BEL should be rejected");
         assert_eq!(error.code, -32602);
         assert!(error.message.contains("pane.create command"));
     }
@@ -7693,7 +7942,7 @@ mod tests {
             ))
             .await;
 
-        let error = created.error.expect("C1 control should be rejected");
+        let error = created.error.as_ref().expect("C1 control should be rejected");
         assert_eq!(error.code, -32602);
         assert!(error.message.contains("workspace.create command"));
         assert!(error.message.contains("U+009B"));
@@ -7730,8 +7979,7 @@ mod tests {
         );
 
         let _ = dispatcher
-            .dispatch(request("surface.send_key", json!({ "key": "ctrl-c" })))
-            .await;
+            .dispatch(request("surface.send_key", json!({ "key": "ctrl-c" }))).await;
         let _ = dispatcher
             .dispatch(request(
                 "surface.send_text",
@@ -7742,8 +7990,7 @@ mod tests {
         let _ = std::fs::remove_file(&marker);
 
         let _ = dispatcher
-            .dispatch(request("surface.send_text", json!({ "text": "cat\n" })))
-            .await;
+            .dispatch(request("surface.send_text", json!({ "text": "cat\n" }))).await;
         let _ = dispatcher
             .dispatch(request(
                 "surface.send_text",
@@ -7756,8 +8003,7 @@ mod tests {
         );
 
         let _ = dispatcher
-            .dispatch(request("surface.send_key", json!({ "key": "ctrl-d" })))
-            .await;
+            .dispatch(request("surface.send_key", json!({ "key": "ctrl-d" }))).await;
         let _ = dispatcher
             .dispatch(request(
                 "surface.send_text",
@@ -7786,8 +8032,7 @@ mod tests {
             env_path.to_string_lossy()
         );
         let _ = dispatcher
-            .dispatch(request("surface.send_text", json!({ "text": command })))
-            .await;
+            .dispatch(request("surface.send_text", json!({ "text": command }))).await;
 
         assert!(env_path.exists(), "env dump file should be created");
         let payload = std::fs::read_to_string(&env_path).expect("read env dump");
@@ -7833,8 +8078,7 @@ mod tests {
         let dispatcher = Dispatcher::new();
 
         let created_workspace = dispatcher
-            .dispatch(request("workspace.create", json!({ "name": "target" })))
-            .await;
+            .dispatch(request("workspace.create", json!({ "name": "target" }))).await;
         let workspace_id = created_workspace.result.expect("workspace create")["workspace"]["id"]
             .as_u64()
             .expect("workspace id");
@@ -7851,8 +8095,7 @@ mod tests {
 
         // Switch away so tab_id-only lookups must resolve across workspaces.
         let _ = dispatcher
-            .dispatch(request("workspace.previous", json!({})))
-            .await;
+            .dispatch(request("workspace.previous", json!({}))).await;
 
         let marked_unread = dispatcher
             .dispatch(request(
@@ -7903,8 +8146,7 @@ mod tests {
         );
 
         let listed = dispatcher
-            .dispatch(request("notification.list", json!({})))
-            .await;
+            .dispatch(request("notification.list", json!({}))).await;
         assert_eq!(
             listed.result.expect("notification list")["notifications"]
                 .as_array()
@@ -7914,8 +8156,7 @@ mod tests {
         );
 
         let cleared = dispatcher
-            .dispatch(request("notification.clear", json!({})))
-            .await;
+            .dispatch(request("notification.clear", json!({}))).await;
         assert_eq!(
             cleared.result.expect("notification clear")["notifications"]
                 .as_array()
@@ -7936,8 +8177,7 @@ mod tests {
         );
 
         let active = dispatcher
-            .dispatch(request("app.simulate_active", json!({ "active": true })))
-            .await;
+            .dispatch(request("app.simulate_active", json!({ "active": true }))).await;
         assert_eq!(
             active.result.expect("simulate active")["simulate_active"],
             true
@@ -8017,8 +8257,7 @@ mod tests {
         );
 
         let url_get = dispatcher
-            .dispatch(request("browser.url.get", json!({})))
-            .await;
+            .dispatch(request("browser.url.get", json!({}))).await;
         assert_eq!(
             url_get.result.expect("browser url")["url"],
             "https://cmux.dev"
@@ -8033,8 +8272,7 @@ mod tests {
         assert_eq!(eval.result.expect("browser eval")["value"], "cmux.dev");
 
         let focused = dispatcher
-            .dispatch(request("browser.focus_webview", json!({})))
-            .await;
+            .dispatch(request("browser.focus_webview", json!({}))).await;
         assert_eq!(
             focused.result.expect("browser focus")["is_webview_focused"],
             true
@@ -8105,8 +8343,7 @@ mod tests {
         let dispatcher = Dispatcher::new();
 
         let created_workspace = dispatcher
-            .dispatch(request("workspace.create", json!({})))
-            .await;
+            .dispatch(request("workspace.create", json!({}))).await;
         let workspace_id =
             created_workspace.result.expect("workspace create")["workspace_id"].clone();
         let _ = dispatcher
@@ -8333,15 +8570,13 @@ mod tests {
         let dispatcher = Dispatcher::new();
 
         let bad_direction = dispatcher
-            .dispatch(request("pane.create", json!({ "direction": "diagonal" })))
-            .await;
-        let error = bad_direction.error.expect("direction error");
+            .dispatch(request("pane.create", json!({ "direction": "diagonal" }))).await;
+        let error = bad_direction.error.as_ref().expect("direction error");
         assert_eq!(error.code, -32602);
 
         let bad_type = dispatcher
-            .dispatch(request("pane.create", json!({ "type": "webview" })))
-            .await;
-        let error = bad_type.error.expect("type error");
+            .dispatch(request("pane.create", json!({ "type": "webview" }))).await;
+        let error = bad_type.error.as_ref().expect("type error");
         assert_eq!(error.code, -32602);
     }
 
@@ -8350,8 +8585,7 @@ mod tests {
         let dispatcher = Dispatcher::new();
 
         let current = dispatcher
-            .dispatch(request("system.identify", json!({})))
-            .await
+            .dispatch(request("system.identify", json!({}))).await
             .result
             .expect("identify result");
         let workspace_ref = current["workspace_ref"].clone();
@@ -8389,8 +8623,7 @@ mod tests {
         let dispatcher = Dispatcher::new();
 
         let created = dispatcher
-            .dispatch(request("pane.create", json!({ "direction": "right" })))
-            .await;
+            .dispatch(request("pane.create", json!({ "direction": "right" }))).await;
         assert!(created.result.is_some());
 
         let panes_before = dispatcher.dispatch(request("pane.list", json!({}))).await;
@@ -8403,8 +8636,7 @@ mod tests {
         let second_pane_id = panes_before[1]["id"].clone();
 
         let _ = dispatcher
-            .dispatch(request("pane.focus", json!({ "pane_id": first_pane_id })))
-            .await;
+            .dispatch(request("pane.focus", json!({ "pane_id": first_pane_id }))).await;
 
         let simulated = dispatcher
             .dispatch(request(
@@ -8431,8 +8663,7 @@ mod tests {
         let dispatcher = Dispatcher::new();
 
         let workspaces = dispatcher
-            .dispatch(request("workspace.list", json!({})))
-            .await;
+            .dispatch(request("workspace.list", json!({}))).await;
         assert_eq!(
             workspaces.result.expect("workspace list")["workspaces"][0]["index"],
             0
@@ -8442,8 +8673,7 @@ mod tests {
         assert_eq!(panes.result.expect("pane list")["panes"][0]["index"], 0);
 
         let surfaces = dispatcher
-            .dispatch(request("surface.list", json!({})))
-            .await;
+            .dispatch(request("surface.list", json!({}))).await;
         assert_eq!(
             surfaces.result.expect("surface list")["surfaces"][0]["index"],
             0
@@ -8539,5 +8769,545 @@ mod tests {
                 );
             }
         }
+    }
+
+
+    // ----------------------------------------------------------------
+    // B.md §3 — option (b) entitlement regression tests.
+    //
+    // Each test pins one of the gates the §2.3 / §1c change set
+    // introduces. None of them weakens the #107 WorkspaceScoped
+    // confinement tests; all run under `Limux-core::dispatch_with_entitlement`
+    // and pass a constructed `ConnectionEntitlement` per connection so
+    // the tests are not coupled to the global `LIMUX_ENTITLEMENT` env.
+    // ----------------------------------------------------------------
+
+    /// B.md §3 #1 — `resolve_surface_target_scoped_rejects_explicit_foreign_workspace_id_under_claim`.
+    /// A `Claimed(W)` connection calling `surface.read_text` with
+    /// `{workspace_id: W', surface_id: S∈W'}` returns `PermissionDenied`.
+    /// Regression-of-record for the H1 residual.
+    #[tokio::test]
+    async fn entitlement_rejects_explicit_foreign_workspace_id_under_claim() {
+        let dispatcher = Dispatcher::new();
+        // Lane A (the agent's own lane).
+        let lane_a = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-a" }))).await;
+        let lane_a_id = lane_a.result.expect("lane a")["workspace"]["id"]
+            .as_u64()
+            .expect("lane a id");
+        // Lane B (the foreign lane).
+        let lane_b = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-b" }))).await;
+        let lane_b_id = lane_b.result.expect("lane b")["workspace"]["id"]
+            .as_u64()
+            .expect("lane b id");
+        // Plant a secret in lane B.
+        let lane_b_surface = dispatcher
+            .dispatch(request(
+                "surface.current",
+                json!({ "workspace_id": lane_b_id }),
+            ))
+            .await;
+        let lane_b_surface_id = lane_b_surface.result.expect("lane b surface")["surface"]["id"]
+            .as_u64()
+            .expect("lane b surface id");
+        dispatcher
+            .dispatch(request(
+                "surface.send_text",
+                json!({ "surface_id": lane_b_surface_id, "text": "LANE-B-SECRET" }),
+            ))
+            .await;
+
+        // Build a per-connection entitlement that is unclaimed-then-claimed to A.
+        let ent = ConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::UnclaimedAllEntitled,
+        });
+        ent.record_claim(lane_a_id).expect("first claim binds");
+
+        // The agent now tries to read lane B explicitly.
+        let cross = dispatcher.dispatch_with_entitlement(
+            request(
+                "surface.read_text",
+                json!({
+                    "workspace_id": lane_b_id,
+                    "surface_id": lane_b_surface_id,
+                }),
+            ),
+            &ent,
+        );
+        let err = cross.error.as_ref().expect("cross-lane read should be an error");
+        assert_eq!(err.code, -32011, "PermissionDenied; got code {}", err.code);
+        assert!(
+            err.message.contains("permission_denied"),
+            "message should name permission_denied, got: {}",
+            err.message
+        );
+        // Make sure the secret never appears in the response.
+        let blob = serde_json::to_string(&cross).unwrap_or_default();
+        assert!(
+            !blob.contains("LANE-B-SECRET"),
+            "cross-lane read leaked lane B's text: {blob}"
+        );
+    }
+
+    /// B.md §3 #4 (dispatcher-level) — `claim_is_sticky`. A connection
+    /// that has sent `workspace_id = W` and later sends `workspace_id = W'`
+    /// is rejected. The unit test for `record_claim` lives in
+    /// `entitlement.rs`; this one exercises the full dispatch path.
+    #[tokio::test]
+    async fn entitlement_claim_is_sticky_through_dispatch() {
+        let dispatcher = Dispatcher::new();
+        let lane_a = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-a" }))).await;
+        let lane_a_id = lane_a.result.expect("a")["workspace"]["id"].as_u64().unwrap();
+        let lane_b = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-b" }))).await;
+        let lane_b_id = lane_b.result.expect("b")["workspace"]["id"].as_u64().unwrap();
+        // Plant a surface in each lane so the gated read has a target.
+        let lane_a_surface = dispatcher
+            .dispatch(request("surface.current", json!({ "workspace_id": lane_a_id })))
+            .await;
+        let lane_a_surface_id = lane_a_surface.result.expect("a s")["surface"]["id"]
+            .as_u64().unwrap();
+        let lane_b_surface = dispatcher
+            .dispatch(request("surface.current", json!({ "workspace_id": lane_b_id })))
+            .await;
+        let lane_b_surface_id = lane_b_surface.result.expect("b s")["surface"]["id"]
+            .as_u64().unwrap();
+
+        let ent = ConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::UnclaimedAllEntitled,
+        });
+        // First request names lane A — binds the claim.
+        let first = dispatcher.dispatch_with_entitlement(
+            request("surface.read_text", json!({
+                "workspace_id": lane_a_id,
+                "surface_id": lane_a_surface_id,
+            })),
+            &ent,
+        );
+        assert!(first.error.is_none(), "first claim should succeed: {:?}", first.error);
+        assert_eq!(ent.claimed_workspace(), Some(lane_a_id));
+
+        // Second request names lane B — must be refused.
+        let second = dispatcher.dispatch_with_entitlement(
+            request("surface.read_text", json!({
+                "workspace_id": lane_b_id,
+                "surface_id": lane_b_surface_id,
+            })),
+            &ent,
+        );
+        let err = second.error.as_ref().expect("second claim must be refused");
+        assert_eq!(err.code, -32011, "PermissionDenied; got code {}", err.code);
+        // The claim cell is unchanged after the refused second claim.
+        assert_eq!(ent.claimed_workspace(), Some(lane_a_id));
+    }
+
+    /// B.md §3 #5 — `bare_surface_id_under_claim_confined_to_claimed_workspace`.
+    /// A `Claimed(W)` connection that supplies only a bare `surface_id`
+    /// whose owning workspace is `W' != W` (the focused workspace is `W'`)
+    /// must not be allowed to read it.
+    #[tokio::test]
+    async fn entitlement_bare_surface_id_under_claim_refuses_foreign_focus() {
+        let dispatcher = Dispatcher::new();
+        // Lane A (the connection's lane).
+        let lane_a = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-a" }))).await;
+        let lane_a_id = lane_a.result.expect("a")["workspace"]["id"].as_u64().unwrap();
+        // Lane B (foreign).
+        let lane_b = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-b" }))).await;
+        let lane_b_id = lane_b.result.expect("b")["workspace"]["id"].as_u64().unwrap();
+        let lane_b_surface = dispatcher
+            .dispatch(request(
+                "surface.current",
+                json!({ "workspace_id": lane_b_id }),
+            ))
+            .await;
+        let lane_b_surface_id = lane_b_surface.result.expect("b s")["surface"]["id"]
+            .as_u64().unwrap();
+        dispatcher
+            .dispatch(request(
+                "surface.send_text",
+                json!({ "surface_id": lane_b_surface_id, "text": "FOREIGN-SECRET" }),
+            ))
+            .await;
+        // Move focus to lane B (the foreign lane).
+        dispatcher
+            .dispatch(request(
+                "workspace.select",
+                json!({ "workspace_id": lane_b_id }),
+            ))
+            .await;
+
+        // Build a connection claimed to lane A.
+        let ent = ConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::UnclaimedAllEntitled,
+        });
+        ent.record_claim(lane_a_id).expect("claim binds");
+
+        // Now read with ONLY the surface_id (no workspace_id). The focused
+        // workspace is lane B; the connection's claim is lane A. Must be
+        // refused with PermissionDenied.
+        let cross = dispatcher.dispatch_with_entitlement(
+            request(
+                "surface.read_text",
+                json!({ "surface_id": lane_b_surface_id }),
+            ),
+            &ent,
+        );
+        let err = cross.error.as_ref().expect("bare foreign id read must be refused");
+        assert_eq!(err.code, -32011, "PermissionDenied; got code {}", err.code);
+        let blob = serde_json::to_string(&cross).unwrap_or_default();
+        assert!(
+            !blob.contains("FOREIGN-SECRET"),
+            "bare-id foreign read leaked lane B's text: {blob}"
+        );
+
+        // Sanity: switch focus to lane A (the claimed workspace) and
+        // verify the bare-id read of the OWN surface still works. The
+        // focused-workspace fallback is the only path that resolves a
+        // bare id under a claim, and it requires focused == claimed.
+        dispatcher
+            .dispatch(request(
+                "workspace.select",
+                json!({ "workspace_id": lane_a_id }),
+            ))
+            .await;
+        let lane_a_surface = dispatcher
+            .dispatch(request(
+                "surface.current",
+                json!({ "workspace_id": lane_a_id }),
+            ))
+            .await;
+        let lane_a_surface_id = lane_a_surface.result.expect("a s")["surface"]["id"]
+            .as_u64().unwrap();
+        dispatcher
+            .dispatch(request(
+                "surface.send_text",
+                json!({ "surface_id": lane_a_surface_id, "text": "OWN-LANE-TEXT" }),
+            ))
+            .await;
+        let own = dispatcher.dispatch_with_entitlement(
+            request("surface.read_text", json!({ "surface_id": lane_a_surface_id })),
+            &ent,
+        );
+        assert!(
+            own.error.is_none(),
+            "own-lane read should still succeed under claim; got: {:?}",
+            own.error
+        );
+    }
+
+    /// B.md §3 #6 — `surface_focus_under_claim_does_not_exfiltrate_focused_foreign_surface`.
+    /// §1c chain: `Claimed(W)` + `workspace.select(W')` +
+    /// `surface.focus(<id in W'>)` returns PermissionDenied.
+    #[tokio::test]
+    async fn entitlement_surface_focus_refuses_foreign_focused_workspace() {
+        let dispatcher = Dispatcher::new();
+        let lane_a = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-a" }))).await;
+        let lane_a_id = lane_a.result.expect("a")["workspace"]["id"].as_u64().unwrap();
+        let lane_b = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-b" }))).await;
+        let lane_b_id = lane_b.result.expect("b")["workspace"]["id"].as_u64().unwrap();
+        let lane_b_surface = dispatcher
+            .dispatch(request(
+                "surface.current",
+                json!({ "workspace_id": lane_b_id }),
+            ))
+            .await;
+        let lane_b_surface_id = lane_b_surface.result.expect("b s")["surface"]["id"]
+            .as_u64().unwrap();
+        dispatcher
+            .dispatch(request(
+                "surface.send_text",
+                json!({ "surface_id": lane_b_surface_id, "text": "FOCUSED-SECRET" }),
+            ))
+            .await;
+        // Focus lane B.
+        dispatcher
+            .dispatch(request(
+                "workspace.select",
+                json!({ "workspace_id": lane_b_id }),
+            ))
+            .await;
+
+        let ent = ConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::UnclaimedAllEntitled,
+        });
+        ent.record_claim(lane_a_id).expect("claim binds");
+
+        // The §1c chain: surface.focus(bare_id_in_W') under Claimed(W) and
+        // focused W'. Must be PermissionDenied.
+        let resp = dispatcher.dispatch_with_entitlement(
+            request(
+                "surface.focus",
+                json!({ "surface_id": lane_b_surface_id }),
+            ),
+            &ent,
+        );
+        let err = resp.error.as_ref().expect("§1c focus of foreign surface must be refused");
+        assert_eq!(err.code, -32011, "PermissionDenied; got code {}", err.code);
+        let blob = serde_json::to_string(&resp).unwrap_or_default();
+        assert!(
+            !blob.contains("FOCUSED-SECRET"),
+            "§1c focus leaked the focused foreign surface's text: {blob}"
+        );
+    }
+
+    /// B.md §3 #7 — `trigger_flash_under_claim_returns_no_foreign_text`.
+    /// Direct guard against the §7 lesson: `SurfaceState::info` carries
+    /// `text`, so `trigger_flash` is a cleaner exfiltration primitive
+    /// than `read_text` because the foreign scrollback is returned
+    /// inside the `"surface"` field. The claimed-scope gate must fire
+    /// before the metadata update.
+    #[tokio::test]
+    async fn entitlement_trigger_flash_refuses_foreign_workspace() {
+        let dispatcher = Dispatcher::new();
+        let lane_a = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-a" }))).await;
+        let lane_a_id = lane_a.result.expect("a")["workspace"]["id"].as_u64().unwrap();
+        let lane_b = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-b" }))).await;
+        let lane_b_id = lane_b.result.expect("b")["workspace"]["id"].as_u64().unwrap();
+        let lane_b_surface = dispatcher
+            .dispatch(request(
+                "surface.current",
+                json!({ "workspace_id": lane_b_id }),
+            ))
+            .await;
+        let lane_b_surface_id = lane_b_surface.result.expect("b s")["surface"]["id"]
+            .as_u64().unwrap();
+        dispatcher
+            .dispatch(request(
+                "surface.send_text",
+                json!({ "surface_id": lane_b_surface_id, "text": "FLASH-SECRET" }),
+            ))
+            .await;
+
+        let ent = ConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::UnclaimedAllEntitled,
+        });
+        ent.record_claim(lane_a_id).expect("claim binds");
+
+        // Explicit foreign `workspace_id` + `surface_id` must be refused.
+        let resp = dispatcher.dispatch_with_entitlement(
+            request(
+                "surface.trigger_flash",
+                json!({
+                    "workspace_id": lane_b_id,
+                    "surface_id": lane_b_surface_id,
+                }),
+            ),
+            &ent,
+        );
+        let err = resp.error.as_ref().expect("trigger_flash on foreign workspace must be refused");
+        assert_eq!(err.code, -32011, "PermissionDenied; got code {}", err.code);
+        let blob = serde_json::to_string(&resp).unwrap_or_default();
+        assert!(
+            !blob.contains("FLASH-SECRET"),
+            "trigger_flash leaked the foreign surface's text: {blob}"
+        );
+    }
+
+    /// Natural first-claim under RequireClaim: an unclaimed connection
+    /// that presents an explicit `workspace_id` (no prior out-of-band
+    /// `record_claim`) must bind and succeed; a subsequent foreign
+    /// `workspace_id` must be refused. This is the chicken-and-egg fix
+    /// for allow-before-claim ordering.
+    #[tokio::test]
+    async fn entitlement_require_claim_natural_first_workspace_id_binds() {
+        let dispatcher = Dispatcher::new();
+        let lane_a = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-a" }))).await;
+        let lane_a_id = lane_a.result.expect("a")["workspace"]["id"].as_u64().unwrap();
+        let lane_b = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-b" }))).await;
+        let lane_b_id = lane_b.result.expect("b")["workspace"]["id"].as_u64().unwrap();
+        let lane_a_surface = dispatcher
+            .dispatch(request("surface.current", json!({ "workspace_id": lane_a_id })))
+            .await;
+        let lane_a_surface_id = lane_a_surface.result.expect("a s")["surface"]["id"]
+            .as_u64().unwrap();
+        let lane_b_surface = dispatcher
+            .dispatch(request("surface.current", json!({ "workspace_id": lane_b_id })))
+            .await;
+        let lane_b_surface_id = lane_b_surface.result.expect("b s")["surface"]["id"]
+            .as_u64().unwrap();
+        let ent = ConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::RequireClaim,
+        });
+        assert!(
+            ent.claimed_workspace().is_none(),
+            "fresh connection must start unclaimed"
+        );
+
+        // Natural first claim — no prior record_claim.
+        let first = dispatcher.dispatch_with_entitlement(
+            request("surface.read_text", json!({
+                "workspace_id": lane_a_id,
+                "surface_id": lane_a_surface_id,
+            })),
+            &ent,
+        );
+        assert!(
+            first.error.is_none(),
+            "natural first explicit workspace_id must succeed; got: {:?}",
+            first.error
+        );
+        assert!(first.result.is_some(), "natural first claim must return a result");
+        assert_eq!(ent.claimed_workspace(), Some(lane_a_id));
+
+        // Subsequent foreign workspace_id must fail; claim stays sticky.
+        let foreign = dispatcher.dispatch_with_entitlement(
+            request("surface.read_text", json!({
+                "workspace_id": lane_b_id,
+                "surface_id": lane_b_surface_id,
+            })),
+            &ent,
+        );
+        let err = foreign.error.as_ref().expect("foreign after claim must be denied");
+        assert_eq!(err.code, -32011, "PermissionDenied; got code {}", err.code);
+        assert_eq!(ent.claimed_workspace(), Some(lane_a_id));
+    }
+
+    /// B.md §3 #8 — `operator_signal_mode_flag`. The mode flag flips
+    /// `Unclaimed` between all-entitled (UnclaimedAllEntitled) and
+    /// reject-cross-workspace (RequireClaim), so the fail-open vs
+    /// fail-closed posture is pinned and not silently flipped by a
+    /// future edit.
+    #[tokio::test]
+    async fn entitlement_mode_flag_pins_fail_open_vs_fail_closed() {
+        let dispatcher = Dispatcher::new();
+        let lane_a = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-a" }))).await;
+        let lane_a_id = lane_a.result.expect("a")["workspace"]["id"].as_u64().unwrap();
+        let lane_b = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-b" }))).await;
+        let lane_b_id = lane_b.result.expect("b")["workspace"]["id"].as_u64().unwrap();
+        // Plant a surface in lane B for the gated reads.
+        let lane_b_surface = dispatcher
+            .dispatch(request("surface.current", json!({ "workspace_id": lane_b_id })))
+            .await;
+        let lane_b_surface_id = lane_b_surface.result.expect("b s")["surface"]["id"]
+            .as_u64().unwrap();
+        dispatcher
+            .dispatch(request(
+                "surface.send_text",
+                json!({ "surface_id": lane_b_surface_id, "text": "MODE-FLAG-TEXT" }),
+            ))
+            .await;
+
+        // Fail-OPEN: unclaimed connection may read any workspace.
+        let open_ent = ConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::UnclaimedAllEntitled,
+        });
+        let open_read = dispatcher.dispatch_with_entitlement(
+            request("surface.read_text", json!({
+                "workspace_id": lane_b_id,
+                "surface_id": lane_b_surface_id,
+            })),
+            &open_ent,
+        );
+        assert!(
+            open_read.error.is_none(),
+            "UnclaimedAllEntitled: unclaimed cross-workspace must succeed; got: {:?}",
+            open_read.error
+        );
+
+        // Fail-CLOSED: unclaimed connection is denied a read.
+        let closed_ent = ConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::RequireClaim,
+        });
+        let closed_read = dispatcher.dispatch_with_entitlement(
+            request("surface.read_text", json!({ "surface_id": lane_b_surface_id })),
+            &closed_ent,
+        );
+        let err = closed_read.error.as_ref().expect("RequireClaim: unclaimed must be denied");
+        assert_eq!(err.code, -32011, "PermissionDenied; got code {}", err.code);
+        assert!(
+            closed_ent.claimed_workspace().is_none(),
+            "bare-id deny must not auto-claim"
+        );
+
+        // Fail-CLOSED natural first claim: explicit workspace_id binds
+        // through dispatch (no out-of-band record_claim).
+        let closed_read2 = dispatcher.dispatch_with_entitlement(
+            request("surface.read_text", json!({
+                "workspace_id": lane_b_id,
+                "surface_id": lane_b_surface_id,
+            })),
+            &closed_ent,
+        );
+        assert!(
+            closed_read2.error.is_none(),
+            "RequireClaim natural first explicit workspace_id must succeed; got: {:?}",
+            closed_read2.error
+        );
+        assert_eq!(closed_ent.claimed_workspace(), Some(lane_b_id));
+
+        // Sanity: a Claimed(W) connection in RequireClaim mode cannot
+        // read W' even after the first claim.
+        closed_ent.record_claim(lane_a_id).expect_err(
+            "RequireClaim: claim switch from W to W' must be refused"
+        );
+    }
+
+    /// B.md §3 #9 (extension) — default-off flag preserves pre-patch
+    /// behavior. A `EntitlementMode::Off` connection does not consult
+    /// the claim and behaves exactly as before, including the bare-id
+    /// cross-workspace read that the gate is supposed to refuse.
+    /// This is the "safe landing posture" the brief requires.
+    #[tokio::test]
+    async fn entitlement_off_mode_preserves_pre_patch_behavior() {
+        let dispatcher = Dispatcher::new();
+        let lane_a = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-a" }))).await;
+        let lane_a_id = lane_a.result.expect("a")["workspace"]["id"].as_u64().unwrap();
+        let lane_b = dispatcher
+            .dispatch(request("workspace.create", json!({ "name": "lane-b" }))).await;
+        let lane_b_id = lane_b.result.expect("b")["workspace"]["id"].as_u64().unwrap();
+        let lane_b_surface = dispatcher
+            .dispatch(request(
+                "surface.current",
+                json!({ "workspace_id": lane_b_id }),
+            ))
+            .await;
+        let lane_b_surface_id = lane_b_surface.result.expect("b s")["surface"]["id"]
+            .as_u64().unwrap();
+        dispatcher
+            .dispatch(request(
+                "surface.send_text",
+                json!({ "surface_id": lane_b_surface_id, "text": "PRE-PATCH-OK" }),
+            ))
+            .await;
+
+        let ent = ConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::Off,
+        });
+        ent.record_claim(lane_a_id).expect("Off mode ignores claims");
+
+        // The cross-workspace read still succeeds under Off — the gate
+        // is dormant until the operator flips the flag.
+        let resp = dispatcher.dispatch_with_entitlement(
+            request(
+                "surface.read_text",
+                json!({
+                    "workspace_id": lane_b_id,
+                    "surface_id": lane_b_surface_id,
+                }),
+            ),
+            &ent,
+        );
+        assert!(
+            resp.error.is_none(),
+            "Off mode must preserve pre-patch behavior; got: {:?}",
+            resp.error
+        );
+        assert_eq!(
+            resp.result.expect("result")["text"].as_str().unwrap_or_default(),
+            "PRE-PATCH-OK",
+        );
     }
 }
