@@ -16,14 +16,15 @@
 ## Next resume (plan mode via hcom)
 1. Read authoritative plan: `local://limux-h1-residuals-plan.md` (fallback `docs/LIMUX_H1_RESIDUALS_PLAN_2026-07-31.md` or `/tmp/limux-wave-briefs/reports/H1-residuals-plan.md`).
 2. Confirm live host still PID **860496** / install `main-15ccb28ed4a8-matched-20260731` — **do not bounce**.
-3. Execute **Slice A** first (RequireClaim first-claim chicken-and-egg on #124) unless operator redirects.
-4. Operator gate before Slice D / default flip: B.md §2.5 signal choice (plan recommends positive operator signal).
-5. Review baseline: https://github.com/RichelynScott/limux/pull/124#issuecomment-5148324767
+3. **Merge #124 then #128** (PARTIAL only; default still Off; not H1-closed). Confirm both CLEAN before merge.
+4. Execute **Slice C** (GTK `workspace_index_for_target` + §1c claimed resolution + Active→`not_found`).
+5. Operator gate before Slice D / default flip: B.md §2.5 signal choice (plan recommends positive operator signal) — Slice **E** before **D**.
+6. Review baseline: https://github.com/RichelynScott/limux/pull/124#issuecomment-5148324767
 
 ## Repo state snapshot (re-measured 2026-07-31)
-- Shared checkout: `/home/riche/MCPs/limux` tracks `origin/main` @ `98106c1` (+ this docs tip when landed); allowed dirt only untracked `AUTOPILOT_LOG.md` + research scouts (leave unstaged). Session may temporarily have PR #124 branch checked out — restore to `main` before peer-sensitive work.
+- Shared checkout: `/home/riche/MCPs/limux` tracks `origin/main` @ `eb4d8a0` (+ this docs tip when landed); allowed dirt only untracked `AUTOPILOT_LOG.md` + research scouts (leave unstaged). Session may temporarily have PR #124 branch checked out — restore to `main` before peer-sensitive work.
 - Shared `main` carries Merge #109 (`de6d1db`) + help-print #116 (`e8e19c9`) + continuity #110–#120 + Wave2 #121 cards / #122 prune / #123 successor-rebind + #125 handoff sync. Yields + Wave2 product symbols on `main`.
-- Open PRs: **#124** H1 option (b) PARTIAL default-off scaffold (`2c8ad7c`) — leave open; residuals planned as A–E in `docs/LIMUX_H1_RESIDUALS_PLAN_2026-07-31.md`; do not merge as “H1 closed”.
+- Open PRs: **#124** @ `c62713f` (A included) + **#128** @ `f55cb2b` (B) — both MERGEABLE/CLEAN; merge as PARTIAL next session then Slice C. Do not merge as “H1 closed”.
 - Installed CLI + live host: install-id `main-15ccb28ed4a8-matched-20260731` (lineage #109 yields + #116 help-print; source SHA `15ccb28ed4a8`). Host PID **860496** under that tree. `#122/#123` are on `main` but **not** in the live install (needs fresh peer/operator restart ack before matched rebuild).
 - Doctor re-check: launchers / processes / socket / `stale_sockets` / ghostty_resources all `[ok]` (exit 0). Historical leave-alone `52458` paths are gone; only live listeners are `stable/limux.sock` + `.cursor`.
 - Last known full Rust gate green from fire's closeout lane (docs-only continuity; `./scripts/check.sh` not re-run here). Focused Wave2 verifies: prune retention PASS; rebind control_bridge 56 / layout_state 67 / control_registry 7.
@@ -41,8 +42,8 @@
 
 ### Still open
 5. H1 residual CRITICAL — [#124](https://github.com/RichelynScott/limux/pull/124) PARTIAL core scaffold only (`LIMUX_ENTITLEMENT=off`). **Execution plan:** `docs/LIMUX_H1_RESIDUALS_PLAN_2026-07-31.md` slices **A→E**:
-   - **A** Fix RequireClaim first-claim gate order + natural-claim test (on #124).
-   - **B** Live `EntitlementConfig::from_env` + per-connection cell (stop hardcoding Off).
+   - ~~**A** Fix RequireClaim first-claim~~ → #124 @ `c62713f` (verified).
+   - ~~**B** Live `from_env` + per-conn cell~~ → #128 @ `f55cb2b` (verified; merge next).
    - **C** GTK `window.rs` / `workspace_index_for_target` + §1c claimed resolution.
    - **E** Operator-vs-agent signal decision (recommended: positive `LIMUX_OPERATOR` / claim_all).
    - **D** `workspace.{list,current,select}` gating per E (blocked until E).
