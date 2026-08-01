@@ -81,5 +81,5 @@ Gate per E. Claimed agent must not enumerate foreign ids; operator path preserve
 
 1. Read this file (and `docs/LIMUX_H1_RESIDUALS_PLAN_2026-07-31.md`).
 2. Confirm shared checkout on `main`; host 860496 untouched; doctor ok.
-3. Operator pick: merge #124/#128 now, or stack C on `f55cb2b` first.
+3. **Merge #124 then #128** (operator-directed; PARTIAL only).
 4. Execute **Slice C** unless redirected to E.
