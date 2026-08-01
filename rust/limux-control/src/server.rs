@@ -10,7 +10,7 @@ use tokio::sync::Semaphore;
 use crate::auth::SocketControlMode;
 use crate::request_io::{read_request_frame_async, MAX_CONNECTIONS};
 use crate::socket_path::{bind_tokio_listener, SocketMode};
-use crate::{auth, Dispatcher};
+use crate::{auth, ConnectionEntitlement, Dispatcher, EntitlementConfig};
 
 pub async fn run_server<P: AsRef<Path>>(
     socket_path: P,
@@ -38,6 +38,9 @@ async fn serve_with_mode(
     control_mode: SocketControlMode,
 ) -> io::Result<()> {
     let semaphore = Arc::new(Semaphore::new(MAX_CONNECTIONS));
+    // Resolve once per process/listener so every connection sees the same
+    // mode while keeping a distinct sticky claim cell per connection.
+    let entitlement_config = EntitlementConfig::from_env();
 
     loop {
         let (stream, _) = listener.accept().await?;
@@ -59,7 +62,10 @@ async fn serve_with_mode(
 
         tokio::spawn(async move {
             let _permit = permit;
-            if let Err(error) = handle_connection(stream, dispatcher).await {
+            if let Err(error) =
+                handle_connection_with_entitlement_config(stream, dispatcher, entitlement_config)
+                    .await
+            {
                 eprintln!(
                     "limux-control: connection error for pid={} uid={}: {error}",
                     peer.pid, peer.uid
@@ -69,7 +75,24 @@ async fn serve_with_mode(
     }
 }
 
+/// Accept a connection using [`EntitlementConfig::from_env`] for the claim mode.
 pub async fn handle_connection(stream: UnixStream, dispatcher: Dispatcher) -> io::Result<()> {
+    handle_connection_with_entitlement_config(stream, dispatcher, EntitlementConfig::from_env())
+        .await
+}
+
+/// Accept a connection with an explicit entitlement config (tests + server loop).
+///
+/// Builds one [`ConnectionEntitlement`] for the lifetime of the connection and
+/// threads it through [`Dispatcher::dispatch_with_entitlement`] so sticky claims
+/// survive across requests. Under `EntitlementMode::Off` (the default) this is
+/// behavior-identical to the pre-wire-up `dispatch` path.
+pub async fn handle_connection_with_entitlement_config(
+    stream: UnixStream,
+    dispatcher: Dispatcher,
+    entitlement_config: EntitlementConfig,
+) -> io::Result<()> {
+    let entitlement = ConnectionEntitlement::new(entitlement_config);
     let (reader_half, mut writer_half) = stream.into_split();
     let mut reader = BufReader::new(reader_half);
     let mut line_buf = Vec::with_capacity(4096);
@@ -87,7 +110,7 @@ pub async fn handle_connection(stream: UnixStream, dispatcher: Dispatcher) -> io
         }
 
         let response = match parse_request(incoming) {
-            Ok(request) => dispatcher.dispatch(request).await,
+            Ok(request) => dispatcher.dispatch_with_entitlement(request, &entitlement),
             Err(message) => V2Response::error(None, -32700, message, None),
         };
 

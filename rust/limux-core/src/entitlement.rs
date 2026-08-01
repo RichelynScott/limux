@@ -32,11 +32,15 @@
 //!
 //! # Wire-up
 //!
-//! The standalone dispatcher path holds one [`ConnectionEntitlement`] per
-//! connection in a small shared cell (built by `limux-control`'s server
-//! loop) and threads it through `dispatch_with_entitlement`. The live GTK
-//! bridge carries the entitlement in each `ControlCommand` (a future PR
-//! threads it through `window.rs`).
+//! `limux-control`'s server loop resolves [`EntitlementConfig::from_env`] once
+//! per listener and builds one [`ConnectionEntitlement`] **per accepted
+//! connection**, threading it through [`crate::Dispatcher::dispatch_with_entitlement`]
+//! so sticky claims survive across requests on that socket. The C FFI path
+//! keeps a process-scoped cell created at `limux_control_init` from the same
+//! env. `Dispatcher::dispatch` / `handle_command` remain an Off-shim for
+//! callers/tests that intentionally ignore entitlement. The live GTK bridge
+//! still carries entitlement in each `ControlCommand` in a follow-up PR
+//! (Slice C — threads through `window.rs`).
 //!
 //! # Sticky claim
 //!
