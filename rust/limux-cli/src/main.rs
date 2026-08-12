@@ -1119,10 +1119,16 @@ async fn selected_surface_for_pane(
     Ok(handle)
 }
 
-async fn run_identify(client: &mut Client, args: &[String]) -> Result<Value> {
-    let workspace = parse_opt(args, "--workspace");
-    let surface = parse_opt(args, "--surface");
-    let no_caller = parse_flag(args, "--no-caller");
+fn build_identify_params_with_env<F>(args: &[String], env_lookup: F) -> Value
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let workspace = parse_opt(args, "--workspace")
+        .or_else(|| env_lookup("LIMUX_WORKSPACE_ID"))
+        .filter(|value| !value.is_empty());
+    let surface = parse_opt(args, "--surface")
+        .or_else(|| env_lookup("LIMUX_SURFACE_ID"))
+        .filter(|value| !value.is_empty());
 
     let mut params = Map::new();
     if workspace.is_some() || surface.is_some() {
@@ -1136,9 +1142,14 @@ async fn run_identify(client: &mut Client, args: &[String]) -> Result<Value> {
         params.insert("caller".to_string(), Value::Object(caller));
     }
 
-    let mut payload = client
-        .call("system.identify", Value::Object(params))
-        .await?;
+    Value::Object(params)
+}
+
+async fn run_identify(client: &mut Client, args: &[String]) -> Result<Value> {
+    let no_caller = parse_flag(args, "--no-caller");
+    let params = build_identify_params_with_env(args, |name| env::var(name).ok());
+
+    let mut payload = client.call("system.identify", params).await?;
     if no_caller {
         if let Some(map) = payload.as_object_mut() {
             map.remove("caller");
@@ -7031,6 +7042,42 @@ mod cli_arg_tests {
             pretty: false,
             command_args,
         }
+    }
+
+    #[test]
+    fn identify_uses_pane_environment_claim_unless_flags_override_it() {
+        let env_lookup = |name: &str| match name {
+            "LIMUX_WORKSPACE_ID" => Some("workspace:mine".to_string()),
+            "LIMUX_SURFACE_ID" => Some("surface:7:mine".to_string()),
+            _ => None,
+        };
+
+        assert_eq!(
+            build_identify_params_with_env(&args(&[]), env_lookup),
+            json!({
+                "caller": {
+                    "workspace_id": "workspace:mine",
+                    "surface_id": "surface:7:mine"
+                }
+            })
+        );
+        assert_eq!(
+            build_identify_params_with_env(
+                &args(&[
+                    "--workspace",
+                    "workspace:explicit",
+                    "--surface",
+                    "surface:8:explicit"
+                ]),
+                env_lookup,
+            ),
+            json!({
+                "caller": {
+                    "workspace_id": "workspace:explicit",
+                    "surface_id": "surface:8:explicit"
+                }
+            })
+        );
     }
 
     #[test]

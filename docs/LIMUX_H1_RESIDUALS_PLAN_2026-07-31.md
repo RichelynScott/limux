@@ -42,7 +42,7 @@
 **Verify:**
 ```bash
 rg -n 'workspace_index_for_target|current_workspace_idx' rust/limux-host-linux/src/window.rs
-cargo test -p limux-host-linux --lib -- --nocapture   # focused entitlement tests must pass; do not weaken unrelated failures
+cargo test -p limux-host-linux -- --nocapture   # focused entitlement tests must pass; do not weaken unrelated failures
 ```
 
 **Risks:** PermissionDenied on Active leaks existence; missed call sites; sharing one cell across GTK commands incorrectly.

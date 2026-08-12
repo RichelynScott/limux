@@ -25,7 +25,7 @@
 //! - [`EntitlementMode::RequireClaim`] — fail-closed. An unclaimed
 //!   connection is **rejected** on reads that lack an explicit
 //!   `workspace_id`. Presenting an explicit `workspace_id` binds the sticky
-//!   claim (claim-first via [`ConnectionEntitlement::claim_or_allow_explicit`])
+//!   claim (claim-first via [`WorkspaceEntitlement::claim_or_allow_explicit`])
 //!   and subsequent requests must stay on that workspace. This is the only
 //!   option that does not silently fail open on a misconfigured agent.
 //!   Recommended default once the operator-vs-agent signal is settled.
@@ -39,19 +39,19 @@
 //! keeps a process-scoped cell created at `limux_control_init` from the same
 //! env. `Dispatcher::dispatch` / `handle_command` remain an Off-shim for
 //! callers/tests that intentionally ignore entitlement. The live GTK bridge
-//! still carries entitlement in each `ControlCommand` in a follow-up PR
-//! (Slice C — threads through `window.rs`).
+//! uses [`WorkspaceEntitlement<String>`] because GTK workspace ids are UUID
+//! strings rather than core `u64` ids.
 //!
 //! # Sticky claim
 //!
 //! A connection that has sent `workspace_id = W` cannot later claim `W'`.
 //! The first non-`None` `workspace_id` wins, permanently, for that
-//! connection's lifetime. The claim cell is `Arc<AtomicU64>` so the same
-//! cell is shared by every clone of a `ConnectionEntitlement` for one
-//! connection — which is what the sticky semantics need.
+//! connection's lifetime. The claim cell is `Arc<OnceLock<T>>` so the same
+//! cell is shared by every clone of a `WorkspaceEntitlement` for one
+//! connection — which is what the sticky semantics need. The generic policy
+//! keeps core numeric ids and GTK UUID strings on the same implementation.
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 /// Operator-controlled mode for the entitlement gate.
 ///
@@ -90,7 +90,7 @@ impl EntitlementMode {
 /// Operator-supplied configuration for the entitlement gate.
 ///
 /// Resolved once at process start (mirroring `LIMUX_SOCKET_MODE`'s shape).
-/// Per-connection state lives in [`ConnectionEntitlement`].
+/// Per-connection state lives in [`WorkspaceEntitlement`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EntitlementConfig {
     pub mode: EntitlementMode,
@@ -117,28 +117,31 @@ impl EntitlementConfig {
 
 /// Per-connection workspace claim state.
 ///
-/// `Clone` shares the underlying `Arc<AtomicU64>` claim cell, so every clone
+/// `Clone` shares the underlying `Arc<OnceLock<T>>` claim cell, so every clone
 /// observes the same sticky claim. Intentionally **not** `Copy` — the
 /// shared cell is the load-bearing piece; a by-value copy would be a
 /// definitionally-different object.
 #[derive(Debug, Clone)]
-pub struct ConnectionEntitlement {
+pub struct WorkspaceEntitlement<T> {
     config: EntitlementConfig,
-    /// `u64::MAX` sentinel == unclaimed. Sticky: once set to a real id, it
-    /// never changes. Wrapped in `Arc` so a `ConnectionEntitlement` clone
-    /// shares the cell — every observer of the same connection sees the
-    /// same claim.
-    claimed: Arc<AtomicU64>,
+    /// Empty == unclaimed. Sticky: once set to an id, it never changes.
+    /// Wrapped in `Arc` so every clone shares the same connection claim.
+    claimed: Arc<OnceLock<T>>,
 }
 
-const UNCLAIMED: u64 = u64::MAX;
+/// Core dispatcher's numeric-id specialization. Existing standalone callers
+/// retain the original public type while GTK can use UUID strings.
+pub type ConnectionEntitlement = WorkspaceEntitlement<u64>;
 
-impl ConnectionEntitlement {
+impl<T> WorkspaceEntitlement<T>
+where
+    T: Clone + Eq,
+{
     /// Build a new per-connection entitlement under the given config.
     pub fn new(config: EntitlementConfig) -> Self {
         Self {
             config,
-            claimed: Arc::new(AtomicU64::new(UNCLAIMED)),
+            claimed: Arc::new(OnceLock::new()),
         }
     }
 
@@ -151,11 +154,8 @@ impl ConnectionEntitlement {
     /// Workspace this connection has claimed, if any. `None` for
     /// unclaimed connections, or for any connection in
     /// [`Off`](EntitlementMode::Off) mode (no claim semantics).
-    pub fn claimed_workspace(&self) -> Option<u64> {
-        match self.claimed.load(Ordering::Acquire) {
-            UNCLAIMED => None,
-            id => Some(id),
-        }
+    pub fn claimed_workspace(&self) -> Option<T> {
+        self.claimed.get().cloned()
     }
 
     /// Record a workspace claim. Sticky: a connection that has already
@@ -163,24 +163,17 @@ impl ConnectionEntitlement {
     /// caller is expected to surface this as `PermissionDenied`. A
     /// connection in [`Off`](EntitlementMode::Off) mode accepts and ignores
     /// the claim — there is no claim to bind.
-    pub fn record_claim(&self, workspace_id: u64) -> Result<(), u64> {
+    pub fn record_claim(&self, workspace_id: T) -> Result<(), T> {
         if self.config.mode == EntitlementMode::Off {
             return Ok(());
         }
-        match self
-            .claimed
-            .compare_exchange(UNCLAIMED, workspace_id, Ordering::AcqRel, Ordering::Acquire)
-        {
-            Ok(_) => Ok(()),
-            Err(existing) => {
-                if existing == workspace_id {
-                    // Same workspace re-asserted; legal — the claim is
-                    // sticky to this id and the request is in scope.
-                    Ok(())
-                } else {
-                    Err(existing)
-                }
-            }
+        let existing = self.claimed.get_or_init(|| workspace_id.clone());
+        if existing == &workspace_id {
+            // Same workspace re-asserted; legal — the claim is sticky to
+            // this id and the request is in scope.
+            Ok(())
+        } else {
+            Err(existing.clone())
         }
     }
 
@@ -194,17 +187,17 @@ impl ConnectionEntitlement {
     /// - [`RequireClaim`](EntitlementMode::RequireClaim): true only when
     ///   the connection is claimed to `workspace_id` exactly. Unclaimed
     ///   connections are denied (fail-closed).
-    pub fn allows_workspace(&self, workspace_id: u64) -> bool {
+    pub fn allows_workspace(&self, workspace_id: T) -> bool {
         match self.config.mode {
             EntitlementMode::Off => true,
-            EntitlementMode::UnclaimedAllEntitled => match self.claimed.load(Ordering::Acquire) {
-                UNCLAIMED => true,
-                claimed => claimed == workspace_id,
-            },
-            EntitlementMode::RequireClaim => match self.claimed.load(Ordering::Acquire) {
-                UNCLAIMED => false,
-                claimed => claimed == workspace_id,
-            },
+            EntitlementMode::UnclaimedAllEntitled => self
+                .claimed
+                .get()
+                .is_none_or(|claimed| claimed == &workspace_id),
+            EntitlementMode::RequireClaim => self
+                .claimed
+                .get()
+                .is_some_and(|claimed| claimed == &workspace_id),
         }
     }
 
@@ -215,8 +208,7 @@ impl ConnectionEntitlement {
     /// short-circuit with `PermissionDenied` instead of `not_found`, so
     /// the operator-vs-agent signal is auditable in test output.
     pub fn requires_claim(&self) -> bool {
-        self.config.mode == EntitlementMode::RequireClaim
-            && self.claimed.load(Ordering::Acquire) == UNCLAIMED
+        self.config.mode == EntitlementMode::RequireClaim && self.claimed.get().is_none()
     }
 
     /// Explicit-`workspace_id` path: claim first, then allow.
@@ -237,7 +229,7 @@ impl ConnectionEntitlement {
     /// Do **not** call this for bare surface ids, focused-workspace
     /// fallbacks, or §1c management helpers — those stay check-only and
     /// must not auto-bind a sticky claim.
-    pub fn claim_or_allow_explicit(&self, workspace_id: u64) -> Result<(), u64> {
+    pub fn claim_or_allow_explicit(&self, workspace_id: T) -> Result<(), T> {
         if !self.config.is_enforcing() {
             return Ok(());
         }
@@ -251,6 +243,26 @@ mod tests {
 
     fn cfg(mode: EntitlementMode) -> EntitlementConfig {
         EntitlementConfig { mode }
+    }
+
+    #[test]
+    fn generic_entitlement_supports_opaque_string_workspace_ids() {
+        let entitlement = WorkspaceEntitlement::<String>::new(cfg(EntitlementMode::RequireClaim));
+
+        assert!(entitlement.requires_claim());
+        entitlement
+            .claim_or_allow_explicit("workspace-a".to_string())
+            .expect("natural first opaque id binds");
+        assert_eq!(
+            entitlement.claimed_workspace(),
+            Some("workspace-a".to_string())
+        );
+        assert_eq!(
+            entitlement
+                .claim_or_allow_explicit("workspace-b".to_string())
+                .expect_err("opaque claim is sticky"),
+            "workspace-a"
+        );
     }
 
     #[test]
@@ -276,7 +288,10 @@ mod tests {
     fn unknown_values_default_to_off() {
         assert_eq!(EntitlementMode::parse(""), EntitlementMode::Off);
         assert_eq!(EntitlementMode::parse("yes"), EntitlementMode::Off);
-        assert_eq!(EntitlementMode::parse("operator-signal"), EntitlementMode::Off);
+        assert_eq!(
+            EntitlementMode::parse("operator-signal"),
+            EntitlementMode::Off
+        );
     }
 
     #[test]
@@ -316,13 +331,19 @@ mod tests {
 
         ent.record_claim(7).expect("first claim binds");
         assert!(ent.allows_workspace(7), "claimed workspace is allowed");
-        assert!(!ent.allows_workspace(8), "other workspace is denied after claim");
+        assert!(
+            !ent.allows_workspace(8),
+            "other workspace is denied after claim"
+        );
     }
 
     #[test]
     fn require_claim_rejects_unclaimed_connections() {
         let ent = ConnectionEntitlement::new(cfg(EntitlementMode::RequireClaim));
-        assert!(!ent.allows_workspace(42), "unclaimed denied in require-claim");
+        assert!(
+            !ent.allows_workspace(42),
+            "unclaimed denied in require-claim"
+        );
         assert!(ent.requires_claim());
 
         ent.record_claim(7).expect("first claim binds");
@@ -349,7 +370,8 @@ mod tests {
         assert_eq!(ent.claimed_workspace(), Some(7));
         assert!(ent.allows_workspace(7));
         assert_eq!(
-            ent.claim_or_allow_explicit(8).expect_err("foreign after claim"),
+            ent.claim_or_allow_explicit(8)
+                .expect_err("foreign after claim"),
             7
         );
         assert!(ent.claim_or_allow_explicit(7).is_ok());
