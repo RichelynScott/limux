@@ -1,0 +1,13 @@
+{
+  "status": "passed",
+  "start_backend": "wsl-d3d12-gl",
+  "selected_backend": "software-gl",
+  "attempted_backends": [
+    "wsl-d3d12-gl",
+    "desktop-gl",
+    "software-gl"
+  ],
+  "host": "/home/riche/.local/limux-reviewed/stable/main-15ccb28ed4a8-matched-20260731/libexec/limux-host",
+  "cli": "/home/riche/.local/limux-reviewed/stable/main-15ccb28ed4a8-matched-20260731/libexec/limux-cli",
+  "captured_at": "2026-08-12T13:00:42Z"
+}

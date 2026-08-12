@@ -1,0 +1,18 @@
+{
+  "version": "limux-cli 0.2.3 (15ccb28ed4a8, release) install-id=main-15ccb28ed4a8-matched-20260731 channel=stable",
+  "started_at": "2026-08-12T09:04:10,271816913-04:00",
+  "ended_at": "2026-08-12T09:04:15,901938302-04:00",
+  "sample_seconds": 5.627557,
+  "clk_tck": 100,
+  "cpu_ticks_delta": 19,
+  "cpu_core_equivalents": 0.033762430127318124,
+  "rss_kib": 450156,
+  "pss_kib": 383011,
+  "threads": 25,
+  "llvmpipe_threads": 2,
+  "terminal_surfaces": 3,
+  "tick_delta": 747,
+  "ticks_per_second": 132.73965950056126,
+  "queued_render_delta": 26,
+  "queued_renders_per_second": 4.62012201742248
+}
