@@ -3676,8 +3676,8 @@ mod tests {
         // Regression: the 100 ms fallback mailbox drain used to tick the app
         // unconditionally, stacking ~10 ticks/s on the 8 ms frame timer while
         // surfaces were visible. The measured ~220/s total (2026-08-12, WSL
-        // crash-3 forensics) also includes wakeup-driven idle drains that are
-        // NOT addressed by this change.
+        // crash-3 forensics) leaves a remaining delta that is unattributed
+        // pending live timer-vs-wakeup measurement.
         assert!(hidden_tick_should_run(0));
         assert!(!hidden_tick_should_run(1));
         assert!(!hidden_tick_should_run(41));
