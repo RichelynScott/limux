@@ -96,9 +96,14 @@ a process boundary and health predicate.
 
 ## Bounded software measurement
 
-The final corrected measurement used three visible, healthy, realized terminal
-surfaces for `5.627557` seconds—the same duration as momo's incident sample.
-The host was launched in an isolated preview session with:
+The final corrected measurement used a fresh isolated host with one workspace
+and three visible, healthy, realized terminal surfaces for `5.627557`
+seconds—the same duration as momo's incident sample. The measurement harness
+supplied no per-terminal command or output workload, and the artifacts do not
+preserve the terminal child argv. No agent metadata was attached, so the run
+does not establish that momo, nafo, zen_gpt, or any equivalent workload was
+running. The historical fixture used `/tmp` as its terminal cwd; it was run
+before the operator prohibited further `/tmp` use. The host was launched with:
 
 ```text
 GSK_RENDERER=gl
@@ -115,8 +120,21 @@ Two independent CPU readings agreed:
 The same capture recorded `472,440 KiB` RSS, `405,333 KiB` PSS, 27 threads,
 two llvmpipe workers, `127.94` Ghostty ticks/s, and `2.67` queued render
 actions/s. Every terminal was healthy and realized before and after the sample.
-This proves `LP_NUM_THREADS=2` is an effective software-renderer cap under this
-workload. It does not prove that setting the variable globally is product-safe.
+This proves that Mesa honored the two-worker setting and that this bounded
+configuration was healthy and low-CPU under this isolated idle workload. It
+does not prove a reduction against an otherwise identical unbounded run, because
+no same-fixture unbounded A/B baseline was captured. It also does not establish
+the effect for the loaded daily-driver workload or prove that setting the
+variable globally is product-safe.
+
+The isolated run did not restore the daily driver's 30 workspaces, 41 saved
+terminal tabs, 17 suspended agents, terminal output, or scrollback. Only the
+installed binary identity and sample duration matched. Terminal dimensions were
+`56x18`, `56x39`, and `56x18` cells at `568x396`, `568x823`, and `568x395`
+pixels. The packet contains no evidence that window state, visible pixel area,
+font settings, output rate, or scrollback matched the daily driver. Daily-driver
+and isolated memory/CPU figures must therefore not be presented as an
+apples-to-apples performance comparison.
 
 The command mechanics were `setsid env` with isolated `LIMUX_SOCKET`,
 `LIMUX_SESSION_DIR`, and XDG directories, followed by:
@@ -185,6 +203,27 @@ proves all of the following:
   leakage;
 - live daily-driver promotion/restart occurs only after explicit operator
   approval and a rollback path.
+
+## Apples-to-apples validation still required
+
+No current result is a same-workload unbounded-versus-bounded comparison. The
+smallest non-disruptive approximation is to prepare a private, repository-owned
+copy of the saved session layout; disable every agent restore command in that
+copy; and launch two sequential isolated hosts using the exact same installed
+binary, display, settings, window geometry, surface layout, and deterministic
+terminal-output replay. Run A must force llvmpipe without `LP_NUM_THREADS`;
+Run B must differ only by `LP_NUM_THREADS=2`. Both runs must record host and
+llvmpipe CPU ticks, RSS/PSS, thread counts, renderer diagnostics, per-surface
+dimensions, tick/render deltas, output bytes/rate, and scrollback depth over the
+same measured interval. All sockets, session state, logs, and fixtures must live
+under this repository-owned evidence directory.
+
+That isolated A/B can decide whether the cap helps a matched high-surface-count
+replay without touching the current live host. It still cannot prove behavior
+for the actual momo/nafo/zen_gpt processes. A truly equivalent real-workload A/B
+requires operator-approved fresh-process runs because Mesa reads the setting at
+process initialization; it cannot be applied to the already-running host.
+Nothing in this packet authorizes that restart or any live-host mutation.
 
 ## Load-bearing hashes
 
