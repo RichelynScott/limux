@@ -8,12 +8,12 @@ Branch: `dame/anti-refill-20260812` (from `origin/main` @ `204a3b6`)
 
 ## Immediate Next Action
 
-The anti-refill lane is implemented and verified on this branch. Next:
+**CRASH INVESTIGATION (operator priority, 2026-08-12):** WSL hard crash again; Limux suspected. Two Limux-side contributors addressed:
 
-1. Open the PR for `dame/anti-refill-20260812` (branch is pushed; PR body drafted below).
-2. Deliver the incident result to `nafo` (hcom + durable file pointer) once the PR is open.
-3. Coordinate the operator-selected retention threshold: `disk-gate.sh` enforces ONLY an explicit `--max-target-gib` / `LIMUX_TARGET_MAX_GIB` value. No threshold is invented; the operator (or nafo's fleet policy) must pick one before enforcement is meaningful.
-4. If a sanctioned worktree is ever created, it must use the shared target via `scripts/cargo-env.sh` (fleet mandate clause 3).
+1. **PR #137** (`dame/anti-refill-20260812`, `51710d0` + `4c4940b`): shared Cargo target + disk gate + retention — addresses the build-wave disk churn contributor (1.486 GiB in the incident window per momo's forensics). **PAUSED** — anti-refill task #1 has a resume note; remaining: operator-selected retention threshold, PR merge.
+2. **PR #138** (`dame/renderer-tick-overlap-20260812`, `76c0f4f` + `45351ec` + `227fe58`): fixed the 100 ms hidden-tick overlap with the 8 ms visible frame timer (~10 ticks/s), and added per-source tick counters (`renderer_tick_timer_invocations` / `renderer_tick_wakeup_invocations`) through health output so the remaining ~85/s excess (wakeup-driven idle drains) can be attributed. 497 host tests pass.
+
+**Next:** coordinate with momo (durable notice filed in nafo_INBOX) + nafo (hcom inform sent) on the crash; operator installs a build containing #138, then re-measures per-source tick deltas. The clock-rotation churn (P1) and C: headroom (P0) remain operator-gated per momo's report.
 
 ## What Was Done (anti-refill lane)
 
