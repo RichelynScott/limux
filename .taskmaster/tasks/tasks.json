@@ -1296,19 +1296,26 @@
         "id": 1,
         "title": "Shared Cargo target strategy + retention for limux (anti-refill)",
         "description": "Establish one shared Cargo target/cache mechanism (CARGO_TARGET_DIR via scripts/cargo-env.sh mirroring hcom-cargo.sh) for the primary checkout and sanctioned worktrees; add build-wave discipline and a measurement/report-only retention boundary with an explicit operator-selected threshold (no invented caps); wire into check.sh/limux-dev/package.sh/xvfb-smoke-test.sh; add tests; verify with measured disk/build evidence; deliver result to nafo with durable file pointers.",
-        "details": "",
+        "details": "<info added on 2026-08-12T22:10:19.337Z>\nPAUSED 2026-08-12: operator reports WSL hard crash again; Limux suspected. Anti-refill implementation COMPLETE and durable: PR #137 open (51710d0), DAME_HANDOFF.md committed, branch dame/anti-refill-20260812 pushed. Remaining: operator-selected retention threshold for disk-gate enforcement; PR merge. Resume after crash investigation.\n</info added on 2026-08-12T22:10:19.337Z>",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "high",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-08-12T20:45:40.704Z"
       }
     ],
     "metadata": {
       "created": "2026-08-12T20:21:26.799Z",
       "updated": "2026-08-12T20:21:31.701Z",
       "description": "Limux storage anti-refill lane (dame, 2026-08-12)",
-      "taskCount": 1
+      "taskCount": 1,
+      "version": "1.0.0",
+      "lastModified": "2026-08-12T20:45:40.704Z",
+      "completedCount": 0,
+      "tags": [
+        "limux-anti-refill-20260812"
+      ]
     }
   }
 }
