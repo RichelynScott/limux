@@ -38,7 +38,7 @@ use crate::shortcut_config::{
 };
 use crate::split_tree::{self, SplitTreeContainer};
 
-mod renderer_diagnostics;
+pub(crate) mod renderer_diagnostics;
 
 pub(crate) const PANE_CREATE_COMMAND_READY_INTERVAL_MS: u64 = 50;
 pub(crate) const PANE_CREATE_COMMAND_READY_ATTEMPTS: u32 = 80;

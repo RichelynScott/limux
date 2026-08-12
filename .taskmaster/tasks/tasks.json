@@ -1266,7 +1266,7 @@
         "id": 7,
         "title": "Add process-level WSL D3D12 renderer probe and safe fallback",
         "description": "Select D3D12 only after an isolated host probe proves GskGLRenderer, dxg usage, and no software fallback; otherwise preserve the existing desktop renderer. Do not set LP_NUM_THREADS globally because it leaks into terminal child environments.",
-        "details": "Implement a host-internal renderer probe that never loads the user session or starts terminal children, plus CLI launch policy that preserves explicit renderer env, probes only on supported WSL/dxg systems, and reaps the probe before launching the real host. Tests must cover opt-out/explicit policy preservation, accepted and rejected probe routing, probe result predicates, and no user-session side effects. Source-only delivery: no installed daily-driver mutation, restart, or promotion. A bounded software fallback remains blocked until the Ghostty C API can remove Limux-injected environment variables from terminal children or the operator explicitly accepts propagation.\n<info added on 2026-08-12T13:34:12.505Z>\nBLOCKED: automatic GSK_RENDERER/GALLIUM_DRIVER and LP_NUM_THREADS injection propagates into every terminal child because embedded Ghostty snapshots the host process environment and its public surface environment API cannot remove inherited keys. Removing these variables from the running host after GTK/Mesa initialization is thread-unsafe on Unix. Resume only after an upstream/owned libghostty C API supports per-surface inherited-environment removals, or the operator explicitly accepts propagation into shells. A rejected D3D12 initialization must fall back through a fresh host process because GDK caches GL initialization failures. Exact evidence is under GULA_EVIDENCE/2026-08-12; no daily-driver mutation occurred.\n</info added on 2026-08-12T13:34:12.505Z>",
+        "details": "Implement a host-internal renderer probe that never loads the user session or starts terminal children, plus CLI launch policy that preserves explicit renderer env, probes only on supported WSL/dxg systems, and reaps the probe before launching the real host. Tests must cover opt-out/explicit policy preservation, accepted and rejected probe routing, probe result predicates, and no user-session side effects. Source-only delivery: no installed daily-driver mutation, restart, or promotion. A bounded software fallback remains blocked until the Ghostty C API can remove Limux-injected environment variables from terminal children or the operator explicitly accepts propagation.\n<info added on 2026-08-12T13:34:12.505Z>\nBLOCKED: automatic GSK_RENDERER/GALLIUM_DRIVER and LP_NUM_THREADS injection propagates into every terminal child because embedded Ghostty snapshots the host process environment and its public surface environment API cannot remove inherited keys. Removing these variables from the running host after GTK/Mesa initialization is thread-unsafe on Unix. Resume only after an upstream/owned libghostty C API supports per-surface inherited-environment removals, or the operator explicitly accepts propagation into shells. A rejected D3D12 initialization must fall back through a fresh host process because GDK caches GL initialization failures. Exact evidence is under GULA_EVIDENCE/2026-08-12; no daily-driver mutation occurred.\n</info added on 2026-08-12T13:34:12.505Z>\n<info added on 2026-08-12T14:04:25.501Z>\nOperator authorized continuing the source implementation on 2026-08-12. Work resumes at the public seams already agreed in the incident design: per-surface terminal child environment exclusion and a fresh-process renderer probe/supervisor. Vendored Ghostty remains read-only unless an owned/upstream API path is proven; no live install, restart, promotion, or environment propagation is authorized by this note.\n</info added on 2026-08-12T14:04:25.501Z>",
         "testStrategy": "",
         "status": "blocked",
         "dependencies": [
@@ -1274,7 +1274,7 @@
         ],
         "priority": "high",
         "subtasks": [],
-        "updatedAt": "2026-08-12T13:33:50.345Z"
+        "updatedAt": "2026-08-12T14:26:07.954Z"
       }
     ],
     "metadata": {
@@ -1282,7 +1282,7 @@
       "updated": "2026-08-12T13:23:28.088Z",
       "description": "Tasks for limux-resource-crash-20260716 context",
       "version": "1.0.0",
-      "lastModified": "2026-08-12T13:33:50.345Z",
+      "lastModified": "2026-08-12T14:26:07.954Z",
       "taskCount": 7,
       "completedCount": 3,
       "tags": [

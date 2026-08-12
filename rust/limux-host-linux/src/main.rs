@@ -492,6 +492,27 @@ fn gtk_runtime_at_least(major: u32, minor: u32, micro: u32) -> bool {
     gtk_runtime_version() >= (major, minor, micro)
 }
 
+fn renderer_probe_requested<I, S>(args: I) -> bool
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    args.into_iter()
+        .any(|argument| argument.as_ref() == "--renderer-probe")
+}
+
+fn configure_gtk_renderer_requirements() {
+    // Ghostty requires desktop OpenGL, not GLES. These values must be applied
+    // before GTK starts any worker threads.
+    if gtk_runtime_at_least(4, 16, 0) {
+        append_env("GDK_DISABLE", "gles-api,vulkan");
+    } else if gtk_runtime_at_least(4, 14, 0) {
+        append_env("GDK_DEBUG", "gl-disable-gles,vulkan-disable");
+    } else {
+        append_env("GDK_DEBUG", "vulkan-disable");
+    }
+}
+
 fn main() {
     // Handle --version flag
     if std::env::args().any(|a| a == "--version" || a == "-v") {
@@ -507,26 +528,10 @@ fn main() {
 
     ensure_xdg_data_dirs_defaults();
     sanitize_inherited_limux_target_env_for_host();
+    configure_gtk_renderer_requirements();
 
-    if let Err(err) = install_host_stderr_log() {
-        eprintln!("limux: failed to initialize host log: {err}");
-    }
-    eprintln!(
-        "{}",
-        render_build_identity("limux-host start build", &build)
-    );
-    ensure_runtime_socket_does_not_collide();
-
-    // Ghostty requires desktop OpenGL, not GLES. Must set the GTK renderer
-    // environment before GTK initializes, and the exact knobs differ by GTK
-    // runtime version. Match Ghostty's GTK logic closely here so modern GTK
-    // doesn't warn about removed GDK_DEBUG values.
-    if gtk_runtime_at_least(4, 16, 0) {
-        append_env("GDK_DISABLE", "gles-api,vulkan");
-    } else if gtk_runtime_at_least(4, 14, 0) {
-        append_env("GDK_DEBUG", "gl-disable-gles,vulkan-disable");
-    } else {
-        append_env("GDK_DEBUG", "vulkan-disable");
+    if renderer_probe_requested(std::env::args()) {
+        std::process::exit(window::renderer_diagnostics::run_probe());
     }
 
     // Embedded Ghostty needs a resources directory to resolve named themes,
@@ -540,6 +545,18 @@ fn main() {
     if std::env::var("WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS").is_err() {
         std::env::set_var("WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS", "1");
     }
+
+    // Install logging only after all process-environment mutation. The log
+    // drain owns a worker thread, and Unix set_var/remove_var is not sound once
+    // another thread may read the environment.
+    if let Err(err) = install_host_stderr_log() {
+        eprintln!("limux: failed to initialize host log: {err}");
+    }
+    eprintln!(
+        "{}",
+        render_build_identity("limux-host start build", &build)
+    );
+    ensure_runtime_socket_does_not_collide();
 
     // Initialize Ghostty before GTK app starts
     terminal::init_ghostty();
@@ -672,6 +689,16 @@ mod tests {
             Some(value) => std::env::set_var("NO_COLOR", value),
             None => std::env::remove_var("NO_COLOR"),
         }
+    }
+
+    #[test]
+    fn renderer_probe_flag_is_detected_without_matching_other_arguments() {
+        assert!(renderer_probe_requested(["limux-host", "--renderer-probe"]));
+        assert!(!renderer_probe_requested(["limux-host", "--version"]));
+        assert!(!renderer_probe_requested([
+            "limux-host",
+            "--profile=renderer-probe"
+        ]));
     }
 
     #[test]

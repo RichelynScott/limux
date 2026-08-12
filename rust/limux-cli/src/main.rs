@@ -18,6 +18,7 @@ use tokio::net::UnixStream;
 mod agent_hooks;
 mod doctor;
 mod doctor_log;
+mod renderer_launch;
 
 const CLI_STATE_LOCK_TIMEOUT: Duration = Duration::from_secs(2);
 const CLI_STATE_LOCK_RETRY: Duration = Duration::from_millis(25);
@@ -719,7 +720,31 @@ fn host_launch_env_removals(
 
 fn launch_host(channel: Option<&RuntimeChannel>, profile: Option<&str>) -> Result<()> {
     let host = resolve_host_binary()?;
-    let err = host_launch_command(&host, channel, profile)
+    let plan = renderer_launch::launch_plan(renderer_launch::RendererLaunchContext {
+        is_wsl: renderer_launch::is_wsl(),
+        dxg_available: Path::new("/dev/dxg").exists(),
+        child_env_removal_supported: renderer_launch::child_env_removal_supported(),
+        explicit_renderer_environment: renderer_launch::explicit_renderer_environment(),
+    });
+    let selection = match plan {
+        renderer_launch::RendererLaunchPlan::PreserveInherited => {
+            renderer_launch::RendererSelection::PreserveInherited
+        }
+        renderer_launch::RendererLaunchPlan::ProbeWslD3d12 => {
+            match renderer_launch::run_wsl_d3d12_probe(&host) {
+                Ok(payload) => renderer_launch::selection_from_probe(payload.as_ref()),
+                Err(error) => {
+                    eprintln!(
+                        "limux: renderer probe failed; preserving inherited renderer: {error}"
+                    );
+                    renderer_launch::RendererSelection::PreserveInherited
+                }
+            }
+        }
+    };
+    let mut command = host_launch_command(&host, channel, profile);
+    renderer_launch::apply_selection(&mut command, selection);
+    let err = command
         .spawn()
         .with_context(|| format!("failed to launch {}", host.display()))?
         .wait()
