@@ -2,9 +2,18 @@
 
 Checkpoint date: 2026-08-12
 Owner: `gula`
-HCOM session: `019ff3bd-7989-7fc1-aaef-c27e86de32d3`
+Prior HCOM session (no longer bound): `019ff3bd-7989-7fc1-aaef-c27e86de32d3`
 Scope: all Limux work, per operator confirmation relayed by `nafo` in hcom request `#165`
 Checkpoint branch: `gula/checkpoint-anti-refill-20260812`
+
+## Succession State
+
+The operator requested a fresh session takeover. Use `GULA_SUCCESSOR_PROMPT.md` as the copy-ready prompt. This file remains the predecessor record; the successor must create its own `<SUCCESSOR_NAME>_HANDOFF.md` after assuming ownership.
+
+- `gula` is now read-only/standby. The successor owns all new Limux writes after it posts the required intake acknowledgement.
+- Do not resume or reclaim the `gula` identity. After native resume, hcom `0.7.111` reports `session_id=null`, `transcript_available=false`, `resume_available=false`, `process_bound=true`, and `live_delivery_available=true`. Use a fresh hcom identity.
+- This is an orderly single-writer cutover. The successor may use the primary checkout and must create a fresh owned implementation branch from `origin/main` before editing. A new worktree is unnecessary unless two sessions later need to write concurrently.
+- The checkpoint branch is one commit ahead of `origin/main`; its only committed delta before this succession update was this handoff. No PR exists for the checkpoint branch.
 
 ## Immediate Next Action
 
@@ -28,6 +37,16 @@ The incident figures in `nafo` request `#165` are claims from that message, not 
 - The Orca decision is: keep Limux and selectively extract useful designs. Do not switch wholesale unless cross-platform, mobile, or SSH becomes the controlling product requirement. The evaluation pinned Orca commit `09ec516ae50b7b83fa65343d9ad96159e3fe71fc`.
 - The branch was aligned with `origin/main` and GitHub reported no open PRs immediately before this checkpoint.
 
+## Current Repository And Task State
+
+- Product base: `origin/main` at `204a3b6eb2cf955373f26df5e1d04a644fd0ccb7`.
+- Pre-succession checkpoint: `911000d12f31f3d35224c27f6be15512601b976d` on `origin/gula/checkpoint-anti-refill-20260812`.
+- GitHub intake on 2026-08-12: no open PRs and no PR for the checkpoint branch.
+- TaskMaster tag `limux-resource-crash-20260716`: tasks 1-3 done, task 4 in progress, tasks 5-6 pending, task 7 blocked. Task 4 is existing work and must not be repurposed for the anti-refill request.
+- The anti-refill request is not represented by a dedicated task in that tag. The successor must inspect the current store and use the reviewed TaskMaster workflow to create or route an appropriate task before multi-step implementation; do not invent an ID or hand-edit `tasks.json`.
+- Installed TaskMaster front doors `task-master-reviewed`, `task-master`, and `taskmaster` hash-match at `a9fb11ffa6e4a0e560bf4996ccb11292df53d5c861732f281939e342b58c962f`. Doctor reports reviewed source `0768c2ae0c429277209f35a5aa9652f26f71a850`.
+- Six historical `/tmp` worktree records are prunable administrative residue whose checkout directories are already missing. Do not prune or recreate them as part of succession. Current policy forbids new `/tmp` worktrees.
+
 ## Renderer Blocker
 
 Renderer auto-selection remains deliberately inactive because `child_env_removal_supported()` is false. Activation is blocked until an owned/upstream Ghostty C API can remove Limux-injected renderer variables from terminal child environments. Vendored `ghostty/` is read-only from the Limux layer.
@@ -45,6 +64,8 @@ No daily-driver install, restart, promotion, or live renderer activation occurre
 
 Do not stage, archive, rewrite, or clean the existing untracked material without exact ownership review.
 
+At the 2026-08-12 succession snapshot, `git status --porcelain=v1 -uall` reported 1,835 untracked entries: 1,831 under `GULA_EVIDENCE/`, one `AUTOPILOT_LOG.md`, one `LIMU_INBOX/` alert, and two `docs/research/` files. There were no tracked or staged changes before the succession documents were authored.
+
 Peer-owned source files left untouched:
 
 - `AUTOPILOT_LOG.md`
@@ -58,9 +79,27 @@ Numerous older `GULA_EVIDENCE/2026-08-12/` captures and `renderer-supervisor-orc
 
 ## HCOM And Delivery State
 
-- `gula` was rebound after the prior crash under session `019ff3bd-7989-7fc1-aaef-c27e86de32d3`.
+- The earlier `gula` binding used session `019ff3bd-7989-7fc1-aaef-c27e86de32d3`, but the native-resumed process no longer has a session/transcript binding and is not resumable through hcom.
 - The acknowledgement to `nafo` request `#165` was stored in the inbox because `nafo` was not live; it was not a live wakeup.
 - `momo` was unavailable and had no live/resumable hcom identity when the resource findings were delivered. The durable renderer evidence and merged source are the recovery record.
+
+## Key Files For The Successor
+
+- `/home/riche/MCPs/limux/AGENTS.md` — active project contributor rules.
+- `/home/riche/MCPs/limux/GULA_SUCCESSOR_PROMPT.md` — copy-ready takeover prompt and acknowledgement contract.
+- `/home/riche/MCPs/limux/GULA_HANDOFF.md` — this zero-context predecessor record.
+- `/home/riche/MCPs/limux/docs/verification/renderer-probe-supervisor-20260812.md` — renderer supervisor implementation and activation boundary.
+- `/home/riche/MCPs/limux/docs/REPO_AUDIT_ORCA_2026-08-12.md` — Orca/Limux evaluation and selective-extraction recommendation.
+- `/home/riche/MCPs/limux/GULA_EVIDENCE/2026-08-12/PEER_OWNED_FILES_INVENTORY.md` — private, untracked inventory; read only and never commit to the public repository.
+
+## Critical Successor Rules
+
+- Use a fresh hcom identity; do not reclaim `gula`.
+- Treat this session as read-only after succession. The successor owns the primary checkout and all new writes.
+- Preserve all 1,835 pre-existing untracked entries. Exact-stage successor-owned paths only; never use `git add .`.
+- Do not use `/tmp` for worktrees, evidence, handoffs, or delegated outputs.
+- Do not prune historical worktree records, clean build artifacts, install/restart the live runtime, activate renderer policy, or patch vendored Ghostty without the applicable authorization.
+- Keep the renderer/Ghostty blocker separate from anti-refill storage work.
 
 ## Resume Checks
 
@@ -73,4 +112,4 @@ task-master-reviewed show 7 --tag limux-resource-crash-20260716
 hcom list -v --name gula
 ```
 
-Create the anti-refill implementation branch only after these checks. Preserve all unrelated dirt, exact-stage owned paths only, and do not install/restart the live runtime without the normal gate.
+Create the anti-refill implementation branch only after these checks and the successor acknowledgement. Preserve all unrelated dirt, exact-stage owned paths only, and do not install/restart the live runtime without the normal gate.
