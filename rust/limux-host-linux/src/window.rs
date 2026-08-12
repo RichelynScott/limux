@@ -2201,6 +2201,14 @@ fn surface_health_row(
                 serde_json::json!(health.renderer_tick_invocations),
             );
             row.insert(
+                "renderer_tick_timer_invocations".to_string(),
+                serde_json::json!(health.renderer_tick_timer_invocations),
+            );
+            row.insert(
+                "renderer_tick_wakeup_invocations".to_string(),
+                serde_json::json!(health.renderer_tick_wakeup_invocations),
+            );
+            row.insert(
                 "renderer_queued_actions".to_string(),
                 serde_json::json!(health.renderer_queued_actions),
             );

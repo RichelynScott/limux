@@ -45,6 +45,8 @@ static VISIBLE_TICK_ACTIVE: AtomicBool = AtomicBool::new(false);
 static VISIBLE_SURFACE_COUNT: AtomicUsize = AtomicUsize::new(0);
 static VISIBILITY_TRANSITION_COUNT: AtomicU64 = AtomicU64::new(0);
 static TICK_INVOCATION_COUNT: AtomicU64 = AtomicU64::new(0);
+static TICK_TIMER_INVOCATION_COUNT: AtomicU64 = AtomicU64::new(0);
+static TICK_WAKEUP_INVOCATION_COUNT: AtomicU64 = AtomicU64::new(0);
 static QUEUED_RENDER_ACTION_COUNT: AtomicU64 = AtomicU64::new(0);
 static KEY_DEBUG_ENABLED: OnceLock<bool> = OnceLock::new();
 static EMPTY_CLIPBOARD_TEXT: [u8; 1] = [0];
@@ -203,6 +205,8 @@ pub struct GhosttyRenderDebugSnapshot {
     pub visible_surfaces: usize,
     pub visibility_transitions: u64,
     pub tick_invocations: u64,
+    pub tick_timer_invocations: u64,
+    pub tick_wakeup_invocations: u64,
     pub queued_render_actions: u64,
 }
 
@@ -319,6 +323,8 @@ pub fn ghostty_render_debug_snapshot() -> GhosttyRenderDebugSnapshot {
         visible_surfaces: VISIBLE_SURFACE_COUNT.load(Ordering::Relaxed),
         visibility_transitions: VISIBILITY_TRANSITION_COUNT.load(Ordering::Relaxed),
         tick_invocations: TICK_INVOCATION_COUNT.load(Ordering::Relaxed),
+        tick_timer_invocations: TICK_TIMER_INVOCATION_COUNT.load(Ordering::Relaxed),
+        tick_wakeup_invocations: TICK_WAKEUP_INVOCATION_COUNT.load(Ordering::Relaxed),
         queued_render_actions: QUEUED_RENDER_ACTION_COUNT.load(Ordering::Relaxed),
     }
 }
@@ -362,6 +368,8 @@ pub struct TerminalHealth {
     pub renderer_visible_surface_count: usize,
     pub renderer_global_visibility_transitions: u64,
     pub renderer_tick_invocations: u64,
+    pub renderer_tick_timer_invocations: u64,
+    pub renderer_tick_wakeup_invocations: u64,
     pub renderer_queued_actions: u64,
 }
 
@@ -485,6 +493,8 @@ impl TerminalHandle {
                 renderer_visible_surface_count: global_debug.visible_surfaces,
                 renderer_global_visibility_transitions: global_debug.visibility_transitions,
                 renderer_tick_invocations: global_debug.tick_invocations,
+                renderer_tick_timer_invocations: global_debug.tick_timer_invocations,
+                renderer_tick_wakeup_invocations: global_debug.tick_wakeup_invocations,
                 renderer_queued_actions: global_debug.queued_render_actions,
             };
         };
@@ -505,6 +515,8 @@ impl TerminalHandle {
             renderer_visible_surface_count: global_debug.visible_surfaces,
             renderer_global_visibility_transitions: global_debug.visibility_transitions,
             renderer_tick_invocations: global_debug.tick_invocations,
+            renderer_tick_timer_invocations: global_debug.tick_timer_invocations,
+            renderer_tick_wakeup_invocations: global_debug.tick_wakeup_invocations,
             renderer_queued_actions: global_debug.queued_render_actions,
         }
     }
@@ -1134,6 +1146,16 @@ fn tick_ghostty_app(app: ghostty_app_t) {
     unsafe { ghostty_app_tick(app) };
 }
 
+fn tick_ghostty_app_from_timer(app: ghostty_app_t) {
+    TICK_TIMER_INVOCATION_COUNT.fetch_add(1, Ordering::Relaxed);
+    tick_ghostty_app(app);
+}
+
+fn tick_ghostty_app_from_wakeup(app: ghostty_app_t) {
+    TICK_WAKEUP_INVOCATION_COUNT.fetch_add(1, Ordering::Relaxed);
+    tick_ghostty_app(app);
+}
+
 fn ensure_visible_tick_running() {
     if VISIBLE_SURFACE_COUNT.load(Ordering::Acquire) == 0
         || VISIBLE_TICK_ACTIVE
@@ -1150,7 +1172,7 @@ fn ensure_visible_tick_running() {
             return glib::ControlFlow::Break;
         }
 
-        tick_ghostty_app(app);
+        tick_ghostty_app_from_timer(app);
         glib::ControlFlow::Continue
     });
 }
@@ -1191,7 +1213,7 @@ pub fn init_ghostty() {
         // need separate per-source measurement.
         glib::timeout_add_local(tick_interval_for_visible_surfaces(0), move || {
             if hidden_tick_should_run(VISIBLE_SURFACE_COUNT.load(Ordering::Acquire)) {
-                tick_ghostty_app(app);
+                tick_ghostty_app_from_timer(app);
             }
             glib::ControlFlow::Continue
         });
@@ -1348,7 +1370,7 @@ unsafe extern "C" fn ghostty_wakeup_cb(_userdata: *mut c_void) {
         glib::idle_add_once(|| {
             release_wakeup_idle_slot(&WAKEUP_IDLE_QUEUED);
             let app = ghostty_app();
-            tick_ghostty_app(app);
+            tick_ghostty_app_from_wakeup(app);
         });
     }
     glib::MainContext::default().wakeup();
