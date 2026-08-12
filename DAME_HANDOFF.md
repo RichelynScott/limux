@@ -4,16 +4,17 @@ Checkpoint date: 2026-08-12
 Owner: `dame`
 HCOM session: `019ff794…` (omp, cwd `~/MCPs/limux`)
 Scope: all Limux work, per operator succession from `gula` (GULA_SUCCESSOR_PROMPT.md)
-Branch: `dame/anti-refill-20260812` (from `origin/main` @ `204a3b6`)
+Branch: `dame/renderer-tick-overlap-20260812` (validation lane; includes
+`origin/dame/anti-refill-20260812` from `origin/main` @ `204a3b6`)
 
 ## Immediate Next Action
 
 **CRASH INVESTIGATION (operator priority, 2026-08-12):** WSL hard crash again; Limux suspected. Two Limux-side contributors addressed:
 
 1. **PR #137** (`dame/anti-refill-20260812`, `51710d0` + `4c4940b`): shared Cargo target + disk gate + retention — addresses the build-wave disk churn contributor (1.486 GiB in the incident window per momo's forensics). **PAUSED** — anti-refill task #1 has a resume note; remaining: operator-selected retention threshold, PR merge.
-2. **PR #138** (`dame/renderer-tick-overlap-20260812`, `76c0f4f` + `45351ec` + `227fe58`): fixed the 100 ms hidden-tick overlap with the 8 ms visible frame timer (~10 ticks/s), and added per-source tick counters (`renderer_tick_timer_invocations` / `renderer_tick_wakeup_invocations`) through health output so the remaining ~85/s excess (wakeup-driven idle drains) can be attributed. 497 host tests pass.
+2. **PR #138** (`dame/renderer-tick-overlap-20260812`, `76c0f4f` + `45351ec` + `227fe58`): fixed the 100 ms hidden-tick overlap with the 8 ms visible frame timer (~10 ticks/s), and added aggregate timer-vs-wakeup counters through health output. The timer counter combines 8 ms + 100 ms timer calls; the remaining ~85/s delta is unattributed pending live measurement. Canonical `scripts/cargo-env.sh test -p limux-host-linux` now passes all 497 tests.
 
-**Next:** coordinate with momo (durable notice filed in nafo_INBOX) + nafo (hcom inform sent) on the crash; operator installs a build containing #138, then re-measures per-source tick deltas. The clock-rotation churn (P1) and C: headroom (P0) remain operator-gated per momo's report.
+**Next:** coordinate with momo (corrected durable notice filed in nafo_INBOX) + nafo (hcom inform sent) on the crash; no peer reply has arrived yet. An approved build/install/restart is required before live deltas can be captured. Do not claim renderer-probe activation: #136 remains deliberately inactive because `child_env_removal_supported=false`; the supplied invocation requested no D3D12 policy, and isolated probing success does not activate the live host. After an approved #138 install, sample timer-vs-wakeup deltas. The clock-rotation churn (P1) and C: headroom (P0) remain operator-gated per momo's report.
 
 ## What Was Done (anti-refill lane)
 
@@ -27,17 +28,19 @@ Branch: `dame/anti-refill-20260812` (from `origin/main` @ `204a3b6`)
 
 ## Verification
 
-- `scripts/tests/cargo-env-retention.sh` — PASS.
-- `scripts/cargo-env.sh check -p limux-cli` — PASS (4.27s warm).
-- `scripts/cargo-env.sh test --workspace` — PASS: 165 CLI + 5 launcher-route + 40 + 2 + 5 + 56 + 496 host + 9 = 778 tests, 0 failures (matches gula's documented baseline).
+- **Recorded before the #138 merge:** `scripts/tests/cargo-env-retention.sh` — PASS.
+- **Recorded before the #138 merge:** `scripts/cargo-env.sh check -p limux-cli` — PASS (4.27s warm).
+- **Recorded before the #138 merge:** `scripts/cargo-env.sh test --workspace` — PASS: 165 CLI + 5 launcher-route + 40 + 2 + 5 + 56 + 496 host + 9 = 778 tests, 0 failures (anti-refill lane only).
+- **Post-merge canonical host verification:** `scripts/cargo-env.sh test -p limux-host-linux` — PASS, 497 tests, 0 failures.
 - `bash -n` on all 7 modified/new scripts — PASS.
-- `cargo fmt --check` and `cargo clippy --workspace --all-targets -- -D warnings` — FAIL on PRE-EXISTING drift in `rust/limux-cli/src/main.rs` (101 fmt diffs; clippy: `contains()` vs `iter().any()`, `assert_eq!` literal bool) and `rust/limux-host-linux/src/window.rs:6478` fmt. Zero Rust files modified by this branch (`git diff origin/main...HEAD -- rust/` empty). Matches gula's documented "repository-wide formatting/clippy still has unrelated pre-existing drift."
+- **Recorded before the #138 merge:** `cargo fmt --check` and `cargo clippy --workspace --all-targets -- -D warnings` — FAIL on PRE-EXISTING drift in `rust/limux-cli/src/main.rs` (101 fmt diffs; clippy: `contains()` vs `iter().any()`, `assert_eq!` literal bool) and `rust/limux-host-linux/src/window.rs:6478` fmt. Zero Rust files were modified in the anti-refill lane (`git diff origin/main...dame/anti-refill-20260812 -- rust/` empty). This historical repository-wide result does not cover #138; the post-merge canonical host test passed separately.
 
 ## Coordination
 
 - hcom ack sent to `gula` (stored; live wake attempted) — succession absorbed, gula identity NOT reclaimed.
 - hcom inform sent to `zori` (stored to INBOX; hook-only delivery) — shared-Cargo design mirrors hcom-cargo.sh; asked for constraints.
-- hcom inform sent to `nafo` (delivered) — anti-refill lane taken over; result delivery pending PR.
+- corrected notice sent to `momo` via `nafo_INBOX`; no peer reply has arrived yet. The notice says the remaining delta is unattributed, counters are aggregate timer-vs-wakeup, wrapper verification is pending, and no live install/restart has occurred.
+- hcom inform sent to `nafo`; no peer reply has arrived yet. Live validation remains blocked on an approved install/restart.
 - TaskMaster: tag `limux-anti-refill-20260812` created; task #1 (tag) created via `task-master-ai-reviewed` (manual title/description, no AI prompt). Task #7 (renderer) remains blocked/untouched.
 
 ## Preserved State (do not touch)
