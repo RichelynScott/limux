@@ -1119,6 +1119,14 @@ fn tick_interval_for_visible_surfaces(visible_surfaces: usize) -> Duration {
     })
 }
 
+/// The 100 ms fallback mailbox drain must not tick the app while any surface
+/// is visible: the 8 ms frame timer already does, and stacking both produced
+/// ~220 ticks/s instead of the nominal 125/s (measured 2026-08-12, WSL
+/// crash-3 forensics) — a full extra llvmpipe software-rendering core.
+fn hidden_tick_should_run(visible_surfaces: usize) -> bool {
+    visible_surfaces == 0
+}
+
 fn tick_ghostty_app(app: ghostty_app_t) {
     TICK_INVOCATION_COUNT.fetch_add(1, Ordering::Relaxed);
     unsafe { ghostty_app_tick(app) };
@@ -1173,8 +1181,15 @@ pub fn init_ghostty() {
         // Renderer redraw messages do not wake the embedded app. Keep a slow
         // fallback mailbox drain while every surface is hidden; mapping the
         // first visible surface starts the separate frame-cadence timer.
+        // While any surface is visible the 8 ms frame timer already ticks the
+        // app, so this 100 ms timer must NOT tick too: stacking both produced
+        // ~220 ticks/s instead of the nominal 125/s (measured 2026-08-12,
+        // WSL crash-3 forensics) and burned a full extra CPU core of
+        // llvmpipe software rendering.
         glib::timeout_add_local(tick_interval_for_visible_surfaces(0), move || {
-            tick_ghostty_app(app);
+            if hidden_tick_should_run(VISIBLE_SURFACE_COUNT.load(Ordering::Acquire)) {
+                tick_ghostty_app(app);
+            }
             glib::ControlFlow::Continue
         });
 
@@ -3631,6 +3646,16 @@ mod tests {
             tick_interval_for_visible_surfaces(56),
             Duration::from_millis(VISIBLE_TICK_INTERVAL_MS)
         );
+    }
+
+    #[test]
+    fn hidden_tick_skips_while_any_surface_is_visible() {
+        // Regression: the 100 ms fallback mailbox drain used to tick the app
+        // unconditionally, stacking on the 8 ms frame timer while surfaces
+        // were visible (~220 ticks/s measured instead of the nominal 125/s).
+        assert!(hidden_tick_should_run(0));
+        assert!(!hidden_tick_should_run(1));
+        assert!(!hidden_tick_should_run(41));
     }
 
     #[test]
