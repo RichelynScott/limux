@@ -20,9 +20,9 @@ use limux_protocol::validate_terminal_text_payload;
 
 use crate::app_config;
 use crate::control_bridge::{
-    BridgeError, ControlCommand, PaneActionKind, PaneCreateDirection as BridgePaneCreateDirection,
-    PaneCreateType, PaneResizeDirection as BridgePaneResizeDirection, SurfaceRebindSessionRequest,
-    WorkspaceTarget,
+    BridgeError, ControlCommand, EntitledControlCommand, GtkConnectionEntitlement, PaneActionKind,
+    PaneCreateDirection as BridgePaneCreateDirection, PaneCreateType,
+    PaneResizeDirection as BridgePaneResizeDirection, SurfaceRebindSessionRequest, WorkspaceTarget,
 };
 use crate::keybind_editor;
 use crate::layout_state::{
@@ -829,15 +829,15 @@ fn with_workspace_temporarily_mapped(
 fn resolve_pane_resize_target(
     state: &State,
     request: &crate::control_bridge::PaneResizeRequest,
+    entitlement: &GtkConnectionEntitlement,
 ) -> Result<PaneResizeTarget, BridgeError> {
     let pane_id = parse_pane_handle(&request.pane_id)
         .ok_or_else(|| BridgeError::invalid_params("pane.resize requires a valid pane_id"))?;
 
     let (workspace_index, workspace_id, workspace_root) = {
         let app_state = state.borrow();
-        let Some(index) = workspace_index_for_target(&app_state, &request.target) else {
-            return Err(BridgeError::not_found("workspace not found"));
-        };
+        let index =
+            workspace_index_for_management_target(&app_state, &request.target, entitlement)?;
         let workspace = &app_state.workspaces[index];
         (index, workspace.id.clone(), workspace.root.clone())
     };
@@ -885,12 +885,11 @@ fn resolve_surface_target(
     state: &State,
     target: &WorkspaceTarget,
     surface_id: Option<&str>,
+    entitlement: &GtkConnectionEntitlement,
 ) -> Result<ResolvedSurfaceTarget, BridgeError> {
     let (workspace_index, workspace_id, workspace_name, workspace_root, target_is_active) = {
         let app_state = state.borrow();
-        let Some(index) = workspace_index_for_target(&app_state, target) else {
-            return Err(BridgeError::not_found("workspace not found"));
-        };
+        let index = workspace_index_for_management_target(&app_state, target, entitlement)?;
         let workspace = &app_state.workspaces[index];
         (
             index,
@@ -1165,7 +1164,10 @@ fn pane_resize_direction_name(direction: BridgePaneResizeDirection) -> &'static 
     }
 }
 
-fn workspace_index_for_target(state: &AppState, target: &WorkspaceTarget) -> Option<usize> {
+fn workspace_index_for_target_unchecked(
+    state: &AppState,
+    target: &WorkspaceTarget,
+) -> Option<usize> {
     match target {
         WorkspaceTarget::Active => (!state.workspaces.is_empty()).then_some(state.active_idx),
         WorkspaceTarget::Handle(handle) => {
@@ -1181,6 +1183,180 @@ fn workspace_index_for_target(state: &AppState, target: &WorkspaceTarget) -> Opt
             .position(|workspace| workspace.name == *name),
         WorkspaceTarget::Index(index) => (*index < state.workspaces.len()).then_some(*index),
     }
+}
+
+fn workspace_index_for_target(
+    state: &AppState,
+    target: &WorkspaceTarget,
+    entitlement: &GtkConnectionEntitlement,
+) -> Result<usize, BridgeError> {
+    workspace_index_for_target_entries(
+        state.active_idx,
+        state
+            .workspaces
+            .iter()
+            .enumerate()
+            .map(|(index, workspace)| (index, workspace.id.as_str(), workspace.name.as_str())),
+        target,
+        entitlement,
+    )
+}
+
+fn workspace_index_for_target_entries<'a>(
+    active_idx: usize,
+    workspace_entries: impl IntoIterator<Item = (usize, &'a str, &'a str)>,
+    target: &WorkspaceTarget,
+    entitlement: &GtkConnectionEntitlement,
+) -> Result<usize, BridgeError> {
+    let workspace_entries = workspace_entries.into_iter().collect::<Vec<_>>();
+    let resolved = match target {
+        WorkspaceTarget::Active => workspace_entries
+            .iter()
+            .find(|(index, _, _)| *index == active_idx),
+        WorkspaceTarget::Handle(handle) => {
+            let normalized = normalize_workspace_handle(handle);
+            workspace_entries
+                .iter()
+                .find(|(_, workspace_id, _)| *workspace_id == normalized)
+        }
+        WorkspaceTarget::Name(name) => workspace_entries
+            .iter()
+            .find(|(_, _, workspace_name)| *workspace_name == name),
+        WorkspaceTarget::Index(index) => workspace_entries
+            .iter()
+            .find(|(workspace_index, _, _)| workspace_index == index),
+    }
+    .ok_or_else(|| BridgeError::not_found("workspace not found"))?;
+
+    authorize_resolved_workspace(target, resolved.1, entitlement)?;
+    Ok(resolved.0)
+}
+
+fn workspace_index_for_management_target(
+    state: &AppState,
+    target: &WorkspaceTarget,
+    entitlement: &GtkConnectionEntitlement,
+) -> Result<usize, BridgeError> {
+    match target {
+        WorkspaceTarget::Active => management_workspace_index(
+            state.active_idx,
+            state
+                .workspaces
+                .iter()
+                .enumerate()
+                .map(|(index, workspace)| (index, workspace.id.as_str())),
+            entitlement,
+        ),
+        WorkspaceTarget::Handle(_) | WorkspaceTarget::Name(_) | WorkspaceTarget::Index(_) => {
+            workspace_index_for_target(state, target, entitlement)
+        }
+    }
+}
+
+fn resolve_close_workspace_target<'a>(
+    active_idx: usize,
+    workspace_entries: impl IntoIterator<Item = (usize, &'a str, &'a str)>,
+    target: &WorkspaceTarget,
+    entitlement: &GtkConnectionEntitlement,
+) -> Result<usize, BridgeError> {
+    let workspace_entries = workspace_entries.into_iter().collect::<Vec<_>>();
+
+    // Preserve the pre-entitlement conflict-first behavior when enforcement is
+    // disabled. Enforcing modes must authorize first so the single-workspace
+    // precondition cannot disclose state outside the connection's claim.
+    if !entitlement.config().is_enforcing() && workspace_entries.len() <= 1 {
+        return Err(BridgeError::conflict("cannot close workspace"));
+    }
+
+    let index = match target {
+        WorkspaceTarget::Active => management_workspace_index(
+            active_idx,
+            workspace_entries
+                .iter()
+                .map(|(index, workspace_id, _)| (*index, *workspace_id)),
+            entitlement,
+        ),
+        WorkspaceTarget::Handle(_) | WorkspaceTarget::Name(_) | WorkspaceTarget::Index(_) => {
+            workspace_index_for_target_entries(
+                active_idx,
+                workspace_entries.iter().copied(),
+                target,
+                entitlement,
+            )
+        }
+    }?;
+
+    if workspace_entries.len() <= 1 {
+        Err(BridgeError::conflict("cannot close workspace"))
+    } else {
+        Ok(index)
+    }
+}
+
+fn authorize_resolved_workspace(
+    target: &WorkspaceTarget,
+    workspace_id: &str,
+    entitlement: &GtkConnectionEntitlement,
+) -> Result<(), BridgeError> {
+    if !entitlement.config().is_enforcing() {
+        return Ok(());
+    }
+
+    match target {
+        WorkspaceTarget::Active => {
+            if entitlement.requires_claim() {
+                return Err(BridgeError::permission_denied(
+                    "connection must present a workspace target under require-claim",
+                ));
+            }
+            if entitlement.allows_workspace(workspace_id.to_string()) {
+                Ok(())
+            } else {
+                // Do not confirm that the operator's focused workspace exists
+                // when it falls outside this connection's sticky claim.
+                Err(BridgeError::not_found("workspace not found"))
+            }
+        }
+        WorkspaceTarget::Handle(_) | WorkspaceTarget::Name(_) | WorkspaceTarget::Index(_) => {
+            entitlement
+                .claim_or_allow_explicit(workspace_id.to_string())
+                .map_err(|_| {
+                    BridgeError::permission_denied("workspace not entitled to this connection")
+                })
+        }
+    }
+}
+
+fn management_workspace_index<'a>(
+    active_idx: usize,
+    workspace_ids: impl IntoIterator<Item = (usize, &'a str)>,
+    entitlement: &GtkConnectionEntitlement,
+) -> Result<usize, BridgeError> {
+    let workspace_ids = workspace_ids.into_iter().collect::<Vec<_>>();
+    let active_exists = workspace_ids
+        .iter()
+        .any(|(index, _workspace_id)| *index == active_idx);
+    if !entitlement.config().is_enforcing() {
+        return active_exists
+            .then_some(active_idx)
+            .ok_or_else(|| BridgeError::not_found("workspace not found"));
+    }
+    if entitlement.requires_claim() {
+        return Err(BridgeError::permission_denied(
+            "connection must present a workspace target under require-claim",
+        ));
+    }
+    let Some(claimed) = entitlement.claimed_workspace() else {
+        return active_exists
+            .then_some(active_idx)
+            .ok_or_else(|| BridgeError::not_found("workspace not found"));
+    };
+
+    workspace_ids
+        .iter()
+        .find_map(|(index, workspace_id)| (*workspace_id == claimed.as_str()).then_some(index))
+        .copied()
+        .ok_or_else(|| BridgeError::not_found("workspace not found"))
 }
 
 fn workspace_row(index: usize, selected_idx: usize, workspace: &Workspace) -> serde_json::Value {
@@ -1560,6 +1736,7 @@ pub(crate) struct PaneCreateSplitPlacement {
 #[allow(dead_code)]
 pub(crate) enum PaneCreateTargetError {
     WorkspaceNotFound,
+    WorkspaceAccess(BridgeError),
     InvalidSurfaceId(String),
     InvalidPaneId(u32),
     NoPanes,
@@ -1646,6 +1823,7 @@ fn resolve_pane_create_source_id(
 fn pane_create_target_error(error: PaneCreateTargetError) -> BridgeError {
     match error {
         PaneCreateTargetError::WorkspaceNotFound => BridgeError::not_found("workspace not found"),
+        PaneCreateTargetError::WorkspaceAccess(error) => error,
         PaneCreateTargetError::InvalidSurfaceId(_) => BridgeError::not_found("surface not found"),
         PaneCreateTargetError::InvalidPaneId(_) => BridgeError::not_found("pane not found"),
         PaneCreateTargetError::NoPanes => BridgeError::not_found("pane not found"),
@@ -1666,11 +1844,13 @@ pub(crate) fn resolve_pane_create_target(
     surface_id: Option<&str>,
     pane_id: Option<u32>,
     direction: PaneCreateDirection,
+    entitlement: &GtkConnectionEntitlement,
 ) -> Result<ResolvedPaneCreateTarget, PaneCreateTargetError> {
     let (workspace_id, workspace_root, target_workspace_is_active) = {
         let app_state = state.borrow();
-        let workspace_index = workspace_index_for_target(&app_state, target)
-            .ok_or(PaneCreateTargetError::WorkspaceNotFound)?;
+        let workspace_index =
+            workspace_index_for_management_target(&app_state, target, entitlement)
+                .map_err(PaneCreateTargetError::WorkspaceAccess)?;
         let workspace = &app_state.workspaces[workspace_index];
         (
             workspace.id.clone(),
@@ -5734,20 +5914,26 @@ fn create_workspace_with_folder(state: &State, name: &str, folder_path: &str) {
     request_session_save(state);
 }
 
-fn dispatch_control_command(command: ControlCommand) {
+fn dispatch_control_command(envelope: EntitledControlCommand) {
     CONTROL_STATE.with(|slot| {
         let state = slot.borrow().clone();
         if let Some(state) = state {
-            handle_control_command(&state, command);
+            handle_control_command(&state, envelope.command, &envelope.entitlement);
         } else {
-            command.respond(Err(crate::control_bridge::BridgeError::internal(
-                "control bridge not initialized",
-            )));
+            envelope
+                .command
+                .respond(Err(crate::control_bridge::BridgeError::internal(
+                    "control bridge not initialized",
+                )));
         }
     });
 }
 
-fn handle_control_command(state: &State, command: ControlCommand) {
+fn handle_control_command(
+    state: &State,
+    command: ControlCommand,
+    entitlement: &GtkConnectionEntitlement,
+) {
     match command {
         ControlCommand::Identify { caller, reply } => {
             let result = {
@@ -5833,14 +6019,15 @@ fn handle_control_command(state: &State, command: ControlCommand) {
         ControlCommand::ListPanes { target, reply } => {
             let resolved = {
                 let app_state = state.borrow();
-                workspace_index_for_target(&app_state, &target)
+                workspace_index_for_target(&app_state, &target, entitlement)
             };
 
-            let Some(index) = resolved else {
-                let _ = reply.send(Err(crate::control_bridge::BridgeError::not_found(
-                    "workspace not found",
-                )));
-                return;
+            let index = match resolved {
+                Ok(index) => index,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
             };
 
             let result = {
@@ -5856,14 +6043,15 @@ fn handle_control_command(state: &State, command: ControlCommand) {
         } => {
             let resolved = {
                 let app_state = state.borrow();
-                workspace_index_for_target(&app_state, &target)
+                workspace_index_for_target(&app_state, &target, entitlement)
             };
 
-            let Some(index) = resolved else {
-                let _ = reply.send(Err(crate::control_bridge::BridgeError::not_found(
-                    "workspace not found",
-                )));
-                return;
+            let index = match resolved {
+                Ok(index) => index,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
             };
 
             let pane_filter = pane_id
@@ -5898,12 +6086,15 @@ fn handle_control_command(state: &State, command: ControlCommand) {
         ControlCommand::PaneAction { request, reply } => {
             let resolved = {
                 let app_state = state.borrow();
-                workspace_index_for_target(&app_state, &request.target)
+                workspace_index_for_management_target(&app_state, &request.target, entitlement)
             };
 
-            let Some(index) = resolved else {
-                let _ = reply.send(Err(BridgeError::not_found("workspace not found")));
-                return;
+            let index = match resolved {
+                Ok(index) => index,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
             };
 
             let (workspace_id, workspace_root) = {
@@ -5954,12 +6145,15 @@ fn handle_control_command(state: &State, command: ControlCommand) {
 
             let resolved = {
                 let app_state = state.borrow();
-                workspace_index_for_target(&app_state, &request.target)
+                workspace_index_for_management_target(&app_state, &request.target, entitlement)
             };
 
-            let Some(index) = resolved else {
-                let _ = reply.send(Err(BridgeError::not_found("workspace not found")));
-                return;
+            let index = match resolved {
+                Ok(index) => index,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
             };
 
             let (workspace_id, workspace_root, was_active) = {
@@ -5993,7 +6187,7 @@ fn handle_control_command(state: &State, command: ControlCommand) {
             });
         }
         ControlCommand::ResizePane { request, reply } => {
-            let target = match resolve_pane_resize_target(state, &request) {
+            let target = match resolve_pane_resize_target(state, &request, entitlement) {
                 Ok(target) => target,
                 Err(error) => {
                     let _ = reply.send(Err(error));
@@ -6009,6 +6203,7 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 state,
                 &request.target,
                 request.source_surface_id.as_deref(),
+                entitlement,
             ) {
                 Ok(resolved) => resolved,
                 Err(error) => {
@@ -6064,14 +6259,18 @@ fn handle_control_command(state: &State, command: ControlCommand) {
             send_surface_response_after_settle(state.clone(), mapping, reply, response);
         }
         ControlCommand::FocusSurface { request, reply } => {
-            let resolved =
-                match resolve_surface_target(state, &request.target, Some(&request.surface_id)) {
-                    Ok(resolved) => resolved,
-                    Err(error) => {
-                        let _ = reply.send(Err(error));
-                        return;
-                    }
-                };
+            let resolved = match resolve_surface_target(
+                state,
+                &request.target,
+                Some(&request.surface_id),
+                entitlement,
+            ) {
+                Ok(resolved) => resolved,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
+            };
 
             if !pane::activate_tab_in_pane(&resolved.pane_widget, &resolved.tab_id) {
                 let _ = reply.send(Err(BridgeError::not_found("surface not found")));
@@ -6107,15 +6306,18 @@ fn handle_control_command(state: &State, command: ControlCommand) {
             });
         }
         ControlCommand::CloseSurface { request, reply } => {
-            let resolved =
-                match resolve_surface_target(state, &request.target, request.surface_id.as_deref())
-                {
-                    Ok(resolved) => resolved,
-                    Err(error) => {
-                        let _ = reply.send(Err(error));
-                        return;
-                    }
-                };
+            let resolved = match resolve_surface_target(
+                state,
+                &request.target,
+                request.surface_id.as_deref(),
+                entitlement,
+            ) {
+                Ok(resolved) => resolved,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
+            };
 
             let closed = match pane::close_tab_in_pane(&resolved.pane_widget, &resolved.tab_id) {
                 Some(surface) => surface,
@@ -6152,6 +6354,7 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 state,
                 &request.target,
                 Some(&request.surface_id),
+                entitlement,
             ) {
                 Ok(resolved) => resolved,
                 Err(error) => {
@@ -6296,6 +6499,7 @@ fn handle_control_command(state: &State, command: ControlCommand) {
                 request.source_surface_id.as_deref(),
                 source_pane_id,
                 direction,
+                entitlement,
             ) {
                 Ok(resolved) => resolved,
                 Err(error) => {
@@ -6382,14 +6586,15 @@ fn handle_control_command(state: &State, command: ControlCommand) {
         ControlCommand::ListSurfaces { target, reply } => {
             let resolved = {
                 let app_state = state.borrow();
-                workspace_index_for_target(&app_state, &target)
+                workspace_index_for_target(&app_state, &target, entitlement)
             };
 
-            let Some(index) = resolved else {
-                let _ = reply.send(Err(crate::control_bridge::BridgeError::not_found(
-                    "workspace not found",
-                )));
-                return;
+            let index = match resolved {
+                Ok(index) => index,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
             };
 
             let result = {
@@ -6401,14 +6606,15 @@ fn handle_control_command(state: &State, command: ControlCommand) {
         ControlCommand::CurrentSurface { target, reply } => {
             let resolved = {
                 let app_state = state.borrow();
-                workspace_index_for_target(&app_state, &target)
+                workspace_index_for_target(&app_state, &target, entitlement)
             };
 
-            let Some(index) = resolved else {
-                let _ = reply.send(Err(crate::control_bridge::BridgeError::not_found(
-                    "workspace not found",
-                )));
-                return;
+            let index = match resolved {
+                Ok(index) => index,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
             };
 
             let result = {
@@ -6432,14 +6638,15 @@ fn handle_control_command(state: &State, command: ControlCommand) {
         } => {
             let resolved = {
                 let app_state = state.borrow();
-                workspace_index_for_target(&app_state, &target)
+                workspace_index_for_target(&app_state, &target, entitlement)
             };
 
-            let Some(index) = resolved else {
-                let _ = reply.send(Err(crate::control_bridge::BridgeError::not_found(
-                    "workspace not found",
-                )));
-                return;
+            let index = match resolved {
+                Ok(index) => index,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
             };
 
             let result = {
@@ -6522,7 +6729,9 @@ fn handle_control_command(state: &State, command: ControlCommand) {
         ControlCommand::SelectWorkspace { target, reply } => {
             let resolved = {
                 let app_state = state.borrow();
-                workspace_index_for_target(&app_state, &target)
+                // Slice D owns workspace discovery/selection policy. Preserve
+                // its current behavior until the operator-signal decision.
+                workspace_index_for_target_unchecked(&app_state, &target)
             };
 
             let Some(index) = resolved else {
@@ -6549,14 +6758,15 @@ fn handle_control_command(state: &State, command: ControlCommand) {
         } => {
             let resolved = {
                 let app_state = state.borrow();
-                workspace_index_for_target(&app_state, &target)
+                workspace_index_for_management_target(&app_state, &target, entitlement)
             };
 
-            let Some(index) = resolved else {
-                let _ = reply.send(Err(crate::control_bridge::BridgeError::not_found(
-                    "workspace not found",
-                )));
-                return;
+            let index = match resolved {
+                Ok(index) => index,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
             };
 
             {
@@ -6578,22 +6788,26 @@ fn handle_control_command(state: &State, command: ControlCommand) {
         ControlCommand::CloseWorkspace { target, reply } => {
             let resolved = {
                 let app_state = state.borrow();
-                if app_state.workspaces.len() <= 1 {
-                    None
-                } else {
-                    workspace_index_for_target(&app_state, &target)
-                }
+                resolve_close_workspace_target(
+                    app_state.active_idx,
+                    app_state
+                        .workspaces
+                        .iter()
+                        .enumerate()
+                        .map(|(index, workspace)| {
+                            (index, workspace.id.as_str(), workspace.name.as_str())
+                        }),
+                    &target,
+                    entitlement,
+                )
             };
 
-            let Some(index) = resolved else {
-                let can_close = state.borrow().workspaces.len() > 1;
-                let error = if can_close {
-                    crate::control_bridge::BridgeError::not_found("workspace not found")
-                } else {
-                    crate::control_bridge::BridgeError::conflict("cannot close workspace")
-                };
-                let _ = reply.send(Err(error));
-                return;
+            let index = match resolved {
+                Ok(index) => index,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
             };
 
             let closed_workspace = {
@@ -6620,14 +6834,15 @@ fn handle_control_command(state: &State, command: ControlCommand) {
 
             let resolved = {
                 let app_state = state.borrow();
-                workspace_index_for_target(&app_state, &target)
+                workspace_index_for_target(&app_state, &target, entitlement)
             };
 
-            let Some(index) = resolved else {
-                let _ = reply.send(Err(crate::control_bridge::BridgeError::not_found(
-                    "workspace not found",
-                )));
-                return;
+            let index = match resolved {
+                Ok(index) => index,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
             };
 
             let target = {
@@ -6670,14 +6885,15 @@ fn handle_control_command(state: &State, command: ControlCommand) {
         } => {
             let resolved = {
                 let app_state = state.borrow();
-                workspace_index_for_target(&app_state, &target)
+                workspace_index_for_target(&app_state, &target, entitlement)
             };
 
-            let Some(index) = resolved else {
-                let _ = reply.send(Err(crate::control_bridge::BridgeError::not_found(
-                    "workspace not found",
-                )));
-                return;
+            let index = match resolved {
+                Ok(index) => index,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
             };
 
             let target = {
@@ -6724,14 +6940,15 @@ fn handle_control_command(state: &State, command: ControlCommand) {
         } => {
             let resolved = {
                 let app_state = state.borrow();
-                workspace_index_for_target(&app_state, &target)
+                workspace_index_for_target(&app_state, &target, entitlement)
             };
 
-            let Some(index) = resolved else {
-                let _ = reply.send(Err(crate::control_bridge::BridgeError::not_found(
-                    "workspace not found",
-                )));
-                return;
+            let index = match resolved {
+                Ok(index) => index,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
             };
 
             let target = {
@@ -6803,14 +7020,15 @@ fn handle_control_command(state: &State, command: ControlCommand) {
             // the currently-focused workspace via workspace_index_for_target.
             let resolved = {
                 let app_state = state.borrow();
-                workspace_index_for_target(&app_state, &target)
+                workspace_index_for_target(&app_state, &target, entitlement)
             };
 
-            let Some(index) = resolved else {
-                let _ = reply.send(Err(crate::control_bridge::BridgeError::not_found(
-                    "workspace not found",
-                )));
-                return;
+            let index = match resolved {
+                Ok(index) => index,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
             };
 
             let ws_id = state.borrow().workspaces[index].id.clone();
@@ -8460,10 +8678,12 @@ mod tests {
         SIDEBAR_MIN_WIDTH, SIDEBAR_TINY_CSS_CLASS, SIDEBAR_TINY_WIDTH,
         WORKSPACE_RENAME_ENTRY_CSS_CLASS, WORKSPACE_RENAME_ENTRY_CSS_CLASSES,
     };
+    use crate::control_bridge::{BridgeError, GtkConnectionEntitlement, WorkspaceTarget};
     use crate::layout_state::{LayoutNodeState, PaneState, SplitOrientation, SplitState};
     use crate::shortcut_config::{
         default_shortcuts, resolve_shortcuts_from_str, EditableCapturePolicy, ShortcutCommand,
     };
+    use limux_core::{EntitlementConfig, EntitlementMode};
     #[derive(Default)]
     struct TestSessionSaveState {
         persistence_suspended: bool,
@@ -8482,6 +8702,188 @@ mod tests {
         fn set_save_queued(&mut self, queued: bool) {
             self.save_queued = queued;
         }
+    }
+
+    #[test]
+    fn workspace_entitlement_rejects_foreign_handle_under_claim() {
+        let entitlement = GtkConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::RequireClaim,
+        });
+        let workspaces = [(0, "workspace-a", "lane-a"), (1, "workspace-b", "lane-b")];
+
+        assert_eq!(
+            super::workspace_index_for_target_entries(
+                1,
+                workspaces,
+                &WorkspaceTarget::Handle("workspace-a".to_string()),
+                &entitlement,
+            ),
+            Ok(0)
+        );
+        assert_eq!(
+            super::workspace_index_for_target_entries(
+                1,
+                workspaces,
+                &WorkspaceTarget::Handle("workspace-b".to_string()),
+                &entitlement,
+            ),
+            Err(BridgeError::permission_denied(
+                "workspace not entitled to this connection"
+            ))
+        );
+    }
+
+    #[test]
+    fn workspace_entitlement_hides_active_workspace_outside_claim() {
+        let entitlement = GtkConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::RequireClaim,
+        });
+        entitlement
+            .record_claim("workspace-a".to_string())
+            .expect("first claim binds");
+        let workspaces = [(0, "workspace-a", "lane-a"), (1, "workspace-b", "lane-b")];
+
+        assert_eq!(
+            super::workspace_index_for_target_entries(
+                1,
+                workspaces,
+                &WorkspaceTarget::Active,
+                &entitlement,
+            ),
+            Err(BridgeError::not_found("workspace not found"))
+        );
+    }
+
+    #[test]
+    fn management_active_resolves_claim_instead_of_focused_workspace() {
+        let entitlement = GtkConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::RequireClaim,
+        });
+        entitlement
+            .record_claim("workspace-a".to_string())
+            .expect("first claim binds");
+        let workspace_ids = [(0, "workspace-a"), (1, "workspace-b")];
+
+        assert_eq!(
+            super::management_workspace_index(1, workspace_ids, &entitlement),
+            Ok(0)
+        );
+    }
+
+    #[test]
+    fn workspace_entitlement_off_preserves_active_and_explicit_access() {
+        let entitlement = GtkConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::Off,
+        });
+        let workspaces = [(0, "workspace-a", "lane-a"), (1, "workspace-b", "lane-b")];
+
+        for target in [
+            WorkspaceTarget::Active,
+            WorkspaceTarget::Handle("workspace-b".to_string()),
+            WorkspaceTarget::Name("lane-b".to_string()),
+            WorkspaceTarget::Index(1),
+        ] {
+            assert_eq!(
+                super::workspace_index_for_target_entries(1, workspaces, &target, &entitlement),
+                Ok(1)
+            );
+        }
+        assert_eq!(
+            super::management_workspace_index(
+                1,
+                [(0, "workspace-a"), (1, "workspace-b")],
+                &entitlement,
+            ),
+            Ok(1)
+        );
+    }
+
+    #[test]
+    fn management_active_returns_not_found_when_no_workspace_exists() {
+        let entitlement = GtkConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::Off,
+        });
+        let workspace_ids = std::iter::empty::<(usize, &str)>();
+
+        assert_eq!(
+            super::management_workspace_index(0, workspace_ids, &entitlement),
+            Err(BridgeError::not_found("workspace not found"))
+        );
+    }
+
+    #[test]
+    fn require_claim_rejects_unclaimed_active_workspace() {
+        let entitlement = GtkConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::RequireClaim,
+        });
+
+        assert_eq!(
+            super::workspace_index_for_target_entries(
+                0,
+                [(0, "workspace-a", "lane-a")],
+                &WorkspaceTarget::Active,
+                &entitlement,
+            ),
+            Err(BridgeError::permission_denied(
+                "connection must present a workspace target under require-claim"
+            ))
+        );
+    }
+
+    #[test]
+    fn close_workspace_requires_entitlement_before_revealing_single_workspace() {
+        let entitlement = GtkConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::RequireClaim,
+        });
+
+        assert_eq!(
+            super::resolve_close_workspace_target(
+                0,
+                [(0, "workspace-a", "lane-a")],
+                &WorkspaceTarget::Active,
+                &entitlement,
+            ),
+            Err(BridgeError::permission_denied(
+                "connection must present a workspace target under require-claim"
+            ))
+        );
+    }
+
+    #[test]
+    fn close_workspace_reports_conflict_after_authorizing_claimed_single_workspace() {
+        let entitlement = GtkConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::RequireClaim,
+        });
+        entitlement
+            .record_claim("workspace-a".to_string())
+            .expect("first claim binds");
+
+        assert_eq!(
+            super::resolve_close_workspace_target(
+                0,
+                [(0, "workspace-a", "lane-a")],
+                &WorkspaceTarget::Active,
+                &entitlement,
+            ),
+            Err(BridgeError::conflict("cannot close workspace"))
+        );
+    }
+
+    #[test]
+    fn close_workspace_off_preserves_conflict_before_target_resolution() {
+        let entitlement = GtkConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::Off,
+        });
+
+        assert_eq!(
+            super::resolve_close_workspace_target(
+                0,
+                [(0, "workspace-a", "lane-a")],
+                &WorkspaceTarget::Handle("missing-workspace".to_string()),
+                &entitlement,
+            ),
+            Err(BridgeError::conflict("cannot close workspace"))
+        );
     }
 
     #[test]

@@ -16,6 +16,7 @@ cd "$ROOT_DIR"
 # This script launches its own isolated host/socket. Do not inherit IDs from a
 # real Limux pane that happens to be running the smoke test.
 unset LIMUX_WORKSPACE_ID LIMUX_SURFACE_ID LIMUX_PANE_ID LIMUX_TAB_ID LIMUX_SOCKET LIMUX_SOCKET_PATH
+unset LIMUX_CHANNEL LIMUX_PROFILE_ID LIMUX_SESSION_DIR
 
 DEMO_DIR="$(mktemp -d -t limux-smoke-XXXXXX)"
 LOG_DIR="$DEMO_DIR/logs"

@@ -10,7 +10,9 @@ use serde_json::{json, Map, Value};
 
 pub mod entitlement;
 
-pub use entitlement::{ConnectionEntitlement, EntitlementConfig, EntitlementMode};
+pub use entitlement::{
+    ConnectionEntitlement, EntitlementConfig, EntitlementMode, WorkspaceEntitlement,
+};
 
 const COMMANDS: &[&str] = &[
     "system.ping",

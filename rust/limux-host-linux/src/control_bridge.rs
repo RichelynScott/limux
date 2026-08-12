@@ -16,6 +16,7 @@ use crate::layout_state::PaneFlagColor;
 use limux_control::auth::{self, SocketControlMode};
 use limux_control::request_io::{self, read_request_frame};
 use limux_control::socket_path::{bind_listener, resolve_socket_path, SocketMode};
+use limux_core::{EntitlementConfig, WorkspaceEntitlement};
 use limux_protocol::{
     parse_v1_command_envelope, restricted_method_allowlist, validate_restricted_method,
     validate_terminal_text_payload, V2Request, V2Response,
@@ -28,6 +29,7 @@ const UNKNOWN_METHOD_CODE: i64 = -32601;
 const INTERNAL_ERROR_CODE: i64 = -32603;
 const NOT_FOUND_CODE: i64 = -32004;
 const CONFLICT_CODE: i64 = -32009;
+const PERMISSION_DENIED_CODE: i64 = -32011;
 const DEFAULT_CONTROL_COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 const PANE_CREATE_CONTROL_COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 const CURSOR_PANE_CREATE_EMPTY_PARAMS: &[&str] = &[
@@ -47,6 +49,10 @@ enum MethodSurface {
     Unrestricted,
     CursorRestricted,
 }
+
+/// GTK specialization of the canonical per-connection entitlement policy.
+/// GTK workspace ids are UUID strings; standalone core workspace ids are u64.
+pub type GtkConnectionEntitlement = WorkspaceEntitlement<String>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WorkspaceTarget {
@@ -302,6 +308,14 @@ pub enum ControlCommand {
     },
 }
 
+/// A parsed GTK control command paired with the entitlement state owned by
+/// the socket connection that supplied it.
+#[derive(Debug)]
+pub struct EntitledControlCommand {
+    pub command: ControlCommand,
+    pub entitlement: GtkConnectionEntitlement,
+}
+
 impl ControlCommand {
     pub fn respond(self, result: BridgeResult) {
         match self {
@@ -369,6 +383,10 @@ impl BridgeError {
 
     pub fn conflict(message: impl Into<String>) -> Self {
         Self::new(CONFLICT_CODE, message)
+    }
+
+    pub fn permission_denied(message: impl Into<String>) -> Self {
+        Self::new(PERMISSION_DENIED_CODE, message)
     }
 
     pub fn internal(message: impl Into<String>) -> Self {
@@ -1633,6 +1651,21 @@ fn dispatch_request_for_surface(
     }
 }
 
+fn dispatch_request_for_connection(
+    input: &str,
+    dispatch: &dyn Fn(EntitledControlCommand),
+    surface: MethodSurface,
+    entitlement: &GtkConnectionEntitlement,
+) -> V2Response {
+    let dispatch_with_entitlement = |command| {
+        dispatch(EntitledControlCommand {
+            command,
+            entitlement: entitlement.clone(),
+        });
+    };
+    dispatch_request_for_surface(input, &dispatch_with_entitlement, surface)
+}
+
 #[cfg(test)]
 fn dispatch_request(input: &str, dispatch: &dyn Fn(ControlCommand)) -> V2Response {
     dispatch_request_for_surface(input, dispatch, MethodSurface::Unrestricted)
@@ -1640,8 +1673,9 @@ fn dispatch_request(input: &str, dispatch: &dyn Fn(ControlCommand)) -> V2Respons
 
 fn handle_client(
     stream: UnixStream,
-    dispatch: &(dyn Fn(ControlCommand) + Send + Sync + 'static),
+    dispatch: &(dyn Fn(EntitledControlCommand) + Send + Sync + 'static),
     surface: MethodSurface,
+    entitlement: &GtkConnectionEntitlement,
 ) -> io::Result<()> {
     stream.set_read_timeout(Some(request_io::CLIENT_IDLE_TIMEOUT))?;
     let reader_stream = stream.try_clone()?;
@@ -1662,7 +1696,7 @@ fn handle_client(
             continue;
         }
 
-        let response = dispatch_request_for_surface(input, dispatch, surface);
+        let response = dispatch_request_for_connection(input, dispatch, surface, entitlement);
         let mut payload = serde_json::to_string(&response)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
         payload.push('\n');
@@ -1697,7 +1731,8 @@ fn spawn_control_listener(
     path: PathBuf,
     surface: MethodSurface,
     control_mode: SocketControlMode,
-    dispatch: Arc<dyn Fn(ControlCommand) + Send + Sync + 'static>,
+    entitlement_config: EntitlementConfig,
+    dispatch: Arc<dyn Fn(EntitledControlCommand) + Send + Sync + 'static>,
 ) -> io::Result<()> {
     let listener = bind_listener(
         &path,
@@ -1708,7 +1743,14 @@ fn spawn_control_listener(
     std::thread::Builder::new()
         .name(name.into())
         .spawn(move || {
-            run_control_listener(listener, path, surface, control_mode, dispatch);
+            run_control_listener(
+                listener,
+                path,
+                surface,
+                control_mode,
+                entitlement_config,
+                dispatch,
+            );
         })
         .map_err(|error| io::Error::other(format!("failed to spawn {name} thread: {error}")))?;
     Ok(())
@@ -1719,12 +1761,31 @@ fn run_control_listener(
     path: PathBuf,
     surface: MethodSurface,
     control_mode: SocketControlMode,
-    dispatch: Arc<dyn Fn(ControlCommand) + Send + Sync + 'static>,
+    entitlement_config: EntitlementConfig,
+    dispatch: Arc<dyn Fn(EntitledControlCommand) + Send + Sync + 'static>,
 ) {
     eprintln!("limux: control socket at {}", path.display());
+    run_control_connections(
+        listener.incoming(),
+        surface,
+        control_mode,
+        entitlement_config,
+        dispatch,
+    );
+}
+
+fn run_control_connections<I>(
+    streams: I,
+    surface: MethodSurface,
+    control_mode: SocketControlMode,
+    entitlement_config: EntitlementConfig,
+    dispatch: Arc<dyn Fn(EntitledControlCommand) + Send + Sync + 'static>,
+) where
+    I: IntoIterator<Item = io::Result<UnixStream>>,
+{
     let active_connections = Arc::new(AtomicUsize::new(0));
 
-    for stream in listener.incoming() {
+    for stream in streams {
         match stream {
             Ok(stream) => {
                 let Some(slot) = ConnectionSlot::try_acquire(active_connections.clone()) else {
@@ -1739,11 +1800,14 @@ fn run_control_listener(
                     }
                 };
                 let dispatch = dispatch.clone();
+                let entitlement = GtkConnectionEntitlement::new(entitlement_config);
                 std::thread::Builder::new()
                     .name("limux-ctrl-conn".into())
                     .spawn(move || {
                         let _slot = slot;
-                        if let Err(error) = handle_client(stream, dispatch.as_ref(), surface) {
+                        if let Err(error) =
+                            handle_client(stream, dispatch.as_ref(), surface, &entitlement)
+                        {
                             eprintln!(
                                 "limux: control connection error for pid={} uid={}: {error}",
                                 peer.pid, peer.uid
@@ -1761,15 +1825,16 @@ fn run_control_listener(
 
 /// Start the control socket server in a background thread and dispatch each
 /// command onto the GTK main context.
-pub fn start(dispatch: fn(ControlCommand)) {
+pub fn start(dispatch: fn(EntitledControlCommand)) {
     let context = glib::MainContext::default();
-    let dispatch = std::sync::Arc::new(move |command: ControlCommand| {
+    let dispatch = std::sync::Arc::new(move |command: EntitledControlCommand| {
         context.invoke(move || dispatch(command));
     });
 
     let path = resolve_socket_path(None, SocketMode::Runtime);
     let cursor_path = cursor_restricted_socket_path(&path);
     let control_mode = SocketControlMode::from_env();
+    let entitlement_config = EntitlementConfig::from_env();
     if path == cursor_path {
         eprintln!(
             "limux: runtime socket path already targets Cursor restricted surface; binding restricted listener only"
@@ -1779,6 +1844,7 @@ pub fn start(dispatch: fn(ControlCommand)) {
             cursor_path,
             MethodSurface::CursorRestricted,
             control_mode,
+            entitlement_config,
             dispatch,
         ) {
             eprintln!("limux: control socket bind failed: {error}");
@@ -1790,6 +1856,7 @@ pub fn start(dispatch: fn(ControlCommand)) {
         path.clone(),
         MethodSurface::Unrestricted,
         control_mode,
+        entitlement_config,
         dispatch.clone(),
     ) {
         eprintln!(
@@ -1803,6 +1870,7 @@ pub fn start(dispatch: fn(ControlCommand)) {
         cursor_path.clone(),
         MethodSurface::CursorRestricted,
         control_mode,
+        entitlement_config,
         dispatch,
     ) {
         eprintln!(
@@ -1815,8 +1883,251 @@ pub fn start(dispatch: fn(ControlCommand)) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use limux_core::{EntitlementConfig, EntitlementMode};
+    use std::io::{BufRead, BufReader};
+    use std::os::linux::net::SocketAddrExt;
+    use std::os::unix::net::SocketAddr;
 
     static WAVE1_ENV_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    static ABSTRACT_SOCKET_ID: AtomicUsize = AtomicUsize::new(0);
+
+    fn send_control_request(
+        writer: &mut UnixStream,
+        reader: &mut BufReader<UnixStream>,
+        request: &str,
+    ) -> Value {
+        writer.write_all(request.as_bytes()).expect("write request");
+        writer.write_all(b"\n").expect("terminate request");
+        writer.flush().expect("flush request");
+
+        let mut response = String::new();
+        reader.read_line(&mut response).expect("read response");
+        serde_json::from_str(&response).expect("parse response")
+    }
+
+    #[test]
+    fn gtk_connection_entitlement_claim_is_sticky_across_clones() {
+        let entitlement = GtkConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::RequireClaim,
+        });
+        let observer = entitlement.clone();
+
+        assert_eq!(
+            entitlement.claim_or_allow_explicit("workspace-a".to_string()),
+            Ok(())
+        );
+        assert_eq!(
+            observer.claimed_workspace(),
+            Some("workspace-a".to_string())
+        );
+        assert_eq!(
+            observer.claim_or_allow_explicit("workspace-b".to_string()),
+            Err("workspace-a".to_string())
+        );
+        assert_eq!(
+            entitlement.claimed_workspace(),
+            Some("workspace-a".to_string())
+        );
+    }
+
+    #[test]
+    fn gtk_connection_entitlement_modes_match_core_contract() {
+        let off = GtkConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::Off,
+        });
+        assert!(off.allows_workspace("workspace-a".to_string()));
+        off.record_claim("workspace-a".to_string())
+            .expect("Off ignores claims");
+        assert_eq!(off.claimed_workspace(), None);
+        assert!(off.allows_workspace("workspace-b".to_string()));
+
+        let open = GtkConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::UnclaimedAllEntitled,
+        });
+        assert!(open.allows_workspace("workspace-a".to_string()));
+        open.claim_or_allow_explicit("workspace-a".to_string())
+            .expect("first explicit target binds");
+        assert!(open.allows_workspace("workspace-a".to_string()));
+        assert!(!open.allows_workspace("workspace-b".to_string()));
+
+        let strict = GtkConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::RequireClaim,
+        });
+        assert!(strict.requires_claim());
+        assert!(!strict.allows_workspace("workspace-a".to_string()));
+        strict
+            .claim_or_allow_explicit("workspace-a".to_string())
+            .expect("natural first explicit target binds");
+        assert!(!strict.requires_claim());
+        assert!(strict.allows_workspace("workspace-a".to_string()));
+    }
+
+    #[test]
+    fn connection_dispatch_reuses_one_entitlement_across_request_frames() {
+        let entitlement = GtkConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::RequireClaim,
+        });
+        let observed = std::sync::Mutex::new(Vec::new());
+        let dispatch = |envelope: EntitledControlCommand| {
+            let mut observed = observed.lock().expect("observed lock");
+            if observed.is_empty() {
+                envelope
+                    .entitlement
+                    .record_claim("workspace-a".to_string())
+                    .expect("first frame binds the connection");
+            } else {
+                assert_eq!(
+                    envelope
+                        .entitlement
+                        .record_claim("workspace-b".to_string())
+                        .expect_err("second frame cannot replace the sticky claim"),
+                    "workspace-a"
+                );
+            }
+            observed.push(envelope.entitlement.claimed_workspace());
+            envelope.command.respond(Ok(json!({ "ok": true })));
+        };
+        let request = r#"{"v":2,"id":1,"method":"window.present","params":{}}"#;
+
+        let first = dispatch_request_for_connection(
+            request,
+            &dispatch,
+            MethodSurface::Unrestricted,
+            &entitlement,
+        );
+        let second = dispatch_request_for_connection(
+            request,
+            &dispatch,
+            MethodSurface::Unrestricted,
+            &entitlement,
+        );
+
+        assert!(first.ok);
+        assert!(second.ok);
+        assert_eq!(
+            observed.into_inner().expect("observed values"),
+            vec![
+                Some("workspace-a".to_string()),
+                Some("workspace-a".to_string())
+            ]
+        );
+
+        let fresh_connection = GtkConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::RequireClaim,
+        });
+        assert_eq!(fresh_connection.claimed_workspace(), None);
+    }
+
+    #[test]
+    fn live_connection_entitlement_reuses_claim_but_isolates_separate_connections() {
+        const WORKSPACE_A: &str = "11111111-1111-4111-8111-111111111111";
+        const WORKSPACE_B: &str = "22222222-2222-4222-8222-222222222222";
+
+        let socket_name = format!(
+            "limux-entitlement-test-{}-{}",
+            std::process::id(),
+            ABSTRACT_SOCKET_ID.fetch_add(1, Ordering::Relaxed)
+        );
+        let address = SocketAddr::from_abstract_name(socket_name.as_bytes())
+            .expect("create abstract socket address");
+        let listener = UnixListener::bind_addr(&address).expect("bind abstract socket");
+
+        let observed = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let dispatch_observed = observed.clone();
+        let dispatch: Arc<dyn Fn(EntitledControlCommand) + Send + Sync + 'static> =
+            Arc::new(move |envelope| match envelope.command {
+                ControlCommand::ListPanes { target, reply } => {
+                    let WorkspaceTarget::Handle(workspace_id) = target else {
+                        let _ = reply.send(Err(BridgeError::internal(
+                            "test expected an explicit workspace handle",
+                        )));
+                        return;
+                    };
+                    let allowed = envelope
+                        .entitlement
+                        .claim_or_allow_explicit(workspace_id.clone())
+                        .is_ok();
+                    dispatch_observed
+                        .lock()
+                        .expect("observed lock")
+                        .push((workspace_id, envelope.entitlement.claimed_workspace()));
+                    let result = if allowed {
+                        Ok(json!([]))
+                    } else {
+                        Err(BridgeError::permission_denied(
+                            "workspace entitlement denied",
+                        ))
+                    };
+                    let _ = reply.send(result);
+                }
+                command => command.respond(Err(BridgeError::internal(
+                    "test received an unexpected control command",
+                ))),
+            });
+
+        let server = std::thread::spawn(move || {
+            run_control_connections(
+                listener.incoming().take(2),
+                MethodSurface::Unrestricted,
+                SocketControlMode::AllowAll,
+                EntitlementConfig {
+                    mode: EntitlementMode::RequireClaim,
+                },
+                dispatch,
+            );
+        });
+
+        let mut first = UnixStream::connect_addr(&address).expect("connect first client");
+        let mut first_reader =
+            BufReader::new(first.try_clone().expect("clone first client stream"));
+        let first_claim = send_control_request(
+            &mut first,
+            &mut first_reader,
+            &format!(
+                r#"{{"v":2,"id":1,"method":"pane.list","params":{{"workspace_id":"{WORKSPACE_A}"}}}}"#
+            ),
+        );
+        assert_eq!(first_claim["ok"], true);
+        let foreign = send_control_request(
+            &mut first,
+            &mut first_reader,
+            &format!(
+                r#"{{"v":2,"id":2,"method":"pane.list","params":{{"workspace_id":"{WORKSPACE_B}"}}}}"#
+            ),
+        );
+        assert_eq!(foreign["ok"], false);
+        assert_eq!(foreign["error"]["code"], PERMISSION_DENIED_CODE);
+        assert!(
+            !foreign.to_string().contains(WORKSPACE_A),
+            "wire error must not disclose the existing workspace claim"
+        );
+        drop(first_reader);
+        drop(first);
+
+        let mut second = UnixStream::connect_addr(&address).expect("connect second client");
+        let mut second_reader =
+            BufReader::new(second.try_clone().expect("clone second client stream"));
+        let independent_claim = send_control_request(
+            &mut second,
+            &mut second_reader,
+            &format!(
+                r#"{{"v":2,"id":3,"method":"pane.list","params":{{"workspace_id":"{WORKSPACE_B}"}}}}"#
+            ),
+        );
+        assert_eq!(independent_claim["ok"], true);
+        drop(second_reader);
+        drop(second);
+
+        server.join().expect("listener exits after two clients");
+        assert_eq!(
+            observed.lock().expect("observed values").as_slice(),
+            &[
+                (WORKSPACE_A.to_string(), Some(WORKSPACE_A.to_string())),
+                (WORKSPACE_B.to_string(), Some(WORKSPACE_A.to_string())),
+                (WORKSPACE_B.to_string(), Some(WORKSPACE_B.to_string())),
+            ]
+        );
+    }
 
     struct EnvVarGuard {
         key: &'static str,
