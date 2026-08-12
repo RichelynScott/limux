@@ -1132,11 +1132,10 @@ fn tick_interval_for_visible_surfaces(visible_surfaces: usize) -> Duration {
 }
 
 /// The 100 ms fallback mailbox drain must not tick the app while any surface
-/// is visible: the 8 ms frame timer already does, and the stacking added
-/// ~10 ticks/s on top of the 125/s frame timer. The measured ~220/s total
-/// (2026-08-12, WSL crash-3 forensics) also includes wakeup-driven idle
-/// drains that are NOT addressed by this change and need separate
-/// per-source measurement.
+/// is visible: the 8 ms frame timer already does. This change removes only
+/// the fixed ~10 ticks/s timer overlap; the measured ~220/s total
+/// (2026-08-12, WSL crash-3 forensics) leaves a remaining delta that is
+/// unattributed until timer-vs-wakeup counters are sampled live.
 fn hidden_tick_should_run(visible_surfaces: usize) -> bool {
     visible_surfaces == 0
 }
@@ -1206,11 +1205,10 @@ pub fn init_ghostty() {
         // fallback mailbox drain while every surface is hidden; mapping the
         // first visible surface starts the separate frame-cadence timer.
         // While any surface is visible the 8 ms frame timer already ticks the
-        // app, so this 100 ms timer must NOT tick too: the stacking added
-        // ~10 ticks/s on top of the 125/s frame timer. The measured ~220/s
-        // total (2026-08-12, WSL crash-3 forensics) also includes
-        // wakeup-driven idle drains that are NOT addressed by this change and
-        // need separate per-source measurement.
+        // app, so this 100 ms timer must NOT tick too: this removes only the
+        // fixed ~10 ticks/s overlap. The measured ~220/s total (2026-08-12,
+        // WSL crash-3 forensics) leaves a remaining delta unattributed until
+        // timer-vs-wakeup counters are sampled live.
         glib::timeout_add_local(tick_interval_for_visible_surfaces(0), move || {
             if hidden_tick_should_run(VISIBLE_SURFACE_COUNT.load(Ordering::Acquire)) {
                 tick_ghostty_app_from_timer(app);
