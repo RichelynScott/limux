@@ -1289,5 +1289,26 @@
         "limux-resource-crash-20260716"
       ]
     }
+  },
+  "limux-anti-refill-20260812": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Shared Cargo target strategy + retention for limux (anti-refill)",
+        "description": "Establish one shared Cargo target/cache mechanism (CARGO_TARGET_DIR via scripts/cargo-env.sh mirroring hcom-cargo.sh) for the primary checkout and sanctioned worktrees; add build-wave discipline and a measurement/report-only retention boundary with an explicit operator-selected threshold (no invented caps); wire into check.sh/limux-dev/package.sh/xvfb-smoke-test.sh; add tests; verify with measured disk/build evidence; deliver result to nafo with durable file pointers.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": []
+      }
+    ],
+    "metadata": {
+      "created": "2026-08-12T20:21:26.799Z",
+      "updated": "2026-08-12T20:21:31.701Z",
+      "description": "Limux storage anti-refill lane (dame, 2026-08-12)",
+      "taskCount": 1
+    }
   }
 }
