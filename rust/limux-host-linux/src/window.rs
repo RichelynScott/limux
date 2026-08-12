@@ -1633,6 +1633,56 @@ fn focused_surface_payload(state: &State) -> Option<serde_json::Value> {
     ))
 }
 
+fn identify_focused_workspace_access<'a>(
+    active_idx: usize,
+    workspace_entries: impl IntoIterator<Item = (usize, &'a str, &'a str)>,
+    caller_workspace_id: Option<&str>,
+    entitlement: &GtkConnectionEntitlement,
+) -> Result<bool, BridgeError> {
+    if !entitlement.config().is_enforcing() {
+        return Ok(true);
+    }
+
+    let workspace_entries = workspace_entries.into_iter().collect::<Vec<_>>();
+    if let Some(caller_workspace_id) = caller_workspace_id {
+        let caller_index = workspace_index_for_target_entries(
+            active_idx,
+            workspace_entries.iter().copied(),
+            &WorkspaceTarget::Handle(caller_workspace_id.to_string()),
+            entitlement,
+        )?;
+        return Ok(caller_index == active_idx);
+    }
+
+    if entitlement.requires_claim() {
+        return Err(BridgeError::permission_denied(
+            "connection must present a workspace target under require-claim",
+        ));
+    }
+
+    let Some(claimed) = entitlement.claimed_workspace() else {
+        // UnclaimedAllEntitled is the explicit operator-compatible mode.
+        return Ok(true);
+    };
+    Ok(workspace_entries
+        .iter()
+        .any(|(index, workspace_id, _)| *index == active_idx && *workspace_id == claimed))
+}
+
+fn notification_workspace_scope(
+    entitlement: &GtkConnectionEntitlement,
+) -> Result<Option<String>, BridgeError> {
+    if !entitlement.config().is_enforcing() {
+        return Ok(None);
+    }
+    if entitlement.requires_claim() {
+        return Err(BridgeError::permission_denied(
+            "connection must present a workspace target under require-claim",
+        ));
+    }
+    Ok(entitlement.claimed_workspace())
+}
+
 fn current_surface_payload_for_workspace(workspace: &Workspace) -> Option<serde_json::Value> {
     let surface = pane::surface_summaries_for_root(&workspace.root)
         .into_iter()
@@ -1644,27 +1694,51 @@ fn current_surface_payload_for_workspace(workspace: &Workspace) -> Option<serde_
     ))
 }
 
-fn notification_list_payload(state: &State, unread_only: bool) -> serde_json::Value {
+fn notification_list_payload(
+    state: &State,
+    unread_only: bool,
+    workspace_scope: Option<&str>,
+) -> serde_json::Value {
     let app_state = state.borrow();
     // Vocabulary-compatible flag; only unread workspace notifications exist here.
     // Active-workspace create notifications are transient notices, not stored unread history.
     let _ = unread_only;
-    let notifications = app_state
-        .workspaces
-        .iter()
-        .enumerate()
-        .filter(|(_, workspace)| workspace.unread)
-        .map(|(index, workspace)| {
-            let message = workspace.notify_label.label().to_string();
+    notification_list_payload_from_entries(
+        app_state
+            .workspaces
+            .iter()
+            .enumerate()
+            .map(|(index, workspace)| {
+                (
+                    index,
+                    workspace.id.as_str(),
+                    workspace.notify_label.label().to_string(),
+                    workspace.unread,
+                )
+            }),
+        workspace_scope,
+    )
+}
+
+fn notification_list_payload_from_entries<'a>(
+    workspace_entries: impl IntoIterator<Item = (usize, &'a str, String, bool)>,
+    workspace_scope: Option<&str>,
+) -> serde_json::Value {
+    let notifications = workspace_entries
+        .into_iter()
+        .filter(|(_, workspace_id, _, unread)| {
+            *unread && workspace_scope.is_none_or(|scope| *workspace_id == scope)
+        })
+        .map(|(index, workspace_id, message, unread)| {
             serde_json::json!({
                 "index": index,
-                "id": workspace.id.as_str(),
-                "notification_id": workspace.id.as_str(),
-                "workspace_id": workspace.id.as_str(),
-                "workspace_ref": workspace_ref(&workspace.id),
+                "id": workspace_id,
+                "notification_id": workspace_id,
+                "workspace_id": workspace_id,
+                "workspace_ref": workspace_ref(workspace_id),
                 "title": message,
                 "body": message,
-                "unread": workspace.unread,
+                "unread": unread,
                 "source": "workspace-unread",
             })
         })
@@ -5937,7 +6011,37 @@ fn handle_control_command(
     match command {
         ControlCommand::Identify { caller, reply } => {
             let result = {
-                let focused = focused_surface_payload(state).unwrap_or(serde_json::Value::Null);
+                let caller_workspace_id = caller
+                    .as_ref()
+                    .and_then(|caller| caller.get("workspace_id"))
+                    .and_then(serde_json::Value::as_str);
+                let focused_allowed = {
+                    let app_state = state.borrow();
+                    identify_focused_workspace_access(
+                        app_state.active_idx,
+                        app_state
+                            .workspaces
+                            .iter()
+                            .enumerate()
+                            .map(|(index, workspace)| {
+                                (index, workspace.id.as_str(), workspace.name.as_str())
+                            }),
+                        caller_workspace_id,
+                        entitlement,
+                    )
+                };
+                let focused_allowed = match focused_allowed {
+                    Ok(allowed) => allowed,
+                    Err(error) => {
+                        let _ = reply.send(Err(error));
+                        return;
+                    }
+                };
+                let focused = if focused_allowed {
+                    focused_surface_payload(state).unwrap_or(serde_json::Value::Null)
+                } else {
+                    serde_json::Value::Null
+                };
                 let socket_path = resolve_socket_path(None, SocketMode::Runtime);
                 let socket_path = socket_path.to_string_lossy().to_string();
                 let channel = RuntimeChannel::from_env().map(|channel| channel.label());
@@ -7064,7 +7168,18 @@ fn handle_control_command(
             let _ = reply.send(Ok(payload));
         }
         ControlCommand::ListNotifications { unread_only, reply } => {
-            let _ = reply.send(Ok(notification_list_payload(state, unread_only)));
+            let workspace_scope = match notification_workspace_scope(entitlement) {
+                Ok(scope) => scope,
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                    return;
+                }
+            };
+            let _ = reply.send(Ok(notification_list_payload(
+                state,
+                unread_only,
+                workspace_scope.as_deref(),
+            )));
         }
     }
 }
@@ -8828,6 +8943,87 @@ mod tests {
                 "connection must present a workspace target under require-claim"
             ))
         );
+    }
+
+    #[test]
+    fn identify_rejects_unclaimed_require_claim_connection() {
+        let entitlement = GtkConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::RequireClaim,
+        });
+
+        assert_eq!(
+            super::identify_focused_workspace_access(
+                1,
+                [(0, "workspace-a", "lane-a"), (1, "workspace-b", "lane-b")],
+                None,
+                &entitlement,
+            ),
+            Err(BridgeError::permission_denied(
+                "connection must present a workspace target under require-claim"
+            ))
+        );
+    }
+
+    #[test]
+    fn identify_hides_foreign_focus_after_explicit_claim() {
+        let entitlement = GtkConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::RequireClaim,
+        });
+
+        assert_eq!(
+            super::identify_focused_workspace_access(
+                1,
+                [(0, "workspace-a", "lane-a"), (1, "workspace-b", "lane-b")],
+                Some("workspace-a"),
+                &entitlement,
+            ),
+            Ok(false)
+        );
+        assert_eq!(
+            entitlement.claimed_workspace().as_deref(),
+            Some("workspace-a")
+        );
+    }
+
+    #[test]
+    fn notification_list_scope_follows_connection_entitlement() {
+        let off = GtkConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::Off,
+        });
+        let require_claim = GtkConnectionEntitlement::new(EntitlementConfig {
+            mode: EntitlementMode::RequireClaim,
+        });
+
+        assert_eq!(super::notification_workspace_scope(&off), Ok(None));
+        assert_eq!(
+            super::notification_workspace_scope(&require_claim),
+            Err(BridgeError::permission_denied(
+                "connection must present a workspace target under require-claim"
+            ))
+        );
+        require_claim
+            .record_claim("workspace-a".to_string())
+            .expect("first claim binds");
+        assert_eq!(
+            super::notification_workspace_scope(&require_claim),
+            Ok(Some("workspace-a".to_string()))
+        );
+    }
+
+    #[test]
+    fn notification_list_payload_excludes_foreign_workspace_content() {
+        let payload = super::notification_list_payload_from_entries(
+            [
+                (0, "workspace-a", "mine".to_string(), true),
+                (1, "workspace-b", "foreign secret".to_string(), true),
+            ],
+            Some("workspace-a"),
+        );
+
+        assert_eq!(payload["notifications"].as_array().map(Vec::len), Some(1));
+        assert_eq!(payload["notifications"][0]["workspace_id"], "workspace-a");
+        assert_eq!(payload["notifications"][0]["body"], "mine");
+        assert!(!payload.to_string().contains("foreign secret"));
     }
 
     #[test]
