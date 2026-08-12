@@ -40,8 +40,8 @@ LIBGHOSTTY_DIR="$ROOT_DIR/ghostty/zig-out/lib"
 
 if [[ ! -x "$CLI_BIN" || ! -x "$HOST_BIN" ]]; then
     echo "limux-dev: missing $PROFILE Limux binaries under $BIN_DIR" >&2
-    echo "limux-dev: run: cargo build ${CARGO_PROFILE_FLAG[*]} -p limux-cli --bin limux-cli" >&2
-    echo "limux-dev: then: cargo build ${CARGO_PROFILE_FLAG[*]} -p limux-host-linux" >&2
+    echo "limux-dev: run: scripts/cargo-env.sh build ${CARGO_PROFILE_FLAG[*]} -p limux-cli --bin limux-cli" >&2
+    echo "limux-dev: then: scripts/cargo-env.sh build ${CARGO_PROFILE_FLAG[*]} -p limux-host-linux" >&2
     exit 127
 fi
 

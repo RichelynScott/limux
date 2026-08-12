@@ -351,7 +351,7 @@ fi
 
 # Build release binary
 echo "Building release binary..."
-cargo build --release --manifest-path "${ROOT_DIR}/Cargo.toml"
+"${ROOT_DIR}/scripts/cargo-env.sh" build --release --manifest-path "${ROOT_DIR}/Cargo.toml"
 
 CLI_BINARY="${ROOT_DIR}/target/release/limux-cli"
 HOST_BINARY="${ROOT_DIR}/target/release/limux"

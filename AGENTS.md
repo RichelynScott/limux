@@ -133,10 +133,33 @@ It runs `cargo fmt --check`,
 `cargo test --workspace`. Run narrower checks while iterating:
 
 ```bash
-cargo check -p limux-host-linux
-cargo test -p limux-cli
-cargo check --workspace
+./scripts/cargo-env.sh check -p limux-host-linux
+./scripts/cargo-env.sh test -p limux-cli
+./scripts/cargo-env.sh check --workspace
 ```
+
+### Shared Cargo target (fleet shared-caches mandate)
+
+All Cargo invocations go through `scripts/cargo-env.sh`, which resolves the
+shared target directory (the owning repository root's `target/`, always
+absolute, via `git rev-parse --git-common-dir`) and exports
+`CARGO_TARGET_DIR`. The primary checkout and any sanctioned repo-local
+worktree (`.worktrees/<owner-topic>`) therefore share ONE compiler-output
+tree instead of each accumulating a multi-GiB `target/`. Never invoke bare
+`cargo` in this repo; use `scripts/cargo-env.sh <cargo args...>` or
+`eval "$(scripts/cargo-env.sh --env)"`.
+
+Build-wave discipline for constrained disk windows:
+`scripts/disk-gate.sh --report` prints the shared target allocation;
+`--max-target-gib <N>` (or `LIMUX_TARGET_MAX_GIB`) fails closed before a
+build when the allocation exceeds an OPERATOR-SELECTED limit. No threshold is
+invented by the repo; without an explicit operator value the gate is
+measurement/report-only.
+
+Non-destructive retention report: `scripts/target-retention.sh --report`
+prints the allocation breakdown (profile → deps/incremental/build). It never
+deletes, moves, or modifies artifacts; reclaim decisions are operator-owned
+per the archive-not-delete policy.
 
 For live agent/control-socket behavior, prefer the maintained smoke harness:
 
