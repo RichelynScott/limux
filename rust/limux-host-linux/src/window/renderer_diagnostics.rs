@@ -1,10 +1,12 @@
+use std::cell::Cell;
 use std::collections::HashSet;
 use std::path::Path;
+use std::rc::Rc;
 use std::sync::OnceLock;
 
-use gtk::prelude::*;
 use gtk4 as gtk;
 use libadwaita as adw;
+use libadwaita::prelude::*;
 use serde::Serialize;
 
 const RENDERER_ENV_KEYS: [&str; 8] = [
@@ -19,6 +21,7 @@ const RENDERER_ENV_KEYS: [&str; 8] = [
 ];
 
 static DIAGNOSTICS: OnceLock<RendererDiagnostics> = OnceLock::new();
+const PROBE_TIMEOUT_SECONDS: u32 = 30;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 struct RequestedRendererPolicy {
@@ -356,6 +359,143 @@ pub(super) fn capture(window: &adw::ApplicationWindow) {
     if DIAGNOSTICS.set(diagnostics.clone()).is_ok() {
         eprintln!("limux: renderer diagnostics {}", diagnostics.to_json());
     }
+}
+
+fn probe_payload(
+    window: &adw::ApplicationWindow,
+    gl_area: &gtk::GLArea,
+) -> (serde_json::Value, i32) {
+    if let Some(error) = gl_area.error() {
+        return (
+            serde_json::json!({
+                "status": "error",
+                "message": format!("renderer probe GLArea error: {error}"),
+            }),
+            1,
+        );
+    }
+
+    let Some(selected_renderer) = window
+        .renderer()
+        .map(|renderer| renderer.type_().name().to_string())
+    else {
+        return (
+            serde_json::json!({
+                "status": "error",
+                "message": "renderer probe window has no realized renderer",
+            }),
+            1,
+        );
+    };
+
+    let thread_names = current_thread_names();
+    let diagnostics = build_diagnostics(
+        requested_policy_from_env(),
+        Some(selected_renderer),
+        thread_names.iter().map(String::as_str),
+        gpu_device_availability(),
+        gpu_device_usage(),
+    );
+    let mut payload = diagnostics.to_json();
+    if let Some(payload) = payload.as_object_mut() {
+        payload.insert(
+            "status".to_string(),
+            serde_json::Value::String("captured".to_string()),
+        );
+        payload.insert(
+            "probe_surface".to_string(),
+            serde_json::json!({
+                "realized": gl_area.is_realized(),
+                "width_px": gl_area.width(),
+                "height_px": gl_area.height(),
+            }),
+        );
+    }
+    (payload, 0)
+}
+
+/// Initialize only GTK/GSK and one GLArea, print one diagnostic JSON object,
+/// and exit. This path deliberately does not initialize Ghostty, restore a
+/// Limux session, bind the control socket, or start any terminal child.
+pub(crate) fn run_probe() -> i32 {
+    let app = adw::Application::builder()
+        .application_id("dev.limux.linux.RendererProbe")
+        .flags(adw::gio::ApplicationFlags::NON_UNIQUE)
+        .build();
+    let finished = Rc::new(Cell::new(false));
+    let exit_code = Rc::new(Cell::new(1));
+
+    {
+        let finished = finished.clone();
+        let exit_code = exit_code.clone();
+        app.connect_activate(move |app| {
+            let window = adw::ApplicationWindow::builder()
+                .application(app)
+                .default_width(64)
+                .default_height(64)
+                .title("Limux renderer probe")
+                .build();
+            let gl_area = gtk::GLArea::new();
+            gl_area.set_auto_render(false);
+            gl_area.set_size_request(64, 64);
+            window.set_content(Some(&gl_area));
+
+            let app_for_map = app.clone();
+            let window_for_map = window.clone();
+            let finished_for_map = finished.clone();
+            let exit_code_for_map = exit_code.clone();
+            gl_area.connect_map(move |gl_area| {
+                if finished_for_map.get() {
+                    return;
+                }
+                gl_area.make_current();
+                let app = app_for_map.clone();
+                let window = window_for_map.clone();
+                let gl_area = gl_area.clone();
+                let finished = finished_for_map.clone();
+                let exit_code = exit_code_for_map.clone();
+                gtk::glib::timeout_add_local(std::time::Duration::from_millis(10), move || {
+                    if finished.get() {
+                        return gtk::glib::ControlFlow::Break;
+                    }
+                    gl_area.make_current();
+                    if gl_area.error().is_none() && (gl_area.width() <= 0 || gl_area.height() <= 0)
+                    {
+                        return gtk::glib::ControlFlow::Continue;
+                    }
+                    finished.set(true);
+                    let (payload, code) = probe_payload(&window, &gl_area);
+                    println!("{payload}");
+                    exit_code.set(code);
+                    app.quit();
+                    gtk::glib::ControlFlow::Break
+                });
+            });
+
+            window.present();
+        });
+    }
+
+    {
+        let app = app.clone();
+        let finished = finished.clone();
+        gtk::glib::timeout_add_seconds_local_once(PROBE_TIMEOUT_SECONDS, move || {
+            if finished.replace(true) {
+                return;
+            }
+            println!(
+                "{}",
+                serde_json::json!({
+                    "status": "error",
+                    "message": "renderer probe timed out before GL realization",
+                })
+            );
+            app.quit();
+        });
+    }
+
+    let _ = app.run_with_args(&["limux-renderer-probe"]);
+    exit_code.get()
 }
 
 pub(super) fn current_json() -> serde_json::Value {
