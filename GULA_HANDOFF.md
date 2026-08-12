@@ -2,7 +2,7 @@
 
 Checkpoint date: 2026-08-12
 Owner: `gula`
-Prior HCOM session (no longer bound): `019ff3bd-7989-7fc1-aaef-c27e86de32d3`
+HCOM session: `019ff3bd-7989-7fc1-aaef-c27e86de32d3`
 Scope: all Limux work, per operator confirmation relayed by `nafo` in hcom request `#165`
 Checkpoint branch: `gula/checkpoint-anti-refill-20260812`
 
@@ -11,9 +11,9 @@ Checkpoint branch: `gula/checkpoint-anti-refill-20260812`
 The operator requested a fresh session takeover. Use `GULA_SUCCESSOR_PROMPT.md` as the copy-ready prompt. This file remains the predecessor record; the successor must create its own `<SUCCESSOR_NAME>_HANDOFF.md` after assuming ownership.
 
 - `gula` is now read-only/standby. The successor owns all new Limux writes after it posts the required intake acknowledgement.
-- Do not resume or reclaim the `gula` identity. After native resume, hcom `0.7.111` reports `session_id=null`, `transcript_available=false`, `resume_available=false`, `process_bound=true`, and `live_delivery_available=true`. Use a fresh hcom identity.
+- Do not resume or reclaim the `gula` identity. Initial native-resume preflight showed a missing hcom session/transcript binding; the later metadata refresh restored session `019ff3bd-7989-7fc1-aaef-c27e86de32d3`, transcript and resume availability, process binding, and live delivery. Use a fresh identity to prevent collision even though `gula` is now recoverable.
 - This is an orderly single-writer cutover. The successor may use the primary checkout and must create a fresh owned implementation branch from `origin/main` before editing. A new worktree is unnecessary unless two sessions later need to write concurrently.
-- The checkpoint branch is one commit ahead of `origin/main`; its only committed delta before this succession update was this handoff. No PR exists for the checkpoint branch.
+- The checkpoint branch contains predecessor-only handoff commits on top of `origin/main`. No PR exists for the checkpoint branch.
 
 ## Immediate Next Action
 
@@ -79,7 +79,7 @@ Numerous older `GULA_EVIDENCE/2026-08-12/` captures and `renderer-supervisor-orc
 
 ## HCOM And Delivery State
 
-- The earlier `gula` binding used session `019ff3bd-7989-7fc1-aaef-c27e86de32d3`, but the native-resumed process no longer has a session/transcript binding and is not resumable through hcom.
+- The initial native-resume preflight temporarily showed `session_id=null` and no transcript/resume availability. Refreshing the owned hcom metadata restored session `019ff3bd-7989-7fc1-aaef-c27e86de32d3`; the final row reports process binding, transcript/resume availability, hook delivery, and live delivery. The successor still uses a fresh identity for collision prevention.
 - The acknowledgement to `nafo` request `#165` was stored in the inbox because `nafo` was not live; it was not a live wakeup.
 - `momo` was unavailable and had no live/resumable hcom identity when the resource findings were delivered. The durable renderer evidence and merged source are the recovery record.
 
