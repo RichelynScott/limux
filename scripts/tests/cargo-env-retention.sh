@@ -74,9 +74,9 @@ fi
 # --- disk-gate.sh: report-only mode exits 0 -------------------------------
 mkdir -p "$fixture/target/debug"
 printf 'x' > "$fixture/target/debug/marker"
-(cd "$fixture" && "$DISK_GATE" --report >/dev/null 2>&1) \
+disk_report="$(cd "$fixture" && "$DISK_GATE" --report 2>&1)" \
     || fail "disk-gate --report must exit 0"
-(cd "$fixture" && "$DISK_GATE" --report 2>&1) | grep -q "target_dir: $fixture/target" \
+grep -Fq "target_dir: $fixture/target" <<< "$disk_report" \
     || fail "disk-gate --report must print the shared target dir"
 
 # --- disk-gate.sh: operator limit above allocation passes -----------------
@@ -103,7 +103,9 @@ mkdir -p "$fixture/target/debug/deps"
 printf 'keep' > "$fixture/target/debug/deps/artifact"
 (cd "$fixture" && "$RETENTION" --report >/dev/null 2>&1) \
     || fail "target-retention --report must exit 0"
-(cd "$fixture" && "$RETENTION" --report 2>&1) | grep -q "no artifacts were deleted" \
+retention_report="$(cd "$fixture" && "$RETENTION" --report 2>&1)" \
+    || fail "target-retention --report must exit 0"
+grep -Fq "no artifacts were deleted" <<< "$retention_report" \
     || fail "target-retention --report must state report-only"
 [[ -f "$fixture/target/debug/deps/artifact" && "$(cat "$fixture/target/debug/deps/artifact")" == "keep" ]] \
     || fail "target-retention must not modify artifacts"
